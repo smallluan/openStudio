@@ -8,6 +8,9 @@
   --muted: rgba(232, 238, 244, 0.65);
   --accent: #c45c32;
   --accent-hover: #d67248;
+  --rail-bg: #080a0e;
+  --rail-width-expanded: 208px;
+  --rail-width-collapsed: 56px;
 }
 
 * {
@@ -32,32 +35,144 @@ code {
   background: rgba(255, 255, 255, 0.06);
 }
 
-/* —— App shell —— */
-.app-shell {
+/* —— App frame + primary rail —— */
+.app-frame {
   min-height: 100vh;
   display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  background: var(--bg-app);
+}
+
+.app-frame__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
-.app-shell__header {
+.primary-rail {
   flex: 0 0 auto;
-  padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-panel);
+  width: var(--rail-width-expanded);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--rail-bg);
+  border-right: 1px solid var(--border);
+  transition: width 0.22s ease;
 }
 
-.app-shell__title {
-  font-size: 1.15rem;
-  font-weight: 600;
-  margin: 0 0 0.25rem;
+.primary-rail--collapsed {
+  width: var(--rail-width-collapsed);
 }
 
-.app-shell__subtitle {
-  margin: 0 0 0.75rem;
-  font-size: 0.82rem;
+.primary-rail__top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.45rem 0.75rem;
 }
 
-.app-shell__body {
+.primary-rail__bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.65rem 0.45rem 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.primary-rail__collapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 0.15rem;
+  padding: 0.4rem 0;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(232, 238, 244, 0.55);
+  cursor: pointer;
+}
+
+.primary-rail__collapse:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.primary-rail__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.primary-rail__link {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.55rem;
+  border-radius: 9px;
+  color: rgba(232, 238, 244, 0.58);
+  text-decoration: none;
+  font-size: 0.84rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.primary-rail__link:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.primary-rail__link.active {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.primary-rail__icon {
+  flex: 0 0 auto;
+  opacity: 0.88;
+}
+
+.primary-rail__link.active .primary-rail__icon {
+  opacity: 1;
+  color: var(--accent-hover);
+}
+
+.primary-rail--collapsed .primary-rail__link {
+  justify-content: center;
+  gap: 0;
+  padding: 0.55rem 0.35rem;
+}
+
+.primary-rail--collapsed .primary-rail__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.primary-rail__link {
+  position: relative;
+}
+
+/* —— Routed pages —— */
+.route-page {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.route-page--studio .route-page__body {
   flex: 1 1 auto;
   display: flex;
   min-height: 0;
@@ -65,9 +180,43 @@ code {
   padding: 0.5rem;
 }
 
-.app-shell__stage-wrap {
+.route-page__stage {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.route-page--plain {
+  padding: 1.25rem 1.5rem 2rem;
+  overflow: auto;
+}
+
+.route-page__header {
+  margin-bottom: 1.25rem;
+}
+
+.route-page__title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+}
+
+.route-page__desc {
+  margin: 0;
+  font-size: 0.88rem;
+  max-width: 52rem;
+  line-height: 1.45;
+}
+
+.route-page__placeholder {
+  padding: 1.25rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.88rem;
+}
+
+.route-page__settings {
+  max-width: 52rem;
 }
 
 /* —— Settings strip —— */
