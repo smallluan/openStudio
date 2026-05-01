@@ -1,0 +1,139 @@
+/**
+ * Light-first “QClaw-like” shell: white / frosted glass, warm rust accent.
+ * Dark mode keeps the same vocabulary with deeper graphite + glass.
+ */
+:root:not([data-theme]),
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --os-accent: #c45c32;
+  --os-accent-hover: #d67248;
+  --os-accent-muted: rgba(196, 92, 50, 0.22);
+
+  --os-blur-sm: 14px;
+  --os-blur-md: 22px;
+  --os-blur-lg: 32px;
+
+  --os-titlebar-height: 40px;
+  --os-titlebar-bg: rgba(255, 255, 255, 0.58);
+  --os-titlebar-text: rgba(20, 24, 32, 0.82);
+
+  --os-bg-app: #e9ecf3;
+  --os-bg-app-gradient: radial-gradient(120% 90% at 18% 8%, rgba(255, 255, 255, 0.92) 0%, transparent 52%),
+    radial-gradient(90% 70% at 88% 72%, rgba(196, 92, 50, 0.06) 0%, transparent 48%), #e9ecf3;
+
+  --os-bg-elevated: rgba(255, 255, 255, 0.78);
+  --os-bg-panel: rgba(255, 255, 255, 0.82);
+  --os-bg-subtle: rgba(15, 23, 42, 0.035);
+  --os-bg-hover: rgba(15, 23, 42, 0.055);
+
+  --os-glass-stroke: rgba(255, 255, 255, 0.65);
+  --os-border: rgba(15, 23, 42, 0.09);
+  --os-border-strong: rgba(15, 23, 42, 0.14);
+
+  --os-text: #141820;
+  --os-text-muted: rgba(20, 24, 32, 0.55);
+  --os-text-faint: rgba(20, 24, 32, 0.38);
+
+  --os-shadow-soft: 0 18px 46px rgba(15, 23, 42, 0.07);
+  --os-shadow-modal: 0 28px 72px rgba(15, 23, 42, 0.12);
+  --os-backdrop: rgba(15, 23, 42, 0.14);
+
+  --os-bg-modal: rgba(255, 255, 255, 0.94);
+  --os-studio-canvas: radial-gradient(ellipse 88% 62% at 70% 16%, rgba(196, 92, 50, 0.075), transparent 52%),
+    linear-gradient(168deg, #f7f9fd 0%, #ebeff7 46%, #f3f6fb 100%);
+
+  --os-rail-surface: rgba(255, 255, 255, 0.38);
+  --os-rail-bg: transparent;
+
+  --os-focus-ring: rgba(196, 92, 50, 0.38);
+  --os-scrollbar-thumb: rgba(15, 23, 42, 0.18);
+
+  --bg-app: transparent;
+  --bg-panel: var(--os-bg-panel);
+  --border: var(--os-border);
+  --text: var(--os-text);
+  --muted: var(--os-text-muted);
+  --accent: var(--os-accent);
+  --accent-hover: var(--os-accent-hover);
+  --rail-bg: var(--os-rail-surface);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --os-accent: #e07a52;
+  --os-accent-hover: #f09068;
+  --os-accent-muted: rgba(224, 122, 82, 0.28);
+
+  --os-blur-sm: 16px;
+  --os-blur-md: 26px;
+  --os-blur-lg: 36px;
+
+  --os-titlebar-height: 40px;
+  --os-titlebar-bg: rgba(18, 22, 28, 0.72);
+  --os-titlebar-text: rgba(235, 240, 246, 0.88);
+
+  --os-bg-app: #0b0e12;
+  --os-bg-app-gradient: radial-gradient(110% 85% at 12% 0%, rgba(196, 92, 50, 0.09) 0%, transparent 46%),
+    linear-gradient(165deg, #11161d 0%, #0b0e12 52%, #121820 100%);
+
+  --os-bg-elevated: rgba(26, 32, 40, 0.76);
+  --os-bg-panel: rgba(22, 28, 36, 0.82);
+  --os-bg-subtle: rgba(255, 255, 255, 0.045);
+  --os-bg-hover: rgba(255, 255, 255, 0.07);
+
+  --os-glass-stroke: rgba(255, 255, 255, 0.1);
+  --os-border: rgba(255, 255, 255, 0.08);
+  --os-border-strong: rgba(255, 255, 255, 0.14);
+
+  --os-text: #e8eef4;
+  --os-text-muted: rgba(232, 238, 244, 0.58);
+  --os-text-faint: rgba(232, 238, 244, 0.4);
+
+  --os-shadow-soft: 0 14px 42px rgba(0, 0, 0, 0.42);
+  --os-shadow-modal: 0 32px 88px rgba(0, 0, 0, 0.55);
+  --os-backdrop: rgba(4, 6, 10, 0.38);
+
+  --os-bg-modal: rgba(22, 28, 36, 0.93);
+  --os-studio-canvas: radial-gradient(ellipse 80% 60% at 70% 20%, rgba(196, 92, 50, 0.12), transparent 55%),
+    linear-gradient(165deg, #1a222c 0%, #0e141a 48%, #161c24 100%);
+
+  --os-rail-surface: rgba(16, 20, 26, 0.52);
+  --os-rail-bg: transparent;
+
+  --os-focus-ring: rgba(224, 122, 82, 0.45);
+  --os-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+
+  --bg-app: transparent;
+  --bg-panel: var(--os-bg-panel);
+  --border: var(--os-border);
+  --text: var(--os-text);
+  --muted: var(--os-text-muted);
+  --accent: var(--os-accent);
+  --accent-hover: var(--os-accent-hover);
+  --rail-bg: var(--os-rail-surface);
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  background-color: var(--os-bg-app);
+  background-image: var(--os-bg-app-gradient);
+  background-attachment: fixed;
+  color: var(--text);
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+html,
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+}

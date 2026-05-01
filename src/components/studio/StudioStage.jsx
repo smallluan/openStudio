@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useStudio } from "../../context/StudioContext.jsx";
 import ZoneDebugLayer from "./ZoneDebugLayer.jsx";
 import { LobsterLayer } from "./LobsterPawn.jsx";
+import Checkbox from "../../ui/Checkbox.jsx";
 
 export default function StudioStage() {
   const { rotateDemoMode, agents } = useStudio();
@@ -15,21 +16,15 @@ export default function StudioStage() {
         <LobsterLayer />
       </div>
       <div className="studio-stage__toolbar">
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={() => rotateDemoMode()}
-        >
+        <button type="button" className="btn-ghost" onClick={() => rotateDemoMode()}>
           演示：切换状态（{agents[0]?.mode ?? "—"}）
         </button>
-        <label className="chk">
-          <input
-            type="checkbox"
-            checked={debugZones}
-            onChange={(e) => setDebugZones(e.target.checked)}
-          />
-          显示分区
-        </label>
+        <Checkbox
+          id="chk-zones"
+          checked={debugZones}
+          onCheckedChange={setDebugZones}
+          label="显示分区"
+        />
       </div>
     </div>
   );

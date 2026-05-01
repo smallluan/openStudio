@@ -1,121 +1,174 @@
-import { useCallback, useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
+import LogoMarkIcon from "../assets/svg/LogoMarkIcon.jsx";
+import NavLobsterIcon from "../assets/svg/NavLobsterIcon.jsx";
+import NavSettingsIcon from "../assets/svg/NavSettingsIcon.jsx";
+import NavStudioIcon from "../assets/svg/NavStudioIcon.jsx";
+import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
+import TitleBar from "../components/chrome/TitleBar.jsx";
+import ResizableEdge from "../ui/ResizableEdge.jsx";
+import { cn } from "../ui/cn.js";
 
-const SIDEBAR_KEY = "openstudio_sidebar_collapsed";
+const SIDEBAR_LEGACY_KEY = "openstudio_sidebar_collapsed";
+const RAIL_LEGACY_KEY = "openstudio_rail_width";
+const RAIL_STORAGE_KEY = "openstudio_primary_rail_px";
+const RAIL_LAST_EXPANDED_KEY = "openstudio_rail_last_expanded";
 
-function IconStudio({ className }) {
-  return (
-    <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        fill="currentColor"
-        fillOpacity=".92"
-        d="M4 17V8a2 2 0 012-2h12a2 2 0 012 2v9l-8-3.5L4 17zm14-9H6v7.06l6-2.625 6 2.625V8z"
-      />
-      <path fill="currentColor" fillOpacity=".45" d="M8 9h8v2H8V9zm0 3.5h5v2H8v-2z" />
-    </svg>
-  );
+const RAIL_COLLAPSED = 82;
+const RAIL_MIN = 176;
+const RAIL_MAX = 360;
+const RAIL_DEFAULT = 208;
+/** Release width &lt; this → snap to narrow ({@link RAIL_COLLAPSED}); otherwise snap to ≥ {@link RAIL_MIN} */
+const SNAP_NARROW = 124;
+
+function clampExpanded(n) {
+  return Math.min(RAIL_MAX, Math.max(RAIL_MIN, n));
 }
 
-function IconLobster({ className }) {
-  return (
-    <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <ellipse cx="12" cy="13" rx="5.5" ry="4.2" fill="currentColor" fillOpacity=".9" />
-      <path stroke="currentColor" strokeOpacity=".85" strokeWidth="1.2" strokeLinecap="round" fill="none" d="M6.8 13.8c-.8-.6-1.3-2-1-3.6M17.4 13.8c.8-.6 1.3-2 1-3.6" />
-      <path fill="currentColor" fillOpacity=".55" d="M9 11.8h2v1.2H9v-1.2zm3.2 0H14v1.2h-1.8v-1.2z" />
-      <circle cx="8.9" cy="17.8" r="1.1" fill="currentColor" fillOpacity=".5" />
-      <circle cx="15.2" cy="17.8" r="1.1" fill="currentColor" fillOpacity=".5" />
-    </svg>
-  );
+function finalizeRailWidth(w) {
+  if (w < SNAP_NARROW) return RAIL_COLLAPSED;
+  return clampExpanded(w);
 }
 
-function IconGear({ className }) {
-  return (
-    <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        stroke="currentColor"
-        strokeWidth="1.65"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-      />
-      <path
-        stroke="currentColor"
-        strokeWidth="1.65"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-      />
-    </svg>
-  );
+function readLastExpanded() {
+  try {
+    const n = Number(window.localStorage.getItem(RAIL_LAST_EXPANDED_KEY));
+    if (Number.isFinite(n)) return clampExpanded(n);
+  } catch {
+    /* ignore */
+  }
+  return RAIL_DEFAULT;
 }
 
-function IconCollapse({ collapsed }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      {collapsed ? (
-        <path d="M9.3 17.7l5-6-5-6-1 1 4.35 5-4.35 5 1 1zm-5.15-12h1.55v14.05H4.15V5.7z" />
-      ) : (
-        <path d="M14.7 17.7l5-6-5-6-1 1 4.35 5-4.35 5 1 1zm-10.85-12h1.55v14.05H3.85V5.7zM8.95 17.05V6.95L6 12l2.95 5.05z" />
-      )}
-    </svg>
-  );
+function readRailPx() {
+  try {
+    const raw = window.localStorage.getItem(RAIL_STORAGE_KEY);
+    if (raw != null) {
+      const n = Number(raw);
+      if (Number.isFinite(n)) {
+        if (n <= RAIL_COLLAPSED + 4) return RAIL_COLLAPSED;
+        return clampExpanded(n);
+      }
+    }
+    if (window.localStorage.getItem(SIDEBAR_LEGACY_KEY) === "1") return RAIL_COLLAPSED;
+    const legacyW = Number(window.localStorage.getItem(RAIL_LEGACY_KEY));
+    if (Number.isFinite(legacyW)) return clampExpanded(legacyW);
+  } catch {
+    /* ignore */
+  }
+  return RAIL_DEFAULT;
 }
 
 export default function MainLayout() {
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem(SIDEBAR_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+  const location = useLocation();
+  const settingsBackground = useMemo(() => ({ backgroundLocation: location }), [location]);
+
+  const lastExpandedRef = useRef(readLastExpanded());
+  const [railPx, setRailPx] = useState(readRailPx);
+  const [railDragging, setRailDragging] = useState(false);
+
+  const isNarrow = railPx < RAIL_MIN;
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+      window.localStorage.setItem(RAIL_STORAGE_KEY, String(railPx));
+      if (railPx >= RAIL_MIN) {
+        lastExpandedRef.current = railPx;
+        window.localStorage.setItem(RAIL_LAST_EXPANDED_KEY, String(railPx));
+      }
     } catch {
       /* ignore */
     }
-  }, [collapsed]);
+  }, [railPx]);
 
-  const toggle = useCallback(() => setCollapsed((c) => !c), []);
+  const toggle = useCallback(() => {
+    setRailPx((w) => {
+      if (w < RAIL_MIN) {
+        return Math.max(RAIL_MIN, lastExpandedRef.current || RAIL_DEFAULT);
+      }
+      lastExpandedRef.current = clampExpanded(w);
+      try {
+        window.localStorage.setItem(RAIL_LAST_EXPANDED_KEY, String(lastExpandedRef.current));
+      } catch {
+        /* ignore */
+      }
+      return RAIL_COLLAPSED;
+    });
+  }, []);
+
+  const onRailCommit = useCallback((w) => {
+    setRailPx(finalizeRailWidth(w));
+  }, []);
 
   return (
-    <div className="app-frame">
-      <aside className={`primary-rail ${collapsed ? "primary-rail--collapsed" : ""}`} aria-label="主导航">
-        <div className="primary-rail__top">
-          <button
-            type="button"
-            className="primary-rail__collapse"
-            onClick={toggle}
-            title={collapsed ? "展开侧边栏" : "收起侧边栏"}
-            aria-expanded={!collapsed}
-          >
-            <IconCollapse collapsed={collapsed} />
-          </button>
+    <div className="os-chrome">
+      <TitleBar />
+      <div className="app-frame">
+        <aside
+          className={cn(
+            "primary-rail",
+            isNarrow && "primary-rail--narrow",
+            railDragging && "primary-rail--dragging",
+          )}
+          style={{ width: railPx }}
+          aria-label="主导航"
+        >
+          <ResizableEdge
+            side="right"
+            value={railPx}
+            min={RAIL_COLLAPSED}
+            max={RAIL_MAX}
+            onChange={setRailPx}
+            onCommit={onRailCommit}
+            onActiveChange={setRailDragging}
+          />
 
-          <nav className="primary-rail__nav" aria-label="应用模块">
-            <NavLink to="/" end className="primary-rail__link" title="工作室">
-              <IconStudio className="primary-rail__icon" />
-              <span className="primary-rail__label">工作室</span>
-            </NavLink>
-            <NavLink to="/lobster" className="primary-rail__link" title="龙虾管理">
-              <IconLobster className="primary-rail__icon" />
-              <span className="primary-rail__label">龙虾管理</span>
+          <div className="primary-rail__top">
+            <div className={cn("primary-rail__header-row", isNarrow && "primary-rail__header-row--narrow")}>
+              <div className="primary-rail__mark">
+                <LogoMarkIcon
+                  className={cn("shrink-0 text-[var(--os-text)]", isNarrow ? "h-6 w-6" : "h-8 w-8")}
+                />
+                {!isNarrow ? (
+                  <span className="ml-2 min-w-0 truncate text-[0.7rem] font-bold tracking-tight text-[var(--os-text-muted)]">
+                    OpenStudio
+                  </span>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className="primary-rail__pin-btn"
+                onClick={toggle}
+                title={isNarrow ? "展开侧边栏" : "收起侧边栏"}
+                aria-expanded={!isNarrow}
+              >
+                <SidebarToggleIcon collapsed={isNarrow} className="text-current" />
+              </button>
+            </div>
+
+            <nav className="primary-rail__nav" aria-label="应用模块">
+              <NavLink to="/" end className="primary-rail__link" title="工作室">
+                <NavStudioIcon className="primary-rail__icon h-[22px] w-[22px]" />
+                <span className="primary-rail__label">工作室</span>
+              </NavLink>
+              <NavLink to="/lobster" className="primary-rail__link" title="龙虾管理">
+                <NavLobsterIcon className="primary-rail__icon h-[22px] w-[22px]" />
+                <span className="primary-rail__label">龙虾管理</span>
+              </NavLink>
+            </nav>
+          </div>
+
+          <nav className="primary-rail__bottom" aria-label="系统">
+            <NavLink to="/settings" state={settingsBackground} className="primary-rail__link" title="设置">
+              <NavSettingsIcon className="primary-rail__icon h-[22px] w-[22px]" />
+              <span className="primary-rail__label">设置</span>
             </NavLink>
           </nav>
+        </aside>
+
+        <div className="app-frame__content">
+          <Outlet />
         </div>
-
-        <nav className="primary-rail__bottom" aria-label="系统">
-          <NavLink to="/settings" className="primary-rail__link" title="设置">
-            <IconGear className="primary-rail__icon" />
-            <span className="primary-rail__label">设置</span>
-          </NavLink>
-        </nav>
-      </aside>
-
-      <div className="app-frame__content">
-        <Outlet />
       </div>
     </div>
   );

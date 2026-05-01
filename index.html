@@ -1,6 +1,18 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("openstudio_theme");
+          if (t === "light" || t === "dark") {
+            document.documentElement.dataset.theme = t;
+            return;
+          }
+        } catch (e) {}
+        document.documentElement.dataset.theme = "light";
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Open Studio</title>

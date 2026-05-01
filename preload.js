@@ -1,7 +1,15 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("appInfo", {
-  name: "Lobster Studio",
+  name: "Open Studio",
+});
+
+contextBridge.exposeInMainWorld("electronShell", {
+  platform: process.platform,
+  minimize: () => ipcRenderer.invoke("shell:windowMinimize"),
+  toggleMaximize: () => ipcRenderer.invoke("shell:windowToggleMaximize"),
+  close: () => ipcRenderer.invoke("shell:windowClose"),
+  isMaximized: () => ipcRenderer.invoke("shell:isWindowMaximized"),
 });
 
 contextBridge.exposeInMainWorld("openclawBridge", {

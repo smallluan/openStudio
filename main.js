@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { createRequire } = require("module");
@@ -38,12 +38,17 @@ function createWindow() {
     height: 820,
     minWidth: 960,
     minHeight: 640,
+    frame: false,
+    backgroundColor: "#eef1f6",
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+
+  win.removeMenu?.();
 
   if (isDev) {
     win.loadURL("http://127.0.0.1:5173");
@@ -54,6 +59,8 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
+
   userConfigStore = createConfigStore(app.getPath("userData"));
 
   ipcMain.handle("openclaw:getRuntime", async () => {
@@ -73,6 +80,29 @@ app.whenReady().then(() => {
   ipcMain.handle("studio:getPaths", () => ({
     userData: app.getPath("userData"),
   }));
+
+  ipcMain.handle("shell:windowMinimize", (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.minimize();
+  });
+
+  ipcMain.handle("shell:windowToggleMaximize", (event) => {
+    const w = BrowserWindow.fromWebContents(event.sender);
+    if (!w) return false;
+    if (w.isMaximized()) {
+      w.unmaximize();
+      return false;
+    }
+    w.maximize();
+    return true;
+  });
+
+  ipcMain.handle("shell:windowClose", (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close();
+  });
+
+  ipcMain.handle("shell:isWindowMaximized", (event) => {
+    return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
+  });
 
   createWindow();
 

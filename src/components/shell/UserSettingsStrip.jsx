@@ -1,4 +1,10 @@
 import { useEffect, useState } from "react";
+import { cn } from "../../ui/cn.js";
+
+const inputClassName = cn(
+  "min-w-[220px] rounded-md border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2 py-2 text-[0.875rem] text-[var(--os-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
+  "placeholder:text-[var(--os-text-faint)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
+);
 
 export default function UserSettingsStrip() {
   const [gateway, setGateway] = useState("http://127.0.0.1:18789");
@@ -44,18 +50,20 @@ export default function UserSettingsStrip() {
   };
 
   return (
-    <div className="settings-strip">
-      <label className="settings-strip__field">
+    <div className="flex flex-col gap-4">
+      <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
         <span>Gateway URL</span>
         <input
+          className={inputClassName}
           value={gateway}
           onChange={(e) => setGateway(e.target.value)}
           autoComplete="off"
         />
       </label>
-      <label className="settings-strip__field">
+      <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
         <span>Provider API Key {hasKey ? "（已保存，留空不改）" : ""}</span>
         <input
+          className={inputClassName}
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
@@ -63,10 +71,12 @@ export default function UserSettingsStrip() {
           autoComplete="off"
         />
       </label>
-      <button type="button" className="btn-primary" onClick={save}>
+      <button type="button" className="btn-primary self-start" onClick={save}>
         保存配置
       </button>
-      {saved ? <span className="settings-strip__hint">{saved}</span> : null}
+      {saved ? (
+        <span className="text-[0.72rem] text-[var(--os-text-muted)]">{saved}</span>
+      ) : null}
     </div>
   );
 }
