@@ -1,0 +1,148 @@
+{
+  "app": {
+    "documentTitle": "Open Studio"
+  },
+  "nav": {
+    "studio": "工作室",
+    "lobster": "龙虾管理",
+    "settings": "设置",
+    "primaryAria": "主导航",
+    "footerAria": "系统导航",
+    "modulesAria": "应用模块",
+    "expandSidebar": "展开侧边栏",
+    "collapseSidebar": "收起侧边栏"
+  },
+  "titlebar": {
+    "appName": "Open Studio",
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原",
+    "close": "关闭",
+    "browserPreviewHint": "浏览器预览 — 窗口控件仅在 Electron 中可用"
+  },
+  "settings": {
+    "title": "设置",
+    "closeAria": "关闭设置",
+    "avatar": "头像",
+    "localAccount": "本地账户",
+    "appearance": "外观",
+    "appearanceAria": "外观模式",
+    "appearanceMode": {
+      "light": "浅色模式",
+      "dark": "深色模式"
+    },
+    "themeHint": "当前：{{current}}。主题与全局语义色绑定，组件库只依赖这套 token。",
+    "language": "界面语言",
+    "languageAria": "选择界面语言",
+    "lang": {
+      "zhCN": "简体中文",
+      "zhTW": "繁體中文",
+      "en": "English",
+      "ja": "日本語"
+    },
+    "sections": {
+      "general": "通用设置",
+      "usage": "用量统计",
+      "skills": "技能管理",
+      "remote": "远控通道",
+      "model": "模型",
+      "modelAdvanced": "模型 · 高级",
+      "about": "关于我们"
+    },
+    "switch": {
+      "lobsterButler": "龙虾管家（占位）",
+      "sleepPrevent": "休眠阻止（占位）",
+      "cloudSync": "云端同步（占位）",
+      "memoryBoost": "记忆增强（占位）"
+    },
+    "advancedFeatures": "高级功能设置",
+    "sectionBuilding": "「{{label}}」页面建设中。"
+  },
+  "modal": {
+    "closeDialog": "关闭对话框"
+  },
+  "modalClose": {
+    "close": "关闭"
+  },
+  "lobsterPage": {
+    "title": "龙虾管理",
+    "desc": "管理龙虾相关配置与状态的入口页面，具体内容后续接入。",
+    "placeholder": "此处可放置龙虾列表、投喂计划、或与 OpenClaw 联动的控制台。"
+  },
+  "studio": {
+    "chat": {
+      "taskDone": "任务完成",
+      "placeholderNote": "（占位通知 · 阶段 C 接 OpenClaw 流）",
+      "inputPlaceholder": "描述任务或提问，Enter 发送…",
+      "send": "发送"
+    },
+    "demoRotateMode": "演示：切换状态（{{mode}}）",
+    "modeFallback": "—",
+    "showZones": "显示分区"
+  },
+  "openclaw": {
+    "runtimeToggle": "OpenClaw 运行时",
+    "panelTitle": "OpenClaw 接入状态",
+    "loading": "正在加载…",
+    "npmVersion": "npm 包版本",
+    "mainNode": "主进程 Node",
+    "libExports": "库导出",
+    "unparsed": "（未解析）",
+    "exportNames": "导出名称",
+    "readError": "无法读取 OpenClaw 运行时信息",
+    "libFailed": "失败：{{error}}"
+  },
+  "userConfig": {
+    "providersColumnTitle": "列表",
+    "profileDetailHeading": "编辑",
+    "emptyStateNoProfiles": "暂无配置",
+    "emptyStateNoSelection": "请选择左侧一项",
+    "addProfile": "新增",
+    "removeProfile": "删除",
+    "profileLabel": "名称",
+    "profileLabelPlaceholder": "可选",
+    "profileSummaryEmpty": "—",
+    "validationPickActive": "请打开使用中。",
+    "validationPickProvider": "请选择供应商。",
+    "validationNeedModelId": "请填写模型 ID。",
+    "providerUnsetOption": "供应商…",
+    "useProviderAria": "使用中",
+    "provider": "供应商",
+    "providerAria": "选择供应商",
+    "providerOptions": {
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "google": "Google Gemini",
+      "openai-compatible": "OpenAI 兼容（自定义 Base URL）"
+    },
+    "modelId": "模型 ID",
+    "modelIdPlaceholder": "gpt-4o …",
+    "baseUrl": "Base URL",
+    "baseUrlPlaceholder": "https://…",
+    "gatewayUrl": "Gateway",
+    "apiKey": "API Key",
+    "apiKeySavedSuffix": "（已保存）",
+    "apiKeyPlaceholder": "密钥",
+    "save": "保存",
+    "savedOk": "已保存",
+    "saveFailed": "失败：{{message}}"
+  },
+  "zones": {
+    "workstation": "工位区",
+    "tea": "茶水区",
+    "lounge": "休闲区",
+    "server_nook": "机房角",
+    "library": "书库/娱乐"
+  },
+  "agents": {
+    "defaultName": "龙虾一号"
+  },
+  "modes": {
+    "idle": "空闲",
+    "thinking": "思考中",
+    "working": "工作中",
+    "break": "休息",
+    "entertainment": "娱乐",
+    "offline": "离线"
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "app": {
+    "documentTitle": "Open Studio"
+  },
+  "nav": {
+    "studio": "Studio",
+    "lobster": "Lobster",
+    "settings": "Settings",
+    "primaryAria": "Primary navigation",
+    "footerAria": "System navigation",
+    "modulesAria": "App modules",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar"
+  },
+  "titlebar": {
+    "appName": "Open Studio",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close",
+    "browserPreviewHint": "Browser preview — window controls are only available in Electron"
+  },
+  "settings": {
+    "title": "Settings",
+    "closeAria": "Close settings",
+    "avatar": "Avatar",
+    "localAccount": "Local account",
+    "appearance": "Appearance",
+    "appearanceAria": "Appearance mode",
+    "appearanceMode": {
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "themeHint": "Current: {{current}}. Theme tokens drive global semantic colors; components rely only on this palette.",
+    "language": "Language",
+    "languageAria": "Choose interface language",
+    "lang": {
+      "zhCN": "简体中文",
+      "zhTW": "繁體中文",
+      "en": "English",
+      "ja": "日本語"
+    },
+    "sections": {
+      "general": "General",
+      "usage": "Usage",
+      "skills": "Skills",
+      "remote": "Remote control",
+      "model": "Model",
+      "modelAdvanced": "Model · Advanced",
+      "about": "About"
+    },
+    "switch": {
+      "lobsterButler": "Lobster assistant (placeholder)",
+      "sleepPrevent": "Prevent sleep (placeholder)",
+      "cloudSync": "Cloud sync (placeholder)",
+      "memoryBoost": "Memory boost (placeholder)"
+    },
+    "advancedFeatures": "Advanced",
+    "sectionBuilding": "The “{{label}}” section is under construction."
+  },
+  "modal": {
+    "closeDialog": "Close dialog"
+  },
+  "modalClose": {
+    "close": "Close"
+  },
+  "lobsterPage": {
+    "title": "Lobster management",
+    "desc": "Entry point for lobster-related configuration and status; details will be wired up later.",
+    "placeholder": "Room for a lobster list, feeding schedule, or an OpenClaw-linked console."
+  },
+  "studio": {
+    "chat": {
+      "taskDone": "Task done",
+      "placeholderNote": "(Placeholder notice · phase C: OpenClaw stream)",
+      "inputPlaceholder": "Describe a task or ask a question; press Enter to send…",
+      "send": "Send"
+    },
+    "demoRotateMode": "Demo: cycle state ({mode})",
+    "modeFallback": "—",
+    "showZones": "Show zones"
+  },
+  "openclaw": {
+    "runtimeToggle": "OpenClaw runtime",
+    "panelTitle": "OpenClaw status",
+    "loading": "Loading…",
+    "npmVersion": "npm package version",
+    "mainNode": "Main process Node",
+    "libExports": "Library exports",
+    "unparsed": "(unparsed)",
+    "exportNames": "Export names",
+    "readError": "Could not read OpenClaw runtime info",
+    "libFailed": "Failed: {{error}}"
+  },
+  "userConfig": {
+    "providersColumnTitle": "List",
+    "profileDetailHeading": "Edit",
+    "emptyStateNoProfiles": "Nothing saved yet.",
+    "emptyStateNoSelection": "Pick something on the left.",
+    "addProfile": "Add",
+    "removeProfile": "Delete",
+    "profileLabel": "Name",
+    "profileLabelPlaceholder": "Optional",
+    "profileSummaryEmpty": "—",
+    "validationPickActive": "Turn on “In use”.",
+    "validationPickProvider": "Choose a vendor.",
+    "validationNeedModelId": "Model id required.",
+    "providerUnsetOption": "Vendor…",
+    "useProviderAria": "In use",
+    "provider": "Vendor",
+    "providerAria": "Vendor",
+    "providerOptions": {
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "google": "Google Gemini",
+      "openai-compatible": "OpenAI-compatible (custom base URL)"
+    },
+    "modelId": "Model ID",
+    "modelIdPlaceholder": "gpt-4o …",
+    "baseUrl": "Base URL",
+    "baseUrlPlaceholder": "https://…",
+    "gatewayUrl": "Gateway",
+    "apiKey": "API key",
+    "apiKeySavedSuffix": "(saved)",
+    "apiKeyPlaceholder": "Key",
+    "save": "Save",
+    "savedOk": "Saved",
+    "saveFailed": "Failed: {{message}}"
+  },
+  "zones": {
+    "workstation": "Workstation",
+    "tea": "Pantry",
+    "lounge": "Lounge",
+    "server_nook": "Server nook",
+    "library": "Library / entertainment"
+  },
+  "agents": {
+    "defaultName": "Lobster 1"
+  },
+  "modes": {
+    "idle": "Idle",
+    "thinking": "Thinking",
+    "working": "Working",
+    "break": "Break",
+    "entertainment": "Fun",
+    "offline": "Offline"
+  }
+}

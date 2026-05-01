@@ -19,6 +19,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@floating-ui/react": "^0.27.19",
     "openclaw": "^2026.4.29",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

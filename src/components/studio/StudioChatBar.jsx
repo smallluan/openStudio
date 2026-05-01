@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { useI18n } from "../../context/I18nContext.jsx";
 import { useStudio } from "../../context/StudioContext.jsx";
 import { AgentMode } from "../../studio/modes.js";
 
 export default function StudioChatBar() {
+  const { t } = useI18n();
   const { setAgentMode, agents } = useStudio();
   const primaryId = agents[0]?.id;
   const [text, setText] = useState("");
@@ -23,13 +25,13 @@ export default function StudioChatBar() {
   return (
     <footer className="studio-chat">
       <div className="studio-chat__task">
-        <span className="studio-chat__badge">任务完成</span>
-        <span className="muted">（占位通知 · 阶段 C 接 OpenClaw 流）</span>
+        <span className="studio-chat__badge">{t("studio.chat.taskDone")}</span>
+        <span className="muted">{t("studio.chat.placeholderNote")}</span>
       </div>
       <div className="studio-chat__row">
         <input
           className="studio-chat__input"
-          placeholder="描述任务或提问，Enter 发送…"
+          placeholder={t("studio.chat.inputPlaceholder")}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -37,7 +39,7 @@ export default function StudioChatBar() {
           }}
         />
         <button type="button" className="btn-primary" onClick={send}>
-          发送
+          {t("studio.chat.send")}
         </button>
       </div>
     </footer>

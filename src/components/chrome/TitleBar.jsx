@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import LogoMarkIcon from "../../assets/svg/LogoMarkIcon.jsx";
+import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
 
 function WinIconMinimize({ className }) {
@@ -36,6 +37,7 @@ function WinIconClose({ className }) {
 }
 
 export default function TitleBar() {
+  const { t } = useI18n();
   const shell = typeof window !== "undefined" ? window.electronShell : null;
   const [maximized, setMaximized] = useState(false);
 
@@ -60,32 +62,32 @@ export default function TitleBar() {
   return (
     <header
       className={cn(
-        "os-titlebar flex shrink-0 items-center justify-between border-b border-[var(--os-border)] pl-3 pr-0",
-        "bg-[var(--os-titlebar-bg)] text-[var(--os-titlebar-text)] backdrop-blur-[var(--os-blur-md)]",
+        "os-titlebar flex shrink-0 items-center justify-between pl-3 pr-0",
+        "bg-[var(--os-rail-surface)] text-[var(--os-titlebar-text)] backdrop-blur-[var(--os-blur-lg)]",
       )}
       style={{ height: "var(--os-titlebar-height)", WebkitAppRegion: "drag" }}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2.5 py-1" style={{ WebkitAppRegion: "drag" }}>
         <LogoMarkIcon className="h-7 w-7 shrink-0 text-[var(--os-text)]" />
-        <span className="truncate text-[0.8125rem] font-semibold tracking-tight">Open Studio</span>
+        <span className="truncate text-[0.8125rem] font-semibold tracking-tight">{t("titlebar.appName")}</span>
       </div>
 
       <div className="flex h-full items-stretch" style={{ WebkitAppRegion: "no-drag" }}>
         {shell ? (
           <>
-            <button type="button" className="os-titlebar__btn" aria-label="最小化" onClick={onMinimize}>
+            <button type="button" className="os-titlebar__btn" aria-label={t("titlebar.minimize")} onClick={onMinimize}>
               <WinIconMinimize className="opacity-85" />
             </button>
-            <button type="button" className="os-titlebar__btn" aria-label={maximized ? "还原" : "最大化"} onClick={onToggleMax}>
+            <button type="button" className="os-titlebar__btn" aria-label={maximized ? t("titlebar.restore") : t("titlebar.maximize")} onClick={onToggleMax}>
               {maximized ? <WinIconRestore className="opacity-85" /> : <WinIconMaximize className="opacity-85" />}
             </button>
-            <button type="button" className="os-titlebar__btn os-titlebar__btn--close" aria-label="关闭" onClick={onClose}>
+            <button type="button" className="os-titlebar__btn os-titlebar__btn--close" aria-label={t("titlebar.close")} onClick={onClose}>
               <WinIconClose className="opacity-95" />
             </button>
           </>
         ) : (
           <span className="flex items-center px-3 text-[0.68rem] font-medium text-[var(--os-text-faint)]">
-            浏览器预览 — 窗口控件仅在 Electron 中可用
+            {t("titlebar.browserPreviewHint")}
           </span>
         )}
       </div>

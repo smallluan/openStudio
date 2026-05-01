@@ -4,7 +4,36 @@
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: var(--os-scrollbar-thumb) transparent;
+  scrollbar-color: color-mix(in srgb, var(--os-scrollbar-thumb) 72%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--os-scrollbar-thumb) 82%, transparent);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--os-scrollbar-thumb) 96%, transparent);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 code {
@@ -56,17 +85,17 @@ code {
   padding: 0;
   margin: 0;
   cursor: default;
-  background: var(--os-backdrop);
-  backdrop-filter: blur(var(--os-blur-sm));
-  -webkit-backdrop-filter: blur(var(--os-blur-sm));
+  background: color-mix(in srgb, var(--os-backdrop) 72%, transparent);
+  backdrop-filter: blur(var(--os-modal-backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--os-modal-backdrop-blur));
 }
 
 .os-modal-panel {
   border: 1px solid color-mix(in srgb, var(--os-border) 70%, var(--os-glass-stroke));
   background: var(--os-bg-modal);
   box-shadow: var(--os-shadow-modal);
-  backdrop-filter: blur(var(--os-blur-sm));
-  -webkit-backdrop-filter: blur(var(--os-blur-sm));
+  backdrop-filter: blur(var(--os-modal-panel-blur));
+  -webkit-backdrop-filter: blur(var(--os-modal-panel-blur));
 }
 
 .app-frame {
@@ -102,19 +131,16 @@ code {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  height: 100%;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  border-right: 1px solid color-mix(in srgb, var(--os-border) 75%, var(--os-glass-stroke));
+  border-right: none;
   background: var(--os-rail-surface);
   backdrop-filter: blur(var(--os-blur-lg));
   -webkit-backdrop-filter: blur(var(--os-blur-lg));
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.22);
+  box-shadow: none;
   transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-:root[data-theme="dark"] .primary-rail {
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06);
 }
 
 .primary-rail--dragging {
@@ -193,66 +219,160 @@ code {
   padding: 0.15rem 0.45rem 0.65rem;
 }
 
-.primary-rail__bottom {
+.primary-rail__top--grow {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Fluid nav (primary rail + settings sheet) */
+.fluid-nav-root {
+  isolation: isolate;
+}
+
+.fluid-nav__track {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  padding: 0.55rem 0.45rem 0.65rem;
-  border-top: 1px solid var(--border);
 }
 
-.primary-rail__nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+.fluid-nav__track--footer {
+  padding-bottom: 0.35rem;
 }
 
-.primary-rail__link {
+.fluid-nav__measure {
+  width: 100%;
+}
+
+.settings-sheet__aside .fluid-nav__measure {
+  width: auto;
+  flex-shrink: 0;
+}
+
+.settings-sheet__aside .fluid-nav__hit {
+  white-space: nowrap;
+}
+
+.fluid-nav__blob {
+  background:
+    radial-gradient(120% 160% at 30% 0%, rgba(255, 255, 255, 0.58), transparent 56%),
+    linear-gradient(155deg, color-mix(in srgb, var(--os-bg-panel) 93%, transparent), color-mix(in srgb, var(--os-bg-panel) 76%, transparent));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 -12px 26px rgba(255, 255, 255, 0.05),
+    0 16px 38px rgba(15, 23, 42, 0.085),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 52%, rgba(255, 255, 255, 0.52));
+  transition:
+    transform 0.62s cubic-bezier(0.33, 1.42, 0.42, 1),
+    width 0.62s cubic-bezier(0.33, 1.42, 0.42, 1),
+    height 0.62s cubic-bezier(0.33, 1.42, 0.42, 1),
+    opacity 0.22s ease,
+    filter 0.55s ease;
+  filter: saturate(1.05);
+}
+
+:root[data-theme="dark"] .fluid-nav__blob {
+  background:
+    radial-gradient(110% 140% at 28% 0%, rgba(255, 255, 255, 0.14), transparent 58%),
+    linear-gradient(155deg, color-mix(in srgb, var(--os-bg-panel) 85%, transparent), color-mix(in srgb, var(--os-bg-panel) 62%, transparent));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 18px 46px rgba(0, 0, 0, 0.42),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 68%, transparent);
+  filter: saturate(1.08);
+}
+
+.fluid-select__blob {
+  border-radius: 10px;
+}
+
+.fluid-select-list {
+  isolation: isolate;
+  background-color: var(--os-bg-popover);
+}
+
+.fluid-select-list .fluid-select__measure {
+  width: 100%;
+}
+
+.fluid-select__hit {
   position: relative;
+  z-index: 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+.fluid-select__hit--selected {
+  color: var(--os-text);
+  font-weight: 600;
+}
+
+.fluid-select__hit:focus-visible {
+  outline: 2px solid var(--os-focus-ring);
+  outline-offset: -2px;
+}
+
+.fluid-nav__hit {
+  position: relative;
+  z-index: 1;
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 0.65rem;
   padding: 0.5rem 0.55rem;
   border-radius: 11px;
+  border: none;
+  background: transparent;
   color: var(--os-text-muted);
   text-decoration: none;
   font-size: 0.84rem;
   font-weight: 600;
   white-space: nowrap;
+  cursor: pointer;
+  text-align: left;
   transition:
-    background 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease;
+    color 0.45s cubic-bezier(0.34, 1.2, 0.52, 1),
+    transform 0.25s ease,
+    filter 0.45s ease;
 }
 
-.primary-rail__link:hover {
+.fluid-nav__hit:hover {
   color: var(--os-text);
+}
+
+.fluid-nav__hit:not(.fluid-nav__hit--router-active):not(.fluid-nav__hit--active):hover {
   background: var(--os-bg-hover);
 }
 
-.primary-rail__link.active {
+.fluid-nav__hit:focus-visible {
+  outline: 2px solid var(--os-focus-ring);
+  outline-offset: 2px;
+}
+
+.fluid-nav__hit--router-active,
+.fluid-nav__hit--active {
   color: var(--os-text);
-  background: color-mix(in srgb, var(--os-bg-panel) 88%, transparent);
-  box-shadow:
-    inset 0 0 0 1px var(--border),
-    0 8px 22px var(--os-shadow-soft);
 }
 
-.primary-rail__icon {
-  flex: 0 0 auto;
+.fluid-nav__glyph {
+  flex-shrink: 0;
   opacity: 0.88;
+  transition:
+    opacity 0.45s cubic-bezier(0.34, 1.2, 0.52, 1),
+    color 0.45s ease,
+    filter 0.55s cubic-bezier(0.34, 1.35, 0.42, 1);
 }
 
-.primary-rail__link.active .primary-rail__icon {
+.fluid-nav__hit:hover .fluid-nav__glyph {
+  opacity: 1;
+}
+
+.fluid-nav__hit--router-active .fluid-nav__glyph,
+.fluid-nav__hit--active .fluid-nav__glyph {
   opacity: 1;
   color: var(--accent);
+  filter: drop-shadow(0 3px 14px color-mix(in srgb, var(--os-accent) 38%, transparent));
 }
 
-.primary-rail__label {
-  min-width: 0;
-}
-
-.primary-rail--narrow .primary-rail__link {
+.primary-rail--narrow .fluid-nav__hit--narrow {
   flex-direction: column;
   justify-content: flex-start;
   gap: 0.28rem;
@@ -261,7 +381,7 @@ code {
   white-space: normal;
 }
 
-.primary-rail--narrow .primary-rail__label {
+.primary-rail--narrow .fluid-nav__label--narrow {
   font-size: 0.625rem;
   font-weight: 600;
   line-height: 1.18;
@@ -271,44 +391,27 @@ code {
   color: var(--os-text-muted);
 }
 
-.primary-rail--narrow .primary-rail__link.active .primary-rail__label {
+.primary-rail--narrow .fluid-nav__hit--router-active .fluid-nav__label--narrow,
+.primary-rail--narrow .fluid-nav__hit--active .fluid-nav__label--narrow {
   color: var(--os-text);
 }
 
-.primary-rail--narrow .primary-rail__icon {
+.primary-rail--narrow .fluid-nav__glyph {
   opacity: 1;
+}
+
+.settings-sheet__aside .fluid-nav__hit {
+  border-radius: 12px;
+}
+
+.settings-sheet__aside .fluid-nav__blob {
+  border-radius: 12px;
 }
 
 .settings-sheet__aside {
   background: color-mix(in srgb, var(--os-bg-subtle) 55%, transparent);
   backdrop-filter: blur(var(--os-blur-sm));
   -webkit-backdrop-filter: blur(var(--os-blur-sm));
-}
-
-.settings-sheet__nav-btn--idle {
-  color: var(--os-text-muted);
-}
-
-.settings-sheet__nav-btn--idle:hover {
-  background: var(--os-bg-hover);
-  color: var(--os-text);
-}
-
-.settings-sheet__nav-btn--active {
-  border: 1px solid color-mix(in srgb, var(--os-border) 65%, var(--os-glass-stroke));
-  background: color-mix(in srgb, var(--os-bg-panel) 58%, transparent);
-  color: var(--os-accent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.42),
-    0 10px 26px var(--os-shadow-soft);
-  backdrop-filter: blur(var(--os-blur-md));
-  -webkit-backdrop-filter: blur(var(--os-blur-md));
-}
-
-:root[data-theme="dark"] .settings-sheet__nav-btn--active {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 26px var(--os-shadow-soft);
 }
 
 /* —— Routed pages —— */

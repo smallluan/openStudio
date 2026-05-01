@@ -23,6 +23,8 @@
     radial-gradient(90% 70% at 88% 72%, rgba(196, 92, 50, 0.06) 0%, transparent 48%), #e9ecf3;
 
   --os-bg-elevated: rgba(255, 255, 255, 0.78);
+  /** Opaque surface for dropdowns / popovers — avoids bleed-through over busy UI */
+  --os-bg-popover: #fbfbfe;
   --os-bg-panel: rgba(255, 255, 255, 0.82);
   --os-bg-subtle: rgba(15, 23, 42, 0.035);
   --os-bg-hover: rgba(15, 23, 42, 0.055);
@@ -38,6 +40,8 @@
   --os-shadow-soft: 0 18px 46px rgba(15, 23, 42, 0.07);
   --os-shadow-modal: 0 28px 72px rgba(15, 23, 42, 0.12);
   --os-backdrop: rgba(15, 23, 42, 0.14);
+  --os-modal-backdrop-blur: 8px;
+  --os-modal-panel-blur: 12px;
 
   --os-bg-modal: rgba(255, 255, 255, 0.94);
   --os-studio-canvas: radial-gradient(ellipse 88% 62% at 70% 16%, rgba(196, 92, 50, 0.075), transparent 52%),
@@ -48,6 +52,9 @@
 
   --os-focus-ring: rgba(196, 92, 50, 0.38);
   --os-scrollbar-thumb: rgba(15, 23, 42, 0.18);
+
+  /** Top inset on raised controls — light theme only keeps a crisp edge; dark uses minimal highlight */
+  --os-control-inset: inset 0 1px 0 rgba(255, 255, 255, 0.52);
 
   --bg-app: transparent;
   --bg-panel: var(--os-bg-panel);
@@ -79,6 +86,7 @@
     linear-gradient(165deg, #11161d 0%, #0b0e12 52%, #121820 100%);
 
   --os-bg-elevated: rgba(26, 32, 40, 0.76);
+  --os-bg-popover: #1c222a;
   --os-bg-panel: rgba(22, 28, 36, 0.82);
   --os-bg-subtle: rgba(255, 255, 255, 0.045);
   --os-bg-hover: rgba(255, 255, 255, 0.07);
@@ -94,6 +102,8 @@
   --os-shadow-soft: 0 14px 42px rgba(0, 0, 0, 0.42);
   --os-shadow-modal: 0 32px 88px rgba(0, 0, 0, 0.55);
   --os-backdrop: rgba(4, 6, 10, 0.38);
+  --os-modal-backdrop-blur: 10px;
+  --os-modal-panel-blur: 14px;
 
   --os-bg-modal: rgba(22, 28, 36, 0.93);
   --os-studio-canvas: radial-gradient(ellipse 80% 60% at 70% 20%, rgba(196, 92, 50, 0.12), transparent 55%),
@@ -104,6 +114,8 @@
 
   --os-focus-ring: rgba(224, 122, 82, 0.45);
   --os-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+
+  --os-control-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
   --bg-app: transparent;
   --bg-panel: var(--os-bg-panel);

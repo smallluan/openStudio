@@ -1,0 +1,148 @@
+{
+  "app": {
+    "documentTitle": "Open Studio"
+  },
+  "nav": {
+    "studio": "工作室",
+    "lobster": "龍蝦管理",
+    "settings": "設定",
+    "primaryAria": "主導覽",
+    "footerAria": "系統導覽",
+    "modulesAria": "應用模組",
+    "expandSidebar": "展開側邊欄",
+    "collapseSidebar": "收合側邊欄"
+  },
+  "titlebar": {
+    "appName": "Open Studio",
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "還原",
+    "close": "關閉",
+    "browserPreviewHint": "瀏覽器預覽 — 視窗控制僅在 Electron 中可用"
+  },
+  "settings": {
+    "title": "設定",
+    "closeAria": "關閉設定",
+    "avatar": "頭像",
+    "localAccount": "本機帳戶",
+    "appearance": "外觀",
+    "appearanceAria": "外觀模式",
+    "appearanceMode": {
+      "light": "淺色模式",
+      "dark": "深色模式"
+    },
+    "themeHint": "目前：{{current}}。主題與全域語意色連動，元件庫僅依賴這套 token。",
+    "language": "介面語言",
+    "languageAria": "選擇介面語言",
+    "lang": {
+      "zhCN": "簡體中文",
+      "zhTW": "繁體中文",
+      "en": "English",
+      "ja": "日本語"
+    },
+    "sections": {
+      "general": "一般設定",
+      "usage": "用量統計",
+      "skills": "技能管理",
+      "remote": "遠端控制通道",
+      "model": "模型",
+      "modelAdvanced": "模型 · 進階",
+      "about": "關於我們"
+    },
+    "switch": {
+      "lobsterButler": "龍蝦管家（暫位）",
+      "sleepPrevent": "防止睡眠（暫位）",
+      "cloudSync": "雲端同步（暫位）",
+      "memoryBoost": "記憶增強（暫位）"
+    },
+    "advancedFeatures": "進階功能設定",
+    "sectionBuilding": "「{{label}}」頁面建置中。"
+  },
+  "modal": {
+    "closeDialog": "關閉對話框"
+  },
+  "modalClose": {
+    "close": "關閉"
+  },
+  "lobsterPage": {
+    "title": "龍蝦管理",
+    "desc": "管理龍蝦相關設定與狀態的入口頁面，具體內容將於後續接入。",
+    "placeholder": "此處可放置龍蝦清單、餵食計畫，或與 OpenClaw 連動的主控台。"
+  },
+  "studio": {
+    "chat": {
+      "taskDone": "任務完成",
+      "placeholderNote": "（暫位通知 · 階段 C 串接 OpenClaw 串流）",
+      "inputPlaceholder": "描述任務或提問，Enter 送出…",
+      "send": "送出"
+    },
+    "demoRotateMode": "示範：切換狀態（{{mode}}）",
+    "modeFallback": "—",
+    "showZones": "顯示分區"
+  },
+  "openclaw": {
+    "runtimeToggle": "OpenClaw 執行階段",
+    "panelTitle": "OpenClaw 接入狀態",
+    "loading": "載入中…",
+    "npmVersion": "npm 套件版本",
+    "mainNode": "主程序 Node",
+    "libExports": "程式庫匯出",
+    "unparsed": "（無法解析）",
+    "exportNames": "匯出名稱",
+    "readError": "無法讀取 OpenClaw 執行階段資訊",
+    "libFailed": "失敗：{{error}}"
+  },
+  "userConfig": {
+    "providersColumnTitle": "列表",
+    "profileDetailHeading": "編輯",
+    "emptyStateNoProfiles": "尚無資料",
+    "emptyStateNoSelection": "請在左側選擇",
+    "addProfile": "新增",
+    "removeProfile": "刪除",
+    "profileLabel": "名稱",
+    "profileLabelPlaceholder": "選填",
+    "profileSummaryEmpty": "—",
+    "validationPickActive": "請開啟使用中。",
+    "validationPickProvider": "請選擇供應商。",
+    "validationNeedModelId": "請填模型 ID。",
+    "providerUnsetOption": "供應商…",
+    "useProviderAria": "使用中",
+    "provider": "供應商",
+    "providerAria": "選擇供應商",
+    "providerOptions": {
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "google": "Google Gemini",
+      "openai-compatible": "OpenAI 相容（自訂 Base URL）"
+    },
+    "modelId": "模型 ID",
+    "modelIdPlaceholder": "gpt-4o …",
+    "baseUrl": "Base URL",
+    "baseUrlPlaceholder": "https://…",
+    "gatewayUrl": "Gateway",
+    "apiKey": "API Key",
+    "apiKeySavedSuffix": "（已儲存）",
+    "apiKeyPlaceholder": "金鑰",
+    "save": "儲存",
+    "savedOk": "已儲存",
+    "saveFailed": "失敗：{{message}}"
+  },
+  "zones": {
+    "workstation": "工位區",
+    "tea": "茶水區",
+    "lounge": "休閒區",
+    "server_nook": "機房角",
+    "library": "書庫／娛樂"
+  },
+  "agents": {
+    "defaultName": "龍蝦一號"
+  },
+  "modes": {
+    "idle": "閒置",
+    "thinking": "思考中",
+    "working": "工作中",
+    "break": "休息",
+    "entertainment": "娛樂",
+    "offline": "離線"
+  }
+}

@@ -22,7 +22,7 @@ function agentDefaults(o) {
   const zoneId = o.zoneId ?? pickZoneIdForMode(mode);
   return {
     id: o.id ?? "lobster-1",
-    name: o.name ?? "龙虾一号",
+    name: o.name ?? "",
     mode,
     zoneId,
     agentSlot: o.agentSlot ?? 0,
@@ -32,7 +32,7 @@ function agentDefaults(o) {
 
 /** 初始演示数据：单虾；阶段 B 改为自配置文件或 IPC */
 export function createInitialAgents() {
-  return [agentDefaults({ id: "lobster-1", name: "龙虾一号", mode: AgentMode.IDLE })];
+  return [agentDefaults({ id: "lobster-1", mode: AgentMode.IDLE })];
 }
 
 /**

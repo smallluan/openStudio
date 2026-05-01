@@ -1,7 +1,9 @@
+import { useI18n } from "../../context/I18nContext.jsx";
 import { ZONE_REGISTRY } from "../../studio/zones.js";
 
 /** 开发用：分区边框，后续可接关卡编辑器或关闭 */
 export default function ZoneDebugLayer({ visible = false }) {
+  const { t } = useI18n();
   if (!visible) return null;
 
   return (
@@ -16,7 +18,7 @@ export default function ZoneDebugLayer({ visible = false }) {
             width: `${z.bounds.w}%`,
             height: `${z.bounds.h}%`,
           }}
-          title={z.label}
+          title={t(`zones.${z.id}`)}
         />
       ))}
     </div>

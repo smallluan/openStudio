@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import LogoMarkIcon from "../assets/svg/LogoMarkIcon.jsx";
 import NavLobsterIcon from "../assets/svg/NavLobsterIcon.jsx";
 import NavSettingsIcon from "../assets/svg/NavSettingsIcon.jsx";
 import NavStudioIcon from "../assets/svg/NavStudioIcon.jsx";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
+import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
+import { useI18n } from "../context/I18nContext.jsx";
 import ResizableEdge from "../ui/ResizableEdge.jsx";
 import { cn } from "../ui/cn.js";
 
@@ -59,9 +61,43 @@ function readRailPx() {
   return RAIL_DEFAULT;
 }
 
-export default function MainLayout() {
+export default function MainLayout({ railResizeEnabled = false }) {
   const location = useLocation();
+  const { t } = useI18n();
   const settingsBackground = useMemo(() => ({ backgroundLocation: location }), [location]);
+
+  const primaryNavItems = useMemo(
+    () => [
+      {
+        id: "studio",
+        to: "/",
+        end: true,
+        label: t("nav.studio"),
+        icon: <NavStudioIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
+      },
+      {
+        id: "lobster",
+        to: "/lobster",
+        label: t("nav.lobster"),
+        icon: <NavLobsterIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
+      },
+    ],
+    [t],
+  );
+
+  const footerNavItems = useMemo(
+    () => [
+      {
+        id: "settings",
+        to: "/settings",
+        end: true,
+        label: t("nav.settings"),
+        state: settingsBackground,
+        icon: <NavSettingsIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
+      },
+    ],
+    [settingsBackground, t],
+  );
 
   const lastExpandedRef = useRef(readLastExpanded());
   const [railPx, setRailPx] = useState(readRailPx);
@@ -111,19 +147,21 @@ export default function MainLayout() {
             railDragging && "primary-rail--dragging",
           )}
           style={{ width: railPx }}
-          aria-label="主导航"
+          aria-label={t("nav.primaryAria")}
         >
-          <ResizableEdge
-            side="right"
-            value={railPx}
-            min={RAIL_COLLAPSED}
-            max={RAIL_MAX}
-            onChange={setRailPx}
-            onCommit={onRailCommit}
-            onActiveChange={setRailDragging}
-          />
+          {railResizeEnabled ? (
+            <ResizableEdge
+              side="right"
+              value={railPx}
+              min={RAIL_COLLAPSED}
+              max={RAIL_MAX}
+              onChange={setRailPx}
+              onCommit={onRailCommit}
+              onActiveChange={setRailDragging}
+            />
+          ) : null}
 
-          <div className="primary-rail__top">
+          <div className="primary-rail__top primary-rail__top--grow">
             <div className={cn("primary-rail__header-row", isNarrow && "primary-rail__header-row--narrow")}>
               <div className="primary-rail__mark">
                 <LogoMarkIcon
@@ -139,31 +177,21 @@ export default function MainLayout() {
                 type="button"
                 className="primary-rail__pin-btn"
                 onClick={toggle}
-                title={isNarrow ? "展开侧边栏" : "收起侧边栏"}
+                title={isNarrow ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
                 aria-expanded={!isNarrow}
               >
                 <SidebarToggleIcon collapsed={isNarrow} className="text-current" />
               </button>
             </div>
 
-            <nav className="primary-rail__nav" aria-label="应用模块">
-              <NavLink to="/" end className="primary-rail__link" title="工作室">
-                <NavStudioIcon className="primary-rail__icon h-[22px] w-[22px]" />
-                <span className="primary-rail__label">工作室</span>
-              </NavLink>
-              <NavLink to="/lobster" className="primary-rail__link" title="龙虾管理">
-                <NavLobsterIcon className="primary-rail__icon h-[22px] w-[22px]" />
-                <span className="primary-rail__label">龙虾管理</span>
-              </NavLink>
-            </nav>
+            <FluidNavMenu
+              narrow={isNarrow}
+              router
+              primaryItems={primaryNavItems}
+              footerItems={footerNavItems}
+              className="flex-1 min-h-0 pb-1"
+            />
           </div>
-
-          <nav className="primary-rail__bottom" aria-label="系统">
-            <NavLink to="/settings" state={settingsBackground} className="primary-rail__link" title="设置">
-              <NavSettingsIcon className="primary-rail__icon h-[22px] w-[22px]" />
-              <span className="primary-rail__label">设置</span>
-            </NavLink>
-          </nav>
         </aside>
 
         <div className="app-frame__content">

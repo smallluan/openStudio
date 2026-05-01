@@ -69,19 +69,13 @@ export default function ResizableEdge({
       aria-valuemax={max}
       tabIndex={disabled ? -1 : 0}
       className={cn(
-        "group absolute top-0 bottom-0 z-20 w-[10px] shrink-0 cursor-col-resize touch-none select-none",
+        "absolute top-0 bottom-0 z-20 w-[10px] shrink-0 cursor-col-resize touch-none select-none outline-none",
         side === "right" ? "right-0" : "left-0",
         disabled && "pointer-events-none opacity-0",
+        "focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)] focus-visible:ring-inset",
         className,
       )}
       onPointerDown={onPointerDown}
-    >
-      <span
-        className={cn(
-          "pointer-events-none absolute inset-y-1 left-1/2 w-px -translate-x-1/2 rounded-full bg-[var(--os-border-strong)] opacity-70 transition-opacity duration-200",
-          "group-hover:opacity-100 group-focus-visible:opacity-100 group-focus-visible:ring-2 group-focus-visible:ring-[var(--os-focus-ring)]",
-        )}
-      />
-    </div>
+    />
   );
 }

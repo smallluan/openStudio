@@ -1,3 +1,4 @@
+import { useI18n } from "../context/I18nContext.jsx";
 import { cn } from "./cn.js";
 
 function CloseGlyph({ className }) {
@@ -13,16 +14,18 @@ function CloseGlyph({ className }) {
   );
 }
 
-export default function ModalCloseButton({ onClick, "aria-label": ariaLabel = "关闭", className }) {
+export default function ModalCloseButton({ onClick, "aria-label": ariaLabel, className }) {
+  const { t } = useI18n();
+  const label = ariaLabel ?? t("modalClose.close");
   return (
     <button
       type="button"
-      aria-label={ariaLabel}
+      aria-label={label}
       onClick={onClick}
       className={cn(
         "os-modal-close inline-flex size-10 shrink-0 items-center justify-center rounded-[11px] border border-transparent",
-        "text-[var(--os-text-muted)] transition-colors duration-150",
-        "hover:border-[var(--os-border)] hover:bg-[var(--os-bg-subtle)] hover:text-[var(--os-text)]",
+        "text-[var(--os-text-muted)] transition-[background,color] duration-150 ease-out",
+        "hover:bg-[#e05454] hover:text-white",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
         className,
       )}

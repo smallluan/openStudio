@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App.jsx";
+import { I18nProvider } from "./context/I18nContext.jsx";
 import { StudioProvider } from "./context/StudioContext.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
 import "./index.css";
@@ -9,11 +10,13 @@ import "./index.css";
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <HashRouter>
-      <ThemeProvider>
-        <StudioProvider>
-          <App />
-        </StudioProvider>
-      </ThemeProvider>
+      <I18nProvider>
+        <ThemeProvider>
+          <StudioProvider>
+            <App />
+          </StudioProvider>
+        </ThemeProvider>
+      </I18nProvider>
     </HashRouter>
   </StrictMode>,
 );

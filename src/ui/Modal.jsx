@@ -1,7 +1,9 @@
 import { useEffect } from "react";
+import { useI18n } from "../context/I18nContext.jsx";
 import { cn } from "./cn.js";
 
 export default function Modal({ children, className, labelledBy, onClose }) {
+  const { t } = useI18n();
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -26,7 +28,7 @@ export default function Modal({ children, className, labelledBy, onClose }) {
       <button
         type="button"
         className="os-modal-backdrop absolute inset-0 transition-opacity duration-200"
-        aria-label="关闭对话框"
+        aria-label={t("modal.closeDialog")}
         onClick={onClose}
       />
       <div

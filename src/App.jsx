@@ -17,7 +17,7 @@ export default function App() {
   return (
     <>
       <Routes location={isSettings ? backgroundLocation : location}>
-        <Route element={<MainLayout />}>
+        <Route element={<MainLayout railResizeEnabled />}>
           <Route index element={<StudioPage />} />
           <Route path="lobster" element={<LobsterManagementPage />} />
         </Route>

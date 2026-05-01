@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useI18n } from "../../context/I18nContext.jsx";
 import { useStudio } from "../../context/StudioContext.jsx";
 import ZoneDebugLayer from "./ZoneDebugLayer.jsx";
 import { LobsterLayer } from "./LobsterPawn.jsx";
 import Checkbox from "../../ui/Checkbox.jsx";
 
 export default function StudioStage() {
+  const { t } = useI18n();
   const { rotateDemoMode, agents } = useStudio();
   const [debugZones, setDebugZones] = useState(true);
 
@@ -17,13 +19,20 @@ export default function StudioStage() {
       </div>
       <div className="studio-stage__toolbar">
         <button type="button" className="btn-ghost" onClick={() => rotateDemoMode()}>
-          演示：切换状态（{agents[0]?.mode ?? "—"}）
+          {t("studio.demoRotateMode", {
+            mode: (() => {
+              const mode = agents[0]?.mode;
+              if (!mode) return t("studio.modeFallback");
+              const lbl = t(`modes.${mode}`);
+              return lbl === `modes.${mode}` ? mode : lbl;
+            })(),
+          })}
         </button>
         <Checkbox
           id="chk-zones"
           checked={debugZones}
           onCheckedChange={setDebugZones}
-          label="显示分区"
+          label={t("studio.showZones")}
         />
       </div>
     </div>

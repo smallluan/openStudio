@@ -1,0 +1,168 @@
+import { matchPath, NavLink, useLocation } from "react-router-dom";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "../../context/I18nContext.jsx";
+import { cn } from "../../ui/cn.js";
+
+function flatten(primaryItems, footerItems) {
+  return [...(primaryItems ?? []), ...(footerItems ?? [])];
+}
+
+function resolveRouterActiveId(locationPathname, primaryItems, footerItems) {
+  const flat = flatten(primaryItems, footerItems);
+  for (const item of flat) {
+    if (!item.to) continue;
+    const m = matchPath({ path: item.to, end: item.end ?? false }, locationPathname);
+    if (m) return item.id;
+  }
+  return null;
+}
+
+export default function FluidNavMenu({
+  narrow = false,
+  router = true,
+  selectedId: controlledSelectedId,
+  onSelect,
+  primaryItems,
+  footerItems = [],
+  primaryTrackClassName,
+  footerTrackClassName,
+  className,
+}) {
+  const { t } = useI18n();
+  const location = useLocation();
+  const rootRef = useRef(null);
+  const itemRefs = useRef(new Map());
+
+  const activeId = useMemo(() => {
+    if (!router) return controlledSelectedId ?? null;
+    return resolveRouterActiveId(location.pathname, primaryItems, footerItems);
+  }, [router, controlledSelectedId, location.pathname, primaryItems, footerItems]);
+
+  const setItemRef = useCallback((id, node) => {
+    const m = itemRefs.current;
+    if (node) m.set(id, node);
+    else m.delete(id);
+  }, []);
+
+  const [blob, setBlob] = useState({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || !activeId) {
+      setBlob((b) => ({ ...b, opacity: 0 }));
+      return;
+    }
+    const el = itemRefs.current.get(activeId);
+    if (!el) {
+      setBlob((b) => ({ ...b, opacity: 0 }));
+      return;
+    }
+
+    const measure = () => {
+      const r = root.getBoundingClientRect();
+      const e = el.getBoundingClientRect();
+      const left = Math.round((e.left - r.left + root.scrollLeft) * 100) / 100;
+      const top = Math.round((e.top - r.top + root.scrollTop) * 100) / 100;
+      const width = Math.round(e.width * 100) / 100;
+      const height = Math.round(e.height * 100) / 100;
+      setBlob((prev) => {
+        if (
+          prev.opacity === 1 &&
+          prev.left === left &&
+          prev.top === top &&
+          prev.width === width &&
+          prev.height === height
+        ) {
+          return prev;
+        }
+        return { left, top, width, height, opacity: 1 };
+      });
+    };
+
+    measure();
+
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(root);
+    ro?.observe(el);
+
+    const onScroll = () => measure();
+    root.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      ro?.disconnect();
+      root.removeEventListener("scroll", onScroll);
+    };
+  }, [activeId, narrow, router, controlledSelectedId, location.pathname]);
+
+  const renderItem = (item) => {
+    const content = (
+      <>
+        {item.icon ? (
+          <span className={cn("fluid-nav__icon shrink-0", narrow && "fluid-nav__icon--narrow")}>{item.icon}</span>
+        ) : null}
+        <span className={cn("fluid-nav__label min-w-0", narrow && "fluid-nav__label--narrow")}>{item.label}</span>
+      </>
+    );
+
+    if (router && item.to) {
+      return (
+        <div key={item.id} ref={(node) => setItemRef(item.id, node)} className="fluid-nav__measure">
+          <NavLink
+            to={item.to}
+            end={item.end ?? false}
+            state={item.state}
+            title={item.title}
+            className={({ isActive }) =>
+              cn(
+                "fluid-nav__hit",
+                narrow && "fluid-nav__hit--narrow",
+                isActive && "fluid-nav__hit--router-active",
+              )}
+          >
+            {content}
+          </NavLink>
+        </div>
+      );
+    }
+
+    const shellClass = cn(
+      "fluid-nav__hit",
+      narrow && "fluid-nav__hit--narrow",
+      activeId === item.id && "fluid-nav__hit--active",
+    );
+
+    return (
+      <div key={item.id} ref={(node) => setItemRef(item.id, node)} className="fluid-nav__measure">
+        <button type="button" className={shellClass} title={item.title} aria-current={activeId === item.id ? "page" : undefined} onClick={() => onSelect?.(item.id)}>
+          {content}
+        </button>
+      </div>
+    );
+  };
+
+  const footer =
+    footerItems?.length > 0 ? (
+      <nav className={cn("fluid-nav__track fluid-nav__track--footer relative z-[1]", footerTrackClassName)} aria-label={t("nav.footerAria")}>
+        {footerItems.map(renderItem)}
+      </nav>
+    ) : null;
+
+  return (
+    <div ref={rootRef} className={cn("fluid-nav-root relative flex min-h-0 flex-col justify-between gap-2", className)}>
+      <div
+        aria-hidden
+        className="fluid-nav__blob pointer-events-none absolute top-0 left-0 z-0 rounded-[11px]"
+        style={{
+          transform: `translate3d(${blob.left}px, ${blob.top}px, 0)`,
+          width: `${blob.width}px`,
+          height: `${blob.height}px`,
+          opacity: blob.opacity,
+        }}
+      />
+      <nav className={cn("fluid-nav__track fluid-nav__track--primary relative z-[1]", primaryTrackClassName)} aria-label={t("nav.modulesAria")}>
+        {primaryItems?.map(renderItem)}
+      </nav>
+      {footer}
+    </div>
+  );
+}

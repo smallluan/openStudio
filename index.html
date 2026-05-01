@@ -12,6 +12,19 @@
         } catch (e) {}
         document.documentElement.dataset.theme = "light";
       })();
+      (function () {
+        try {
+          var loc = localStorage.getItem("openstudio_locale");
+          if (
+            loc === "zh-CN" ||
+            loc === "zh-TW" ||
+            loc === "en" ||
+            loc === "ja"
+          ) {
+            document.documentElement.lang = loc;
+          }
+        } catch (e) {}
+      })();
     </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

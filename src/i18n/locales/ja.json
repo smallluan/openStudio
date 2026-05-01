@@ -1,0 +1,148 @@
+{
+  "app": {
+    "documentTitle": "Open Studio"
+  },
+  "nav": {
+    "studio": "スタジオ",
+    "lobster": "ロブスター管理",
+    "settings": "設定",
+    "primaryAria": "メインのナビゲーション",
+    "footerAria": "システムナビゲーション",
+    "modulesAria": "アプリモジュール",
+    "expandSidebar": "サイドバーを展開",
+    "collapseSidebar": "サイドバーを折りたたむ"
+  },
+  "titlebar": {
+    "appName": "Open Studio",
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "元に戻す",
+    "close": "閉じる",
+    "browserPreviewHint": "ブラウザプレビュー — ウィンドウ操作は Electron 上でのみ利用できます"
+  },
+  "settings": {
+    "title": "設定",
+    "closeAria": "設定を閉じる",
+    "avatar": "アバター",
+    "localAccount": "ローカルアカウント",
+    "appearance": "外観",
+    "appearanceAria": "外観モード",
+    "appearanceMode": {
+      "light": "ライト",
+      "dark": "ダーク"
+    },
+    "themeHint": "現在：{{current}}。テーマはグローバルな意味色トークンに紐づき、コンポーネントはこのトークンのみを参照します。",
+    "language": "表示言語",
+    "languageAria": "表示言語を選択",
+    "lang": {
+      "zhCN": "简体中文",
+      "zhTW": "繁體中文",
+      "en": "English",
+      "ja": "日本語"
+    },
+    "sections": {
+      "general": "一般",
+      "usage": "利用状況",
+      "skills": "スキル",
+      "remote": "リモート操作",
+      "model": "モデル",
+      "modelAdvanced": "モデル · 詳細",
+      "about": "について"
+    },
+    "switch": {
+      "lobsterButler": "ロブスターアシスタント（プレースホルダー）",
+      "sleepPrevent": "スリープ防止（プレースホルダー）",
+      "cloudSync": "クラウド同期（プレースホルダー）",
+      "memoryBoost": "記憶強化（プレースホルダー）"
+    },
+    "advancedFeatures": "高度な機能",
+    "sectionBuilding": "「{{label}}」は準備中です。"
+  },
+  "modal": {
+    "closeDialog": "ダイアログを閉じる"
+  },
+  "modalClose": {
+    "close": "閉じる"
+  },
+  "lobsterPage": {
+    "title": "ロブスター管理",
+    "desc": "ロブスター関連の設定と状態への入口です。詳細は後から接続します。",
+    "placeholder": "ロブスター一覧、給餌スケジュール、OpenClaw 連携コンソールなどをここに配置できます。"
+  },
+  "studio": {
+    "chat": {
+      "taskDone": "タスク完了",
+      "placeholderNote": "（プレースホルダー通知・フェーズ C で OpenClaw ストリーム）",
+      "inputPlaceholder": "タスクや質問を入力し、Enter で送信…",
+      "send": "送信"
+    },
+    "demoRotateMode": "デモ：状態を切り替え（{{mode}}）",
+    "modeFallback": "—",
+    "showZones": "ゾーンを表示"
+  },
+  "openclaw": {
+    "runtimeToggle": "OpenClaw ランタイム",
+    "panelTitle": "OpenClaw 接続状態",
+    "loading": "読み込み中…",
+    "npmVersion": "npm パッケージバージョン",
+    "mainNode": "メインプロセス Node",
+    "libExports": "ライブラリのエクスポート",
+    "unparsed": "（未解析）",
+    "exportNames": "エクスポート名",
+    "readError": "OpenClaw ランタイム情報を読み取れませんでした",
+    "libFailed": "失敗：{{error}}"
+  },
+  "userConfig": {
+    "providersColumnTitle": "一覧",
+    "profileDetailHeading": "編集",
+    "emptyStateNoProfiles": "なし",
+    "emptyStateNoSelection": "左から選択してください",
+    "addProfile": "追加",
+    "removeProfile": "削除",
+    "profileLabel": "名前",
+    "profileLabelPlaceholder": "任意",
+    "profileSummaryEmpty": "—",
+    "validationPickActive": "「使用中」をオンにしてください。",
+    "validationPickProvider": "プロバイダーを選んでください。",
+    "validationNeedModelId": "モデル ID が必要です。",
+    "providerUnsetOption": "選択…",
+    "useProviderAria": "使用中",
+    "provider": "プロバイダー",
+    "providerAria": "プロバイダー",
+    "providerOptions": {
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "google": "Google Gemini",
+      "openai-compatible": "OpenAI 互換（Base URL を指定）"
+    },
+    "modelId": "モデル ID",
+    "modelIdPlaceholder": "gpt-4o …",
+    "baseUrl": "Base URL",
+    "baseUrlPlaceholder": "https://…",
+    "gatewayUrl": "Gateway",
+    "apiKey": "API キー",
+    "apiKeySavedSuffix": "（保存済み）",
+    "apiKeyPlaceholder": "鍵",
+    "save": "保存",
+    "savedOk": "保存しました",
+    "saveFailed": "失敗：{{message}}"
+  },
+  "zones": {
+    "workstation": "作業エリア",
+    "tea": "ティーエリア",
+    "lounge": "ラウンジ",
+    "server_nook": "サーバーコーナー",
+    "library": "書庫／娯楽"
+  },
+  "agents": {
+    "defaultName": "ロブスター1号"
+  },
+  "modes": {
+    "idle": "待機",
+    "thinking": "思考中",
+    "working": "作業中",
+    "break": "休憩",
+    "entertainment": "娯楽",
+    "offline": "オフライン"
+  }
+}
