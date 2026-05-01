@@ -2,9 +2,13 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { createRequire } = require("module");
+const { createConfigStore } = require("./lib/config-store.cjs");
 
 const isDev = process.env.NODE_ENV === "development";
 const requireFromApp = createRequire(__dirname);
+
+/** @type {ReturnType<typeof createConfigStore> | null} */
+let userConfigStore = null;
 
 function getOpenClawPackageMeta() {
   try {
@@ -30,8 +34,10 @@ async function getOpenClawLibrarySurface() {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1024,
-    height: 768,
+    width: 1280,
+    height: 820,
+    minWidth: 960,
+    minHeight: 640,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -48,11 +54,25 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  userConfigStore = createConfigStore(app.getPath("userData"));
+
   ipcMain.handle("openclaw:getRuntime", async () => {
     const meta = getOpenClawPackageMeta();
     const lib = await getOpenClawLibrarySurface();
     return { meta, lib, processVersions: process.versions };
   });
+
+  ipcMain.handle("studio:getUserConfig", () => {
+    return userConfigStore.getSanitized();
+  });
+
+  ipcMain.handle("studio:setUserConfig", (_event, patch) => {
+    return userConfigStore.applyPatch(patch ?? {});
+  });
+
+  ipcMain.handle("studio:getPaths", () => ({
+    userData: app.getPath("userData"),
+  }));
 
   createWindow();
 

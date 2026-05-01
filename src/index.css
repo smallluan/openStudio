@@ -1,6 +1,13 @@
 :root {
-  color-scheme: light dark;
-  font-family: system-ui, sans-serif;
+  color-scheme: dark;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  --bg-app: #0c0f12;
+  --bg-panel: rgba(20, 26, 32, 0.92);
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #e8eef4;
+  --muted: rgba(232, 238, 244, 0.65);
+  --accent: #c45c32;
+  --accent-hover: #d67248;
 }
 
 * {
@@ -10,62 +17,272 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background: var(--bg-app);
+  color: var(--text);
 }
 
 #root {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: #0f1419;
-  color: #e6edf3;
 }
 
-.app {
-  text-align: center;
-  padding: 2rem;
+code {
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.app h1 {
+/* —— App shell —— */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell__header {
+  flex: 0 0 auto;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.app-shell__title {
+  font-size: 1.15rem;
   font-weight: 600;
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.25rem;
 }
 
-.app p {
-  opacity: 0.8;
-  margin: 0;
+.app-shell__subtitle {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
 }
 
-.app .lead {
-  margin-bottom: 1.5rem;
-  max-width: 36rem;
-  margin-left: auto;
-  margin-right: auto;
+.app-shell__body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+  gap: 0.5rem;
+  padding: 0.5rem;
 }
 
-.oc-card {
-  margin-top: 0.5rem;
-  padding: 1.25rem 1.5rem;
-  max-width: 42rem;
-  text-align: left;
-  background: rgba(255, 255, 255, 0.04);
+.app-shell__stage-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* —— Settings strip —— */
+.settings-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+}
+
+.settings-strip__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.settings-strip__field input {
+  min-width: 220px;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+}
+
+.settings-strip__hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+  width: 100%;
+}
+
+/* —— Studio stage —— */
+.studio-stage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 420px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #12181f;
 }
 
-.oc-card h2 {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0 0 1rem;
+.studio-stage__canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 360px;
 }
 
-.muted {
-  opacity: 0.65;
+.studio-stage__bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(165deg, #1a222c 0%, #0e141a 48%, #161c24 100%);
+  background-image: radial-gradient(
+      ellipse 80% 60% at 70% 20%,
+      rgba(196, 92, 50, 0.12),
+      transparent 55%
+    ),
+    linear-gradient(165deg, #1a222c 0%, #0e141a 48%, #161c24 100%);
+}
+
+.zone-debug-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.zone-debug-rect {
+  position: absolute;
+  border: 1px dashed rgba(120, 200, 255, 0.35);
+  border-radius: 6px;
+  background: rgba(80, 160, 255, 0.04);
+}
+
+.lobster-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lobster-pawn {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  transition: left 0.7s ease, top 0.7s ease;
+}
+
+.lobster-pawn__glyph {
+  font-size: 2rem;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
+.lobster-pawn__label {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+}
+
+.studio-stage__toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.4rem 0.65rem;
+  background: rgba(0, 0, 0, 0.35);
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* —— Chat bar —— */
+.studio-chat {
+  flex: 0 0 auto;
+  padding: 0.65rem 1rem 1rem;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.studio-chat__task {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.78rem;
+}
+
+.studio-chat__badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(80, 200, 120, 0.2);
+  color: #8ce99a;
+  font-size: 0.72rem;
+}
+
+.studio-chat__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.studio-chat__input {
+  flex: 1 1 auto;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
   font-size: 0.9rem;
 }
 
-.small {
+/* —— Buttons —— */
+.btn-primary {
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-ghost {
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
   font-size: 0.8rem;
-  line-height: 1.5;
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* —— Dev panel + OpenClaw card —— */
+.dev-panel {
+  flex: 0 0 280px;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 200px;
+}
+
+.dev-panel__toggle {
+  align-self: flex-start;
+}
+
+.dev-panel__body {
+  max-height: min(70vh, 520px);
+  overflow: auto;
+}
+
+.muted {
+  color: var(--muted);
 }
 
 .warn {
@@ -73,17 +290,31 @@ body {
   margin: 0;
 }
 
+.oc-card {
+  margin-top: 0.5rem;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.oc-card h2 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+
 .oc-dl {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.35rem 1.25rem;
-  margin: 0 0 1rem;
-  font-size: 0.9rem;
+  gap: 0.35rem 0.85rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
 }
 
 .oc-dl dt {
   margin: 0;
-  opacity: 0.7;
+  color: var(--muted);
 }
 
 .oc-dl dd {
@@ -93,18 +324,18 @@ body {
 
 .oc-details summary {
   cursor: pointer;
-  font-size: 0.85rem;
-  opacity: 0.85;
+  font-size: 0.78rem;
+  color: var(--muted);
 }
 
 .oc-pre {
-  margin: 0.75rem 0 0;
-  padding: 0.75rem;
-  font-size: 0.7rem;
-  line-height: 1.4;
+  margin: 0.6rem 0 0;
+  padding: 0.6rem;
+  font-size: 0.68rem;
+  line-height: 1.35;
   overflow: auto;
-  max-height: 10rem;
+  max-height: 8rem;
   background: rgba(0, 0, 0, 0.35);
-  border-radius: 8px;
+  border-radius: 6px;
   white-space: pre-wrap;
 }
