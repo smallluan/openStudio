@@ -9,12 +9,17 @@
     "dev": "cross-env NODE_ENV=development concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
     "build": "vite build",
     "start": "cross-env NODE_ENV=production electron .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "openclaw": "openclaw"
+  },
+  "engines": {
+    "node": ">=22.14.0"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "openclaw": "^2026.4.29",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
