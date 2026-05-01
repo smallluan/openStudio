@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import LogoMarkIcon from "../assets/svg/LogoMarkIcon.jsx";
+import NavChatLabIcon from "../assets/svg/NavChatLabIcon.jsx";
 import NavLobsterIcon from "../assets/svg/NavLobsterIcon.jsx";
 import NavSettingsIcon from "../assets/svg/NavSettingsIcon.jsx";
 import NavStudioIcon from "../assets/svg/NavStudioIcon.jsx";
@@ -74,6 +75,12 @@ export default function MainLayout({ railResizeEnabled = false }) {
         end: true,
         label: t("nav.studio"),
         icon: <NavStudioIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
+      },
+      {
+        id: "chat-lab",
+        to: "/chat",
+        label: t("nav.chatLab"),
+        icon: <NavChatLabIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
       },
       {
         id: "lobster",

@@ -3,8 +3,20 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
 
+/** @param {*} item */
+function isNavGroup(item) {
+  return Boolean(item && item.kind === "group" && Array.isArray(item.items));
+}
+
 function flatten(primaryItems, footerItems) {
-  return [...(primaryItems ?? []), ...(footerItems ?? [])];
+  /** @type {*} */
+  const out = [];
+  for (const item of [...(primaryItems ?? []), ...(footerItems ?? [])]) {
+    if (isNavGroup(item)) {
+      for (const sub of item.items) out.push(sub);
+    } else out.push(item);
+  }
+  return out;
 }
 
 function resolveRouterActiveId(locationPathname, primaryItems, footerItems) {
@@ -94,56 +106,59 @@ export default function FluidNavMenu({
     };
   }, [activeId, narrow, router, controlledSelectedId, location.pathname]);
 
-  const renderItem = (item) => {
-    const content = (
-      <>
-        {item.icon ? (
-          <span className={cn("fluid-nav__icon shrink-0", narrow && "fluid-nav__icon--narrow")}>{item.icon}</span>
-        ) : null}
-        <span className={cn("fluid-nav__label min-w-0", narrow && "fluid-nav__label--narrow")}>{item.label}</span>
-      </>
-    );
+  /** @param {*} item */
+  const renderLeafItem = useCallback(
+    (item, nested = false) => {
+      const content = (
+        <>
+          {item.icon ? (
+            <span className={cn("fluid-nav__icon shrink-0", narrow && "fluid-nav__icon--narrow")}>{item.icon}</span>
+          ) : null}
+          <span className={cn("fluid-nav__label min-w-0", narrow && "fluid-nav__label--narrow")}>{item.label}</span>
+        </>
+      );
 
-    if (router && item.to) {
+      const hitCn = cn("fluid-nav__hit", nested && "fluid-nav__hit--nested", narrow && "fluid-nav__hit--narrow");
+
+      if (router && item.to) {
+        return (
+          <div key={item.id} ref={(node) => setItemRef(item.id, node)} className="fluid-nav__measure">
+            <NavLink
+              to={item.to}
+              end={item.end ?? false}
+              state={item.state}
+              title={item.title}
+              className={({ isActive }) => cn(hitCn, isActive && "fluid-nav__hit--router-active")}
+            >
+              {content}
+            </NavLink>
+          </div>
+        );
+      }
+
+      const shellClass = cn(hitCn, activeId === item.id && "fluid-nav__hit--active");
+
       return (
         <div key={item.id} ref={(node) => setItemRef(item.id, node)} className="fluid-nav__measure">
-          <NavLink
-            to={item.to}
-            end={item.end ?? false}
-            state={item.state}
+          <button
+            type="button"
+            className={shellClass}
             title={item.title}
-            className={({ isActive }) =>
-              cn(
-                "fluid-nav__hit",
-                narrow && "fluid-nav__hit--narrow",
-                isActive && "fluid-nav__hit--router-active",
-              )}
+            aria-current={activeId === item.id ? "page" : undefined}
+            onClick={() => onSelect?.(item.id)}
           >
             {content}
-          </NavLink>
+          </button>
         </div>
       );
-    }
-
-    const shellClass = cn(
-      "fluid-nav__hit",
-      narrow && "fluid-nav__hit--narrow",
-      activeId === item.id && "fluid-nav__hit--active",
-    );
-
-    return (
-      <div key={item.id} ref={(node) => setItemRef(item.id, node)} className="fluid-nav__measure">
-        <button type="button" className={shellClass} title={item.title} aria-current={activeId === item.id ? "page" : undefined} onClick={() => onSelect?.(item.id)}>
-          {content}
-        </button>
-      </div>
-    );
-  };
+    },
+    [activeId, narrow, onSelect, router, setItemRef],
+  );
 
   const footer =
     footerItems?.length > 0 ? (
       <nav className={cn("fluid-nav__track fluid-nav__track--footer relative z-[1]", footerTrackClassName)} aria-label={t("nav.footerAria")}>
-        {footerItems.map(renderItem)}
+        {footerItems.map((item) => renderLeafItem(item, false))}
       </nav>
     ) : null;
 
@@ -160,7 +175,32 @@ export default function FluidNavMenu({
         }}
       />
       <nav className={cn("fluid-nav__track fluid-nav__track--primary relative z-[1]", primaryTrackClassName)} aria-label={t("nav.modulesAria")}>
-        {primaryItems?.map(renderItem)}
+        {primaryItems?.map((item) => {
+          if (isNavGroup(item)) {
+            return (
+              <div key={item.id} className="fluid-nav__group flex min-w-0 flex-col gap-1.5">
+                <div
+                  className={cn(
+                    "fluid-nav__group-label flex min-w-0 items-center gap-2 px-2 py-0.5 text-[0.72rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]",
+                    narrow && "flex-col justify-center gap-1 px-1 py-1 text-center text-[0.62rem] normal-case",
+                  )}
+                >
+                  {item.icon ? <span className="fluid-nav__glyph shrink-0 opacity-80">{item.icon}</span> : null}
+                  <span className="min-w-0 truncate">{item.label}</span>
+                </div>
+                <div
+                  className={cn(
+                    "fluid-nav__group-nest flex min-w-0 flex-col gap-1 border-l border-[color-mix(in_srgb,var(--os-border)_76%,transparent)] pl-3",
+                    narrow && "gap-2 border-none pl-0 pt-0.5",
+                  )}
+                >
+                  {item.items.map((sub) => renderLeafItem(sub, true))}
+                </div>
+              </div>
+            );
+          }
+          return renderLeafItem(item, false);
+        })}
       </nav>
       {footer}
     </div>

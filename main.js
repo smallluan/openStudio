@@ -3,12 +3,105 @@ const path = require("path");
 const fs = require("fs");
 const { createRequire } = require("module");
 const { createConfigStore } = require("./lib/config-store.cjs");
+const { dispatchOpenClawGatewayStream, probeOpenClawGateway } = require("./lib/openclaw-gateway-stream.cjs");
+const {
+  runGatewayBootstrapReadiness,
+  invalidateGatewaySession,
+} = require("./lib/openclaw-gateway-session.cjs");
+const { syncOpenClawAgentFromStudioConfig } = require("./lib/sync-openclaw-agent-from-studio.cjs");
 
 const isDev = process.env.NODE_ENV === "development";
 const requireFromApp = createRequire(__dirname);
 
+const CHAT_STREAM_CHAN = "studio:chatStream";
+const BOOTSTRAP_PROGRESS_CHAN = "studio:bootstrapProgress";
+/** Overall budget for first-run gateway hydration (`tools.effective` can match first-chat prep cost). */
+const BOOTSTRAP_BUDGET_MS = 900_000;
+
 /** @type {ReturnType<typeof createConfigStore> | null} */
 let userConfigStore = null;
+
+/** @type {Map<string, AbortController>} */
+const chatStreamAbortControllers = new Map();
+
+/** Serialize `studio:bootstrapGateway` — React Strict Mode can fire the effect twice in dev. */
+let bootstrapGatewayInFlight = /** @type {Promise<{ ok: boolean; message?: string; skipped?: string }> | null} */ (null);
+
+/** Fingerprint of fields that affect on-disk OpenClaw sync; avoids rewriting every chat turn. */
+let lastOpenClawSyncFingerprint = "";
+
+/** @param {unknown} cfg */
+function computeOpenClawSyncFingerprint(cfg) {
+  if (!cfg || typeof cfg !== "object") return "";
+  try {
+    return JSON.stringify({
+      openclaw: /** @type {any} */ (cfg).openclaw,
+      modelProfiles: /** @type {any} */ (cfg).modelProfiles,
+      activeModelProfileId: /** @type {any} */ (cfg).activeModelProfileId,
+      credentials: /** @type {any} */ (cfg).credentials,
+    });
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * @param {"startup" | "bootstrap" | "settings" | "probe" | "chat"} reason
+ */
+function runOpenClawAgentSyncFromStudio(reason) {
+  if (!userConfigStore) return;
+  const cfg = userConfigStore.readRaw();
+  const fp = computeOpenClawSyncFingerprint(cfg);
+  const skipReasons =
+    reason === "chat" ||
+    reason === "probe" ||
+    reason === "settings" ||
+    reason === "bootstrap";
+  if (skipReasons && fp === lastOpenClawSyncFingerprint) {
+    if (isDev) console.log(`[openclaw-sync:${reason}] skipped (config unchanged)`);
+    return;
+  }
+  try {
+    const r = syncOpenClawAgentFromStudioConfig(cfg);
+    if (isDev && r && !r.skipped && r.ok) {
+      console.log(
+        `[openclaw-sync:${reason}] agent=${r.agentId} dir=${r.stateDir} authUpdated=${r.authChanged} model=`,
+        r.modelPatch,
+        r.warning ?? "",
+      );
+    }
+    if (isDev && r?.warning) console.warn("[openclaw-sync]", r.warning);
+    if (isDev && r?.modelPatch?.ok === false) {
+      console.warn("[openclaw-sync] model line not updated:", r.modelPatch.reason);
+    }
+    if (
+      isDev &&
+      r?.modelPatch?.changed &&
+      process.env.OPENCLAW_SYNC_SILENT_MODEL_RESTART_HINT !== "1"
+    ) {
+      console.warn(
+        "[openclaw-sync] openclaw.json model updated — restart the gateway process if it was already running so it picks up the new default model.",
+      );
+    }
+    lastOpenClawSyncFingerprint = computeOpenClawSyncFingerprint(userConfigStore.readRaw());
+  } catch (err) {
+    console.warn("[openclaw-sync] failed:", err?.message ?? err);
+  }
+}
+
+/**
+ * @param {unknown} patch
+ * @returns {boolean}
+ */
+function patchTouchesGatewayWorkspace(patch) {
+  const p = patch && typeof patch === "object" ? patch : {};
+  return (
+    "openclaw" in p ||
+    "modelProfiles" in p ||
+    "activeModelProfileId" in p ||
+    "credentials" in p
+  );
+}
 
 function getOpenClawPackageMeta() {
   try {
@@ -62,6 +155,7 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
 
   userConfigStore = createConfigStore(app.getPath("userData"));
+  runOpenClawAgentSyncFromStudio("startup");
 
   ipcMain.handle("openclaw:getRuntime", async () => {
     const meta = getOpenClawPackageMeta();
@@ -74,12 +168,108 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("studio:setUserConfig", (_event, patch) => {
-    return userConfigStore.applyPatch(patch ?? {});
+    const fpBefore = computeOpenClawSyncFingerprint(userConfigStore.readRaw());
+    const sanitized = userConfigStore.applyPatch(patch ?? {});
+    runOpenClawAgentSyncFromStudio("settings");
+    const fpAfter = computeOpenClawSyncFingerprint(userConfigStore.readRaw());
+    if (patchTouchesGatewayWorkspace(patch) && fpAfter !== fpBefore) {
+      invalidateGatewaySession();
+    }
+    return sanitized;
   });
 
   ipcMain.handle("studio:getPaths", () => ({
     userData: app.getPath("userData"),
   }));
+
+  ipcMain.handle("studio:probeGateway", async () => {
+    try {
+      runOpenClawAgentSyncFromStudio("probe");
+      const cfg = userConfigStore.readRaw();
+      await probeOpenClawGateway(cfg);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, message: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:bootstrapGateway", async (event) => {
+    if (bootstrapGatewayInFlight) return bootstrapGatewayInFlight;
+
+    const wc = event.sender;
+    /** @param {Record<string, unknown>} payload */
+    const emit = (payload) => {
+      if (!wc.isDestroyed()) wc.send(BOOTSTRAP_PROGRESS_CHAN, payload);
+    };
+
+    bootstrapGatewayInFlight = (async () => {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), BOOTSTRAP_BUDGET_MS);
+      try {
+        runOpenClawAgentSyncFromStudio("bootstrap");
+        emit({ phase: "config_synced" });
+
+        const cfg = userConfigStore.readRaw();
+        const url = String(cfg?.openclaw?.gatewayBaseUrl ?? "").trim();
+        if (!url) {
+          emit({ phase: "skipped_no_gateway" });
+          emit({ phase: "complete", skipped: "no_gateway_url" });
+          return { ok: true, skipped: "no_gateway_url" };
+        }
+
+        await runGatewayBootstrapReadiness(cfg, ac.signal, emit);
+        emit({ phase: "complete" });
+        return { ok: true };
+      } catch (e) {
+        invalidateGatewaySession();
+        const message = String(e?.message ?? e);
+        emit({ phase: "error", message });
+        return { ok: false, message };
+      } finally {
+        clearTimeout(timer);
+      }
+    })().finally(() => {
+      bootstrapGatewayInFlight = null;
+    });
+
+    return bootstrapGatewayInFlight;
+  });
+
+  ipcMain.handle("studio:startChatStream", async (event, payload) => {
+    const streamId = payload?.streamId;
+    const messages = payload?.messages;
+    if (typeof streamId !== "string" || !streamId.trim() || !Array.isArray(messages)) {
+      throw new Error("invalid_chat_payload");
+    }
+    const ac = new AbortController();
+    chatStreamAbortControllers.set(streamId, ac);
+    const wc = event.sender;
+    try {
+      runOpenClawAgentSyncFromStudio("chat");
+      const cfg = userConfigStore.readRaw();
+      await dispatchOpenClawGatewayStream(cfg, messages, ac.signal, (evt) => {
+        if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
+      });
+    } catch (e) {
+      if (!wc.isDestroyed()) {
+        if (ac.signal.aborted || e?.name === "AbortError") {
+          wc.send(CHAT_STREAM_CHAN, { streamId, type: "aborted" });
+        } else {
+          wc.send(CHAT_STREAM_CHAN, { streamId, type: "error", message: String(e?.message ?? e) });
+        }
+      }
+    } finally {
+      chatStreamAbortControllers.delete(streamId);
+      if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, type: "done" });
+    }
+    return { ok: true };
+  });
+
+  ipcMain.handle("studio:abortChatStream", (_event, streamId) => {
+    if (typeof streamId !== "string" || !chatStreamAbortControllers.has(streamId)) return { ok: false };
+    chatStreamAbortControllers.get(streamId)?.abort();
+    return { ok: true };
+  });
 
   ipcMain.handle("shell:windowMinimize", (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize();

@@ -5,6 +5,7 @@ import App from "./App.jsx";
 import { I18nProvider } from "./context/I18nContext.jsx";
 import { StudioProvider } from "./context/StudioContext.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
+import StartupBootstrapGate from "./shell/StartupBootstrapGate.jsx";
 import "./index.css";
 
 createRoot(document.getElementById("root")).render(
@@ -13,7 +14,9 @@ createRoot(document.getElementById("root")).render(
       <I18nProvider>
         <ThemeProvider>
           <StudioProvider>
-            <App />
+            <StartupBootstrapGate>
+              <App />
+            </StartupBootstrapGate>
           </StudioProvider>
         </ThemeProvider>
       </I18nProvider>

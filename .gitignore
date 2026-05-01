@@ -1,4 +1,5 @@
 node_modules/
+tmp-pack/
 dist/
 out/
 *.log

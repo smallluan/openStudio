@@ -4,6 +4,7 @@ import LobsterManagementPage from "./pages/LobsterManagementPage.jsx";
 import SettingsModalShell from "./routes/SettingsModalShell.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import StudioPage from "./pages/StudioPage.jsx";
+import ChatLabPage from "./pages/ChatLabPage.jsx";
 
 export default function App() {
   const location = useLocation();
@@ -19,6 +20,7 @@ export default function App() {
       <Routes location={isSettings ? backgroundLocation : location}>
         <Route element={<MainLayout railResizeEnabled />}>
           <Route index element={<StudioPage />} />
+          <Route path="chat" element={<ChatLabPage />} />
           <Route path="lobster" element={<LobsterManagementPage />} />
         </Route>
       </Routes>
