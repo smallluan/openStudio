@@ -23,9 +23,11 @@ contextBridge.exposeInMainWorld("studioBridge", {
   setUserConfig: (patch) => ipcRenderer.invoke("studio:setUserConfig", patch),
   getPaths: () => ipcRenderer.invoke("studio:getPaths"),
   probeGateway: () => ipcRenderer.invoke("studio:probeGateway"),
+  warmGatewayChatPrep: () => ipcRenderer.invoke("studio:warmGatewayChatPrep"),
   bootstrapGateway: () => ipcRenderer.invoke("studio:bootstrapGateway"),
   startChatStream: (payload) => ipcRenderer.invoke("studio:startChatStream", payload),
   abortChatStream: (streamId) => ipcRenderer.invoke("studio:abortChatStream", streamId),
+  generateChatTitle: (payload) => ipcRenderer.invoke("studio:generateChatTitle", payload),
   onChatStream: (listener) => {
     const wrapped = (_e, data) => listener(data);
     ipcRenderer.on(CHAT_STREAM_CHAN, wrapped);

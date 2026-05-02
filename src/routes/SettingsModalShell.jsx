@@ -5,7 +5,7 @@ export default function SettingsModalShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const bg = location.state?.backgroundLocation ?? {
-    pathname: "/",
+    pathname: "/chat",
     search: "",
     hash: "",
     state: null,

@@ -19,11 +19,22 @@ function flatten(primaryItems, footerItems) {
   return out;
 }
 
-function resolveRouterActiveId(locationPathname, primaryItems, footerItems) {
+/**
+ * @param {import("react-router-dom").Location} location
+ */
+function resolveRouterActiveId(location, primaryItems, footerItems) {
   const flat = flatten(primaryItems, footerItems);
   for (const item of flat) {
     if (!item.to) continue;
-    const m = matchPath({ path: item.to, end: item.end ?? false }, locationPathname);
+    if (typeof item.isActive === "function") {
+      try {
+        if (item.isActive(location)) return item.id;
+      } catch {
+        /* ignore */
+      }
+      continue;
+    }
+    const m = matchPath({ path: item.to, end: item.end ?? false }, location.pathname);
     if (m) return item.id;
   }
   return null;
@@ -39,6 +50,7 @@ export default function FluidNavMenu({
   primaryTrackClassName,
   footerTrackClassName,
   className,
+  afterPrimary = null,
 }) {
   const { t } = useI18n();
   const location = useLocation();
@@ -47,8 +59,8 @@ export default function FluidNavMenu({
 
   const activeId = useMemo(() => {
     if (!router) return controlledSelectedId ?? null;
-    return resolveRouterActiveId(location.pathname, primaryItems, footerItems);
-  }, [router, controlledSelectedId, location.pathname, primaryItems, footerItems]);
+    return resolveRouterActiveId(location, primaryItems, footerItems);
+  }, [router, controlledSelectedId, location, primaryItems, footerItems]);
 
   const setItemRef = useCallback((id, node) => {
     const m = itemRefs.current;
@@ -104,7 +116,7 @@ export default function FluidNavMenu({
       ro?.disconnect();
       root.removeEventListener("scroll", onScroll);
     };
-  }, [activeId, narrow, router, controlledSelectedId, location.pathname]);
+  }, [activeId, narrow, router, controlledSelectedId, location.pathname, location.search]);
 
   /** @param {*} item */
   const renderLeafItem = useCallback(
@@ -128,7 +140,17 @@ export default function FluidNavMenu({
               end={item.end ?? false}
               state={item.state}
               title={item.title}
-              className={({ isActive }) => cn(hitCn, isActive && "fluid-nav__hit--router-active")}
+              className={({ isActive }) => {
+                let active = isActive;
+                if (typeof item.isActive === "function") {
+                  try {
+                    active = item.isActive(location);
+                  } catch {
+                    active = false;
+                  }
+                }
+                return cn(hitCn, active && "fluid-nav__hit--router-active");
+              }}
             >
               {content}
             </NavLink>
@@ -152,7 +174,7 @@ export default function FluidNavMenu({
         </div>
       );
     },
-    [activeId, narrow, onSelect, router, setItemRef],
+    [activeId, location, narrow, onSelect, router, setItemRef],
   );
 
   const footer =
@@ -163,7 +185,7 @@ export default function FluidNavMenu({
     ) : null;
 
   return (
-    <div ref={rootRef} className={cn("fluid-nav-root relative flex min-h-0 flex-col justify-between gap-2", className)}>
+    <div ref={rootRef} className={cn("fluid-nav-root relative flex min-h-0 flex-1 flex-col gap-2", className)}>
       <div
         aria-hidden
         className="fluid-nav__blob pointer-events-none absolute top-0 left-0 z-0 rounded-[11px]"
@@ -174,7 +196,7 @@ export default function FluidNavMenu({
           opacity: blob.opacity,
         }}
       />
-      <nav className={cn("fluid-nav__track fluid-nav__track--primary relative z-[1]", primaryTrackClassName)} aria-label={t("nav.modulesAria")}>
+      <nav className={cn("fluid-nav__track fluid-nav__track--primary relative z-[1] shrink-0", primaryTrackClassName)} aria-label={t("nav.modulesAria")}>
         {primaryItems?.map((item) => {
           if (isNavGroup(item)) {
             return (
@@ -202,7 +224,10 @@ export default function FluidNavMenu({
           return renderLeafItem(item, false);
         })}
       </nav>
-      {footer}
+      {afterPrimary ? (
+        <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden">{afterPrimary}</div>
+      ) : null}
+      {footer ? <div className="relative z-[1] mt-auto shrink-0">{footer}</div> : null}
     </div>
   );
 }

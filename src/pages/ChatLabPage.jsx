@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import NavSettingsIcon from "../assets/svg/NavSettingsIcon.jsx";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  deriveTitleFromMessages,
+  getSession,
+  upsertSession,
+} from "../chat/chatSessionsStore.js";
 import { useI18n } from "../context/I18nContext.jsx";
+import {
+  useChatLabStreaming,
+  useGatewayStreamSlice,
+} from "../context/ChatLabStreamingContext.jsx";
 import { cn } from "../ui/cn.js";
 
 const ERROR_CODE_KEY_MAP = {
@@ -64,9 +74,48 @@ function isChatHttp404(raw) {
   return /^http_404\b/.test(String(raw ?? "").trim());
 }
 
+/**
+ * Terminal IPC snapshots can briefly race ahead of the last `content_sync`; never clobber
+ * non-empty assistant text/thinking with an empty terminal payload.
+ * @param {*} m
+ * @param {{ content?: string; thinking?: string; error?: string }} extra
+ */
+function mergeTerminalAssistantPayload(m, extra) {
+  /** @type {*} */
+  const next = { ...m, streaming: false };
+  if (typeof extra?.content === "string") {
+    const incoming = extra.content;
+    const prev = String(m.content ?? "");
+    if (incoming.trim().length > 0 || prev.trim().length === 0) {
+      next.content = incoming;
+    }
+  }
+  if (typeof extra?.thinking === "string") {
+    const incoming = extra.thinking;
+    const prev = String(m.thinking ?? "");
+    if (incoming.trim().length > 0 || prev.trim().length === 0) {
+      next.thinking = incoming;
+    }
+  }
+  if (extra?.error) next.error = extra.error;
+  return next;
+}
+
 export default function ChatLabPage() {
   const { t } = useI18n();
   const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paramC = searchParams.get("c");
+
+  const draftIdRef = useRef(/** @type {string | null} */ (null));
+  if (paramC) {
+    draftIdRef.current = null;
+  } else if (!draftIdRef.current) {
+    draftIdRef.current = newId();
+  }
+  const conversationId = paramC || draftIdRef.current;
+
   const settingsLinkState = useMemo(
     () => ({ backgroundLocation: location }),
     [location],
@@ -81,12 +130,9 @@ export default function ChatLabPage() {
     ([]),
   );
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [streamError, setStreamError] = useState(/** @type {string | null} */ (null));
   const [gatewayPhase, setGatewayPhase] = useState(
     /** @type {"loading" | "checking" | "online" | "offline"} */ ("loading"),
   );
-  const [gatewayProbeError, setGatewayProbeError] = useState(/** @type {string | null} */ (null));
   /** When true, chat returned HTTP 404 — keep composer locked until a full probe succeeds again. */
   const [chatApiBlocked, setChatApiBlocked] = useState(false);
   const [probeRestartKey, setProbeRestartKey] = useState(0);
@@ -100,9 +146,84 @@ export default function ChatLabPage() {
   const messagesScrollRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const autoScrollRef = useRef(true);
 
+  const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
+  const gatewaySliceForConv = useGatewayStreamSlice(conversationId);
+  const gatewayStreaming = Boolean(gatewaySliceForConv?.active);
+
+  const [sessionTitleBump, setSessionTitleBump] = useState(0);
+  useEffect(() => {
+    const bump = () => setSessionTitleBump((x) => x + 1);
+    window.addEventListener("openstudio-chat-sessions-changed", bump);
+    return () => window.removeEventListener("openstudio-chat-sessions-changed", bump);
+  }, []);
+
+  const headerTitle = useMemo(() => {
+    void sessionTitleBump;
+    const id = conversationId;
+    if (!id) return "";
+    const rec = getSession(id);
+    if (rec?.title) return rec.title;
+    return deriveTitleFromMessages(messages);
+  }, [conversationId, messages, sessionTitleBump]);
+
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  const prevParamCRef = useRef(/** @type {string | null} */ (null));
+
+  useEffect(() => {
+    const prev = prevParamCRef.current;
+    prevParamCRef.current = paramC;
+
+    if (!paramC) {
+      if (prev != null) {
+        setMessages([]);
+        setChatApiBlocked(false);
+      } else if (messagesRef.current.length === 0) {
+        setChatApiBlocked(false);
+      }
+      return;
+    }
+
+    const rec = getSession(paramC);
+    if (rec) {
+      setMessages(
+        rec.messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          ...(m.thinking ? { thinking: m.thinking } : {}),
+          streaming: false,
+        })),
+      );
+      setChatApiBlocked(false);
+      return;
+    }
+    if (messagesRef.current.length > 0) return;
+    navigate("/chat", { replace: true });
+  }, [navigate, paramC]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    if (messages.length === 0) return;
+
+    const h = window.setTimeout(() => {
+      const toSave = messages
+        .filter((m) => (m.role === "user" || m.role === "assistant") && !m.error)
+        .map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
+        }));
+      if (toSave.length === 0) return;
+      const title = deriveTitleFromMessages(messages);
+      upsertSession(conversationId, title || "…", toSave);
+    }, 380);
+
+    return () => window.clearTimeout(h);
+  }, [messages, conversationId]);
 
   const reloadConfig = useCallback(async () => {
     if (!bridge?.getUserConfig) {
@@ -136,19 +257,22 @@ export default function ChatLabPage() {
   const gatewayLine = useMemo(() => (config ? gatewayStatusLine(config, t) : null), [config, t]);
 
   useEffect(() => {
+    if (!isElectron || !bridge?.warmGatewayChatPrep) return;
+    if (!configLoaded || configIssueKey) return;
+    void bridge.warmGatewayChatPrep();
+  }, [bridge, configIssueKey, configLoaded, isElectron]);
+
+  useEffect(() => {
     if (!isElectron || !bridge?.probeGateway) {
       setGatewayPhase("online");
-      setGatewayProbeError(null);
       return undefined;
     }
     if (!configLoaded) {
       setGatewayPhase("loading");
-      setGatewayProbeError(null);
       return undefined;
     }
     if (configIssueKey) {
       setGatewayPhase("online");
-      setGatewayProbeError(null);
       return undefined;
     }
 
@@ -170,18 +294,13 @@ export default function ChatLabPage() {
         if (cancelled) return;
         if (r?.ok) {
           setGatewayPhase("online");
-          setGatewayProbeError(null);
           setChatApiBlocked(false);
-          setStreamError(null);
         } else {
-          const msg = r?.message ? formatStreamError(r.message, t) : t("chatLab.gatewayUnreachable");
-          setGatewayProbeError(msg);
           setGatewayPhase("offline");
           scheduleRetry();
         }
-      } catch (err) {
+      } catch {
         if (cancelled) return;
-        setGatewayProbeError(formatStreamError(String(err?.message ?? err), t));
         setGatewayPhase("offline");
         scheduleRetry();
       }
@@ -192,7 +311,8 @@ export default function ChatLabPage() {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [bridge, configIssueKey, configLoaded, isElectron, location.pathname, probeRestartKey, t]);
+    /** Avoid re-probing on every route change — redundant WS handshake load on the gateway. */
+  }, [bridge, configIssueKey, configLoaded, isElectron, probeRestartKey]);
 
   const scrollToBottomIfPinned = useCallback(() => {
     if (!autoScrollRef.current) return;
@@ -203,7 +323,7 @@ export default function ChatLabPage() {
 
   useEffect(() => {
     scrollToBottomIfPinned();
-  }, [messages, streaming, scrollToBottomIfPinned]);
+  }, [messages, gatewayStreaming, scrollToBottomIfPinned]);
 
   const handleScroll = useCallback(() => {
     const el = messagesScrollRef.current;
@@ -212,116 +332,73 @@ export default function ChatLabPage() {
     autoScrollRef.current = distFromBottom < 80;
   }, []);
 
-  const applyAssistantPatch = useCallback(
-    /** @param {string} assistantId @param {(prev: {id:string; role:'assistant'; content:string; thinking?:string; streaming?:boolean; error?:string}) => any} patchFn */
-    (assistantId, patchFn) => {
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== assistantId) return m;
-          return patchFn(m);
-        }),
-      );
-    },
-    [],
-  );
-
-  const finalizeActiveAssistant = useCallback(
-    /** @param {{ error?: string } | undefined} extra */
-    (extra) => {
-      const assistantId = activeAssistantIdRef.current;
-      activeAssistantIdRef.current = null;
-      activeStreamIdRef.current = null;
-      setStreaming(false);
-      if (!assistantId) return;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId
-            ? {
-                ...m,
-                streaming: false,
-                ...(extra?.error ? { error: extra.error } : {}),
-              }
-            : m,
-        ),
-      );
-    },
-    [],
-  );
-
   useEffect(() => {
-    if (!bridge) return undefined;
-    return () => {
-      const sid = activeStreamIdRef.current;
-      activeStreamIdRef.current = null;
-      activeAssistantIdRef.current = null;
-      if (sid && bridge.abortChatStream) {
-        try {
-          bridge.abortChatStream(sid);
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-  }, [bridge]);
-
-  useEffect(() => {
-    if (!bridge?.onChatStream) return undefined;
-    const off = bridge.onChatStream((evt) => {
-      if (!evt || typeof evt !== "object") return;
-      const assistantId = activeAssistantIdRef.current;
-      const expectedStreamId = activeStreamIdRef.current;
-      if (evt.streamId && expectedStreamId && evt.streamId !== expectedStreamId) return;
-
-      switch (evt.type) {
-        case "thinking":
-          if (!assistantId || typeof evt.delta !== "string") return;
-          applyAssistantPatch(assistantId, (m) => ({
-            ...m,
-            thinking: (m.thinking ?? "") + evt.delta,
-          }));
-          return;
-        case "text":
-          if (!assistantId || typeof evt.delta !== "string") return;
-          applyAssistantPatch(assistantId, (m) => ({
-            ...m,
-            content: (m.content ?? "") + evt.delta,
-          }));
-          return;
-        case "meta":
-        case "usage":
-          return;
-        case "aborted":
-          finalizeActiveAssistant();
-          return;
-        case "error": {
-          const raw = String(evt.message ?? "");
-          const msg = formatStreamError(raw, t);
-          setStreamError(msg);
-          finalizeActiveAssistant({ error: msg });
-          if (isChatHttp404(raw)) {
-            setChatApiBlocked(true);
-            setProbeRestartKey((k) => k + 1);
-          }
-          return;
-        }
-        case "done":
-          finalizeActiveAssistant();
-          return;
-        default:
-          return;
-      }
+    if (!gatewaySliceForConv) return;
+    const { assistantMessageId, content, thinking, active } = gatewaySliceForConv;
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === assistantMessageId);
+      if (idx === -1) return prev;
+      return prev.map((m) =>
+        m.id === assistantMessageId ? { ...m, content, thinking, streaming: active } : m,
+      );
     });
-    return () => {
-      try {
-        off?.();
-      } catch {
-        /* ignore */
+  }, [gatewaySliceForConv]);
+
+  const prevSliceForConvRef = useRef(/** @type {typeof gatewaySliceForConv} */ (null));
+  useEffect(() => {
+    const prev = prevSliceForConvRef.current;
+    prevSliceForConvRef.current = gatewaySliceForConv;
+    if (prev && !gatewaySliceForConv && prev.conversationId === conversationId) {
+      setMessages((pm) =>
+        pm.some((m) => m.streaming)
+          ? pm.map((m) => (m.streaming ? { ...m, streaming: false } : m))
+          : pm,
+      );
+    }
+  }, [conversationId, gatewaySliceForConv]);
+
+  const finalizeAssistantById = useCallback((assistantId, extra) => {
+    if (!assistantId) return;
+    activeAssistantIdRef.current = null;
+    activeStreamIdRef.current = null;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === assistantId ? mergeTerminalAssistantPayload(m, extra ?? {}) : m)),
+    );
+  }, []);
+
+  useEffect(() => {
+    /** @param {Event} e */
+    const fn = (e) => {
+      const ce = /** @type {CustomEvent} */ (e);
+      const d = ce.detail;
+      if (!d || d.conversationId !== conversationId) return;
+      if (d.kind === "error") {
+        const raw = String(d.message ?? "");
+        const msg = formatStreamError(raw, t);
+        finalizeAssistantById(d.assistantMessageId, {
+          error: msg,
+          ...(typeof d.content === "string" ? { content: d.content } : {}),
+          ...(typeof d.thinking === "string" ? { thinking: d.thinking } : {}),
+        });
+        if (isChatHttp404(raw)) {
+          setChatApiBlocked(true);
+          setProbeRestartKey((k) => k + 1);
+        }
+        return;
+      }
+      if (d.kind === "aborted" || d.kind === "done") {
+        finalizeAssistantById(d.assistantMessageId, {
+          ...(typeof d.content === "string" ? { content: d.content } : {}),
+          ...(typeof d.thinking === "string" ? { thinking: d.thinking } : {}),
+        });
       }
     };
-  }, [applyAssistantPatch, bridge, finalizeActiveAssistant, t]);
+    window.addEventListener("openstudio-gateway-chat-terminal", fn);
+    return () => window.removeEventListener("openstudio-gateway-chat-terminal", fn);
+  }, [conversationId, finalizeAssistantById, t]);
 
   const canSend =
-    !streaming &&
+    !gatewayStreaming &&
     input.trim().length > 0 &&
     isElectron &&
     configLoaded &&
@@ -331,12 +408,12 @@ export default function ChatLabPage() {
 
   const composerInputLocked =
     !isElectron ||
-    streaming ||
+    gatewayStreaming ||
     !configLoaded ||
     (!configIssueKey && (gatewayPhase !== "online" || chatApiBlocked));
 
-  const composerPlaceholder = useMemo(() => {
-    if (!isElectron) return t("chatLab.placeholder");
+  const heroPlaceholder = useMemo(() => {
+    if (!isElectron) return t("chatLab.heroInputPlaceholder");
     if (!configLoaded) return t("chatLab.configLoadingPlaceholder");
     if (
       !configIssueKey &&
@@ -344,19 +421,24 @@ export default function ChatLabPage() {
     ) {
       return t("chatLab.gatewayConnectingPlaceholder");
     }
-    return t("chatLab.placeholder");
+    return t("chatLab.heroInputPlaceholder");
   }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
 
   const send = useCallback(async () => {
-    if (streaming) return;
+    if (activeAssistantIdRef.current) return;
+    if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
+    if (gatewayStreaming) return;
     const trimmed = input.trim();
     if (!trimmed) return;
     if (!isElectron || !bridge?.startChatStream) return;
     if (configIssueKey) {
-      setStreamError(t(configIssueKey));
       return;
     }
     if (gatewayPhase !== "online" || chatApiBlocked) return;
+
+    if (!paramC) {
+      setSearchParams({ c: conversationId }, { replace: true });
+    }
 
     const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
     const historyForRequest = messagesRef.current
@@ -375,13 +457,41 @@ export default function ChatLabPage() {
       thinking: "",
       streaming: true,
     };
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-    setInput("");
-    setStreamError(null);
-    setStreaming(true);
-    autoScrollRef.current = true;
+
+    const persistablePrior = messagesRef.current
+      .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
+      .map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
+      }));
+    const persistableNext = [
+      ...persistablePrior,
+      { id: userMsg.id, role: /** @type {const} */ ("user"), content: userMsg.content },
+      { id: assistantMsg.id, role: /** @type {const} */ ("assistant"), content: "", thinking: "" },
+    ];
+    const provisionalTitle = deriveTitleFromMessages(
+      persistableNext.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        thinking: m.thinking,
+      })),
+    );
+    upsertSession(conversationId, provisionalTitle || "…", persistableNext);
 
     const streamId = newId();
+    beginGatewayStream({
+      conversationId,
+      streamId,
+      assistantMessageId: assistantMsg.id,
+    });
+
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setInput("");
+    autoScrollRef.current = true;
+
     activeStreamIdRef.current = streamId;
     activeAssistantIdRef.current = assistantMsg.id;
 
@@ -391,27 +501,53 @@ export default function ChatLabPage() {
       { role: "user", content: trimmed },
     ];
 
+    const isFirstTurn = historyForRequest.length === 0;
+    if (
+      isFirstTurn &&
+      config?.chatLabAutoTitle &&
+      bridge?.generateChatTitle &&
+      config?.credentials?.hasProviderApiKey
+    ) {
+      void bridge.generateChatTitle({ userText: trimmed }).then((r) => {
+        if (!r?.ok || typeof r.title !== "string" || !r.title.trim()) return;
+        const rec = getSession(conversationId);
+        if (!rec) return;
+        upsertSession(conversationId, r.title.trim(), rec.messages);
+      });
+    }
+
     try {
       await bridge.startChatStream({ streamId, messages: outgoing });
     } catch (err) {
+      resetGatewayStream(streamId);
+      try {
+        await bridge.abortChatStream(streamId);
+      } catch {
+        /* ignore */
+      }
       const raw = String(err?.message ?? err);
       const msg = formatStreamError(raw, t);
-      setStreamError(msg);
-      finalizeActiveAssistant({ error: msg });
+      finalizeAssistantById(assistantMsg.id, { error: msg });
       if (isChatHttp404(raw)) {
         setChatApiBlocked(true);
         setProbeRestartKey((k) => k + 1);
       }
     }
   }, [
+    beginGatewayStream,
     bridge,
     chatApiBlocked,
+    config,
     configIssueKey,
-    finalizeActiveAssistant,
+    conversationId,
+    finalizeAssistantById,
     gatewayPhase,
+    gatewayStreaming,
     input,
     isElectron,
-    streaming,
+    paramC,
+    resetGatewayStream,
+    setSearchParams,
     t,
   ]);
 
@@ -425,31 +561,6 @@ export default function ChatLabPage() {
     }
   }, [bridge]);
 
-  const clearSession = useCallback(() => {
-    if (streaming) return;
-    setMessages([]);
-    setStreamError(null);
-    setChatApiBlocked(false);
-    autoScrollRef.current = true;
-  }, [streaming]);
-
-  const rotateGatewaySessionKey = useCallback(async () => {
-    if (!bridge?.setUserConfig || streaming) return;
-    const id =
-      typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID().replace(/-/g, "").slice(0, 10)
-        : Date.now().toString(36);
-    const nextKey = `agent:dev:os-${id}`;
-    try {
-      await bridge.setUserConfig({ openclaw: { sessionKey: nextKey } });
-      await reloadConfig();
-      setProbeRestartKey((k) => k + 1);
-      clearSession();
-    } catch (e) {
-      setStreamError(formatStreamError(String(e?.message ?? e), t));
-    }
-  }, [bridge, clearSession, reloadConfig, streaming, t]);
-
   const onKeyDown = useCallback(
     /** @param {import('react').KeyboardEvent<HTMLTextAreaElement>} e */
     (e) => {
@@ -461,129 +572,183 @@ export default function ChatLabPage() {
     [canSend, send],
   );
 
+  const isLanding = messages.length === 0;
+
+  const sendButtonTitle = useMemo(() => {
+    if (configIssueKey) return t(configIssueKey);
+    if (!isElectron) return t("chatLab.electronOnly");
+    if (!configLoaded) return t("chatLab.configLoadingPlaceholder");
+    if (!configIssueKey && (gatewayPhase === "checking" || gatewayPhase === "offline" || chatApiBlocked)) {
+      return t("chatLab.gatewayConnectingPlaceholder");
+    }
+    return undefined;
+  }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
+
   return (
-    <div className="chat-lab">
-      <header className="chat-lab__header">
-        <div className="min-w-0">
-          <h1 className="chat-lab__title">{t("chatLab.title")}</h1>
-          <p className="chat-lab__subtitle muted">{t("chatLab.subtitle")}</p>
-          {gatewayLine && !configIssueKey ? (
-            <p className="mt-1 text-[0.78rem] text-[var(--os-text-muted)]">{gatewayLine}</p>
-          ) : null}
-        </div>
-        <div className="chat-lab__header-actions">
-          <Link
-            to="/settings"
-            state={settingsLinkState}
-            className="btn-ghost chat-lab__settings-link"
-          >
-            {t("chatLab.openSettings")}
-          </Link>
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={rotateGatewaySessionKey}
-            disabled={streaming || !bridge?.setUserConfig || Boolean(configIssueKey)}
-            title={t("chatLab.rotateSessionKeyHint")}
-          >
-            {t("chatLab.rotateSessionKey")}
-          </button>
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={clearSession}
-            disabled={streaming || messages.length === 0}
-          >
-            {t("chatLab.clear")}
-          </button>
-        </div>
-      </header>
-
-      {!isElectron ? (
-        <div className="chat-lab__callout chat-lab__callout--warn" role="status">
-          {t("chatLab.electronOnly")}
-        </div>
-      ) : null}
-
-      {isElectron && configLoaded && configIssueKey ? (
-        <div className="chat-lab__callout chat-lab__callout--warn" role="status">
-          {t(configIssueKey)}
-        </div>
-      ) : null}
-
-      {isElectron && configLoaded && !configIssueKey && gatewayProbeError && gatewayPhase === "offline" ? (
-        <div className="chat-lab__callout chat-lab__callout--warn" role="status">
-          <div>{gatewayProbeError}</div>
-          <p className="mt-1 mb-0 text-[0.78rem] opacity-90">{t("chatLab.gatewayRetryHint")}</p>
-        </div>
-      ) : null}
-
-      {streamError ? (
-        <div className="chat-lab__callout chat-lab__callout--err" role="alert">
-          {streamError}
-        </div>
-      ) : null}
-
-      <div
-        className="chat-lab__messages"
-        ref={messagesScrollRef}
-        onScroll={handleScroll}
-        role="log"
-        aria-live="polite"
-        aria-label={t("chatLab.title")}
-      >
-        {messages.length === 0 ? (
-          <p className="chat-lab__empty muted">{t("chatLab.emptyHint")}</p>
-        ) : (
-          messages.map((m) => (
-            <MessageBubble key={m.id} message={m} t={t} />
-          ))
-        )}
-        <div ref={messagesEndRef} aria-hidden />
-      </div>
-
-      <div className="chat-lab__composer">
-        <textarea
-          className="chat-lab__input"
-          rows={2}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={composerPlaceholder}
-          disabled={composerInputLocked}
-          spellCheck
-        />
-        <div className="chat-lab__composer-row">
-          <span className="chat-lab__hint muted">{t("chatLab.shortcutHint")}</span>
-          <div className="chat-lab__btns">
-            {streaming ? (
-              <button type="button" className="btn-ghost" onClick={stop}>
-                {t("chatLab.stop")}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={send}
-              disabled={!canSend}
-              title={
-                configIssueKey
-                  ? t(configIssueKey)
-                  : !isElectron
-                    ? t("chatLab.electronOnly")
-                    : !configLoaded
-                      ? t("chatLab.configLoadingPlaceholder")
-                      : !configIssueKey && (gatewayPhase === "checking" || gatewayPhase === "offline" || chatApiBlocked)
-                        ? t("chatLab.gatewayConnectingPlaceholder")
-                        : undefined
-              }
+    <div className={cn("chat-lab", isLanding && "chat-lab--landing", !isLanding && "chat-lab--thread")}>
+      {isLanding ? (
+        <div className="chat-lab__landing-top">
+          <div className="chat-lab__landing-actions">
+            <Link
+              to="/settings"
+              state={settingsLinkState}
+              className="chat-lab__landing-settings"
+              aria-label={t("chatLab.openSettings")}
+              title={t("chatLab.openSettings")}
             >
-              {t("chatLab.send")}
-            </button>
+              <NavSettingsIcon className="h-[22px] w-[22px] text-[var(--os-text-muted)]" />
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <header className="chat-lab__conv-header">
+          <h2 className="chat-lab__conv-title">{headerTitle || t("chatLab.chatUntitled")}</h2>
+        </header>
+      )}
+
+      {!isLanding ? (
+        <div
+          className="chat-lab__messages"
+          ref={messagesScrollRef}
+          onScroll={handleScroll}
+          role="log"
+          aria-live="polite"
+          aria-label={t("chatLab.title")}
+        >
+          {messages.map((m) => (
+            <MessageBubble key={m.id} message={m} t={t} />
+          ))}
+          <div ref={messagesEndRef} aria-hidden />
+        </div>
+      ) : (
+        <div className="chat-lab__landing-mid">
+          <div className="chat-lab__hero">
+            <h1 className="chat-lab__hero-title">
+              <span className="chat-lab__hero-hi">Hi,</span>{" "}
+              {t("chatLab.heroGreeting", { brand: t("titlebar.appName") })}
+              <span className="chat-lab__hero-star" aria-hidden>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path
+                    d="M10 2.2 11.8 7.2 17 7.2 13.1 10.4 14.6 15.8 10 12.7 5.4 15.8 6.9 10.4 3 7.2 8.2 7.2Z"
+                    fill="var(--os-accent)"
+                    fillOpacity="0.35"
+                    stroke="var(--os-accent)"
+                    strokeWidth="1"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            </h1>
+            <p className="chat-lab__hero-sub muted">{t("chatLab.heroSubtitle")}</p>
+            {gatewayLine && !configIssueKey ? (
+              <p className="chat-lab__hero-meta">{gatewayLine}</p>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      <div className={cn("chat-lab__composer-outer", isLanding && "chat-lab__composer-outer--landing")}>
+        <div className="chat-lab__shell chat-lab__shell--hero">
+          <textarea
+            className="chat-lab__shell-textarea"
+            rows={3}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={heroPlaceholder}
+            disabled={composerInputLocked}
+            spellCheck
+          />
+          <div className="chat-lab__shell-toolbar">
+            <div className="chat-lab__shell-toolbar-start">
+              <button type="button" className="chat-lab__pill-btn" disabled title={t("chatLab.toolbarAutoHint")}>
+                <span className="chat-lab__pill-ico" aria-hidden>
+                  ⦿
+                </span>
+                {t("chatLab.toolbarAuto")}
+                <ToolbarChevron />
+              </button>
+              <button type="button" className="chat-lab__pill-btn" disabled title={t("chatLab.toolbarConnectHint")}>
+                <span className="chat-lab__pill-ico" aria-hidden>
+                  ⎗
+                </span>
+                {t("chatLab.toolbarConnect")}
+                <ToolbarChevron />
+              </button>
+            </div>
+            <div className="chat-lab__shell-toolbar-end">
+              {gatewayStreaming ? (
+                <button type="button" className="btn-ghost chat-lab__shell-stop" onClick={stop}>
+                  {t("chatLab.stop")}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="chat-lab__attach"
+                disabled
+                aria-label={t("chatLab.attachHint")}
+                title={t("chatLab.attachHint")}
+              >
+                <ChatPaperclipIcon />
+              </button>
+              <button
+                type="button"
+                className={cn("chat-lab__send-round", canSend && "chat-lab__send-round--active")}
+                disabled={!canSend}
+                onClick={send}
+                title={sendButtonTitle}
+                aria-label={t("chatLab.send")}
+              >
+                <ChatSendIcon />
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function ToolbarChevron() {
+  return (
+    <svg
+      className="chat-lab__pill-chevron"
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden
+    >
+      <path d="M3 4.5 6 7.5l3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChatPaperclipIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M16.5 7.5 9 15a3 3 0 1 1 4.24 4.24l-7.07 7.07a5 5 0 1 1-7.07-7.07L16.11 6.28a3.5 3.5 0 1 1 4.95 4.95L10.5 22"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChatSendIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 17V7M12 7 7 12M12 7l5 5"
+        stroke="currentColor"
+        strokeWidth="1.45"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -633,6 +798,8 @@ function MessageBubble({ message, t }) {
             <span className="chat-lab__typing muted">
               <span className="playground-live-dot" aria-hidden /> {t("chatLab.streaming")}
             </span>
+          ) : !message.thinking && !message.error ? (
+            <p className="chat-lab__empty-reply muted">{t("chatLab.emptyAssistantReply")}</p>
           ) : null}
           {message.error ? (
             <div className="mt-1 text-[0.78rem]" style={{ color: "#d84b4b" }}>

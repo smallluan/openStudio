@@ -4,9 +4,13 @@ const fs = require("fs");
 const { createRequire } = require("module");
 const { createConfigStore } = require("./lib/config-store.cjs");
 const { dispatchOpenClawGatewayStream, probeOpenClawGateway } = require("./lib/openclaw-gateway-stream.cjs");
+const { resolveGateway } = require("./lib/openclaw-gateway-ws.cjs");
+const { generateConversationTitle } = require("./lib/llm-chat-title.cjs");
 const {
   runGatewayBootstrapReadiness,
   invalidateGatewaySession,
+  acquireGatewaySession,
+  hydrateGatewayChatPrep,
 } = require("./lib/openclaw-gateway-session.cjs");
 const { syncOpenClawAgentFromStudioConfig } = require("./lib/sync-openclaw-agent-from-studio.cjs");
 
@@ -17,6 +21,47 @@ const CHAT_STREAM_CHAN = "studio:chatStream";
 const BOOTSTRAP_PROGRESS_CHAN = "studio:bootstrapProgress";
 /** Overall budget for first-run gateway hydration (`tools.effective` can match first-chat prep cost). */
 const BOOTSTRAP_BUDGET_MS = 900_000;
+/** Best-effort replay of bootstrap tool/session RPCs so disk caches & gateway state stay warm. OpenClaw still rebuilds parts of the embedded runner each `chat.send`; this only trims duplicate cold work when users skip startup preload or restart the gateway. */
+const CHAT_HYDRATE_THROTTLE_MS = 90_000;
+/** Must cover worst-case `tools.catalog` + multi-minute `sessions.create` / `tools.effective` under Windows + gateway lock contention. */
+const CHAT_HYDRATE_BUDGET_MS = 600_000;
+
+const gatewayWarmState = {
+  lastChatHydrateMs: 0,
+  reset() {
+    this.lastChatHydrateMs = 0;
+  },
+};
+
+/** @param {unknown} cfg */
+async function maybeHydrateGatewayForChat(cfg) {
+  const url = String(cfg?.openclaw?.gatewayBaseUrl ?? "").trim();
+  if (!url) return { skipped: "no_gateway" };
+  const now = Date.now();
+  if (now - gatewayWarmState.lastChatHydrateMs < CHAT_HYDRATE_THROTTLE_MS) {
+    return { skipped: "throttled" };
+  }
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), CHAT_HYDRATE_BUDGET_MS);
+  try {
+    const resolved = resolveGateway(cfg);
+    const client = await acquireGatewaySession(resolved, ac.signal);
+    await hydrateGatewayChatPrep(client, cfg, ac.signal);
+    gatewayWarmState.lastChatHydrateMs = Date.now();
+    return { ok: true };
+  } catch (e) {
+    const msg = String(e?.message ?? e);
+    console.warn("[open-studio] gateway chat hydrate:", msg);
+    return { ok: false, message: msg };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function studioInvalidateGatewaySession() {
+  invalidateGatewaySession();
+  gatewayWarmState.reset();
+}
 
 /** @type {ReturnType<typeof createConfigStore> | null} */
 let userConfigStore = null;
@@ -46,7 +91,7 @@ function computeOpenClawSyncFingerprint(cfg) {
 }
 
 /**
- * @param {"startup" | "bootstrap" | "settings" | "probe" | "chat"} reason
+ * @param {"startup" | "bootstrap" | "settings" | "probe" | "chat" | "warm"} reason
  */
 function runOpenClawAgentSyncFromStudio(reason) {
   if (!userConfigStore) return;
@@ -56,7 +101,8 @@ function runOpenClawAgentSyncFromStudio(reason) {
     reason === "chat" ||
     reason === "probe" ||
     reason === "settings" ||
-    reason === "bootstrap";
+    reason === "bootstrap" ||
+    reason === "warm";
   if (skipReasons && fp === lastOpenClawSyncFingerprint) {
     if (isDev) console.log(`[openclaw-sync:${reason}] skipped (config unchanged)`);
     return;
@@ -173,7 +219,7 @@ app.whenReady().then(() => {
     runOpenClawAgentSyncFromStudio("settings");
     const fpAfter = computeOpenClawSyncFingerprint(userConfigStore.readRaw());
     if (patchTouchesGatewayWorkspace(patch) && fpAfter !== fpBefore) {
-      invalidateGatewaySession();
+      studioInvalidateGatewaySession();
     }
     return sanitized;
   });
@@ -188,6 +234,16 @@ app.whenReady().then(() => {
       const cfg = userConfigStore.readRaw();
       await probeOpenClawGateway(cfg);
       return { ok: true };
+    } catch (e) {
+      return { ok: false, message: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:warmGatewayChatPrep", async () => {
+    try {
+      runOpenClawAgentSyncFromStudio("warm");
+      const cfg = userConfigStore.readRaw();
+      return await maybeHydrateGatewayForChat(cfg);
     } catch (e) {
       return { ok: false, message: String(e?.message ?? e) };
     }
@@ -218,10 +274,11 @@ app.whenReady().then(() => {
         }
 
         await runGatewayBootstrapReadiness(cfg, ac.signal, emit);
+        gatewayWarmState.lastChatHydrateMs = Date.now();
         emit({ phase: "complete" });
         return { ok: true };
       } catch (e) {
-        invalidateGatewaySession();
+        studioInvalidateGatewaySession();
         const message = String(e?.message ?? e);
         emit({ phase: "error", message });
         return { ok: false, message };
@@ -247,6 +304,7 @@ app.whenReady().then(() => {
     try {
       runOpenClawAgentSyncFromStudio("chat");
       const cfg = userConfigStore.readRaw();
+      await maybeHydrateGatewayForChat(cfg);
       await dispatchOpenClawGatewayStream(cfg, messages, ac.signal, (evt) => {
         if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
       });
@@ -260,7 +318,12 @@ app.whenReady().then(() => {
       }
     } finally {
       chatStreamAbortControllers.delete(streamId);
-      if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, type: "done" });
+      if (!wc.isDestroyed()) {
+        const sid = streamId;
+        setImmediate(() => {
+          if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId: sid, type: "done" });
+        });
+      }
     }
     return { ok: true };
   });
@@ -269,6 +332,25 @@ app.whenReady().then(() => {
     if (typeof streamId !== "string" || !chatStreamAbortControllers.has(streamId)) return { ok: false };
     chatStreamAbortControllers.get(streamId)?.abort();
     return { ok: true };
+  });
+
+  ipcMain.handle("studio:generateChatTitle", async (_event, payload) => {
+    const text = typeof payload?.userText === "string" ? payload.userText.trim() : "";
+    if (!text) return { ok: false, error: "empty_user_text" };
+    try {
+      const cfg = userConfigStore.readRaw();
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 28_000);
+      try {
+        const title = await generateConversationTitle(cfg, text, ac.signal);
+        return { ok: true, title };
+      } finally {
+        clearTimeout(tid);
+      }
+    } catch (e) {
+      if (e?.name === "AbortError") return { ok: false, error: "aborted" };
+      return { ok: false, error: String(e?.message ?? e) };
+    }
   });
 
   ipcMain.handle("shell:windowMinimize", (event) => {

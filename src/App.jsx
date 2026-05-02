@@ -12,14 +12,16 @@ export default function App() {
   const backgroundLocation =
     location.state?.backgroundLocation ??
     (isSettings
-      ? { pathname: "/", search: "", hash: "", state: null, key: "settings-bg" }
+      ? { pathname: "/chat", search: "", hash: "", state: null, key: "settings-bg" }
       : location);
 
   return (
     <>
       <Routes location={isSettings ? backgroundLocation : location}>
         <Route element={<MainLayout railResizeEnabled />}>
-          <Route index element={<StudioPage />} />
+          {/** Index must render chat directly — `<Navigate>` here breaks the settings overlay when background is `/` (it replaces `/settings`). */}
+          <Route index element={<ChatLabPage />} />
+          <Route path="studio" element={<StudioPage />} />
           <Route path="chat" element={<ChatLabPage />} />
           <Route path="lobster" element={<LobsterManagementPage />} />
         </Route>

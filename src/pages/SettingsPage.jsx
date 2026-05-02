@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
+import { SettingsCell, SettingsCellRow } from "../components/settings/SettingsCells.jsx";
 import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
 import ModelAdvancedPanel from "../components/shell/ModelAdvancedPanel.jsx";
 import ModelProfilesPanel from "../components/shell/ModelProfilesPanel.jsx";
@@ -27,8 +28,42 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { t, locale, setLocale } = useI18n();
   const [section, setSection] = useState(/** @type {(typeof SECTION_IDS)[number]} */ ("general"));
+  const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
 
-  const appearanceLabel = t(`settings.appearanceMode.${theme}`);
+  const [chatLabAutoTitle, setChatLabAutoTitle] = useState(false);
+
+  useEffect(() => {
+    if (section !== "general") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const c = await bridge?.getUserConfig?.();
+        if (!cancelled && c && typeof c === "object") {
+          setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, section]);
+
+  const persistChatLabAutoTitle = async (next) => {
+    setChatLabAutoTitle(next);
+    try {
+      await bridge?.setUserConfig?.({ chatLabAutoTitle: next });
+    } catch {
+      /* revert on failure */
+      try {
+        const c = await bridge?.getUserConfig?.();
+        if (c && typeof c === "object") setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
+      } catch {
+        setChatLabAutoTitle(false);
+      }
+    }
+  };
 
   const themeOptions = useMemo(
     () => [
@@ -108,9 +143,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-1 rounded-xl border border-[var(--os-border)] px-4 py-1">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--os-border)] py-3 text-[0.875rem] last:border-b-0">
-                    <span className="font-medium text-[var(--os-text-muted)]">{t("settings.appearance")}</span>
+                <SettingsCellRow>
+                  <SettingsCell label={t("settings.appearance")}>
                     <Select
                       id="theme-appearance"
                       ariaLabel={t("settings.appearanceAria")}
@@ -118,15 +152,8 @@ export default function SettingsPage() {
                       onChange={(v) => setTheme(v)}
                       options={themeOptions}
                     />
-                  </div>
-                  <p className="px-0 pb-3 text-[0.72rem] leading-relaxed text-[var(--os-text-faint)]">
-                    {t("settings.themeHint", { current: appearanceLabel })}
-                  </p>
-                </div>
-
-                <div className="space-y-1 rounded-xl border border-[var(--os-border)] px-4 py-1">
-                  <div className="flex flex-wrap items-center justify-between gap-3 py-3 text-[0.875rem]">
-                    <span className="font-medium text-[var(--os-text-muted)]">{t("settings.language")}</span>
+                  </SettingsCell>
+                  <SettingsCell label={t("settings.language")}>
                     <Select
                       id="app-language"
                       ariaLabel={t("settings.languageAria")}
@@ -134,22 +161,16 @@ export default function SettingsPage() {
                       onChange={(v) => isLocaleId(v) && setLocale(v)}
                       options={languageOptions}
                     />
-                  </div>
-                </div>
+                  </SettingsCell>
+                </SettingsCellRow>
 
-                <div className="divide-y divide-[var(--os-border)] rounded-xl border border-[var(--os-border)] px-3">
-                  <Switch id="sw-lobster" label={t("settings.switch.lobsterButler")} checked={false} onCheckedChange={() => {}} />
-                  <Switch id="sw-sleep" label={t("settings.switch.sleepPrevent")} checked={false} onCheckedChange={() => {}} />
-                  <Switch id="sw-sync" label={t("settings.switch.cloudSync")} checked={false} onCheckedChange={() => {}} />
-                </div>
-
-                <div>
-                  <h2 className="mb-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[var(--os-text-faint)]">
-                    {t("settings.advancedFeatures")}
-                  </h2>
-                  <div className="rounded-xl border border-[var(--os-border)] px-3">
-                    <Switch id="sw-memory" label={t("settings.switch.memoryBoost")} checked={false} onCheckedChange={() => {}} />
-                  </div>
+                <div className="rounded-xl border border-[var(--os-border)] px-3">
+                  <Switch
+                    id="sw-auto-chat-title"
+                    label={t("settings.autoSummarizeTitle")}
+                    checked={chatLabAutoTitle}
+                    onCheckedChange={(v) => void persistChatLabAutoTitle(v)}
+                  />
                 </div>
               </div>
             ) : null}

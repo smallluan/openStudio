@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import LogoMarkIcon from "../assets/svg/LogoMarkIcon.jsx";
 import NavChatLabIcon from "../assets/svg/NavChatLabIcon.jsx";
 import NavLobsterIcon from "../assets/svg/NavLobsterIcon.jsx";
 import NavSettingsIcon from "../assets/svg/NavSettingsIcon.jsx";
 import NavStudioIcon from "../assets/svg/NavStudioIcon.jsx";
+import RailSearchInput from "../components/shell/RailSearchInput.jsx";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
+import ChatHistoryList from "../components/shell/ChatHistoryList.jsx";
 import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import ResizableEdge from "../ui/ResizableEdge.jsx";
@@ -70,17 +71,21 @@ export default function MainLayout({ railResizeEnabled = false }) {
   const primaryNavItems = useMemo(
     () => [
       {
+        id: "new-chat",
+        to: "/chat",
+        end: true,
+        label: t("nav.newChat"),
+        icon: <NavChatLabIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
+        isActive: (loc) =>
+          (loc.pathname === "/chat" || loc.pathname === "/") &&
+          !new URLSearchParams(loc.search).get("c"),
+      },
+      {
         id: "studio",
-        to: "/",
+        to: "/studio",
         end: true,
         label: t("nav.studio"),
         icon: <NavStudioIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
-      },
-      {
-        id: "chat-lab",
-        to: "/chat",
-        label: t("nav.chatLab"),
-        icon: <NavChatLabIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
       },
       {
         id: "lobster",
@@ -105,6 +110,8 @@ export default function MainLayout({ railResizeEnabled = false }) {
     ],
     [settingsBackground, t],
   );
+
+  const [railSearchQuery, setRailSearchQuery] = useState("");
 
   const lastExpandedRef = useRef(readLastExpanded());
   const [railPx, setRailPx] = useState(readRailPx);
@@ -146,7 +153,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
   return (
     <div className="os-chrome">
       <TitleBar />
-      <div className="app-frame">
+      <div className={cn("app-frame", "app-frame--rail-split")}>
         <aside
           className={cn(
             "primary-rail",
@@ -170,25 +177,11 @@ export default function MainLayout({ railResizeEnabled = false }) {
 
           <div className="primary-rail__top primary-rail__top--grow">
             <div className={cn("primary-rail__header-row", isNarrow && "primary-rail__header-row--narrow")}>
-              <div className="primary-rail__mark">
-                <LogoMarkIcon
-                  className={cn("shrink-0 text-[var(--os-text)]", isNarrow ? "h-6 w-6" : "h-8 w-8")}
-                />
-                {!isNarrow ? (
-                  <span className="ml-2 min-w-0 truncate text-[0.7rem] font-bold tracking-tight text-[var(--os-text-muted)]">
-                    OpenStudio
-                  </span>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                className="primary-rail__pin-btn"
-                onClick={toggle}
-                title={isNarrow ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
-                aria-expanded={!isNarrow}
-              >
-                <SidebarToggleIcon collapsed={isNarrow} className="text-current" />
-              </button>
+              <RailSearchInput
+                value={railSearchQuery}
+                onChange={setRailSearchQuery}
+                narrow={isNarrow}
+              />
             </div>
 
             <FluidNavMenu
@@ -196,10 +189,25 @@ export default function MainLayout({ railResizeEnabled = false }) {
               router
               primaryItems={primaryNavItems}
               footerItems={footerNavItems}
-              className="flex-1 min-h-0 pb-1"
+              afterPrimary={<ChatHistoryList narrow={isNarrow} filterQuery={railSearchQuery} />}
+              className="min-h-0 flex-1 pb-1"
             />
           </div>
         </aside>
+
+        <button
+          type="button"
+          className="rail-edge-toggle"
+          style={{
+            left: railPx,
+          }}
+          onClick={toggle}
+          title={isNarrow ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
+          aria-expanded={!isNarrow}
+          aria-label={isNarrow ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
+        >
+          <SidebarToggleIcon collapsed={isNarrow} className="pointer-events-none text-current" />
+        </button>
 
         <div className="app-frame__content">
           <Outlet />
