@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import {
   deriveTitleFromMessages,
   getSession,
+  loadAllSessions,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -61,6 +62,7 @@ function formatStreamError(raw, t) {
     const detail = trimmed.replace(/^gateway_unreachable\s*[—:]\s*/i, "").trim();
     return detail ? t("chatLab.gatewayUnreachableDetail", { detail }) : t("chatLab.gatewayUnreachable");
   }
+  if (trimmed.startsWith("gateway_missing_operator_scope")) return t("chatLab.gatewayMissingOperatorScope");
   const httpMatch = trimmed.match(/^http_(\d{3})\b/);
   if (httpMatch) {
     const code = `http_${httpMatch[1]}`;
@@ -99,6 +101,24 @@ function mergeTerminalAssistantPayload(m, extra) {
   }
   if (extra?.error) next.error = extra.error;
   return next;
+}
+
+/** Active thread first, then most-recent locals — matches main-process prewarm cap. */
+function buildStudioGatewayPrewarmIds(currentConversationId, max) {
+  const cap = Math.min(Math.max(max, 1), 24);
+  const sorted = [...loadAllSessions()].sort((a, b) => b.updatedAt - a.updatedAt);
+  /** @type {string[]} */
+  const out = [];
+  const seen = new Set();
+  const push = (id) => {
+    const t = typeof id === "string" ? id.trim() : "";
+    if (!t || seen.has(t)) return;
+    seen.add(t);
+    out.push(t);
+  };
+  push(currentConversationId);
+  for (const r of sorted) push(r.id);
+  return out.slice(0, cap);
 }
 
 export default function ChatLabPage() {
@@ -149,6 +169,21 @@ export default function ChatLabPage() {
   const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
   const gatewaySliceForConv = useGatewayStreamSlice(conversationId);
   const gatewayStreaming = Boolean(gatewaySliceForConv?.active);
+
+  /** Switching threads clears send guards; finalize skips terminal events when conversationId mismatch left refs stuck. */
+  useEffect(() => {
+    activeAssistantIdRef.current = null;
+    activeStreamIdRef.current = null;
+  }, [conversationId]);
+
+  /** Background OpenClaw prep for `#studio:` keys (does not block UI). */
+  useEffect(() => {
+    if (!isElectron || !bridge?.prewarmStudioGatewaySessions || !conversationId) return undefined;
+    const ids = buildStudioGatewayPrewarmIds(conversationId, 12);
+    if (ids.length === 0) return undefined;
+    void bridge.prewarmStudioGatewaySessions({ conversationIds: ids, max: 12 }).catch(() => {});
+    return undefined;
+  }, [isElectron, conversationId]);
 
   const [sessionTitleBump, setSessionTitleBump] = useState(0);
   useEffect(() => {
@@ -517,7 +552,7 @@ export default function ChatLabPage() {
     }
 
     try {
-      await bridge.startChatStream({ streamId, messages: outgoing });
+      await bridge.startChatStream({ streamId, conversationId, messages: outgoing });
     } catch (err) {
       resetGatewayStream(streamId);
       try {
@@ -584,127 +619,131 @@ export default function ChatLabPage() {
     return undefined;
   }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
 
-  return (
-    <div className={cn("chat-lab", isLanding && "chat-lab--landing", !isLanding && "chat-lab--thread")}>
-      {isLanding ? (
-        <div className="chat-lab__landing-top">
-          <div className="chat-lab__landing-actions">
-            <Link
-              to="/settings"
-              state={settingsLinkState}
-              className="chat-lab__landing-settings"
-              aria-label={t("chatLab.openSettings")}
-              title={t("chatLab.openSettings")}
-            >
-              <NavSettingsIcon className="h-[22px] w-[22px] text-[var(--os-text-muted)]" />
-            </Link>
-          </div>
-        </div>
-      ) : (
-        <header className="chat-lab__conv-header">
-          <h2 className="chat-lab__conv-title">{headerTitle || t("chatLab.chatUntitled")}</h2>
-        </header>
-      )}
-
-      {!isLanding ? (
-        <div
-          className="chat-lab__messages"
-          ref={messagesScrollRef}
-          onScroll={handleScroll}
-          role="log"
-          aria-live="polite"
-          aria-label={t("chatLab.title")}
-        >
-          {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} t={t} />
-          ))}
-          <div ref={messagesEndRef} aria-hidden />
-        </div>
-      ) : (
-        <div className="chat-lab__landing-mid">
-          <div className="chat-lab__hero">
-            <h1 className="chat-lab__hero-title">
-              <span className="chat-lab__hero-hi">Hi,</span>{" "}
-              {t("chatLab.heroGreeting", { brand: t("titlebar.appName") })}
-              <span className="chat-lab__hero-star" aria-hidden>
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path
-                    d="M10 2.2 11.8 7.2 17 7.2 13.1 10.4 14.6 15.8 10 12.7 5.4 15.8 6.9 10.4 3 7.2 8.2 7.2Z"
-                    fill="var(--os-accent)"
-                    fillOpacity="0.35"
-                    stroke="var(--os-accent)"
-                    strokeWidth="1"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+  const composer = (
+    <div className={cn("chat-lab__composer-outer", isLanding && "chat-lab__composer-outer--landing")}>
+      <div className={cn("chat-lab__shell", isLanding && "chat-lab__shell--hero")}>
+        <textarea
+          className="chat-lab__shell-textarea"
+          rows={3}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={heroPlaceholder}
+          disabled={composerInputLocked}
+          spellCheck
+        />
+        <div className="chat-lab__shell-toolbar">
+          <div className="chat-lab__shell-toolbar-start">
+            <button type="button" className="chat-lab__pill-btn" disabled title={t("chatLab.toolbarAutoHint")}>
+              <span className="chat-lab__pill-ico" aria-hidden>
+                ⦿
               </span>
-            </h1>
-            <p className="chat-lab__hero-sub muted">{t("chatLab.heroSubtitle")}</p>
-            {gatewayLine && !configIssueKey ? (
-              <p className="chat-lab__hero-meta">{gatewayLine}</p>
-            ) : null}
+              {t("chatLab.toolbarAuto")}
+              <ToolbarChevron />
+            </button>
+            <button type="button" className="chat-lab__pill-btn" disabled title={t("chatLab.toolbarConnectHint")}>
+              <span className="chat-lab__pill-ico" aria-hidden>
+                ⎗
+              </span>
+              {t("chatLab.toolbarConnect")}
+              <ToolbarChevron />
+            </button>
           </div>
-        </div>
-      )}
-
-      <div className={cn("chat-lab__composer-outer", isLanding && "chat-lab__composer-outer--landing")}>
-        <div className="chat-lab__shell chat-lab__shell--hero">
-          <textarea
-            className="chat-lab__shell-textarea"
-            rows={3}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={heroPlaceholder}
-            disabled={composerInputLocked}
-            spellCheck
-          />
-          <div className="chat-lab__shell-toolbar">
-            <div className="chat-lab__shell-toolbar-start">
-              <button type="button" className="chat-lab__pill-btn" disabled title={t("chatLab.toolbarAutoHint")}>
-                <span className="chat-lab__pill-ico" aria-hidden>
-                  ⦿
-                </span>
-                {t("chatLab.toolbarAuto")}
-                <ToolbarChevron />
+          <div className="chat-lab__shell-toolbar-end">
+            {gatewayStreaming ? (
+              <button type="button" className="btn-ghost chat-lab__shell-stop" onClick={stop}>
+                {t("chatLab.stop")}
               </button>
-              <button type="button" className="chat-lab__pill-btn" disabled title={t("chatLab.toolbarConnectHint")}>
-                <span className="chat-lab__pill-ico" aria-hidden>
-                  ⎗
-                </span>
-                {t("chatLab.toolbarConnect")}
-                <ToolbarChevron />
-              </button>
-            </div>
-            <div className="chat-lab__shell-toolbar-end">
-              {gatewayStreaming ? (
-                <button type="button" className="btn-ghost chat-lab__shell-stop" onClick={stop}>
-                  {t("chatLab.stop")}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="chat-lab__attach"
-                disabled
-                aria-label={t("chatLab.attachHint")}
-                title={t("chatLab.attachHint")}
-              >
-                <ChatPaperclipIcon />
-              </button>
-              <button
-                type="button"
-                className={cn("chat-lab__send-round", canSend && "chat-lab__send-round--active")}
-                disabled={!canSend}
-                onClick={send}
-                title={sendButtonTitle}
-                aria-label={t("chatLab.send")}
-              >
-                <ChatSendIcon />
-              </button>
-            </div>
+            ) : null}
+            <button
+              type="button"
+              className="chat-lab__attach"
+              disabled
+              aria-label={t("chatLab.attachHint")}
+              title={t("chatLab.attachHint")}
+            >
+              <ChatPaperclipIcon />
+            </button>
+            <button
+              type="button"
+              className={cn("chat-lab__send-round", canSend && "chat-lab__send-round--active")}
+              disabled={!canSend}
+              onClick={send}
+              title={sendButtonTitle}
+              aria-label={t("chatLab.send")}
+            >
+              <ChatSendIcon />
+            </button>
           </div>
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <div className={cn("chat-lab", isLanding && "chat-lab--landing", !isLanding && "chat-lab--thread")}>
+      {isLanding ? (
+        <>
+          <div className="chat-lab__landing-top">
+            <div className="chat-lab__landing-actions">
+              <Link
+                to="/settings"
+                state={settingsLinkState}
+                className="chat-lab__landing-settings"
+                aria-label={t("chatLab.openSettings")}
+                title={t("chatLab.openSettings")}
+              >
+                <NavSettingsIcon className="h-[22px] w-[22px] text-[var(--os-text-muted)]" />
+              </Link>
+            </div>
+          </div>
+          <div className="chat-lab__landing-mid">
+            <div className="chat-lab__hero">
+              <h1 className="chat-lab__hero-title">
+                <span className="chat-lab__hero-hi">Hi,</span>{" "}
+                {t("chatLab.heroGreeting", { brand: t("titlebar.appName") })}
+                <span className="chat-lab__hero-star" aria-hidden>
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path
+                      d="M10 2.2 11.8 7.2 17 7.2 13.1 10.4 14.6 15.8 10 12.7 5.4 15.8 6.9 10.4 3 7.2 8.2 7.2Z"
+                      fill="var(--os-accent)"
+                      fillOpacity="0.35"
+                      stroke="var(--os-accent)"
+                      strokeWidth="1"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              </h1>
+              <p className="chat-lab__hero-sub muted">{t("chatLab.heroSubtitle")}</p>
+              {gatewayLine && !configIssueKey ? (
+                <p className="chat-lab__hero-meta">{gatewayLine}</p>
+              ) : null}
+            </div>
+          </div>
+          {composer}
+        </>
+      ) : (
+        <div className="chat-lab__thread-stack">
+          <header className="chat-lab__conv-header">
+            <h2 className="chat-lab__conv-title">{headerTitle || t("chatLab.chatUntitled")}</h2>
+          </header>
+          <div
+            className="chat-lab__messages"
+            ref={messagesScrollRef}
+            onScroll={handleScroll}
+            role="log"
+            aria-live="polite"
+            aria-label={t("chatLab.title")}
+          >
+            {messages.map((m) => (
+              <MessageBubble key={m.id} message={m} t={t} />
+            ))}
+            <div ref={messagesEndRef} aria-hidden />
+          </div>
+          {composer}
+        </div>
+      )}
     </div>
   );
 }
@@ -752,6 +791,30 @@ function ChatSendIcon() {
   );
 }
 
+function ChatStreamingSparkle({ className }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M12 2 13.9 8.2 20 10l-6.1 1.8L12 22l-1.9-8.2L4 10l6.1-1.8L12 2z"
+      />
+    </svg>
+  );
+}
+
+/** Lightweight “thinking” affordance — two sparkles scale while trading places (see qclaw-style references). */
+function ChatStreamingIndicator({ label }) {
+  return (
+    <span className="chat-lab__streaming muted" role="status" aria-live="polite">
+      <span className="chat-lab__streaming-stars" aria-hidden>
+        <ChatStreamingSparkle className="chat-lab__streaming-star chat-lab__streaming-star--a" />
+        <ChatStreamingSparkle className="chat-lab__streaming-star chat-lab__streaming-star--b" />
+      </span>
+      <span className="chat-lab__streaming-label">{label}</span>
+    </span>
+  );
+}
+
 /**
  * @param {{
  *   message: { id: string; role: "user" | "assistant"; content: string; thinking?: string; streaming?: boolean; error?: string };
@@ -760,7 +823,6 @@ function ChatSendIcon() {
  */
 function MessageBubble({ message, t }) {
   const isUser = message.role === "user";
-  const roleLabel = isUser ? t("chatLab.roleUser") : t("chatLab.roleAssistant");
   const showTyping =
     !isUser && message.streaming && !message.content && !message.thinking && !message.error;
   const [thinkOpen, setThinkOpen] = useState(() => Boolean(message.streaming));
@@ -774,7 +836,6 @@ function MessageBubble({ message, t }) {
       className={cn("chat-lab__bubble", isUser && "chat-lab__bubble--user")}
       data-role={message.role}
     >
-      <div className="chat-lab__bubble-role">{roleLabel}</div>
       {!isUser && message.thinking ? (
         <details
           className={cn("chat-lab__think", message.streaming && "thinking-pulse-border")}
@@ -795,9 +856,7 @@ function MessageBubble({ message, t }) {
           {message.content ? (
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           ) : showTyping ? (
-            <span className="chat-lab__typing muted">
-              <span className="playground-live-dot" aria-hidden /> {t("chatLab.streaming")}
-            </span>
+            <ChatStreamingIndicator label={t("chatLab.streaming")} />
           ) : !message.thinking && !message.error ? (
             <p className="chat-lab__empty-reply muted">{t("chatLab.emptyAssistantReply")}</p>
           ) : null}

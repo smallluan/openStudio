@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("studioBridge", {
   getPaths: () => ipcRenderer.invoke("studio:getPaths"),
   probeGateway: () => ipcRenderer.invoke("studio:probeGateway"),
   warmGatewayChatPrep: () => ipcRenderer.invoke("studio:warmGatewayChatPrep"),
+  prewarmStudioGatewaySessions: (payload) => ipcRenderer.invoke("studio:prewarmStudioGatewaySessions", payload),
   bootstrapGateway: () => ipcRenderer.invoke("studio:bootstrapGateway"),
   startChatStream: (payload) => ipcRenderer.invoke("studio:startChatStream", payload),
   abortChatStream: (streamId) => ipcRenderer.invoke("studio:abortChatStream", streamId),

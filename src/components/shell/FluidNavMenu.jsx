@@ -2,6 +2,7 @@ import { matchPath, NavLink, useLocation } from "react-router-dom";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
+import { FluidNavHighlightApi } from "./FluidNavHighlightApi.jsx";
 
 /** @param {*} item */
 function isNavGroup(item) {
@@ -40,6 +41,23 @@ function resolveRouterActiveId(location, primaryItems, footerItems) {
   return null;
 }
 
+/**
+ * @param {import("react-router-dom").Location} location
+ */
+function resolveFluidHighlightTargetId(location, primaryItems, footerItems, routerMode, controlledSelectedId) {
+  if (!routerMode) return controlledSelectedId ?? null;
+  const pathname = location.pathname;
+  if (pathname === "/chat" || pathname === "/") {
+    try {
+      const c = new URLSearchParams(location.search).get("c");
+      if (c) return `session:${c}`;
+    } catch {
+      /* ignore */
+    }
+  }
+  return resolveRouterActiveId(location, primaryItems, footerItems);
+}
+
 export default function FluidNavMenu({
   narrow = false,
   router = true,
@@ -55,38 +73,98 @@ export default function FluidNavMenu({
   const { t } = useI18n();
   const location = useLocation();
   const rootRef = useRef(null);
-  const itemRefs = useRef(new Map());
+  const anchorRefs = useRef(new Map());
+  /** @type {React.MutableRefObject<Set<Element>>} */
+  const nestedScrollRootsRef = useRef(new Set());
 
-  const activeId = useMemo(() => {
-    if (!router) return controlledSelectedId ?? null;
-    return resolveRouterActiveId(location, primaryItems, footerItems);
-  }, [router, controlledSelectedId, location, primaryItems, footerItems]);
+  const fluidTargetId = useMemo(
+    () =>
+      resolveFluidHighlightTargetId(location, primaryItems, footerItems, router, controlledSelectedId),
+    [router, controlledSelectedId, location, primaryItems, footerItems],
+  );
 
-  const setItemRef = useCallback((id, node) => {
-    const m = itemRefs.current;
-    if (node) m.set(id, node);
-    else m.delete(id);
-  }, []);
+  /** Must not trigger setState on every anchor ref churn (would loop with bump → re-render → ref null,re-attach → bump). */
+  const fluidTargetIdRef = useRef(fluidTargetId);
+  fluidTargetIdRef.current = fluidTargetId;
+
+  /** Latest highlight measure; registering the active anchor can queue a microtask remeasure without setState churn. */
+  const blobMeasureRef = useRef(() => {});
+
+  const [nestedScrollGeneration, setNestedScrollGeneration] = useState(0);
+  const bumpNestedScroll = useCallback(() => setNestedScrollGeneration((x) => x + 1), []);
+
+  const setFluidAnchor = useCallback(
+    /** @type {(id: string, node: HTMLElement | null) => void} */
+    (id, node) => {
+      const m = anchorRefs.current;
+      const prev = /** @type {HTMLElement | undefined} */ (m.get(id));
+      if (node) {
+        if (prev === node) return;
+        m.set(id, node);
+      } else {
+        if (prev === undefined) return;
+        m.delete(id);
+      }
+      if (fluidTargetIdRef.current === id) {
+        queueMicrotask(() => {
+          blobMeasureRef.current?.();
+        });
+      }
+    },
+    [],
+  );
+
+  const attachNestedScrollRoot = useCallback(
+    /** @type {(node: HTMLElement | null) => (() => void) | undefined} */
+    (node) => {
+      if (!node) return undefined;
+      nestedScrollRootsRef.current.add(node);
+      bumpNestedScroll();
+      return () => {
+        nestedScrollRootsRef.current.delete(node);
+        bumpNestedScroll();
+      };
+    },
+    [bumpNestedScroll],
+  );
+
+  const registerSessionAnchor = useCallback(
+    /** @type {(sessionId: string, node: HTMLElement | null) => void} */
+    (sessionId, node) => {
+      setFluidAnchor(`session:${sessionId}`, node);
+    },
+    [setFluidAnchor],
+  );
+
+  const highlightApi = useMemo(
+    () => ({
+      registerSessionAnchor,
+      attachNestedScrollRoot,
+    }),
+    [registerSessionAnchor, attachNestedScrollRoot],
+  );
 
   const [blob, setBlob] = useState({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
 
   useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root || !activeId) {
+    if (!fluidTargetId) {
       setBlob((b) => ({ ...b, opacity: 0 }));
-      return;
-    }
-    const el = itemRefs.current.get(activeId);
-    if (!el) {
-      setBlob((b) => ({ ...b, opacity: 0 }));
+      blobMeasureRef.current = () => setBlob((b2) => ({ ...b2, opacity: 0 }));
       return;
     }
 
     const measure = () => {
-      const r = root.getBoundingClientRect();
-      const e = el.getBoundingClientRect();
-      const left = Math.round((e.left - r.left + root.scrollLeft) * 100) / 100;
-      const top = Math.round((e.top - r.top + root.scrollTop) * 100) / 100;
+      const rootLive = rootRef.current;
+      const idLive = fluidTargetIdRef.current;
+      const elLive = idLive ? anchorRefs.current.get(idLive) : null;
+      if (!rootLive || !idLive || !elLive) {
+        setBlob((b) => ({ ...b, opacity: 0 }));
+        return;
+      }
+      const r = rootLive.getBoundingClientRect();
+      const e = elLive.getBoundingClientRect();
+      const left = Math.round((e.left - r.left + rootLive.scrollLeft) * 100) / 100;
+      const top = Math.round((e.top - r.top + rootLive.scrollTop) * 100) / 100;
       const width = Math.round(e.width * 100) / 100;
       const height = Math.round(e.height * 100) / 100;
       setBlob((prev) => {
@@ -103,20 +181,28 @@ export default function FluidNavMenu({
       });
     };
 
+    blobMeasureRef.current = measure;
     measure();
 
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    ro?.observe(root);
-    ro?.observe(el);
+    const rootEl = rootRef.current;
+    if (rootEl) ro?.observe(rootEl);
 
-    const onScroll = () => measure();
-    root.addEventListener("scroll", onScroll, { passive: true });
+    /** @type {Element[]} */
+    const nested = [...nestedScrollRootsRef.current];
+    nested.forEach((s) => ro?.observe(s));
+
+    const onNestedScroll = () => measure();
+
+    if (rootEl) rootEl.addEventListener("scroll", measure, { passive: true });
+    nested.forEach((s) => s.addEventListener("scroll", onNestedScroll, { passive: true }));
 
     return () => {
       ro?.disconnect();
-      root.removeEventListener("scroll", onScroll);
+      if (rootEl) rootEl.removeEventListener("scroll", measure);
+      nested.forEach((s) => s.removeEventListener("scroll", onNestedScroll));
     };
-  }, [activeId, narrow, router, controlledSelectedId, location.pathname, location.search]);
+  }, [fluidTargetId, narrow, router, controlledSelectedId, location.pathname, location.search, nestedScrollGeneration]);
 
   /** @param {*} item */
   const renderLeafItem = useCallback(
@@ -134,7 +220,7 @@ export default function FluidNavMenu({
 
       if (router && item.to) {
         return (
-          <div key={item.id} ref={(node) => setItemRef(item.id, node)} className="fluid-nav__measure">
+          <div key={item.id} ref={(node) => setFluidAnchor(item.id, node)} className="fluid-nav__measure">
             <NavLink
               to={item.to}
               end={item.end ?? false}
@@ -158,15 +244,15 @@ export default function FluidNavMenu({
         );
       }
 
-      const shellClass = cn(hitCn, activeId === item.id && "fluid-nav__hit--active");
+      const shellClass = cn(hitCn, fluidTargetId === item.id && "fluid-nav__hit--active");
 
       return (
-        <div key={item.id} ref={(node) => setItemRef(item.id, node)} className="fluid-nav__measure">
+        <div key={item.id} ref={(node) => setFluidAnchor(item.id, node)} className="fluid-nav__measure">
           <button
             type="button"
             className={shellClass}
             title={item.title}
-            aria-current={activeId === item.id ? "page" : undefined}
+            aria-current={fluidTargetId === item.id ? "page" : undefined}
             onClick={() => onSelect?.(item.id)}
           >
             {content}
@@ -174,7 +260,7 @@ export default function FluidNavMenu({
         </div>
       );
     },
-    [activeId, location, narrow, onSelect, router, setItemRef],
+    [fluidTargetId, location, narrow, onSelect, router, setFluidAnchor],
   );
 
   const footer =
@@ -185,49 +271,51 @@ export default function FluidNavMenu({
     ) : null;
 
   return (
-    <div ref={rootRef} className={cn("fluid-nav-root relative flex min-h-0 flex-1 flex-col gap-2", className)}>
-      <div
-        aria-hidden
-        className="fluid-nav__blob pointer-events-none absolute top-0 left-0 z-0 rounded-[11px]"
-        style={{
-          transform: `translate3d(${blob.left}px, ${blob.top}px, 0)`,
-          width: `${blob.width}px`,
-          height: `${blob.height}px`,
-          opacity: blob.opacity,
-        }}
-      />
-      <nav className={cn("fluid-nav__track fluid-nav__track--primary relative z-[1] shrink-0", primaryTrackClassName)} aria-label={t("nav.modulesAria")}>
-        {primaryItems?.map((item) => {
-          if (isNavGroup(item)) {
-            return (
-              <div key={item.id} className="fluid-nav__group flex min-w-0 flex-col gap-1.5">
-                <div
-                  className={cn(
-                    "fluid-nav__group-label flex min-w-0 items-center gap-2 px-2 py-0.5 text-[0.72rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]",
-                    narrow && "flex-col justify-center gap-1 px-1 py-1 text-center text-[0.62rem] normal-case",
-                  )}
-                >
-                  {item.icon ? <span className="fluid-nav__glyph shrink-0 opacity-80">{item.icon}</span> : null}
-                  <span className="min-w-0 truncate">{item.label}</span>
+    <FluidNavHighlightApi.Provider value={highlightApi}>
+      <div ref={rootRef} className={cn("fluid-nav-root relative flex min-h-0 flex-1 flex-col gap-2", className)}>
+        <div
+          aria-hidden
+          className="fluid-nav__blob pointer-events-none absolute top-0 left-0 z-0 rounded-[11px]"
+          style={{
+            transform: `translate3d(${blob.left}px, ${blob.top}px, 0)`,
+            width: `${blob.width}px`,
+            height: `${blob.height}px`,
+            opacity: blob.opacity,
+          }}
+        />
+        <nav className={cn("fluid-nav__track fluid-nav__track--primary relative z-[1] shrink-0", primaryTrackClassName)} aria-label={t("nav.modulesAria")}>
+          {primaryItems?.map((item) => {
+            if (isNavGroup(item)) {
+              return (
+                <div key={item.id} className="fluid-nav__group flex min-w-0 flex-col gap-1.5">
+                  <div
+                    className={cn(
+                      "fluid-nav__group-label flex min-w-0 items-center gap-2 px-2 py-0.5 text-[0.72rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]",
+                      narrow && "flex-col justify-center gap-1 px-1 py-1 text-center text-[0.62rem] normal-case",
+                    )}
+                  >
+                    {item.icon ? <span className="fluid-nav__glyph shrink-0 opacity-80">{item.icon}</span> : null}
+                    <span className="min-w-0 truncate">{item.label}</span>
+                  </div>
+                  <div
+                    className={cn(
+                      "fluid-nav__group-nest flex min-w-0 flex-col gap-1 border-l border-[color-mix(in_srgb,var(--os-border)_76%,transparent)] pl-3",
+                      narrow && "gap-2 border-none pl-0 pt-0.5",
+                    )}
+                  >
+                    {item.items.map((sub) => renderLeafItem(sub, true))}
+                  </div>
                 </div>
-                <div
-                  className={cn(
-                    "fluid-nav__group-nest flex min-w-0 flex-col gap-1 border-l border-[color-mix(in_srgb,var(--os-border)_76%,transparent)] pl-3",
-                    narrow && "gap-2 border-none pl-0 pt-0.5",
-                  )}
-                >
-                  {item.items.map((sub) => renderLeafItem(sub, true))}
-                </div>
-              </div>
-            );
-          }
-          return renderLeafItem(item, false);
-        })}
-      </nav>
-      {afterPrimary ? (
-        <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden">{afterPrimary}</div>
-      ) : null}
-      {footer ? <div className="relative z-[1] mt-auto shrink-0">{footer}</div> : null}
-    </div>
+              );
+            }
+            return renderLeafItem(item, false);
+          })}
+        </nav>
+        {afterPrimary ? (
+          <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden">{afterPrimary}</div>
+        ) : null}
+        {footer ? <div className="relative z-[1] mt-auto shrink-0">{footer}</div> : null}
+      </div>
+    </FluidNavHighlightApi.Provider>
   );
 }

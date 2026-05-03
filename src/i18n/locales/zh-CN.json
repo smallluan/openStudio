@@ -127,6 +127,7 @@
     "gatewayAuthFailed": "网关拒绝了请求（401）。请检查网关令牌或服务端鉴权配置。",
     "gatewayHttp404": "网关对聊天接口返回了 HTTP 404。请等到终端里网关日志出现 ready、确认地址为主网关根 URL（如 http://127.0.0.1:18789，不要带多余路径）、若需鉴权请填写网关令牌，并必要时升级 OpenClaw。",
     "gatewayUnreachable": "无法连接到 OpenClaw 网关。",
+    "gatewayMissingOperatorScope": "网关未授予本客户端读写权限（operator scopes）。若网关与本应用在同一台电脑上运行，请在「设置 → 模型 · 高级」把网关地址改为 http://127.0.0.1:<端口>（不要用局域网 IP、内网域名或自定义主机名）。改后若已开 npm run dev，请重启终端里的网关/Electron。远程网关需在 OpenClaw 中完成设备配对。",
     "gatewayUnreachableDetail": "无法连接网关（{{detail}}）。请在本机启动网关（例如 openclaw gateway），并在「设置 → 模型 · 高级」中核对 URL 与端口。",
     "configLoadingPlaceholder": "正在加载设置…",
     "gatewayConnectingPlaceholder": "正在连接网关…",

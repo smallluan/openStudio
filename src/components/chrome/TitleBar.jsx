@@ -60,36 +60,48 @@ export default function TitleBar() {
   const onClose = () => shell?.close?.();
 
   return (
-    <header
-      className={cn(
-        "os-titlebar flex shrink-0 items-center justify-between pl-3 pr-0",
-        "bg-[var(--os-rail-surface)] text-[var(--os-titlebar-text)] backdrop-blur-[var(--os-blur-lg)]",
-      )}
-      style={{ height: "var(--os-titlebar-height)", WebkitAppRegion: "drag" }}
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-2.5 py-1" style={{ WebkitAppRegion: "drag" }}>
-        <LogoMarkIcon className="h-7 w-7 shrink-0 text-[var(--os-text)]" />
-        <span className="truncate text-[0.8125rem] font-semibold tracking-tight">{t("titlebar.appName")}</span>
+    <header className={cn("os-titlebar flex shrink-0 items-stretch overflow-hidden pr-0")} style={{ height: "var(--os-titlebar-height)" }}>
+      <div
+        className="os-titlebar__brand flex shrink-0 items-center gap-2.5 px-3 py-1"
+        style={{ WebkitAppRegion: "drag" }}
+      >
+        <LogoMarkIcon className="h-7 w-7 shrink-0 text-[var(--os-accent)]" />
+        <span className="whitespace-nowrap text-[0.8125rem] font-semibold tracking-tight">{t("titlebar.appName")}</span>
       </div>
 
-      <div className="flex h-full items-stretch" style={{ WebkitAppRegion: "no-drag" }}>
-        {shell ? (
-          <>
-            <button type="button" className="os-titlebar__btn" aria-label={t("titlebar.minimize")} onClick={onMinimize}>
-              <WinIconMinimize className="opacity-85" />
-            </button>
-            <button type="button" className="os-titlebar__btn" aria-label={maximized ? t("titlebar.restore") : t("titlebar.maximize")} onClick={onToggleMax}>
-              {maximized ? <WinIconRestore className="opacity-85" /> : <WinIconMaximize className="opacity-85" />}
-            </button>
-            <button type="button" className="os-titlebar__btn os-titlebar__btn--close" aria-label={t("titlebar.close")} onClick={onClose}>
-              <WinIconClose className="opacity-95" />
-            </button>
-          </>
-        ) : (
-          <span className="flex items-center px-3 text-[0.68rem] font-medium text-[var(--os-text-faint)]">
-            {t("titlebar.browserPreviewHint")}
-          </span>
-        )}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 items-stretch">
+          {!shell ? (
+            <span className="flex flex-1 items-center px-3 py-1 text-[0.68rem] font-medium text-[var(--os-rail-text-muted)]">
+              {t("titlebar.browserPreviewHint")}
+            </span>
+          ) : (
+            <div className="min-h-0 min-w-0 flex-1" style={{ WebkitAppRegion: "drag" }} aria-hidden />
+          )}
+          {shell ? (
+            <div className="flex h-full shrink-0 items-stretch" style={{ WebkitAppRegion: "no-drag" }}>
+              <button type="button" className="os-titlebar__btn" aria-label={t("titlebar.minimize")} onClick={onMinimize}>
+                <WinIconMinimize className="opacity-85" />
+              </button>
+              <button
+                type="button"
+                className="os-titlebar__btn"
+                aria-label={maximized ? t("titlebar.restore") : t("titlebar.maximize")}
+                onClick={onToggleMax}
+              >
+                {maximized ? <WinIconRestore className="opacity-85" /> : <WinIconMaximize className="opacity-85" />}
+              </button>
+              <button
+                type="button"
+                className="os-titlebar__btn os-titlebar__btn--close"
+                aria-label={t("titlebar.close")}
+                onClick={onClose}
+              >
+                <WinIconClose className="opacity-95" />
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
     </header>
   );

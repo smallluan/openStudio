@@ -19,9 +19,9 @@ const RAIL_STORAGE_KEY = "openstudio_primary_rail_px";
 const RAIL_LAST_EXPANDED_KEY = "openstudio_rail_last_expanded";
 
 const RAIL_COLLAPSED = 82;
-const RAIL_MIN = 176;
+const RAIL_MIN = 208;
 const RAIL_MAX = 360;
-const RAIL_DEFAULT = 208;
+const RAIL_DEFAULT = 268;
 /** Release width &lt; this → snap to narrow ({@link RAIL_COLLAPSED}); otherwise snap to ≥ {@link RAIL_MIN} */
 const SNAP_NARROW = 124;
 
@@ -129,6 +129,11 @@ export default function MainLayout({ railResizeEnabled = false }) {
     } catch {
       /* ignore */
     }
+  }, [railPx]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--os-primary-rail-px", `${railPx}px`);
+    return () => document.documentElement.style.removeProperty("--os-primary-rail-px");
   }, [railPx]);
 
   const toggle = useCallback(() => {

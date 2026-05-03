@@ -11,6 +11,7 @@ const {
   invalidateGatewaySession,
   acquireGatewaySession,
   hydrateGatewayChatPrep,
+  prewarmStudioGatewaySessions,
 } = require("./lib/openclaw-gateway-session.cjs");
 const { syncOpenClawAgentFromStudioConfig } = require("./lib/sync-openclaw-agent-from-studio.cjs");
 
@@ -21,7 +22,9 @@ const CHAT_STREAM_CHAN = "studio:chatStream";
 const BOOTSTRAP_PROGRESS_CHAN = "studio:bootstrapProgress";
 /** Overall budget for first-run gateway hydration (`tools.effective` can match first-chat prep cost). */
 const BOOTSTRAP_BUDGET_MS = 900_000;
-/** Best-effort replay of bootstrap tool/session RPCs so disk caches & gateway state stay warm. OpenClaw still rebuilds parts of the embedded runner each `chat.send`; this only trims duplicate cold work when users skip startup preload or restart the gateway. */
+/** Background `#studio:` session prewarm (sequential RPCs; can be long with many threads). */
+const STUDIO_PREWARM_BUDGET_MS = 900_000;
+/** Best-effort replay for explicit `warmGatewayChatPrep` IPC only (not chained before every `chat.send`). */
 const CHAT_HYDRATE_THROTTLE_MS = 90_000;
 /** Must cover worst-case `tools.catalog` + multi-minute `sessions.create` / `tools.effective` under Windows + gateway lock contention. */
 const CHAT_HYDRATE_BUDGET_MS = 600_000;
@@ -249,6 +252,40 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle("studio:prewarmStudioGatewaySessions", async (_event, payload) => {
+    const raw = Array.isArray(payload?.conversationIds) ? payload.conversationIds : [];
+    const max = Math.min(Math.max(Number(payload?.max) || 12, 1), 24);
+    /** @type {string[]} */
+    const ids = [];
+    const seen = new Set();
+    for (const x of raw) {
+      if (typeof x !== "string" || !x.trim()) continue;
+      const t = x.trim();
+      if (seen.has(t)) continue;
+      seen.add(t);
+      ids.push(t);
+      if (ids.length >= max) break;
+    }
+    if (ids.length === 0) return { ok: true, skipped: "empty" };
+    if (!userConfigStore) return { ok: false, message: "config_unready" };
+    try {
+      const cfg = userConfigStore.readRaw();
+      const url = String(cfg?.openclaw?.gatewayBaseUrl ?? "").trim();
+      if (!url) return { ok: true, skipped: "no_gateway" };
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), STUDIO_PREWARM_BUDGET_MS);
+      try {
+        await prewarmStudioGatewaySessions(cfg, ids, ac.signal);
+        return { ok: true, warmed: ids.length };
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (e) {
+      if (isDev) console.warn("[open-studio] prewarmStudioGatewaySessions:", e?.message ?? e);
+      return { ok: false, message: String(e?.message ?? e) };
+    }
+  });
+
   ipcMain.handle("studio:bootstrapGateway", async (event) => {
     if (bootstrapGatewayInFlight) return bootstrapGatewayInFlight;
 
@@ -275,6 +312,7 @@ app.whenReady().then(() => {
 
         await runGatewayBootstrapReadiness(cfg, ac.signal, emit);
         gatewayWarmState.lastChatHydrateMs = Date.now();
+        /* `hydrateGatewayChatPrep` marks the configured base sessionKey; no redundant prep on first `chat.send` without `#studio:` */
         emit({ phase: "complete" });
         return { ok: true };
       } catch (e) {
@@ -295,6 +333,8 @@ app.whenReady().then(() => {
   ipcMain.handle("studio:startChatStream", async (event, payload) => {
     const streamId = payload?.streamId;
     const messages = payload?.messages;
+    const conversationId =
+      typeof payload?.conversationId === "string" ? payload.conversationId.trim() : "";
     if (typeof streamId !== "string" || !streamId.trim() || !Array.isArray(messages)) {
       throw new Error("invalid_chat_payload");
     }
@@ -304,10 +344,15 @@ app.whenReady().then(() => {
     try {
       runOpenClawAgentSyncFromStudio("chat");
       const cfg = userConfigStore.readRaw();
-      await maybeHydrateGatewayForChat(cfg);
-      await dispatchOpenClawGatewayStream(cfg, messages, ac.signal, (evt) => {
-        if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
-      });
+      await dispatchOpenClawGatewayStream(
+        cfg,
+        messages,
+        ac.signal,
+        (evt) => {
+          if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
+        },
+        conversationId ? { conversationId } : {},
+      );
     } catch (e) {
       if (!wc.isDestroyed()) {
         if (ac.signal.aborted || e?.name === "AbortError") {

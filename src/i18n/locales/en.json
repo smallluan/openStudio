@@ -127,6 +127,7 @@
     "gatewayAuthFailed": "Gateway rejected the request (401). Check the gateway token or server authentication.",
     "gatewayHttp404": "The gateway returned HTTP 404 for the chat API. Wait until the gateway log shows it is ready, make sure the URL is the main gateway base (e.g. http://127.0.0.1:18789 with no extra path), set a gateway token if required, and update OpenClaw if your version is older.",
     "gatewayUnreachable": "Cannot reach the OpenClaw gateway.",
+    "gatewayMissingOperatorScope": "The gateway did not grant operator read/write scopes on this connection. If the gateway runs on the same PC as Open Studio, set Gateway Base URL to http://127.0.0.1:<port> (avoid LAN IPs or custom hostnames). Restart the dev gateway / Electron after changing it. Remote gateways require OpenClaw device pairing.",
     "gatewayUnreachableDetail": "Cannot reach the gateway ({{detail}}). Start it on this machine (for example: openclaw gateway) and confirm the URL under Settings → Model · Advanced.",
     "configLoadingPlaceholder": "Loading settings…",
     "gatewayConnectingPlaceholder": "Connecting to the gateway…",

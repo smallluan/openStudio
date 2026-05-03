@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import LogoMarkIcon from "../assets/svg/LogoMarkIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
+import { loadAllSessions } from "../chat/chatSessionsStore.js";
 import { cn } from "../ui/cn.js";
 
 /**
@@ -9,6 +10,8 @@ import { cn } from "../ui/cn.js";
  * connect to the gateway with startup-sidecar retries, then call
  * `tools.catalog` plus `tools.effective` (plus `sessions.create`) so the heavy
  * `createOpenClawCodingTools` path runs **before** the main shell is shown.
+ * After success, kicks off a **background** prewarm of recent `#studio:` conversation
+ * session keys so opening an existing thread does not block on cold prep.
  * No chat traffic and no provider billing — only documented gateway RPCs.
  */
 export default function StartupBootstrapGate({ children }) {
@@ -44,6 +47,12 @@ export default function StartupBootstrapGate({ children }) {
     }
   }, [phase]);
 
+  const failureDisplay = useMemo(() => {
+    if (!failure) return null;
+    if (/gateway_missing_operator_scope/i.test(failure)) return t("chatLab.gatewayMissingOperatorScope");
+    return failure;
+  }, [failure, t]);
+
   useEffect(() => {
     if (!isElectron) return undefined;
 
@@ -74,6 +83,13 @@ export default function StartupBootstrapGate({ children }) {
         if (!result?.ok) {
           setFailure(result?.message ? String(result.message) : t("bootstrap.unknownError"));
           return;
+        }
+        if (bridge.prewarmStudioGatewaySessions) {
+          const ids = [...loadAllSessions()]
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .map((r) => r.id)
+            .filter((id) => typeof id === "string" && id.trim());
+          void bridge.prewarmStudioGatewaySessions({ conversationIds: ids, max: 12 }).catch(() => {});
         }
         setGateDone(true);
       } catch (e) {
@@ -155,7 +171,7 @@ export default function StartupBootstrapGate({ children }) {
               />
             </div>
             <p className="mt-3 min-h-[2.75rem] text-pretty text-xs leading-relaxed text-[var(--os-text-muted)]">
-              {failure ?? phaseLine}
+              {failureDisplay ?? phaseLine}
             </p>
             {failure && /gateway_unreachable/i.test(failure) ? (
               <p className="mt-2 text-pretty text-[0.75rem] leading-relaxed text-[var(--os-text-muted)]">

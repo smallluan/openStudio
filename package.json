@@ -12,6 +12,7 @@
     "start": "cross-env NODE_ENV=production electron .",
     "preview": "vite preview",
     "openclaw": "openclaw",
+    "windows:defender-exclude-openclaw-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-defender-exclude-openclaw-dev.ps1",
     "postinstall": "node scripts/apply-openclaw-memo.mjs"
   },
   "engines": {
@@ -22,7 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "@floating-ui/react": "^0.27.19",
-    "openclaw": "^2026.4.29",
+    "openclaw": "^2026.5.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",

@@ -20,7 +20,7 @@ export default function RailSearchInput({ value, onChange, narrow = false, class
         title={t("nav.railSearchPlaceholder")}
       >
         <span className="rail-search__pill rail-search__pill--icononly">
-          <SearchSparkleIcon className="text-[var(--os-text-muted)]" />
+          <SearchSparkleIcon className="text-[var(--os-rail-text-muted)]" />
         </span>
       </div>
     );
@@ -29,7 +29,7 @@ export default function RailSearchInput({ value, onChange, narrow = false, class
   return (
     <div className={cn("rail-search rail-search--wide min-w-0 flex-1", className)}>
       <label className="rail-search__pill">
-        <SearchSparkleIcon className="text-[var(--os-text-faint)]" />
+        <SearchSparkleIcon className="text-[var(--os-rail-text-faint)]" />
         <input
           type="search"
           value={value}

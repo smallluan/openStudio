@@ -113,7 +113,7 @@ export default function SettingsPage() {
         </aside>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <header className="flex shrink-0 items-center justify-between gap-4 px-5 py-3.5">
+          <header className="settings-sheet__header flex shrink-0 items-center justify-between gap-4 px-5 py-3.5">
             <div className="min-w-0 flex-1">
               <h1 id="settings-modal-title" className="truncate text-lg font-semibold tracking-tight">
                 {sectionTitle}
