@@ -7,6 +7,7 @@ import {
   deriveTitleFromMessages,
   getSession,
   loadAllSessions,
+  renameSession,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -14,6 +15,7 @@ import {
   useChatLabStreaming,
   useGatewayStreamSlice,
 } from "../context/ChatLabStreamingContext.jsx";
+import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
 import { cn } from "../ui/cn.js";
 
 const ERROR_CODE_KEY_MAP = {
@@ -80,7 +82,7 @@ function isChatHttp404(raw) {
  * Terminal IPC snapshots can briefly race ahead of the last `content_sync`; never clobber
  * non-empty assistant text/thinking with an empty terminal payload.
  * @param {*} m
- * @param {{ content?: string; thinking?: string; error?: string }} extra
+ * @param {{ content?: string; thinking?: string; error?: string; toolTrace?: unknown[]; activityLog?: unknown[] }} extra
  */
 function mergeTerminalAssistantPayload(m, extra) {
   /** @type {*} */
@@ -100,6 +102,14 @@ function mergeTerminalAssistantPayload(m, extra) {
     }
   }
   if (extra?.error) next.error = extra.error;
+  if (Array.isArray(extra?.toolTrace)) {
+    if (extra.toolTrace.length > 0) next.toolTrace = /** @type {typeof m.toolTrace} */ (extra.toolTrace);
+    else delete next.toolTrace;
+  }
+  if (Array.isArray(extra?.activityLog)) {
+    if (extra.activityLog.length > 0) next.activityLog = /** @type {typeof m.activityLog} */ (extra.activityLog);
+    else delete next.activityLog;
+  }
   return next;
 }
 
@@ -146,7 +156,7 @@ export default function ChatLabPage() {
   const [config, setConfig] = useState(/** @type {* | null} */ (null));
   const [configLoaded, setConfigLoaded] = useState(false);
   const [messages, setMessages] = useState(
-    /** @type {Array<{id: string; role: "user" | "assistant"; content: string; thinking?: string; streaming?: boolean; error?: string}>} */
+    /** @type {Array<{id: string; role: "user" | "assistant"; content: string; thinking?: string; streaming?: boolean; error?: string; toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[]; activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[]}>} */
     ([]),
   );
   const [input, setInput] = useState("");
@@ -176,12 +186,14 @@ export default function ChatLabPage() {
     activeStreamIdRef.current = null;
   }, [conversationId]);
 
-  /** Background OpenClaw prep for `#studio:` keys (does not block UI). */
+  /** Background `#studio:` prewarm (non-blocking); `urgentFirst` keeps the visible thread ahead of historical sessions on the hydrate queue. */
   useEffect(() => {
     if (!isElectron || !bridge?.prewarmStudioGatewaySessions || !conversationId) return undefined;
     const ids = buildStudioGatewayPrewarmIds(conversationId, 12);
     if (ids.length === 0) return undefined;
-    void bridge.prewarmStudioGatewaySessions({ conversationIds: ids, max: 12 }).catch(() => {});
+    void bridge
+      .prewarmStudioGatewaySessions({ conversationIds: ids, max: 12, urgentFirst: true })
+      .catch(() => {});
     return undefined;
   }, [isElectron, conversationId]);
 
@@ -229,6 +241,8 @@ export default function ChatLabPage() {
           role: m.role,
           content: m.content,
           ...(m.thinking ? { thinking: m.thinking } : {}),
+          ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
+          ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
           streaming: false,
         })),
       );
@@ -251,6 +265,8 @@ export default function ChatLabPage() {
           role: m.role,
           content: m.content,
           ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
+          ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
+          ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
         }));
       if (toSave.length === 0) return;
       const title = deriveTitleFromMessages(messages);
@@ -369,15 +385,19 @@ export default function ChatLabPage() {
 
   useEffect(() => {
     if (!gatewaySliceForConv) return;
-    const { assistantMessageId, content, thinking, active } = gatewaySliceForConv;
+    const { assistantMessageId, content, thinking, active, toolTrace, activityLog } = gatewaySliceForConv;
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === assistantMessageId);
       if (idx === -1) return prev;
-      return prev.map((m) =>
-        m.id === assistantMessageId ? { ...m, content, thinking, streaming: active } : m,
-      );
+      return prev.map((m) => {
+        if (m.id !== assistantMessageId) return m;
+        const next = { ...m, content, thinking, streaming: active };
+        if (toolTrace && toolTrace.length > 0) next.toolTrace = toolTrace;
+        if (activityLog && activityLog.length > 0) next.activityLog = activityLog;
+        return next;
+      });
     });
-  }, [gatewaySliceForConv]);
+  }, [gatewaySliceForConv, paramC]);
 
   const prevSliceForConvRef = useRef(/** @type {typeof gatewaySliceForConv} */ (null));
   useEffect(() => {
@@ -414,6 +434,8 @@ export default function ChatLabPage() {
           error: msg,
           ...(typeof d.content === "string" ? { content: d.content } : {}),
           ...(typeof d.thinking === "string" ? { thinking: d.thinking } : {}),
+          ...(Array.isArray(d.toolTrace) ? { toolTrace: d.toolTrace } : {}),
+          ...(Array.isArray(d.activityLog) ? { activityLog: d.activityLog } : {}),
         });
         if (isChatHttp404(raw)) {
           setChatApiBlocked(true);
@@ -425,6 +447,8 @@ export default function ChatLabPage() {
         finalizeAssistantById(d.assistantMessageId, {
           ...(typeof d.content === "string" ? { content: d.content } : {}),
           ...(typeof d.thinking === "string" ? { thinking: d.thinking } : {}),
+          ...(Array.isArray(d.toolTrace) ? { toolTrace: d.toolTrace } : {}),
+          ...(Array.isArray(d.activityLog) ? { activityLog: d.activityLog } : {}),
         });
       }
     };
@@ -478,7 +502,12 @@ export default function ChatLabPage() {
     const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
     const historyForRequest = messagesRef.current
       .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => {
+        if (m.role !== "assistant") return { role: m.role, content: m.content };
+        const c = String(m.content ?? "").trim();
+        const th = String(m.thinking ?? "").trim();
+        return { role: m.role, content: c || th || "" };
+      });
 
     const userMsg = {
       id: newId(),
@@ -547,7 +576,7 @@ export default function ChatLabPage() {
         if (!r?.ok || typeof r.title !== "string" || !r.title.trim()) return;
         const rec = getSession(conversationId);
         if (!rec) return;
-        upsertSession(conversationId, r.title.trim(), rec.messages);
+        renameSession(conversationId, r.title.trim());
       });
     }
 
@@ -815,9 +844,459 @@ function ChatStreamingIndicator({ label }) {
   );
 }
 
+/** @param {unknown} v */
+function formatJsonSafe(v) {
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
+
+/** @param {string} s @param {number} max */
+function truncateOneLine(s, max = 80) {
+  const t = s.replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  return t.length <= max ? t : `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
+/** @param {Record<string, unknown> | undefined} args @param {string[]} keys */
+function pickArgString(args, keys) {
+  if (!args || typeof args !== "object") return "";
+  for (const k of keys) {
+    if (!Object.prototype.hasOwnProperty.call(args, k)) continue;
+    const v = args[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+
+/**
+ * Best-effort command / URL snippet for shell-like tools (names differ by gateway/model).
+ * @param {Record<string, unknown> | undefined} args
+ */
+function pickCommandSnippet(args) {
+  const direct = pickArgString(args, [
+    "command",
+    "cmd",
+    "shell",
+    "script",
+    "code",
+    "powershell_command",
+    "powershell",
+    "line",
+    "text",
+    "input",
+    "program",
+  ]);
+  if (direct) return direct;
+  const raw = args && (args.arguments ?? args.params ?? args.argument);
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const p = JSON.parse(raw);
+      if (p && typeof p === "object" && !Array.isArray(p)) {
+        const inner = pickArgString(p, ["command", "cmd", "shell", "script", "url"]);
+        if (inner) return inner;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const url = pickArgString(args, ["url", "href", "uri", "link", "address"]);
+  if (url) return url;
+  return "";
+}
+
+/** @typedef {"search" | "file" | "exec" | "session" | "generic"} ToolTraceVisualKind */
+
+/**
+ * Icon-first presentation: narrow action text + fuller string for summaries / a11y.
+ * @param {import("../chat/toolTraceMerge.js").ToolTraceRow} row
+ * @param {(k: string, v?: Record<string, string | number>) => string} t
+ * @returns {{ kind: ToolTraceVisualKind; brief: string; aria: string }}
+ */
+function getToolTracePresentation(row, t) {
+  const tool = String(row.toolName || "").trim() || "(tool)";
+  const nameLower = tool.toLowerCase();
+
+  const sum = typeof row.summary === "string" ? row.summary.trim() : "";
+  const lab = typeof row.label === "string" ? row.label.trim() : "";
+
+  /** @type {Record<string, unknown> | undefined} */
+  const args = row.args && typeof row.args === "object" ? /** @type {Record<string, unknown>} */ (row.args) : undefined;
+
+  if (sum && sum.toLowerCase() !== nameLower && sum.length > 2) {
+    const line = truncateOneLine(sum, 96);
+    return { kind: "generic", brief: line, aria: line };
+  }
+
+  if (lab && lab.toLowerCase() !== nameLower && lab.length > 2 && !/^phase\s*[:\uff1a]/i.test(lab)) {
+    const line = truncateOneLine(lab, 96);
+    return { kind: "generic", brief: line, aria: line };
+  }
+
+  const pathSnippet = pickArgString(args, [
+    "path",
+    "file_path",
+    "filepath",
+    "target_file",
+    "absolute_path",
+    "file",
+    "uri",
+    "resolvedPath",
+  ]);
+  const pathRead =
+    /\bread|file\s*system|filesystem|disk/i.test(tool) ||
+    nameLower.includes("read_file") ||
+    nameLower.includes("readfile") ||
+    nameLower.endsWith("_read") ||
+    nameLower.includes("fetch_file");
+  if (pathSnippet && pathRead) {
+    const path = truncateOneLine(pathSnippet, 112);
+    return { kind: "file", brief: path, aria: t("chatLab.toolFriendlyViewed", { path }) };
+  }
+
+  const q = pickArgString(args, ["query", "q", "search_query", "keywords", "search", "prompt", "term"]);
+  const searchLike =
+    nameLower.includes("search") ||
+    nameLower.includes("web_") ||
+    nameLower.includes("bing") ||
+    nameLower.includes("brave") ||
+    nameLower.includes("serp") ||
+    nameLower.includes("look_up");
+  if (q && searchLike) {
+    const query = truncateOneLine(q, 112);
+    return { kind: "search", brief: query, aria: t("chatLab.toolFriendlySearched", { query }) };
+  }
+
+  const cmdSnippet = pickCommandSnippet(args);
+  const shellLike =
+    nameLower.includes("exec") ||
+    nameLower.includes("run_terminal") ||
+    nameLower.includes("bash") ||
+    nameLower.includes("shell") ||
+    nameLower.includes("command") ||
+    nameLower === "run" ||
+    nameLower.includes("powershell") ||
+    nameLower.includes("spawn") ||
+    nameLower.includes("subprocess");
+
+  if (cmdSnippet && shellLike) {
+    const cmd = truncateOneLine(cmdSnippet, 112);
+    return { kind: "exec", brief: cmd, aria: t("chatLab.toolFriendlyCommand", { cmd }) };
+  }
+
+  if (
+    /\bsession\b|session_status|^status$/i.test(tool) ||
+    nameLower.includes("session_status") ||
+    nameLower.includes("lifecycle")
+  ) {
+    const st = pickArgString(args, ["phase", "status", "state", "stage"]) || String(row.phase || "").trim();
+    if (st) {
+      const detail = truncateOneLine(st, 72);
+      return { kind: "session", brief: detail, aria: t("chatLab.toolFriendlySession", { detail }) };
+    }
+    const brief = t("chatLab.toolFriendlySessionBrief");
+    return { kind: "session", brief, aria: brief };
+  }
+
+  if (!shellLike && pathSnippet && !cmdSnippet) {
+    const path = truncateOneLine(pathSnippet, 112);
+    return { kind: "file", brief: path, aria: t("chatLab.toolFriendlyViewed", { path }) };
+  }
+
+  const err = typeof row.error === "string" ? row.error.trim() : "";
+  if (err) {
+    const summary = truncateOneLine(tool + (lab && lab !== tool ? ` · ${lab}` : ""), 64);
+    const errLine = truncateOneLine(err, 72);
+    return {
+      kind: "generic",
+      brief: summary,
+      aria: t("chatLab.toolFriendlyWithError", { summary, err: errLine }),
+    };
+  }
+
+  const line = truncateOneLine(lab || tool, 96);
+  return { kind: "generic", brief: line, aria: line };
+}
+
+function ChatLabToolCallsIcon({ className }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M9 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM9 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0M21 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0M15 17l-6-3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChatLabActivityFeedIcon({ className }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M5 8h13M7 13h11M6 18h12"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** @returns {"ok"|"run"|"fail"} */
+function activityGlyphState(row, streaming, isTailRow) {
+  const phase = String(row.phase ?? "").toLowerCase();
+  const hay = `${String(row.title ?? "")}\n${String(row.text ?? "").slice(0, 480)}`;
+  const looksFail =
+    /^(error|failed|fatal|abort|timeout)\b|\berror\b|exception|not found\b/i.test(phase) ||
+    /\bfail(ed|ure)?\b|fatal|unable to|ECONN|\b\d{3}\s+error\b/i.test(hay);
+  if (looksFail) return "fail";
+  if (streaming && isTailRow) return "run";
+  return "ok";
+}
+
 /**
  * @param {{
- *   message: { id: string; role: "user" | "assistant"; content: string; thinking?: string; streaming?: boolean; error?: string };
+ *   row: import("../chat/toolTraceMerge.js").ToolTraceRow;
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ * }} props
+ */
+function ToolRow({ row, t }) {
+  const name = row.toolName || row.label || "(tool)";
+  const pres = getToolTracePresentation(row, t);
+  const done = Boolean(row.done) || /^(end|complete|completed|ok)$/i.test(String(row.phase ?? "").trim());
+  const failed = Boolean(row.error && String(row.error).trim());
+  const glyphState = /** @type {"ok"|"run"|"fail"} */ (failed ? "fail" : done ? "ok" : "run");
+  const showPhaseChip =
+    Boolean(row.phase) &&
+    !(done && /^result$/i.test(String(row.phase).trim())) &&
+    String(row.phase).toLowerCase() !== "end";
+  const hasDetail = Boolean(
+    showPhaseChip ||
+      (row.args && Object.keys(row.args).length > 0) ||
+      (row.result && row.result.trim()) ||
+      (row.partialResult && row.partialResult.trim()) ||
+      (row.error && row.error.trim()) ||
+      (row.status && row.status.trim()) ||
+      (row.summary && row.summary.trim() && truncateOneLine(row.summary.trim(), 96) !== pres.brief),
+  );
+  return (
+    <TraceDisclosure
+      variant="row"
+      expandable={hasDetail}
+      defaultOpen={false}
+      chevronBefore={false}
+      className="chat-lab__tool-nested"
+      triggerClassName="chat-lab__tool-nested-summary"
+      triggerAriaLabel={pres.aria}
+      summary={
+        <>
+          <span className="chat-lab__tool-step-wrap" aria-hidden>
+            <TraceStepGlyph state={glyphState} />
+          </span>
+          <span className="chat-lab__tool-nested-copy">
+            <span className="chat-lab__tool-title">{pres.brief}</span>
+          </span>
+          {hasDetail ? <TraceRowChevron /> : null}
+        </>
+      }
+    >
+      {hasDetail ? (
+        <div className="chat-lab__tool-nested-body">
+          <div className="chat-lab__tool-nested-meta">
+            <span className="muted">{truncateOneLine(name, 56)}</span>
+            {showPhaseChip ? (
+              <span className="muted"> · {t("chatLab.toolPhase", { phase: row.phase })}</span>
+            ) : null}
+          </div>
+          {row.status ? <div>{row.status}</div> : null}
+          {row.args && Object.keys(row.args).length > 0 ? (
+            <div>
+              <strong>{t("chatLab.toolArgs")}</strong>
+              <pre>{formatJsonSafe(row.args)}</pre>
+            </div>
+          ) : null}
+          {row.partialResult ? (
+            <div>
+              <strong>{t("chatLab.toolPartial")}</strong>
+              <pre>{row.partialResult}</pre>
+            </div>
+          ) : null}
+          {row.result ? (
+            <div>
+              <strong>{t("chatLab.toolResult")}</strong>
+              <pre>{row.result}</pre>
+            </div>
+          ) : null}
+          {row.error ? (
+            <div style={{ color: "#d84b4b" }}>
+              <strong>{t("chatLab.toolErrorLabel")}</strong>
+              <pre>{row.error}</pre>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </TraceDisclosure>
+  );
+}
+
+/**
+ * @param {{
+ *   rows: import("../chat/toolTraceMerge.js").ToolTraceRow[];
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ *   streaming: boolean;
+ * }} props
+ */
+function ToolChainPanel({ rows, t, streaming }) {
+  const [open, setOpen] = useState(() => true);
+  useEffect(() => {
+    if (streaming) setOpen(true);
+  }, [streaming]);
+  if (!rows?.length) return null;
+  return (
+    <TraceDisclosure
+      className="chat-lab__tool-chain"
+      open={open}
+      onOpenChange={setOpen}
+      triggerClassName="chat-lab__tool-chain-summary"
+      summary={
+        <>
+          {t("chatLab.toolsInvokedSummary", { count: rows.length })}
+          <ChatLabToolCallsIcon className="chat-lab__tool-chain-icon muted" />
+          <span className="chat-lab__think-hint muted"> · {t("chatLab.toolCallsTitle")}</span>
+        </>
+      }
+    >
+      <div className="chat-lab__tool-chain-body">
+        {rows.map((row) => (
+          <ToolRow key={row.id} row={row} t={t} />
+        ))}
+      </div>
+    </TraceDisclosure>
+  );
+}
+
+/**
+ * @param {{
+ *   row: import("../chat/toolTraceMerge.js").ActivityRow;
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ *   streaming?: boolean;
+ *   isTail?: boolean;
+ * }} props
+ */
+function ActivityRow({ row, t, streaming, isTail }) {
+  const stream = truncateOneLine(String(row.stream ?? "").trim(), 64);
+  const titleRaw = String(row.title ?? "").trim();
+  const title = truncateOneLine(titleRaw || stream || "—", 104);
+  const phase = String(row.phase ?? "").trim();
+  const textRaw = typeof row.text === "string" ? row.text.trim() : "";
+  const truncatedText = textRaw.length > 2000 ? `${textRaw.slice(0, 2000)}…` : textRaw;
+
+  const hasDetail = Boolean(phase || truncatedText.length > 0 || stream);
+
+  const ariaPieces = [stream, titleRaw || undefined, phase || undefined].filter(Boolean);
+  const aria = ariaPieces.length ? ariaPieces.join(" · ") : title;
+  const gState = activityGlyphState(row, Boolean(streaming), Boolean(isTail));
+
+  return (
+    <TraceDisclosure
+      variant="row"
+      expandable={hasDetail}
+      defaultOpen={false}
+      chevronBefore={false}
+      className="chat-lab__tool-nested chat-lab__activity-nested"
+      triggerClassName="chat-lab__tool-nested-summary"
+      triggerAriaLabel={aria}
+      summary={
+        <>
+          <span className="chat-lab__tool-step-wrap" aria-hidden>
+            <TraceStepGlyph state={gState} />
+          </span>
+          <span className="chat-lab__tool-nested-copy">
+            <span className="chat-lab__tool-title">{title}</span>
+          </span>
+          {hasDetail ? <TraceRowChevron /> : null}
+        </>
+      }
+    >
+      {hasDetail ? (
+        <div className="chat-lab__tool-nested-body">
+          {stream ? (
+            <div className="chat-lab__tool-nested-meta">
+              <span className="muted">{stream}</span>
+            </div>
+          ) : null}
+          {phase ? <div className="muted">{t("chatLab.toolPhase", { phase })}</div> : null}
+          {truncatedText ? (
+            <div className="chat-lab__activity-text">{truncatedText}</div>
+          ) : !phase && stream ? (
+            <div className="muted">{t("chatLab.activityEmptyDetail")}</div>
+          ) : null}
+        </div>
+      ) : null}
+    </TraceDisclosure>
+  );
+}
+
+/**
+ * @param {{
+ *   rows: import("../chat/toolTraceMerge.js").ActivityRow[];
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ *   streaming?: boolean;
+ * }} props
+ */
+function ActivityChainPanel({ rows, t, streaming }) {
+  const [open, setOpen] = useState(() => Boolean(streaming));
+  useEffect(() => {
+    if (streaming) setOpen(true);
+  }, [streaming]);
+  if (!rows?.length) return null;
+  return (
+    <TraceDisclosure
+      className="chat-lab__tool-chain chat-lab__activity-chain"
+      open={open}
+      onOpenChange={setOpen}
+      triggerClassName="chat-lab__tool-chain-summary"
+      summary={
+        <>
+          {t("chatLab.activityTitle")}
+          <ChatLabActivityFeedIcon className="chat-lab__tool-chain-icon muted" />
+          <span className="chat-lab__think-hint muted"> · {rows.length}</span>
+        </>
+      }
+    >
+      <div className="chat-lab__tool-chain-body">
+        {rows.map((r, idx) => (
+          <ActivityRow
+            key={`${r.id}-${r.stream}-${r.seq}`}
+            row={r}
+            t={t}
+            streaming={streaming}
+            isTail={Boolean(streaming) && idx === rows.length - 1}
+          />
+        ))}
+      </div>
+    </TraceDisclosure>
+  );
+}
+
+/**
+ * @param {{
+ *   message: {
+ *     id: string;
+ *     role: "user" | "assistant";
+ *     content: string;
+ *     thinking?: string;
+ *     streaming?: boolean;
+ *     error?: string;
+ *     toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
+ *     activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[];
+ *   };
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  * }} props
  */
@@ -825,39 +1304,67 @@ function MessageBubble({ message, t }) {
   const isUser = message.role === "user";
   const showTyping =
     !isUser && message.streaming && !message.content && !message.thinking && !message.error;
+
+  const mdComponents = useMemo(
+    () => ({
+      /** @param {import("react").AnchorHTMLAttributes<HTMLAnchorElement> & { children?: import("react").ReactNode }} props */
+      a: ({ href, children }) => (
+        <a href={href ?? "#"} target="_blank" rel="noreferrer noopener" className="chat-lab__md-a">
+          {children}
+        </a>
+      ),
+    }),
+    [],
+  );
+
   const [thinkOpen, setThinkOpen] = useState(() => Boolean(message.streaming));
 
   useEffect(() => {
     if (message.streaming) setThinkOpen(true);
   }, [message.streaming]);
 
+  const toolRows = Array.isArray(message.toolTrace) ? message.toolTrace : [];
+  const activityRows = Array.isArray(message.activityLog) ? message.activityLog : [];
+
   return (
     <article
       className={cn("chat-lab__bubble", isUser && "chat-lab__bubble--user")}
       data-role={message.role}
     >
+      {!isUser && toolRows.length > 0 ? (
+        <ToolChainPanel rows={toolRows} t={t} streaming={Boolean(message.streaming)} />
+      ) : null}
+      {!isUser && activityRows.length > 0 ? (
+        <ActivityChainPanel rows={activityRows} t={t} streaming={Boolean(message.streaming)} />
+      ) : null}
       {!isUser && message.thinking ? (
-        <details
+        <TraceDisclosure
           className={cn("chat-lab__think", message.streaming && "thinking-pulse-border")}
           open={thinkOpen}
-          onToggle={(e) => setThinkOpen(e.currentTarget.open)}
+          onOpenChange={setThinkOpen}
+          triggerClassName="chat-lab__think-summary"
+          panelInnerClassName="chat-lab__think-panel-inner"
+          summary={
+            <>
+              {t("chatLab.thinking")}
+              <span className="chat-lab__think-hint muted">· {t("chatLab.thinkingHint")}</span>
+            </>
+          }
         >
-          <summary>
-            {t("chatLab.thinking")}
-            <span className="chat-lab__think-hint muted">· {t("chatLab.thinkingHint")}</span>
-          </summary>
           <pre className="chat-lab__think-body">{message.thinking}</pre>
-        </details>
+        </TraceDisclosure>
       ) : null}
       {isUser ? (
         <div className="chat-lab__user-text">{message.content}</div>
       ) : (
         <div className="chat-lab__md">
           {message.content ? (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+              {message.content}
+            </ReactMarkdown>
           ) : showTyping ? (
             <ChatStreamingIndicator label={t("chatLab.streaming")} />
-          ) : !message.thinking && !message.error ? (
+          ) : !message.thinking && !message.error && toolRows.length === 0 && activityRows.length === 0 ? (
             <p className="chat-lab__empty-reply muted">{t("chatLab.emptyAssistantReply")}</p>
           ) : null}
           {message.error ? (

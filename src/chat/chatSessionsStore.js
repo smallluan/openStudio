@@ -4,11 +4,18 @@ const STORAGE_KEY = "openstudio_chat_sessions_v1";
 const MAX_SESSIONS = 50;
 
 /**
+ * @typedef {import("./toolTraceMerge.js").ToolTraceRow} ToolTraceRow
+ * @typedef {import("./toolTraceMerge.js").ActivityRow} ActivityRow
+ */
+
+/**
  * @typedef {object} PersistedChatMessage
  * @property {string} id
  * @property {'user' | 'assistant'} role
  * @property {string} content
  * @property {string} [thinking]
+ * @property {ToolTraceRow[]} [toolTrace]
+ * @property {ActivityRow[]} [activityLog]
  */
 
 /**
@@ -19,6 +26,57 @@ const MAX_SESSIONS = 50;
  * @property {number} updatedAt
  * @property {PersistedChatMessage[]} messages
  */
+
+/** @param {unknown} raw */
+function sanitizeToolTrace(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  /** @type {ToolTraceRow[]} */
+  const out = [];
+  for (const t of raw) {
+    if (!t || typeof t !== "object") continue;
+    const id = typeof t.id === "string" ? t.id : "";
+    if (!id) continue;
+    /** @type {ToolTraceRow} */
+    const row = {
+      id,
+      toolName: typeof t.toolName === "string" ? t.toolName : "",
+      label: typeof t.label === "string" ? t.label : "",
+      phase: typeof t.phase === "string" ? t.phase : "",
+      status: typeof t.status === "string" ? t.status : "",
+      summary: typeof t.summary === "string" ? t.summary : "",
+      seq: typeof t.seq === "number" && Number.isFinite(t.seq) ? t.seq : 0,
+      done: Boolean(t.done),
+    };
+    if (t.args && typeof t.args === "object") row.args = /** @type {Record<string, unknown>} */ ({ ...t.args });
+    if (typeof t.result === "string") row.result = t.result;
+    if (typeof t.partialResult === "string") row.partialResult = t.partialResult;
+    if (typeof t.error === "string") row.error = t.error;
+    out.push(row);
+  }
+  return out.length ? out : undefined;
+}
+
+/** @param {unknown} raw */
+function sanitizeActivityLog(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  /** @type {ActivityRow[]} */
+  const out = [];
+  for (const t of raw) {
+    if (!t || typeof t !== "object") continue;
+    const id = typeof t.id === "string" ? t.id : "";
+    const stream = typeof t.stream === "string" ? t.stream : "";
+    if (!id || !stream) continue;
+    out.push({
+      id,
+      stream,
+      phase: typeof t.phase === "string" ? t.phase : "",
+      title: typeof t.title === "string" ? t.title : "",
+      text: typeof t.text === "string" ? t.text : "",
+      seq: typeof t.seq === "number" && Number.isFinite(t.seq) ? t.seq : 0,
+    });
+  }
+  return out.length ? out : undefined;
+}
 
 /** @returns {ChatSessionRecord[]} */
 export function loadAllSessions() {
@@ -58,6 +116,8 @@ function persistedMessagesEqual(a, b) {
     const xt = x.thinking ?? "";
     const yt = y.thinking ?? "";
     if (xt !== yt) return false;
+    if (JSON.stringify(x.toolTrace ?? null) !== JSON.stringify(y.toolTrace ?? null)) return false;
+    if (JSON.stringify(x.activityLog ?? null) !== JSON.stringify(y.activityLog ?? null)) return false;
   }
   return true;
 }
@@ -75,6 +135,14 @@ function sanitizeMessages(raw) {
     /** @type {PersistedChatMessage} */
     const row = { id, role, content };
     if (typeof m.thinking === "string" && m.thinking) row.thinking = m.thinking;
+    if (Array.isArray(m.toolTrace) && m.toolTrace.length > 0) {
+      const tt = sanitizeToolTrace(m.toolTrace);
+      if (tt?.length) row.toolTrace = tt;
+    }
+    if (Array.isArray(m.activityLog) && m.activityLog.length > 0) {
+      const al = sanitizeActivityLog(m.activityLog);
+      if (al?.length) row.activityLog = al;
+    }
     out.push(row);
   }
   return out;

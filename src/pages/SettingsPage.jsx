@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { SettingsCell, SettingsCellRow } from "../components/settings/SettingsCells.jsx";
 import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
-import ModelAdvancedPanel from "../components/shell/ModelAdvancedPanel.jsx";
 import ModelProfilesPanel from "../components/shell/ModelProfilesPanel.jsx";
 import { ModelSettingsProvider } from "../context/ModelSettingsContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -19,7 +18,6 @@ const SECTION_IDS = /** @type {const} */ ([
   "skills",
   "remote",
   "model",
-  "modelAdvanced",
   "about",
 ]);
 
@@ -91,7 +89,7 @@ export default function SettingsPage() {
   const sectionTitle =
     SECTION_IDS.includes(section) ? t(`settings.sections.${section}`) : t("settings.title");
 
-  const modelSection = section === "model" || section === "modelAdvanced";
+  const modelSection = section === "model";
 
   return (
     <ModelSettingsProvider>
@@ -178,12 +176,6 @@ export default function SettingsPage() {
             {section === "model" ?
               <div className="mx-auto flex h-full min-h-0 w-full max-w-[min(100%,52rem)] flex-1 flex-col">
                 <ModelProfilesPanel />
-              </div>
-            : null}
-
-            {section === "modelAdvanced" ?
-              <div className="mx-auto flex h-full min-h-0 w-full max-w-[min(100%,52rem)] flex-1 flex-col">
-                <ModelAdvancedPanel />
               </div>
             : null}
 

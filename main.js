@@ -18,6 +18,14 @@ const { syncOpenClawAgentFromStudioConfig } = require("./lib/sync-openclaw-agent
 const isDev = process.env.NODE_ENV === "development";
 const requireFromApp = createRequire(__dirname);
 
+/* Windows: Fluent/overlay scrollbars often ignore ::-webkit-scrollbar — disable so rail CSS applies. */
+if (process.platform === "win32") {
+  app.commandLine.appendSwitch(
+    "disable-features",
+    ["FluentOverlayScrollbars", "WindowsFluentScrollbar", "FluentScrollbars"].join(","),
+  );
+}
+
 const CHAT_STREAM_CHAN = "studio:chatStream";
 const BOOTSTRAP_PROGRESS_CHAN = "studio:bootstrapProgress";
 /** Overall budget for first-run gateway hydration (`tools.effective` can match first-chat prep cost). */
@@ -275,7 +283,8 @@ app.whenReady().then(() => {
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), STUDIO_PREWARM_BUDGET_MS);
       try {
-        await prewarmStudioGatewaySessions(cfg, ids, ac.signal);
+        const urgentFirst = Boolean(payload?.urgentFirst);
+        await prewarmStudioGatewaySessions(cfg, ids, ac.signal, { urgentFirst });
         return { ok: true, warmed: ids.length };
       } finally {
         clearTimeout(timer);

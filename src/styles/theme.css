@@ -71,6 +71,10 @@
   /** Active chat row “card” on the rail */
   --os-rail-active-card: #ffffff;
 
+  /** Sidebar scrollbars (solid RGBA — Fluent/WebKit sometimes skips color-mix on scrollbar pseudos). */
+  --os-rail-scrollbar-thumb: rgba(30, 34, 42, 0.22);
+  --os-rail-scrollbar-thumb-hover: rgba(30, 34, 42, 0.38);
+
   --os-focus-ring: rgba(196, 92, 50, 0.38);
   --os-scrollbar-thumb: rgba(15, 23, 42, 0.18);
 
@@ -146,6 +150,9 @@
   --os-rail-text-faint: rgba(235, 240, 246, 0.38);
   --os-rail-hover-bg: rgba(255, 255, 255, 0.07);
   --os-rail-active-card: rgba(255, 255, 255, 0.09);
+
+  --os-rail-scrollbar-thumb: rgba(235, 240, 246, 0.22);
+  --os-rail-scrollbar-thumb-hover: rgba(235, 240, 246, 0.42);
 
   --os-focus-ring: rgba(224, 122, 82, 0.45);
   --os-scrollbar-thumb: rgba(255, 255, 255, 0.18);

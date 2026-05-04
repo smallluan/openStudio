@@ -36,7 +36,7 @@ export function ModelSettingsProvider({ children }) {
   const [gateway, setGateway] = useState("http://127.0.0.1:18789");
   const [gatewayToken, setGatewayToken] = useState("");
   const [hasGatewayToken, setHasGatewayToken] = useState(false);
-  const [chatLabLeanPlugins, setChatLabLeanPlugins] = useState(true);
+  const [chatLabLeanPlugins, setChatLabLeanPlugins] = useState(false);
   const [sessionKey, setSessionKey] = useState("agent:dev:dev");
   const [hasKey, setHasKey] = useState(false);
   const [feedback, setFeedback] = useState(/** @type {{ kind: "ok" | "err"; text: string } | null} */ (null));

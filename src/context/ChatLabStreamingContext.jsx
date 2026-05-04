@@ -12,6 +12,10 @@ import {
   getSession,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
+import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
+
+/** @typedef {import("../chat/toolTraceMerge.js").ToolTraceRow} ToolTraceRow */
+/** @typedef {import("../chat/toolTraceMerge.js").ActivityRow} ActivityRow */
 
 /** @typedef {{
  *   streamingSessionId: string | null;
@@ -31,6 +35,8 @@ import {
  *   content: string;
  *   thinking: string;
  *   active: boolean;
+ *   toolTrace?: ToolTraceRow[];
+ *   activityLog?: ActivityRow[];
  * }} GatewayStreamSlice */
 
 /** @type {import("react").Context<ChatLabStreamingApi | null>} */
@@ -43,8 +49,10 @@ const PERSIST_MS = 420;
  * @param {string} assistantMessageId
  * @param {string} content
  * @param {string} thinking
+ * @param {ToolTraceRow[] | undefined} toolTrace
+ * @param {ActivityRow[] | undefined} activityLog
  */
-function persistAssistantMerge(conversationId, assistantMessageId, content, thinking) {
+function persistAssistantMerge(conversationId, assistantMessageId, content, thinking, toolTrace, activityLog) {
   const rec = getSession(conversationId);
   if (!rec) return;
   const messages = rec.messages.map((m) => {
@@ -59,6 +67,10 @@ function persistAssistantMerge(conversationId, assistantMessageId, content, thin
     const row = { ...m, content: nextC };
     if (nextT.trim()) row.thinking = nextT;
     else delete row.thinking;
+    if (Array.isArray(toolTrace) && toolTrace.length > 0) row.toolTrace = toolTrace;
+    else if (Array.isArray(toolTrace) && toolTrace.length === 0) delete row.toolTrace;
+    if (Array.isArray(activityLog) && activityLog.length > 0) row.activityLog = activityLog;
+    else if (Array.isArray(activityLog) && activityLog.length === 0) delete row.activityLog;
     return row;
   });
   const flat = messages.map((m) => ({
@@ -66,6 +78,8 @@ function persistAssistantMerge(conversationId, assistantMessageId, content, thin
     role: m.role,
     content: m.content,
     ...(m.thinking ? { thinking: m.thinking } : {}),
+    ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
+    ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
   }));
   const title = deriveTitleFromMessages(flat);
   upsertSession(conversationId, title || "…", messages);
@@ -104,6 +118,8 @@ export function ChatLabStreamingProvider({ children }) {
       assistantMessageId: args.assistantMessageId,
       content: "",
       thinking: "",
+      toolTrace: [],
+      activityLog: [],
       active: true,
     };
     sliceRef.current = next;
@@ -131,7 +147,14 @@ export function ChatLabStreamingProvider({ children }) {
         persistTimerRef.current = null;
         const s = sliceRef.current;
         if (!s?.active || !s.conversationId) return;
-        persistAssistantMerge(s.conversationId, s.assistantMessageId, s.content, s.thinking);
+        persistAssistantMerge(
+          s.conversationId,
+          s.assistantMessageId,
+          s.content,
+          s.thinking,
+          s.toolTrace ?? [],
+          s.activityLog ?? [],
+        );
       }, PERSIST_MS);
     };
 
@@ -142,7 +165,14 @@ export function ChatLabStreamingProvider({ children }) {
       }
       const s = sliceRef.current;
       if (!s?.conversationId) return;
-      persistAssistantMerge(s.conversationId, s.assistantMessageId, s.content, s.thinking);
+      persistAssistantMerge(
+        s.conversationId,
+        s.assistantMessageId,
+        s.content,
+        s.thinking,
+        s.toolTrace ?? [],
+        s.activityLog ?? [],
+      );
     };
 
     const clearSlice = () => {
@@ -163,6 +193,8 @@ export function ChatLabStreamingProvider({ children }) {
           assistantMessageId: "",
           content: "",
           thinking: "",
+          toolTrace: [],
+          activityLog: [],
         };
       }
       return {
@@ -170,6 +202,8 @@ export function ChatLabStreamingProvider({ children }) {
         assistantMessageId: s.assistantMessageId,
         content: s.content ?? "",
         thinking: s.thinking ?? "",
+        toolTrace: s.toolTrace ?? [],
+        activityLog: s.activityLog ?? [],
       };
     };
 
@@ -195,6 +229,26 @@ export function ChatLabStreamingProvider({ children }) {
             content: typeof evt.content === "string" ? evt.content : prev.content ?? "",
             thinking: typeof evt.thinking === "string" ? evt.thinking : prev.thinking ?? "",
           };
+          sliceRef.current = next;
+          setGatewayStreamSlice(next);
+          schedulePersist();
+          return;
+        }
+        case "tool_trace": {
+          const prev = sliceRef.current;
+          if (!prev || prev.streamId !== evt.streamId) return;
+          const toolTrace = mergeToolTrace(prev.toolTrace, evt);
+          const next = { ...prev, toolTrace };
+          sliceRef.current = next;
+          setGatewayStreamSlice(next);
+          schedulePersist();
+          return;
+        }
+        case "agent_activity": {
+          const prev = sliceRef.current;
+          if (!prev || prev.streamId !== evt.streamId) return;
+          const activityLog = mergeActivityLog(prev.activityLog, evt);
+          const next = { ...prev, activityLog };
           sliceRef.current = next;
           setGatewayStreamSlice(next);
           schedulePersist();
@@ -239,6 +293,8 @@ export function ChatLabStreamingProvider({ children }) {
                   assistantMessageId: snap.assistantMessageId,
                   content: snap.content,
                   thinking: snap.thinking,
+                  toolTrace: snap.toolTrace ?? [],
+                  activityLog: snap.activityLog ?? [],
                 },
               }),
             );
@@ -264,6 +320,8 @@ export function ChatLabStreamingProvider({ children }) {
                   message: raw,
                   content: snap.content,
                   thinking: snap.thinking,
+                  toolTrace: snap.toolTrace ?? [],
+                  activityLog: snap.activityLog ?? [],
                 },
               }),
             );
@@ -287,6 +345,8 @@ export function ChatLabStreamingProvider({ children }) {
                   assistantMessageId: snap.assistantMessageId,
                   content: snap.content,
                   thinking: snap.thinking,
+                  toolTrace: snap.toolTrace ?? [],
+                  activityLog: snap.activityLog ?? [],
                 },
               }),
             );

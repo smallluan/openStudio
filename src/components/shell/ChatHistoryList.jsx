@@ -242,6 +242,10 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   const reload = useCallback(() => setListVersion((v) => v + 1), []);
 
   const scrollRootRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const scrollContentRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const railScrollbarThumbRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+
+  const [railScrollable, setRailScrollable] = useState(false);
 
   useEffect(() => {
     const onStorage = (e) => {
@@ -276,6 +280,9 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     }
   }, [location.search]);
 
+  const emptyAll = allSessions.length === 0;
+  const emptyFilter = !emptyAll && filtered.length === 0;
+
   useLayoutEffect(() => {
     if (narrow || !highlight) return undefined;
     const root = scrollRootRef.current;
@@ -283,50 +290,143 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     return highlight.attachNestedScrollRoot(root);
   }, [highlight, narrow]);
 
+  const updateRailScrollbar = useCallback(() => {
+    const el = scrollRootRef.current;
+    const thumb = railScrollbarThumbRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const scrollRange = scrollHeight - clientHeight;
+    const overflow = scrollRange > 1;
+    setRailScrollable((prev) => (prev === overflow ? prev : overflow));
+    if (!thumb) return;
+    if (!overflow) {
+      thumb.style.height = "0px";
+      thumb.style.opacity = "0";
+      thumb.style.pointerEvents = "none";
+      return;
+    }
+    const trackH = clientHeight;
+    const thumbMin = 28;
+    const thumbH = Math.min(trackH, Math.max(thumbMin, Math.round((clientHeight / scrollHeight) * trackH)));
+    const thumbTravel = Math.max(1, trackH - thumbH);
+    const thumbTop = Math.round((scrollTop / scrollRange) * thumbTravel);
+    thumb.style.height = `${thumbH}px`;
+    thumb.style.opacity = "1";
+    thumb.style.pointerEvents = "auto";
+    thumb.style.transform = `translateY(${thumbTop}px)`;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (narrow) return undefined;
+    const el = scrollRootRef.current;
+    const inner = scrollContentRef.current;
+    if (!el) return undefined;
+    updateRailScrollbar();
+    const onScroll = () => updateRailScrollbar();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => updateRailScrollbar()) : null;
+    ro?.observe(el);
+    if (inner) ro?.observe(inner);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      ro?.disconnect();
+    };
+  }, [narrow, updateRailScrollbar, listVersion, filtered.length, emptyAll, emptyFilter]);
+
+  const onRailThumbPointerDown = useCallback(
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const el = scrollRootRef.current;
+      const thumb = railScrollbarThumbRef.current;
+      if (!el || !thumb) return;
+      const track = thumb.parentElement;
+      if (!track) return;
+      const scrollRange = el.scrollHeight - el.clientHeight;
+      if (scrollRange <= 1) return;
+      const startY = e.clientY;
+      const startScroll = el.scrollTop;
+      const trackH = track.clientHeight;
+      const thumbH = thumb.offsetHeight;
+      const thumbTravel = Math.max(1, trackH - thumbH);
+      const onMove = (ev) => {
+        const dy = ev.clientY - startY;
+        el.scrollTop = Math.min(scrollRange, Math.max(0, startScroll + (dy / thumbTravel) * scrollRange));
+      };
+      const onUp = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [],
+  );
+
   if (narrow) {
     return null;
   }
-
-  const emptyAll = allSessions.length === 0;
-  const emptyFilter = !emptyAll && filtered.length === 0;
 
   return (
     <div className="chat-history-rail flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden border-t border-[color-mix(in_srgb,var(--os-border)_80%,transparent)] px-0.5 pt-2.5">
       <div className="chat-history-rail__heading shrink-0 px-2 text-[0.72rem] font-semibold uppercase tracking-wide">
         {t("nav.chatHistory")}
       </div>
-      <div
-        ref={scrollRootRef}
-        className="chat-history-rail__scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-1"
-      >
-        {emptyAll ? (
-          <EmptyState title={t("nav.chatHistoryEmpty")} hideDecoration className="min-h-[5rem] py-6" />
-        ) : emptyFilter ? (
-          <EmptyState title={t("nav.chatHistoryNoMatch")} hideDecoration className="min-h-[5rem] py-6" />
-        ) : (
-          <ul className="relative z-[1] m-0 flex list-none flex-col gap-0.5 p-0 px-1">
-            {filtered.map((s) => {
-              const to = `/chat?c=${encodeURIComponent(s.id)}`;
-              const rowActive =
-                (location.pathname === "/chat" || location.pathname === "/") && activeC === s.id;
-              const displayTitle = s.title || t("nav.chatHistoryUntitled");
-              return (
-                <HistorySessionRow
-                  key={s.id}
-                  sessionId={s.id}
-                  displayTitle={displayTitle}
-                  updatedAt={s.updatedAt}
-                  rowActive={rowActive}
-                  to={to}
-                  measureRef={(node) => highlight?.registerSessionAnchor(s.id, node)}
-                  onRenamed={reload}
-                  onAfterDelete={reload}
-                  isStreaming={streamingSessionId === s.id}
-                />
-              );
-            })}
-          </ul>
-        )}
+      <div className="chat-history-rail__scroll-clip relative min-h-0 flex-1">
+        <div
+          ref={scrollRootRef}
+          className={cn(
+            "chat-history-rail__scroll scrollbar-hide h-full min-h-0 overflow-y-auto overflow-x-hidden pb-1",
+            railScrollable && "pr-2",
+          )}
+        >
+          <div ref={scrollContentRef}>
+            {emptyAll ? (
+              <EmptyState title={t("nav.chatHistoryEmpty")} hideDecoration className="min-h-[5rem] py-6" />
+            ) : emptyFilter ? (
+              <EmptyState title={t("nav.chatHistoryNoMatch")} hideDecoration className="min-h-[5rem] py-6" />
+            ) : (
+              <ul className="relative z-[1] m-0 flex list-none flex-col gap-0.5 p-0 px-1">
+                {filtered.map((s) => {
+                  const to = `/chat?c=${encodeURIComponent(s.id)}`;
+                  const rowActive =
+                    (location.pathname === "/chat" || location.pathname === "/") && activeC === s.id;
+                  const displayTitle = s.title || t("nav.chatHistoryUntitled");
+                  return (
+                    <HistorySessionRow
+                      key={s.id}
+                      sessionId={s.id}
+                      displayTitle={displayTitle}
+                      updatedAt={s.updatedAt}
+                      rowActive={rowActive}
+                      to={to}
+                      measureRef={(node) => highlight?.registerSessionAnchor(s.id, node)}
+                      onRenamed={reload}
+                      onAfterDelete={reload}
+                      isStreaming={streamingSessionId === s.id}
+                    />
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+        <div
+          className={cn(
+            "chat-history-rail__gutter pointer-events-none absolute top-0 right-0 bottom-1 z-[4] w-2 flex justify-center",
+            !railScrollable && "opacity-0",
+          )}
+          aria-hidden
+        >
+          <div className="chat-history-rail__gutter-track pointer-events-none relative h-full w-1 shrink-0 rounded-full">
+            <div
+              ref={railScrollbarThumbRef}
+              className="chat-history-rail__gutter-thumb pointer-events-auto absolute top-0 left-0 w-full rounded-full"
+              style={{ height: 0, willChange: "transform, height" }}
+              onPointerDown={onRailThumbPointerDown}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

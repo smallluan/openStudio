@@ -217,7 +217,8 @@ code {
   height: 100%;
   min-height: 0;
   overflow-x: hidden;
-  overflow-y: auto;
+  /* Expanded rail: chat history scrolls inside `.chat-history-rail__scroll` only (thin themed bar). */
+  overflow-y: hidden;
   border-right: none;
   background: var(--os-rail-surface);
   color: var(--os-rail-text);
@@ -236,6 +237,11 @@ code {
 
 .primary-rail--dragging {
   transition: none;
+}
+
+/* Narrow rail: no chat list — allow the column to scroll if nav exceeds height. */
+.primary-rail--narrow {
+  overflow-y: auto;
 }
 
 .primary-rail__header-row {
@@ -600,6 +606,47 @@ code {
 }
 
 /* Chat history highlight: FluidNav `.fluid-nav__blob` only; avoid duplicating card bg/shadow here. */
+
+/* Primary rail scroll surface (narrow / whole-rail overflow only; chat list uses a custom gutter). */
+.primary-rail {
+  scrollbar-width: thin;
+  scrollbar-color: var(--os-rail-scrollbar-thumb) transparent;
+}
+
+.primary-rail::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.primary-rail::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--os-rail-scrollbar-thumb);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.primary-rail::-webkit-scrollbar-thumb:hover {
+  background: var(--os-rail-scrollbar-thumb-hover);
+}
+
+.primary-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.primary-rail::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Chat history list: overlay thumb (Windows Electron often ignores ::-webkit-scrollbar). */
+.chat-history-rail__gutter-thumb {
+  background: var(--os-rail-scrollbar-thumb);
+  transition: background 0.14s ease;
+  touch-action: none;
+}
+
+.chat-history-rail__gutter-thumb:hover {
+  background: var(--os-rail-scrollbar-thumb-hover);
+}
 
 .primary-rail .chat-history-card__time {
   color: var(--os-rail-text-faint);
@@ -1490,20 +1537,21 @@ code {
 
 .chat-lab__think {
   margin: 0 0 0.65rem;
-  border-radius: 11px;
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  background: var(--os-bg-subtle);
+  border-radius: 10px;
+  border: none;
+  background: transparent;
 }
 
-.chat-lab__think summary {
+.chat-lab__think-summary {
   cursor: pointer;
+  list-style: none;
   padding: 0.45rem 0.72rem;
   font-size: 0.74rem;
   font-weight: 650;
-}
-
-.chat-lab__think summary::-webkit-details-marker {
-  color: var(--os-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.28rem 0.42rem;
 }
 
 .chat-lab__think-hint {
@@ -1514,16 +1562,277 @@ code {
 
 .chat-lab__think-body {
   margin: 0;
-  padding: 0.45rem 0.72rem 0.72rem;
-  font-size: 0.78rem;
-  line-height: 1.45;
+  padding: 0.4rem 0.72rem 0.72rem;
+  font-size: 0.766rem;
+  line-height: 1.48;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   color: var(--os-text-muted);
-  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.chat-lab__think-panel-inner {
   max-height: 18rem;
   overflow: auto;
+}
+
+/* ---- Trace disclosure (tool / activity / thinking folds) ---- */
+.trace-disclosure {
+  display: block;
+}
+
+.trace-disclosure__trigger {
+  box-sizing: border-box;
+  width: 100%;
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.trace-disclosure__trigger--static {
+  cursor: default;
+}
+
+.trace-disclosure__trigger:not(.trace-disclosure__trigger--static):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.trace-disclosure__panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.34s cubic-bezier(0.32, 0.72, 0.3, 1);
+}
+
+.trace-disclosure__panel[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trace-disclosure__panel {
+    transition-duration: 0.01ms;
+  }
+
+  .trace-disclosure__row-chevron svg,
+  .chat-lab__tool-chain-chevron {
+    transition-duration: 0.01ms;
+  }
+}
+
+.trace-disclosure__panel-measure {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.trace-disclosure__panel-inner {
+  min-height: 0;
+}
+
+.chat-lab__tool-chain {
+  margin: 0 0 0.5rem;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.chat-lab__tool-chain-summary {
+  cursor: pointer;
+  padding: 0.3rem 0.1rem 0.28rem 0;
+  font-size: 0.735rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.26rem 0.4rem;
+}
+
+.chat-lab__tool-chain-chevron {
+  flex-shrink: 0;
+  margin-right: 0.02rem;
+  margin-left: -0.06rem;
+  transition: transform 0.26s cubic-bezier(0.32, 0.72, 0.3, 1);
+  transform-origin: 50% 54%;
+  color: color-mix(in srgb, var(--os-text-muted) 92%, transparent);
+  opacity: 0.94;
+}
+
+.trace-disclosure:not([data-open="true"]) > .trace-disclosure__trigger .chat-lab__tool-chain-chevron {
+  transform: rotate(-90deg);
+}
+
+.trace-disclosure[data-open="true"] > .trace-disclosure__trigger .chat-lab__tool-chain-chevron {
+  transform: rotate(0deg);
+}
+
+.chat-lab__tool-chain-icon {
+  margin-left: 0.02rem;
+  flex-shrink: 0;
+  opacity: 0.72;
+}
+
+.chat-lab__tool-chain-body {
+  margin: 0;
+  padding: 0.08rem 0 0.4rem 1.72rem;
+}
+
+.chat-lab__tool-nested {
+  margin: 0;
+  padding: 0.1rem 0;
+  border: none;
+  background: transparent;
+  position: relative;
+}
+
+.chat-lab__tool-nested:first-child {
+  padding-top: 0.2rem;
+}
+
+.chat-lab__tool-nested:last-child {
+  padding-bottom: 0.1rem;
+}
+
+.chat-lab__tool-nested-summary {
+  cursor: pointer;
+  padding: 0.2rem 0;
+  margin-left: 0;
+  font-size: 0.688rem;
+  display: grid;
+  grid-template-columns: 1.22rem 1fr auto;
+  align-items: start;
+  gap: 0.4rem;
+  line-height: 1.4;
+}
+
+.chat-lab__tool-nested-copy {
+  min-width: 0;
+}
+
+.trace-disclosure__row-chevron {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  align-self: start;
+  margin-top: 0.16rem;
+  padding-left: 0.06rem;
+  opacity: 0.33;
+  color: color-mix(in srgb, var(--os-text-muted) 95%, transparent);
+}
+
+.trace-disclosure__row-chevron svg {
+  display: block;
+  transform-origin: 50% 46%;
+  transition: transform 0.31s cubic-bezier(0.32, 0.72, 0.3, 1);
+}
+
+.trace-disclosure__row-chevron[data-open="true"] svg {
+  transform: rotate(-180deg);
+}
+
+.chat-lab__tool-step-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 0.04rem;
+}
+
+.chat-lab__step-glyph {
+  flex-shrink: 0;
+  display: block;
+}
+
+.chat-lab__step-glyph--ok {
+  color: #1fa568;
+}
+
+.chat-lab__step-glyph--ok circle {
+  fill: none;
+}
+
+.chat-lab__step-glyph--ok path {
+  fill: none;
+}
+
+:root[data-theme="dark"] .chat-lab__step-glyph--ok {
+  color: #34d399;
+}
+
+.chat-lab__step-glyph--run {
+  color: color-mix(in srgb, var(--os-text-muted) 88%, transparent);
+}
+
+.chat-lab__step-glyph--fail {
+  color: color-mix(in srgb, #e24a4a 88%, var(--text));
+}
+
+.chat-lab__tool-title {
+  font-weight: 500;
+  letter-spacing: 0.012em;
+  word-break: break-word;
+  color: color-mix(in srgb, var(--text) 58%, var(--os-text-muted) 42%);
+}
+
+.chat-lab__tool-meta {
+  font-weight: 400;
+  font-size: 0.68rem;
+  color: var(--os-text-muted);
+}
+
+.chat-lab__tool-nested-meta {
+  font-size: 0.66rem;
+  margin-bottom: 0.38rem;
+  line-height: 1.4;
+}
+
+.chat-lab__tool-nested-body {
+  margin: 0;
+  padding: 0.3rem 0 0;
+  padding-left: 1.62rem;
+  font-size: 0.675rem;
+  line-height: 1.41;
+  color: var(--os-text-muted);
+  border-top: none;
+  max-height: 13rem;
+  overflow: auto;
+}
+
+.chat-lab__tool-nested-body pre {
+  margin: 0.35rem 0 0;
+  padding: 0.42rem 0.52rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--os-bg-subtle) 35%, transparent);
+  border: none;
+  font-size: 0.68rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-lab__activity-text {
+  margin-top: 0.26rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.658rem;
+  line-height: 1.43;
+  color: color-mix(in srgb, var(--text) 35%, var(--os-text-muted));
+}
+
+.chat-lab__md-a {
+  font-weight: 550;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.chat-lab__md-a:hover {
+  border-bottom-color: var(--accent);
 }
 
 .chat-lab__md {

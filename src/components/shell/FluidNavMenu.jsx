@@ -9,6 +9,11 @@ function isNavGroup(item) {
   return Boolean(item && item.kind === "group" && Array.isArray(item.items));
 }
 
+/** @param {DOMRectReadOnly} a @param {DOMRectReadOnly} b */
+function domRectsIntersect(a, b) {
+  return !(a.bottom <= b.top || a.top >= b.bottom || a.right <= b.left || a.left >= b.right);
+}
+
 function flatten(primaryItems, footerItems) {
   /** @type {*} */
   const out = [];
@@ -161,8 +166,20 @@ export default function FluidNavMenu({
         setBlob((b) => ({ ...b, opacity: 0 }));
         return;
       }
-      const r = rootLive.getBoundingClientRect();
       const e = elLive.getBoundingClientRect();
+      /* Chat history rows live inside nested scroll roots; hide the fluid blob when scrolled off-screen
+         — otherwise translate() uses viewport deltas that sit outside the clip and look “stuck” on the rail. */
+      for (const nest of nestedScrollRootsRef.current) {
+        if (nest.contains(elLive)) {
+          const nr = nest.getBoundingClientRect();
+          if (!domRectsIntersect(e, nr)) {
+            setBlob((b) => ({ ...b, opacity: 0 }));
+            return;
+          }
+          break;
+        }
+      }
+      const r = rootLive.getBoundingClientRect();
       const left = Math.round((e.left - r.left + rootLive.scrollLeft) * 100) / 100;
       const top = Math.round((e.top - r.top + rootLive.scrollTop) * 100) / 100;
       const width = Math.round(e.width * 100) / 100;
