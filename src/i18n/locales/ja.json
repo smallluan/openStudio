@@ -145,6 +145,7 @@
     "toolFriendlySessionBrief": "セッション状態",
     "toolFriendlyWithError": "{{summary}} · {{err}}",
     "activityTitle": "実行状況",
+    "activityStepsSummary": "{{count}} 件のステップを実行済み",
     "activityEmptyDetail": "詳細はありません。"
   },
   "bootstrap": {

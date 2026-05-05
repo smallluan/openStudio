@@ -40,15 +40,17 @@ export function TraceRowChevron({ className }) {
 }
 
 /**
- * @param {{ state: "ok" | "run" | "fail" }} props
+ * Tool-chain rows avoid the dashed “in progress” ring; use a compact dot instead.
+ * @param {{ state: "ok" | "run" | "fail"; forToolChain?: boolean }} props
  */
-export function TraceStepGlyph({ state }) {
+export function TraceStepGlyph({ state, forToolChain = false }) {
   const vb = "0 0 16 16";
+  const sz = 12;
   const sw = { ring: "1.12", fail: "1.12", dash: "1.08", check: "1.28" };
 
   if (state === "fail") {
     return (
-      <svg className={cn("chat-lab__step-glyph chat-lab__step-glyph--fail")} width="16" height="16" viewBox={vb} aria-hidden>
+      <svg className={cn("chat-lab__step-glyph chat-lab__step-glyph--fail")} width={sz} height={sz} viewBox={vb} aria-hidden>
         <circle cx="8" cy="8" r="7.2" stroke="currentColor" fill="none" strokeWidth={sw.fail} />
         <path d="M5.35 5.35l5.3 5.3M10.65 5.35l-5.3 5.3" stroke="currentColor" strokeWidth={sw.fail} strokeLinecap="round" />
       </svg>
@@ -56,8 +58,15 @@ export function TraceStepGlyph({ state }) {
   }
 
   if (state === "run") {
+    if (forToolChain) {
+      return (
+        <svg className={cn("chat-lab__step-glyph chat-lab__step-glyph--tool-run")} width={sz} height={sz} viewBox={vb} aria-hidden>
+          <circle cx="8" cy="8" r="3" fill="currentColor" opacity="0.5" />
+        </svg>
+      );
+    }
     return (
-      <svg className={cn("chat-lab__step-glyph chat-lab__step-glyph--run")} width="16" height="16" viewBox={vb} aria-hidden>
+      <svg className={cn("chat-lab__step-glyph chat-lab__step-glyph--run")} width={sz} height={sz} viewBox={vb} aria-hidden>
         <circle
           cx="8"
           cy="8"
@@ -74,7 +83,7 @@ export function TraceStepGlyph({ state }) {
   }
 
   return (
-    <svg className={cn("chat-lab__step-glyph chat-lab__step-glyph--ok")} width="16" height="16" viewBox={vb} aria-hidden>
+    <svg className={cn("chat-lab__step-glyph chat-lab__step-glyph--ok")} width={sz} height={sz} viewBox={vb} aria-hidden>
       <circle cx="8" cy="8" r="7.1" fill="none" stroke="currentColor" strokeWidth={sw.ring} />
       <path
         d="M4.75 8.25l2.2 2.35 4.35-6.05"

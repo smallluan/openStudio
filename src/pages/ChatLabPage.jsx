@@ -670,13 +670,6 @@ export default function ChatLabPage() {
               {t("chatLab.toolbarAuto")}
               <ToolbarChevron />
             </button>
-            <button type="button" className="chat-lab__pill-btn" disabled title={t("chatLab.toolbarConnectHint")}>
-              <span className="chat-lab__pill-ico" aria-hidden>
-                ⎗
-              </span>
-              {t("chatLab.toolbarConnect")}
-              <ToolbarChevron />
-            </button>
           </div>
           <div className="chat-lab__shell-toolbar-end">
             {gatewayStreaming ? (
@@ -684,15 +677,6 @@ export default function ChatLabPage() {
                 {t("chatLab.stop")}
               </button>
             ) : null}
-            <button
-              type="button"
-              className="chat-lab__attach"
-              disabled
-              aria-label={t("chatLab.attachHint")}
-              title={t("chatLab.attachHint")}
-            >
-              <ChatPaperclipIcon />
-            </button>
             <button
               type="button"
               className={cn("chat-lab__send-round", canSend && "chat-lab__send-round--active")}
@@ -792,27 +776,13 @@ function ToolbarChevron() {
   );
 }
 
-function ChatPaperclipIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M16.5 7.5 9 15a3 3 0 1 1 4.24 4.24l-7.07 7.07a5 5 0 1 1-7.07-7.07L16.11 6.28a3.5 3.5 0 1 1 4.95 4.95L10.5 22"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function ChatSendIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        d="M12 17V7M12 7 7 12M12 7l5 5"
+        d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"
         stroke="currentColor"
-        strokeWidth="1.45"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -1020,34 +990,6 @@ function getToolTracePresentation(row, t) {
   return { kind: "generic", brief: line, aria: line };
 }
 
-function ChatLabToolCallsIcon({ className }) {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM9 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0M21 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0M15 17l-6-3"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ChatLabActivityFeedIcon({ className }) {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M5 8h13M7 13h11M6 18h12"
-        stroke="currentColor"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 /** @returns {"ok"|"run"|"fail"} */
 function activityGlyphState(row, streaming, isTailRow) {
   const phase = String(row.phase ?? "").toLowerCase();
@@ -1097,7 +1039,7 @@ function ToolRow({ row, t }) {
       summary={
         <>
           <span className="chat-lab__tool-step-wrap" aria-hidden>
-            <TraceStepGlyph state={glyphState} />
+            <TraceStepGlyph state={glyphState} forToolChain />
           </span>
           <span className="chat-lab__tool-nested-copy">
             <span className="chat-lab__tool-title">{pres.brief}</span>
@@ -1164,13 +1106,7 @@ function ToolChainPanel({ rows, t, streaming }) {
       open={open}
       onOpenChange={setOpen}
       triggerClassName="chat-lab__tool-chain-summary"
-      summary={
-        <>
-          {t("chatLab.toolsInvokedSummary", { count: rows.length })}
-          <ChatLabToolCallsIcon className="chat-lab__tool-chain-icon muted" />
-          <span className="chat-lab__think-hint muted"> · {t("chatLab.toolCallsTitle")}</span>
-        </>
-      }
+      summary={t("chatLab.toolsInvokedSummary", { count: rows.length })}
     >
       <div className="chat-lab__tool-chain-body">
         {rows.map((row) => (
@@ -1262,13 +1198,7 @@ function ActivityChainPanel({ rows, t, streaming }) {
       open={open}
       onOpenChange={setOpen}
       triggerClassName="chat-lab__tool-chain-summary"
-      summary={
-        <>
-          {t("chatLab.activityTitle")}
-          <ChatLabActivityFeedIcon className="chat-lab__tool-chain-icon muted" />
-          <span className="chat-lab__think-hint muted"> · {rows.length}</span>
-        </>
-      }
+      summary={t("chatLab.activityStepsSummary", { count: rows.length })}
     >
       <div className="chat-lab__tool-chain-body">
         {rows.map((r, idx) => (

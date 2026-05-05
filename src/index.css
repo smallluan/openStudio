@@ -1236,9 +1236,34 @@ code {
   border: 1px solid color-mix(in srgb, var(--os-border) 42%, transparent);
   background: var(--os-bg-elevated);
   box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.03),
-    0 12px 36px rgba(15, 23, 42, 0.04);
+    0 2px 8px rgba(15, 23, 42, 0.04),
+    0 8px 32px rgba(15, 23, 42, 0.07);
   overflow: hidden;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.chat-lab__shell:focus-within {
+  border-color: color-mix(in srgb, var(--os-accent) 40%, var(--os-border));
+  box-shadow:
+    0 4px 14px rgba(15, 23, 42, 0.08),
+    0 18px 48px rgba(15, 23, 42, 0.1),
+    0 0 0 3px color-mix(in srgb, var(--os-accent) 16%, transparent);
+}
+
+:root[data-theme="dark"] .chat-lab__shell {
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.35),
+    0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="dark"] .chat-lab__shell:focus-within {
+  border-color: color-mix(in srgb, var(--os-accent) 55%, var(--os-border));
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.45),
+    0 20px 56px rgba(0, 0, 0, 0.55),
+    0 0 0 3px color-mix(in srgb, var(--os-accent) 22%, transparent);
 }
 
 .chat-lab__shell--hero {
@@ -1257,7 +1282,7 @@ code {
   font-size: 0.95rem;
   line-height: 1.5;
   font-family: inherit;
-  padding: 1rem 1.1rem 0.65rem;
+  padding: 1rem 1.1rem 0.5rem;
   outline: none;
 }
 
@@ -1271,9 +1296,9 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.45rem 0.65rem 0.55rem;
-  border-top: 1px solid color-mix(in srgb, var(--os-border) 55%, transparent);
-  background: color-mix(in srgb, var(--os-bg-subtle) 35%, transparent);
+  padding: 0 0.65rem 0.55rem;
+  border-top: none;
+  background: transparent;
 }
 
 .chat-lab__shell-toolbar-start {
@@ -1313,20 +1338,6 @@ code {
 .chat-lab__pill-chevron {
   opacity: 0.55;
   margin-left: 0.05rem;
-}
-
-.chat-lab__attach {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--os-text-muted);
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 
 .chat-lab__send-round {
@@ -1642,17 +1653,34 @@ code {
   box-shadow: none;
 }
 
+.chat-lab__tool-chain > .trace-disclosure__trigger {
+  width: fit-content;
+  max-width: 100%;
+}
+
 .chat-lab__tool-chain-summary {
   cursor: pointer;
-  padding: 0.3rem 0.1rem 0.28rem 0;
+  box-sizing: border-box;
+  padding: 0.3rem 0.62rem 0.3rem 0.44rem;
   font-size: 0.735rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: var(--text);
+  color: color-mix(in srgb, var(--text) 88%, var(--os-text-muted) 12%);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.26rem 0.4rem;
+  background: color-mix(in srgb, var(--os-bg-subtle) 72%, var(--os-bg-app) 28%);
+  border-radius: 8px;
+}
+
+:root[data-theme="dark"] .chat-lab__tool-chain-summary {
+  color: color-mix(in srgb, var(--text) 82%, var(--os-text-muted) 18%);
+  background: color-mix(in srgb, var(--os-bg-subtle) 88%, transparent);
+}
+
+.chat-lab__tool-chain > .trace-disclosure__trigger:focus-visible {
+  border-radius: 8px;
 }
 
 .chat-lab__tool-chain-chevron {
@@ -1680,8 +1708,14 @@ code {
 }
 
 .chat-lab__tool-chain-body {
-  margin: 0;
-  padding: 0.08rem 0 0.4rem 1.72rem;
+  box-sizing: border-box;
+  margin: 0.28rem 0 0.2rem 0.5rem;
+  padding: 0.12rem 0 0.42rem 0.62rem;
+  border-left: 1px solid color-mix(in srgb, var(--os-text-muted) 28%, transparent);
+}
+
+:root[data-theme="dark"] .chat-lab__tool-chain-body {
+  border-left-color: color-mix(in srgb, var(--os-text-muted) 38%, transparent);
 }
 
 .chat-lab__tool-nested {
@@ -1706,7 +1740,7 @@ code {
   margin-left: 0;
   font-size: 0.688rem;
   display: grid;
-  grid-template-columns: 1.22rem 1fr auto;
+  grid-template-columns: 0.92rem 1fr auto;
   align-items: start;
   gap: 0.4rem;
   line-height: 1.4;
@@ -1751,7 +1785,7 @@ code {
 }
 
 .chat-lab__step-glyph--ok {
-  color: #1fa568;
+  color: #14c767;
 }
 
 .chat-lab__step-glyph--ok circle {
@@ -1763,7 +1797,15 @@ code {
 }
 
 :root[data-theme="dark"] .chat-lab__step-glyph--ok {
-  color: #34d399;
+  color: #4ade80;
+}
+
+.chat-lab__step-glyph--tool-run {
+  color: #14c767;
+}
+
+:root[data-theme="dark"] .chat-lab__step-glyph--tool-run {
+  color: #4ade80;
 }
 
 .chat-lab__step-glyph--run {
@@ -1775,7 +1817,7 @@ code {
 }
 
 .chat-lab__tool-title {
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0.012em;
   word-break: break-word;
   color: color-mix(in srgb, var(--text) 58%, var(--os-text-muted) 42%);
@@ -1796,7 +1838,7 @@ code {
 .chat-lab__tool-nested-body {
   margin: 0;
   padding: 0.3rem 0 0;
-  padding-left: 1.62rem;
+  padding-left: 1.32rem;
   font-size: 0.675rem;
   line-height: 1.41;
   color: var(--os-text-muted);

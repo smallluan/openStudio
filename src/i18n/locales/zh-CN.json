@@ -132,7 +132,7 @@
     "gatewayConnectingPlaceholder": "正在连接网关…",
     "gatewayRetryHint": "页面会持续自动重试。若一直无法连接，请启动网关或在「设置 → 模型」中检查地址。",
     "chatUntitled": "未命名对话",
-    "toolsInvokedSummary": "已调用 {{count}} 个工具",
+    "toolsInvokedSummary": "调用 {{count}} 个工具",
     "toolCallsTitle": "调用工具",
     "toolArgs": "参数",
     "toolResult": "输出",
@@ -146,6 +146,7 @@
     "toolFriendlySessionBrief": "会话状态",
     "toolFriendlyWithError": "{{summary}} · {{err}}",
     "activityTitle": "运行过程",
+    "activityStepsSummary": "已执行 {{count}} 个步骤",
     "activityEmptyDetail": "无更多详情。"
   },
   "bootstrap": {

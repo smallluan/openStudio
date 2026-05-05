@@ -131,7 +131,7 @@
     "gatewayConnectingPlaceholder": "正在連線至閘道…",
     "gatewayRetryHint": "此頁面會每隔幾秒自動重試。若始終無法連線，請啟動閘道或在「設定 → 模型」檢查網址。",
     "chatUntitled": "未命名對話",
-    "toolsInvokedSummary": "已調用 {{count}} 個工具",
+    "toolsInvokedSummary": "呼叫 {{count}} 個工具",
     "toolCallsTitle": "呼叫工具",
     "toolArgs": "參數",
     "toolResult": "輸出",
@@ -145,6 +145,7 @@
     "toolFriendlySessionBrief": "工作階段狀態",
     "toolFriendlyWithError": "{{summary}} · {{err}}",
     "activityTitle": "執行過程",
+    "activityStepsSummary": "已執行 {{count}} 個步驟",
     "activityEmptyDetail": "無更多詳情。"
   },
   "bootstrap": {
