@@ -4,6 +4,9 @@ import NavSettingsIcon from "../assets/svg/NavSettingsIcon.jsx";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import {
   deriveTitleFromMessages,
   getSession,
@@ -19,6 +22,10 @@ import {
 import { createChatLabMarkdownComponents } from "../components/chat-lab/chatLabMarkdown.jsx";
 import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
 import { cn } from "../ui/cn.js";
+
+/** Markdown pipelines for assistant bubbles (GFM + LaTeX via KaTeX). */
+const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
+const CHAT_MD_REHYPE_PLUGINS = [rehypeKatex];
 
 const ERROR_CODE_KEY_MAP = {
   missing_gateway_url: "chatLab.gatewayUrlMissing",
@@ -1639,7 +1646,11 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
         ) : (
           <div className="chat-lab__md">
             {message.content ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+              <ReactMarkdown
+                remarkPlugins={CHAT_MD_REMARK_PLUGINS}
+                rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
+                components={mdComponents}
+              >
                 {message.content}
               </ReactMarkdown>
             ) : showTyping ? (

@@ -2065,6 +2065,18 @@ code {
   margin: 0.5em 0;
 }
 
+/* KaTeX (remark-math + rehype-katex): readable in prose, scroll wide block formulas. */
+.chat-lab__md .katex {
+  font-size: 1.06em;
+}
+
+.chat-lab__md .katex-display {
+  margin: 0.75em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
 .chat-lab__md h1,
 .chat-lab__md h2,
 .chat-lab__md h3 {

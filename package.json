@@ -24,13 +24,16 @@
   "dependencies": {
     "@floating-ui/react": "^0.27.19",
     "@tanstack/react-virtual": "^3.13.24",
+    "katex": "^0.16.45",
     "openclaw": "^2026.5.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.14.2",
     "react-syntax-highlighter": "^16.1.1",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
