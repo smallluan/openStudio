@@ -196,8 +196,10 @@ export function TraceDisclosure({
           className={cn("trace-disclosure__panel", panelClassName)}
           data-open={expanded}
         >
-          <div className="trace-disclosure__panel-measure">
-            <div className={cn("trace-disclosure__panel-inner", panelInnerClassName)}>{children}</div>
+          <div className={cn("trace-disclosure__panel-measure")}>
+            <div className={cn("trace-disclosure__panel-inner", panelInnerClassName)}>
+              {expanded ? children : null}
+            </div>
           </div>
         </div>
       </div>

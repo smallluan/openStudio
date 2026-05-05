@@ -147,7 +147,17 @@
     "toolFriendlyWithError": "{{summary}} · {{err}}",
     "activityTitle": "Run activity",
     "activityStepsSummary": "Executed {{count}} steps",
-    "activityEmptyDetail": "No extra detail."
+    "activityEmptyDetail": "No extra detail.",
+    "codeCopy": "Copy",
+    "codeCopied": "Copied",
+    "codePlain": "text",
+    "messageCopy": "Copy message",
+    "messageCopied": "Copied",
+    "messageEdit": "Edit message",
+    "messageSaveEdit": "Save and regenerate",
+    "messageCancelEdit": "Cancel edit",
+    "composerEditingMessageTag": "Editing message",
+    "composerDismissEditHint": "Dismiss — send will append a new message instead of rewriting from here"
   },
   "bootstrap": {
     "title": "Open Studio is getting ready",

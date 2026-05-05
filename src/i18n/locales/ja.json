@@ -146,7 +146,17 @@
     "toolFriendlyWithError": "{{summary}} · {{err}}",
     "activityTitle": "実行状況",
     "activityStepsSummary": "{{count}} 件のステップを実行済み",
-    "activityEmptyDetail": "詳細はありません。"
+    "activityEmptyDetail": "詳細はありません。",
+    "codeCopy": "コピー",
+    "codeCopied": "コピーしました",
+    "codePlain": "テキスト",
+    "messageCopy": "メッセージをコピー",
+    "messageCopied": "コピーしました",
+    "messageEdit": "編集して再生成",
+    "messageSaveEdit": "保存して再生成",
+    "messageCancelEdit": "編集を取り消す",
+    "composerEditingMessageTag": "メッセージを編集中",
+    "composerDismissEditHint": "閉じると送信は末尾に新しいメッセージとして追加されます"
   },
   "bootstrap": {
     "title": "Open Studio を準備しています",

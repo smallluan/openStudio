@@ -147,7 +147,17 @@
     "toolFriendlyWithError": "{{summary}} · {{err}}",
     "activityTitle": "运行过程",
     "activityStepsSummary": "已执行 {{count}} 个步骤",
-    "activityEmptyDetail": "无更多详情。"
+    "activityEmptyDetail": "无更多详情。",
+    "codeCopy": "复制",
+    "codeCopied": "已复制",
+    "codePlain": "文本",
+    "messageCopy": "复制本条",
+    "messageCopied": "已复制",
+    "messageEdit": "编辑并重发",
+    "messageSaveEdit": "保存并重新生成",
+    "messageCancelEdit": "取消编辑",
+    "composerEditingMessageTag": "修改消息",
+    "composerDismissEditHint": "关闭后继续发送将作为新消息追加，不从该条改写分支"
   },
   "bootstrap": {
     "title": "Open Studio 正在就绪",

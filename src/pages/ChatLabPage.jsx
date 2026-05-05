@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import NavSettingsIcon from "../assets/svg/NavSettingsIcon.jsx";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -15,6 +16,7 @@ import {
   useChatLabStreaming,
   useGatewayStreamSlice,
 } from "../context/ChatLabStreamingContext.jsx";
+import { createChatLabMarkdownComponents } from "../components/chat-lab/chatLabMarkdown.jsx";
 import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
 import { cn } from "../ui/cn.js";
 
@@ -28,6 +30,55 @@ const ERROR_CODE_KEY_MAP = {
 function newId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `m_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+/** @typedef {import("../i18n/messages.js").LocaleId} LocaleId */
+
+/** @param {number} ts @param {LocaleId} locale */
+function formatMessageTimestamp(ts, locale) {
+  if (typeof ts !== "number" || !Number.isFinite(ts)) return "";
+  const tag =
+    locale === "zh-TW" ? "zh-TW" : locale === "zh-CN" ? "zh-CN" : locale === "ja" ? "ja-JP" : "en-US";
+  try {
+    return new Intl.DateTimeFormat(tag, { dateStyle: "short", timeStyle: "short" }).format(new Date(ts));
+  } catch {
+    return new Date(ts).toLocaleString();
+  }
+}
+
+/**
+ * History rows posted to OpenClaw (system + tail user line are appended by the caller).
+ * @param {Array<{role: string; content?: string; thinking?: string; error?: string}>} msgs
+ */
+function buildGatewayPayloadRows(msgs) {
+  return msgs
+    .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
+    .map((m) => {
+      if (m.role !== "assistant") return { role: m.role, content: m.content };
+      const c = String(m.content ?? "").trim();
+      const th = String(m.thinking ?? "").trim();
+      return { role: m.role, content: c || th || "" };
+    });
+}
+
+/**
+ * Legacy sessions may omit `createdAt`; derive monotonic times so UI can show hover timestamps.
+ * @template {{ createdAt?: number }} T
+ * @param {T[]} rows
+ * @param {number} sessionUpdatedAt
+ * @returns {T[]}
+ */
+function withBackfilledCreatedAt(rows, sessionUpdatedAt) {
+  const base =
+    typeof sessionUpdatedAt === "number" && Number.isFinite(sessionUpdatedAt) && sessionUpdatedAt > 0
+      ? sessionUpdatedAt
+      : Date.now();
+  const n = rows.length;
+  const step = 900;
+  return rows.map((row, i) => {
+    if (typeof row.createdAt === "number" && Number.isFinite(row.createdAt)) return row;
+    return { ...row, createdAt: base - (n - 1 - i) * step };
+  });
 }
 
 /**
@@ -132,7 +183,7 @@ function buildStudioGatewayPrewarmIds(currentConversationId, max) {
 }
 
 export default function ChatLabPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -156,10 +207,16 @@ export default function ChatLabPage() {
   const [config, setConfig] = useState(/** @type {* | null} */ (null));
   const [configLoaded, setConfigLoaded] = useState(false);
   const [messages, setMessages] = useState(
-    /** @type {Array<{id: string; role: "user" | "assistant"; content: string; thinking?: string; streaming?: boolean; error?: string; toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[]; activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[]}>} */
+    /** @type {Array<{id: string; role: "user" | "assistant"; content: string; thinking?: string; streaming?: boolean; error?: string; toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[]; activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[]; createdAt?: number}>} */
     ([]),
   );
   const [input, setInput] = useState("");
+  /** When set, the next send replaces this user message and truncates the thread below it (unless the tag is dismissed). */
+  const [pendingEditMessageId, setPendingEditMessageId] = useState(/** @type {string | null} */ (null));
+  const pendingEditMessageIdRef = useRef(/** @type {string | null} */ (null));
+  useEffect(() => {
+    pendingEditMessageIdRef.current = pendingEditMessageId;
+  }, [pendingEditMessageId]);
   const [gatewayPhase, setGatewayPhase] = useState(
     /** @type {"loading" | "checking" | "online" | "offline"} */ ("loading"),
   );
@@ -172,7 +229,6 @@ export default function ChatLabPage() {
   /** The streamId tracked by main process for abort. */
   const activeStreamIdRef = useRef(/** @type {string | null} */ (null));
   const messagesRef = useRef(messages);
-  const messagesEndRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const messagesScrollRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const autoScrollRef = useRef(true);
 
@@ -184,6 +240,7 @@ export default function ChatLabPage() {
   useEffect(() => {
     activeAssistantIdRef.current = null;
     activeStreamIdRef.current = null;
+    setPendingEditMessageId(null);
   }, [conversationId]);
 
   /** Background `#studio:` prewarm (non-blocking); `urgentFirst` keeps the visible thread ahead of historical sessions on the hydrate queue. */
@@ -235,23 +292,27 @@ export default function ChatLabPage() {
 
     const rec = getSession(paramC);
     if (rec) {
-      setMessages(
-        rec.messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          ...(m.thinking ? { thinking: m.thinking } : {}),
-          ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
-          ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
-          streaming: false,
-        })),
-      );
+      const mapped = rec.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        ...(m.thinking ? { thinking: m.thinking } : {}),
+        ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
+        ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+        ...(typeof m.createdAt === "number" && Number.isFinite(m.createdAt) ? { createdAt: m.createdAt } : {}),
+        streaming: false,
+      }));
+      setMessages(withBackfilledCreatedAt(mapped, rec.updatedAt));
       setChatApiBlocked(false);
       return;
     }
     if (messagesRef.current.length > 0) return;
     navigate("/chat", { replace: true });
   }, [navigate, paramC]);
+
+  useEffect(() => {
+    autoScrollRef.current = true;
+  }, [paramC]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -267,6 +328,7 @@ export default function ChatLabPage() {
           ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
           ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
           ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+          ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
         }));
       if (toSave.length === 0) return;
       const title = deriveTitleFromMessages(messages);
@@ -364,24 +426,6 @@ export default function ChatLabPage() {
     };
     /** Avoid re-probing on every route change — redundant WS handshake load on the gateway. */
   }, [bridge, configIssueKey, configLoaded, isElectron, probeRestartKey]);
-
-  const scrollToBottomIfPinned = useCallback(() => {
-    if (!autoScrollRef.current) return;
-    const el = messagesScrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, []);
-
-  useEffect(() => {
-    scrollToBottomIfPinned();
-  }, [messages, gatewayStreaming, scrollToBottomIfPinned]);
-
-  const handleScroll = useCallback(() => {
-    const el = messagesScrollRef.current;
-    if (!el) return;
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    autoScrollRef.current = distFromBottom < 80;
-  }, []);
 
   useEffect(() => {
     if (!gatewaySliceForConv) return;
@@ -483,6 +527,159 @@ export default function ChatLabPage() {
     return t("chatLab.heroInputPlaceholder");
   }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
 
+  const commitUserMessageEdit = useCallback(
+    async (messageId, nextRaw) => {
+      const trimmed = String(nextRaw ?? "").trim();
+      if (!trimmed) return false;
+      if (!isElectron || !bridge?.startChatStream) return false;
+      if (configIssueKey) return false;
+      if (gatewayPhase !== "online" || chatApiBlocked) return false;
+
+      const prev = messagesRef.current;
+      const idx = prev.findIndex((m) => m.id === messageId && m.role === "user");
+      if (idx === -1) return false;
+
+      const sidAbort = activeStreamIdRef.current;
+      if (sidAbort) {
+        if (bridge?.abortChatStream) {
+          try {
+            await bridge.abortChatStream(sidAbort);
+          } catch {
+            /* ignore */
+          }
+        }
+        resetGatewayStream(sidAbort);
+      }
+      activeStreamIdRef.current = null;
+      activeAssistantIdRef.current = null;
+
+      const preservedCreated = prev[idx].createdAt;
+      const base = [
+        ...prev.slice(0, idx),
+        {
+          ...prev[idx],
+          content: trimmed,
+          createdAt: typeof preservedCreated === "number" ? preservedCreated : Date.now(),
+        },
+      ];
+
+      const priorRows = buildGatewayPayloadRows(base.slice(0, -1));
+      const userText = String(base[base.length - 1]?.content ?? "").trim();
+
+      if (!paramC) {
+        setSearchParams({ c: conversationId }, { replace: true });
+      }
+
+      const assistantNow = Date.now();
+      const assistantMsg = {
+        id: newId(),
+        role: /** @type {const} */ ("assistant"),
+        content: "",
+        thinking: "",
+        streaming: true,
+        createdAt: assistantNow,
+      };
+
+      const persistableBase = base
+        .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
+        .map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
+          ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
+          ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
+          ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+        }));
+      const persistableNext = [
+        ...persistableBase,
+        {
+          id: assistantMsg.id,
+          role: /** @type {const} */ ("assistant"),
+          content: "",
+          thinking: "",
+          createdAt: assistantMsg.createdAt,
+        },
+      ];
+      const provisionalTitle = deriveTitleFromMessages(
+        persistableNext.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          thinking: m.thinking,
+        })),
+      );
+      upsertSession(conversationId, provisionalTitle || "…", persistableNext);
+
+      const streamId = newId();
+      beginGatewayStream({
+        conversationId,
+        streamId,
+        assistantMessageId: assistantMsg.id,
+      });
+
+      setMessages([...base, assistantMsg]);
+      setInput("");
+      autoScrollRef.current = true;
+
+      activeStreamIdRef.current = streamId;
+      activeAssistantIdRef.current = assistantMsg.id;
+
+      const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
+      const outgoing = [systemMessage, ...priorRows, { role: "user", content: userText }];
+
+      const isFirstTurn = priorRows.length === 0;
+      if (
+        isFirstTurn &&
+        config?.chatLabAutoTitle &&
+        bridge?.generateChatTitle &&
+        config?.credentials?.hasProviderApiKey
+      ) {
+        void bridge.generateChatTitle({ userText: trimmed }).then((r) => {
+          if (!r?.ok || typeof r.title !== "string" || !r.title.trim()) return;
+          const rec = getSession(conversationId);
+          if (!rec) return;
+          renameSession(conversationId, r.title.trim());
+        });
+      }
+
+      try {
+        await bridge.startChatStream({ streamId, conversationId, messages: outgoing });
+      } catch (err) {
+        resetGatewayStream(streamId);
+        try {
+          await bridge.abortChatStream(streamId);
+        } catch {
+          /* ignore */
+        }
+        const raw = String(err?.message ?? err);
+        const msg = formatStreamError(raw, t);
+        finalizeAssistantById(assistantMsg.id, { error: msg });
+        if (isChatHttp404(raw)) {
+          setChatApiBlocked(true);
+          setProbeRestartKey((k) => k + 1);
+        }
+      }
+      return true;
+    },
+    [
+      beginGatewayStream,
+      bridge,
+      chatApiBlocked,
+      config?.chatLabAutoTitle,
+      config?.credentials?.hasProviderApiKey,
+      configIssueKey,
+      conversationId,
+      finalizeAssistantById,
+      gatewayPhase,
+      isElectron,
+      paramC,
+      resetGatewayStream,
+      setSearchParams,
+      t,
+    ],
+  );
+
   const send = useCallback(async () => {
     if (activeAssistantIdRef.current) return;
     if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
@@ -495,24 +692,32 @@ export default function ChatLabPage() {
     }
     if (gatewayPhase !== "online" || chatApiBlocked) return;
 
+    const editId = pendingEditMessageIdRef.current;
+    if (editId) {
+      const prev = messagesRef.current;
+      const idx = prev.findIndex((m) => m.id === editId && m.role === "user");
+      if (idx === -1) {
+        setPendingEditMessageId(null);
+      } else {
+        setPendingEditMessageId(null);
+        await commitUserMessageEdit(editId, trimmed);
+        return;
+      }
+    }
+
     if (!paramC) {
       setSearchParams({ c: conversationId }, { replace: true });
     }
 
     const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
-    const historyForRequest = messagesRef.current
-      .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
-      .map((m) => {
-        if (m.role !== "assistant") return { role: m.role, content: m.content };
-        const c = String(m.content ?? "").trim();
-        const th = String(m.thinking ?? "").trim();
-        return { role: m.role, content: c || th || "" };
-      });
+    const historyForRequest = buildGatewayPayloadRows(messagesRef.current);
 
+    const now = Date.now();
     const userMsg = {
       id: newId(),
       role: /** @type {const} */ ("user"),
       content: trimmed,
+      createdAt: now,
     };
     const assistantMsg = {
       id: newId(),
@@ -520,6 +725,7 @@ export default function ChatLabPage() {
       content: "",
       thinking: "",
       streaming: true,
+      createdAt: now,
     };
 
     const persistablePrior = messagesRef.current
@@ -529,11 +735,23 @@ export default function ChatLabPage() {
         role: m.role,
         content: m.content,
         ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
+        ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
       }));
     const persistableNext = [
       ...persistablePrior,
-      { id: userMsg.id, role: /** @type {const} */ ("user"), content: userMsg.content },
-      { id: assistantMsg.id, role: /** @type {const} */ ("assistant"), content: "", thinking: "" },
+      {
+        id: userMsg.id,
+        role: /** @type {const} */ ("user"),
+        content: userMsg.content,
+        createdAt: userMsg.createdAt,
+      },
+      {
+        id: assistantMsg.id,
+        role: /** @type {const} */ ("assistant"),
+        content: "",
+        thinking: "",
+        createdAt: assistantMsg.createdAt,
+      },
     ];
     const provisionalTitle = deriveTitleFromMessages(
       persistableNext.map((m) => ({
@@ -610,19 +828,18 @@ export default function ChatLabPage() {
     input,
     isElectron,
     paramC,
+    commitUserMessageEdit,
     resetGatewayStream,
     setSearchParams,
     t,
   ]);
 
-  const stop = useCallback(async () => {
+  const stop = useCallback(() => {
     const sid = activeStreamIdRef.current;
     if (!sid || !bridge?.abortChatStream) return;
-    try {
-      await bridge.abortChatStream(sid);
-    } catch {
+    void bridge.abortChatStream(sid).catch(() => {
       /* ignore — the stream will emit `aborted` or `done` itself */
-    }
+    });
   }, [bridge]);
 
   const onKeyDown = useCallback(
@@ -638,6 +855,11 @@ export default function ChatLabPage() {
 
   const isLanding = messages.length === 0;
 
+  const streamLocked = useMemo(
+    () => gatewayStreaming || messages.some((m) => m.role === "assistant" && m.streaming),
+    [gatewayStreaming, messages],
+  );
+
   const sendButtonTitle = useMemo(() => {
     if (configIssueKey) return t(configIssueKey);
     if (!isElectron) return t("chatLab.electronOnly");
@@ -647,6 +869,12 @@ export default function ChatLabPage() {
     }
     return undefined;
   }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
+
+  const beginComposerEdit = useCallback((messageId, content) => {
+    setPendingEditMessageId(messageId);
+    setInput(String(content ?? ""));
+    autoScrollRef.current = true;
+  }, []);
 
   const composer = (
     <div className={cn("chat-lab__composer-outer", isLanding && "chat-lab__composer-outer--landing")}>
@@ -670,23 +898,46 @@ export default function ChatLabPage() {
               {t("chatLab.toolbarAuto")}
               <ToolbarChevron />
             </button>
+            {pendingEditMessageId ? (
+              <span className="chat-lab__composer-edit-tag" role="status">
+                <span className="chat-lab__composer-edit-tag-label">{t("chatLab.composerEditingMessageTag")}</span>
+                <button
+                  type="button"
+                  className="chat-lab__composer-edit-tag-dismiss"
+                  onClick={() => setPendingEditMessageId(null)}
+                  title={t("chatLab.composerDismissEditHint")}
+                  aria-label={t("chatLab.composerDismissEditHint")}
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </span>
+            ) : null}
           </div>
           <div className="chat-lab__shell-toolbar-end">
             {gatewayStreaming ? (
-              <button type="button" className="btn-ghost chat-lab__shell-stop" onClick={stop}>
-                {t("chatLab.stop")}
+              <button
+                type="button"
+                className="chat-lab__send-round chat-lab__send-round--stop"
+                onClick={stop}
+                title={t("chatLab.stop")}
+                aria-label={t("chatLab.stop")}
+              >
+                <ChatStreamPauseIcon />
               </button>
-            ) : null}
-            <button
-              type="button"
-              className={cn("chat-lab__send-round", canSend && "chat-lab__send-round--active")}
-              disabled={!canSend}
-              onClick={send}
-              title={sendButtonTitle}
-              aria-label={t("chatLab.send")}
-            >
-              <ChatSendIcon />
-            </button>
+            ) : (
+              <button
+                type="button"
+                className={cn("chat-lab__send-round", canSend && "chat-lab__send-round--active")}
+                disabled={!canSend}
+                onClick={send}
+                title={sendButtonTitle}
+                aria-label={t("chatLab.send")}
+              >
+                <ChatSendIcon />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -741,19 +992,18 @@ export default function ChatLabPage() {
           <header className="chat-lab__conv-header">
             <h2 className="chat-lab__conv-title">{headerTitle || t("chatLab.chatUntitled")}</h2>
           </header>
-          <div
-            className="chat-lab__messages"
-            ref={messagesScrollRef}
-            onScroll={handleScroll}
-            role="log"
-            aria-live="polite"
-            aria-label={t("chatLab.title")}
-          >
-            {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} t={t} />
-            ))}
-            <div ref={messagesEndRef} aria-hidden />
-          </div>
+          <ChatLabVirtualMessageList
+            key={conversationId}
+            messages={messages}
+            messagesScrollRef={messagesScrollRef}
+            autoScrollRef={autoScrollRef}
+            gatewayStreaming={gatewayStreaming}
+            streamLocked={streamLocked}
+            onBeginUserEdit={beginComposerEdit}
+            t={t}
+            locale={locale}
+            threadLabel={t("chatLab.title")}
+          />
           {composer}
         </div>
       )}
@@ -778,7 +1028,7 @@ function ToolbarChevron() {
 
 function ChatSendIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"
         stroke="currentColor"
@@ -786,6 +1036,16 @@ function ChatSendIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+/** Pause bars — shown on the red “stop stream” control (icon only; label via aria on the button). */
+function ChatStreamPauseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="7" y="6" width="3.5" height="12" rx="1" fill="currentColor" />
+      <rect x="13.5" y="6" width="3.5" height="12" rx="1" fill="currentColor" />
     </svg>
   );
 }
@@ -1095,7 +1355,7 @@ function ToolRow({ row, t }) {
  * }} props
  */
 function ToolChainPanel({ rows, t, streaming }) {
-  const [open, setOpen] = useState(() => true);
+  const [open, setOpen] = useState(() => false);
   useEffect(() => {
     if (streaming) setOpen(true);
   }, [streaming]);
@@ -1215,6 +1475,34 @@ function ActivityChainPanel({ rows, t, streaming }) {
   );
 }
 
+function MessageMetaCopyIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2M8 8h11a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MessageMetaEditIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /**
  * @param {{
  *   message: {
@@ -1226,17 +1514,22 @@ function ActivityChainPanel({ rows, t, streaming }) {
  *     error?: string;
  *     toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
  *     activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[];
+ *     createdAt?: number;
  *   };
  *   t: (key: string, vars?: Record<string, string | number>) => string;
+ *   locale: import("../i18n/messages.js").LocaleId;
+ *   streamLocked: boolean;
+ *   onBeginUserEdit: (messageId: string, content: string) => void;
  * }} props
  */
-function MessageBubble({ message, t }) {
+const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLocked, onBeginUserEdit }) {
   const isUser = message.role === "user";
   const showTyping =
     !isUser && message.streaming && !message.content && !message.thinking && !message.error;
 
   const mdComponents = useMemo(
     () => ({
+      ...createChatLabMarkdownComponents(t),
       /** @param {import("react").AnchorHTMLAttributes<HTMLAnchorElement> & { children?: import("react").ReactNode }} props */
       a: ({ href, children }) => (
         <a href={href ?? "#"} target="_blank" rel="noreferrer noopener" className="chat-lab__md-a">
@@ -1244,7 +1537,7 @@ function MessageBubble({ message, t }) {
         </a>
       ),
     }),
-    [],
+    [t],
   );
 
   const [thinkOpen, setThinkOpen] = useState(() => Boolean(message.streaming));
@@ -1256,54 +1549,284 @@ function MessageBubble({ message, t }) {
   const toolRows = Array.isArray(message.toolTrace) ? message.toolTrace : [];
   const activityRows = Array.isArray(message.activityLog) ? message.activityLog : [];
 
+  const timeLabel =
+    typeof message.createdAt === "number" ? formatMessageTimestamp(message.createdAt, locale) : "";
+  const timeIso =
+    typeof message.createdAt === "number" && Number.isFinite(message.createdAt)
+      ? new Date(message.createdAt).toISOString()
+      : undefined;
+
+  const copyPlain = useMemo(() => {
+    if (isUser) return String(message.content ?? "");
+    const c = String(message.content ?? "").trim();
+    const th = String(message.thinking ?? "").trim();
+    const err = message.error ? String(message.error).trim() : "";
+    const parts = /** @type {string[]} */ ([]);
+    if (c) parts.push(c);
+    if (th) parts.push(th);
+    if (err) parts.push(err);
+    return parts.join("\n\n---\n");
+  }, [isUser, message.content, message.error, message.thinking]);
+
+  const [copiedPulse, setCopiedPulse] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    const text = copyPlain.trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {
+        return;
+      }
+    }
+    setCopiedPulse(true);
+    window.setTimeout(() => setCopiedPulse(false), 1600);
+  }, [copyPlain]);
+
+  const disableUserEdit = streamLocked;
+
+  const startComposerEdit = useCallback(() => {
+    onBeginUserEdit(message.id, String(message.content ?? ""));
+  }, [message.content, message.id, onBeginUserEdit]);
+
   return (
-    <article
-      className={cn("chat-lab__bubble", isUser && "chat-lab__bubble--user")}
-      data-role={message.role}
-    >
-      {!isUser && toolRows.length > 0 ? (
-        <ToolChainPanel rows={toolRows} t={t} streaming={Boolean(message.streaming)} />
-      ) : null}
-      {!isUser && activityRows.length > 0 ? (
-        <ActivityChainPanel rows={activityRows} t={t} streaming={Boolean(message.streaming)} />
-      ) : null}
-      {!isUser && message.thinking ? (
-        <TraceDisclosure
-          className={cn("chat-lab__think", message.streaming && "thinking-pulse-border")}
-          open={thinkOpen}
-          onOpenChange={setThinkOpen}
-          triggerClassName="chat-lab__think-summary"
-          panelInnerClassName="chat-lab__think-panel-inner"
-          summary={
-            <>
-              {t("chatLab.thinking")}
-              <span className="chat-lab__think-hint muted">· {t("chatLab.thinkingHint")}</span>
-            </>
-          }
-        >
-          <pre className="chat-lab__think-body">{message.thinking}</pre>
-        </TraceDisclosure>
-      ) : null}
-      {isUser ? (
-        <div className="chat-lab__user-text">{message.content}</div>
-      ) : (
-        <div className="chat-lab__md">
-          {message.content ? (
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-              {message.content}
-            </ReactMarkdown>
-          ) : showTyping ? (
-            <ChatStreamingIndicator label={t("chatLab.streaming")} />
-          ) : !message.thinking && !message.error && toolRows.length === 0 && activityRows.length === 0 ? (
-            <p className="chat-lab__empty-reply muted">{t("chatLab.emptyAssistantReply")}</p>
-          ) : null}
-          {message.error ? (
-            <div className="mt-1 text-[0.78rem]" style={{ color: "#d84b4b" }}>
-              {message.error}
-            </div>
-          ) : null}
-        </div>
+    <div
+      className={cn(
+        "chat-lab__msg",
+        isUser ? "chat-lab__msg--user" : "chat-lab__msg--assistant",
       )}
-    </article>
+    >
+      <article
+        className={cn("chat-lab__bubble", isUser && "chat-lab__bubble--user")}
+        data-role={message.role}
+      >
+        {!isUser && toolRows.length > 0 ? (
+          <ToolChainPanel rows={toolRows} t={t} streaming={Boolean(message.streaming)} />
+        ) : null}
+        {!isUser && activityRows.length > 0 ? (
+          <ActivityChainPanel rows={activityRows} t={t} streaming={Boolean(message.streaming)} />
+        ) : null}
+        {!isUser && message.thinking ? (
+          <TraceDisclosure
+            className={cn("chat-lab__think", message.streaming && "thinking-pulse-border")}
+            open={thinkOpen}
+            onOpenChange={setThinkOpen}
+            triggerClassName="chat-lab__think-summary"
+            panelInnerClassName="chat-lab__think-panel-inner"
+            summary={
+              <>
+                {t("chatLab.thinking")}
+                <span className="chat-lab__think-hint muted">· {t("chatLab.thinkingHint")}</span>
+              </>
+            }
+          >
+            <pre className="chat-lab__think-body">{message.thinking}</pre>
+          </TraceDisclosure>
+        ) : null}
+        {isUser ? (
+          <div className="chat-lab__user-text">{message.content}</div>
+        ) : (
+          <div className="chat-lab__md">
+            {message.content ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+                {message.content}
+              </ReactMarkdown>
+            ) : showTyping ? (
+              <ChatStreamingIndicator label={t("chatLab.streaming")} />
+            ) : !message.thinking && !message.error && toolRows.length === 0 && activityRows.length === 0 ? (
+              <p className="chat-lab__empty-reply muted">{t("chatLab.emptyAssistantReply")}</p>
+            ) : null}
+            {message.error ? (
+              <div className="mt-1 text-[0.78rem]" style={{ color: "#d84b4b" }}>
+                {message.error}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </article>
+      {isUser || !message.streaming ? (
+        <div
+          className={cn(
+            "chat-lab__msg-footer",
+            isUser ? "chat-lab__msg-footer--user" : "chat-lab__msg-footer--assistant",
+          )}
+        >
+          {timeLabel ? (
+            <time className="chat-lab__msg-time" dateTime={timeIso}>
+              {timeLabel}
+            </time>
+          ) : null}
+          <div className="chat-lab__msg-actions">
+            {isUser ? (
+              <>
+                <button
+                  type="button"
+                  className="chat-lab__msg-action-btn"
+                  onClick={handleCopy}
+                  disabled={!copyPlain.trim()}
+                  title={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
+                  aria-label={t("chatLab.messageCopy")}
+                >
+                  <MessageMetaCopyIcon />
+                </button>
+                <button
+                  type="button"
+                  className="chat-lab__msg-action-btn"
+                  onClick={startComposerEdit}
+                  disabled={disableUserEdit}
+                  title={t("chatLab.messageEdit")}
+                  aria-label={t("chatLab.messageEdit")}
+                >
+                  <MessageMetaEditIcon />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="chat-lab__msg-action-btn"
+                onClick={handleCopy}
+                disabled={!copyPlain.trim()}
+                title={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
+                aria-label={t("chatLab.messageCopy")}
+              >
+                <MessageMetaCopyIcon />
+              </button>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
+/**
+ * Variable-height virtual list for chat bubbles (Markdown cost scales with visible rows only).
+ * @param {{
+ *   messages: Array<{
+ *     id: string;
+ *     role: "user" | "assistant";
+ *     content: string;
+ *     thinking?: string;
+ *     streaming?: boolean;
+ *     error?: string;
+ *     toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
+ *     activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[];
+ *     createdAt?: number;
+ *   }>;
+ *   messagesScrollRef: import("react").MutableRefObject<HTMLDivElement | null>;
+ *   autoScrollRef: import("react").MutableRefObject<boolean>;
+ *   gatewayStreaming: boolean;
+ *   streamLocked: boolean;
+ *   onBeginUserEdit: (messageId: string, content: string) => void;
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ *   locale: LocaleId;
+ *   threadLabel: string;
+ * }} props
+ */
+function ChatLabVirtualMessageList({
+  messages,
+  messagesScrollRef,
+  autoScrollRef,
+  gatewayStreaming,
+  streamLocked,
+  onBeginUserEdit,
+  t,
+  locale,
+  threadLabel,
+}) {
+  const messagesEstRef = useRef(messages);
+  messagesEstRef.current = messages;
+
+  const estimateSize = useCallback((index) => {
+    const m = messagesEstRef.current[index];
+    return m?.role === "user" ? 96 : 228;
+  }, []);
+
+  const getItemKey = useCallback((index) => messagesEstRef.current[index]?.id ?? index, []);
+
+  const rowVirtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => messagesScrollRef.current,
+    estimateSize,
+    overscan: 8,
+    getItemKey,
+    useAnimationFrameWithResizeObserver: true,
+  });
+
+  const virtualTotal = rowVirtualizer.getTotalSize();
+  const vInstRef = useRef(rowVirtualizer);
+  vInstRef.current = rowVirtualizer;
+
+  const handleScroll = useCallback(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    autoScrollRef.current = distFromBottom < 80;
+  }, [messagesScrollRef, autoScrollRef]);
+
+  /** Pin-to-bottom only when the transcript or stream phase changes — not on row height remeasure (e.g. tool panels). */
+  useLayoutEffect(() => {
+    if (!autoScrollRef.current || messages.length === 0) return;
+    vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
+  }, [messages, gatewayStreaming, autoScrollRef]);
+
+  return (
+    <div
+      className="chat-lab__messages chat-lab__messages--virtual"
+      ref={messagesScrollRef}
+      onScroll={handleScroll}
+      role="log"
+      aria-live="polite"
+      aria-label={threadLabel}
+    >
+      <div
+        className="chat-lab__messages-vtrack"
+        style={{
+          height: virtualTotal,
+          width: "100%",
+          position: "relative",
+          flexShrink: 0,
+        }}
+      >
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const m = messages[virtualRow.index];
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={rowVirtualizer.measureElement}
+              className="chat-lab__msg-vrow"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualRow.start}px)`,
+                ...(virtualRow.index < messages.length - 1 ? { paddingBottom: "0.85rem" } : {}),
+              }}
+            >
+              <MessageBubble
+                message={m}
+                t={t}
+                locale={locale}
+                streamLocked={streamLocked}
+                onBeginUserEdit={onBeginUserEdit}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

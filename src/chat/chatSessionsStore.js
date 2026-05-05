@@ -16,6 +16,7 @@ const MAX_SESSIONS = 50;
  * @property {string} [thinking]
  * @property {ToolTraceRow[]} [toolTrace]
  * @property {ActivityRow[]} [activityLog]
+ * @property {number} [createdAt]
  */
 
 /**
@@ -26,6 +27,42 @@ const MAX_SESSIONS = 50;
  * @property {number} updatedAt
  * @property {PersistedChatMessage[]} messages
  */
+
+/** Parsed sessions mirrored from localStorage; refreshed whenever `writeAll` runs. */
+/** @type {ChatSessionRecord[] | null} */
+let sessionsLoadCache = null;
+
+/** Drop parse cache (e.g. after external storage mutation). Next `loadAllSessions` reads disk again. */
+export function invalidateChatSessionsCache() {
+  sessionsLoadCache = null;
+}
+
+/** @returns {ChatSessionRecord[]} */
+function parseSessionsFromStorage() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (r) =>
+          r &&
+          typeof r === "object" &&
+          typeof r.id === "string" &&
+          Array.isArray(r.messages),
+      )
+      .map((r) => ({
+        id: r.id,
+        title: typeof r.title === "string" ? r.title : "",
+        titleIsCustom: Boolean(r.titleIsCustom),
+        updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : 0,
+        messages: sanitizeMessages(r.messages),
+      }));
+  } catch {
+    return [];
+  }
+}
 
 /** @param {unknown} raw */
 function sanitizeToolTrace(raw) {
@@ -80,29 +117,8 @@ function sanitizeActivityLog(raw) {
 
 /** @returns {ChatSessionRecord[]} */
 export function loadAllSessions() {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (r) =>
-          r &&
-          typeof r === "object" &&
-          typeof r.id === "string" &&
-          Array.isArray(r.messages),
-      )
-      .map((r) => ({
-        id: r.id,
-        title: typeof r.title === "string" ? r.title : "",
-        titleIsCustom: Boolean(r.titleIsCustom),
-        updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : 0,
-        messages: sanitizeMessages(r.messages),
-      }));
-  } catch {
-    return [];
-  }
+  if (!sessionsLoadCache) sessionsLoadCache = parseSessionsFromStorage();
+  return sessionsLoadCache;
 }
 
 /** @param {PersistedChatMessage[]} a @param {PersistedChatMessage[]} b */
@@ -118,6 +134,9 @@ function persistedMessagesEqual(a, b) {
     if (xt !== yt) return false;
     if (JSON.stringify(x.toolTrace ?? null) !== JSON.stringify(y.toolTrace ?? null)) return false;
     if (JSON.stringify(x.activityLog ?? null) !== JSON.stringify(y.activityLog ?? null)) return false;
+    const xc = typeof x.createdAt === "number" && Number.isFinite(x.createdAt) ? x.createdAt : -1;
+    const yc = typeof y.createdAt === "number" && Number.isFinite(y.createdAt) ? y.createdAt : -1;
+    if (xc !== yc) return false;
   }
   return true;
 }
@@ -143,6 +162,7 @@ function sanitizeMessages(raw) {
       const al = sanitizeActivityLog(m.activityLog);
       if (al?.length) row.activityLog = al;
     }
+    if (typeof m.createdAt === "number" && Number.isFinite(m.createdAt)) row.createdAt = m.createdAt;
     out.push(row);
   }
   return out;
@@ -151,6 +171,7 @@ function sanitizeMessages(raw) {
 /** @param {ChatSessionRecord[]} rows */
 function writeAll(rows) {
   const sorted = [...rows].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_SESSIONS);
+  sessionsLoadCache = sorted;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
   } catch {
