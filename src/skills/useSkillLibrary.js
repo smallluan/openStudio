@@ -5,6 +5,12 @@ export function useSkillLibrary() {
   const [lib, setLib] = useState(loadSkillLibrary);
 
   useEffect(() => {
+    const onExternal = () => setLib(loadSkillLibrary());
+    window.addEventListener("openstudio-skill-library-changed", onExternal);
+    return () => window.removeEventListener("openstudio-skill-library-changed", onExternal);
+  }, []);
+
+  useEffect(() => {
     saveSkillLibrary(lib);
   }, [lib]);
 

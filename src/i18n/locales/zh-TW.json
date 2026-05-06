@@ -83,14 +83,37 @@
   },
   "lobsterPage": {
     "title": "龍蝦管理",
-    "desc": "管理龍蝦相關設定與狀態的入口頁面，具體內容將於後續接入。",
-    "placeholder": "此處可放置龍蝦清單、餵食計畫，或與 OpenClaw 連動的主控台。"
+    "desc": "管理工作室中的每個子智慧體（龍蝦）：顯示名稱、描述、綁定技能與 OpenClaw 工作階段鍵。資料儲存在本機並與工作室畫布同步。",
+    "actions": {
+      "create": "新增智慧體",
+      "delete": "刪除"
+    },
+    "searchPlaceholder": "搜尋智慧體",
+    "emptyList": "沒有符合的智慧體。",
+    "noSelection": "請從左側選擇一個智慧體，或新增一個。",
+    "detailTitle": "基本資訊",
+    "fieldName": "顯示名稱",
+    "fieldDescription": "描述（選填）",
+    "fieldSessionKey": "OpenClaw 工作階段鍵（選填）",
+    "sessionKeyPlaceholder": "對接 OpenClaw 工作階段／識別",
+    "skillsHeading": "綁定技能",
+    "skillFilterPlaceholder": "篩選技能",
+    "skillsHint": "勾選後，此智慧體可使用該技能（實際呼叫鏈將由後續執行階段接入）。",
+    "skillsEmpty": "沒有符合的技能。可先到「技能」頁新增本機技能，或使用內建清單。",
+    "skillCount": "已綁定 {{n}} 個技能",
+    "defaultNewName": "新增智慧體",
+    "deleteModal": {
+      "title": "刪除智慧體",
+      "body": "確定要刪除「{{name}}」嗎？無法復原（本機存檔會一併更新）。",
+      "confirm": "刪除"
+    }
   },
   "skillsPage": {
     "title": "技能",
     "desc": "瀏覽 OpenClaw 內建能力範例，並在本機記錄你上傳或以自然語言描述的技能（離線草稿；路徑只存在此裝置）。",
     "searchPlaceholder": "搜尋技能",
     "filterAll": "全部",
+    "filterTabsAria": "依分類篩選技能",
     "actions": {
       "upload": "上傳技能",
       "createNl": "自然語言建立",

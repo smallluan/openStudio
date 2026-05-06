@@ -1392,6 +1392,19 @@ code {
   border: 1px solid color-mix(in srgb, var(--os-border) 65%, transparent);
   border-radius: 999px;
   background: var(--os-bg-elevated);
+}
+
+.chat-lab__pill-btn:not(:disabled) {
+  cursor: pointer;
+  opacity: 1;
+}
+
+.chat-lab__pill-btn:not(:disabled):hover {
+  color: var(--os-text);
+  border-color: color-mix(in srgb, var(--os-border) 82%, transparent);
+}
+
+.chat-lab__pill-btn:disabled {
   cursor: not-allowed;
   opacity: 0.72;
 }

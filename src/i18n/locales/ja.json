@@ -83,14 +83,37 @@
   },
   "lobsterPage": {
     "title": "ロブスター管理",
-    "desc": "ロブスター関連の設定と状態への入口です。詳細は後から接続します。",
-    "placeholder": "ロブスター一覧、給餌スケジュール、OpenClaw 連携コンソールなどをここに配置できます。"
+    "desc": "スタジオ上のサブエージェント（ロブスターごと）を管理します。表示名・説明・バインドするスキル・OpenClaw セションキーを設定できます。データはローカルに保存されスタジオ表示と同期します。",
+    "actions": {
+      "create": "エージェントを作成",
+      "delete": "削除"
+    },
+    "searchPlaceholder": "エージェントを検索",
+    "emptyList": "一致するエージェントがありません。",
+    "noSelection": "一覧から選ぶか、新規作成してください。",
+    "detailTitle": "基本情報",
+    "fieldName": "表示名",
+    "fieldDescription": "説明（任意）",
+    "fieldSessionKey": "OpenClaw セッションキー（任意）",
+    "sessionKeyPlaceholder": "OpenClaw のセッション／識別子",
+    "skillsHeading": "バインドするスキル",
+    "skillFilterPlaceholder": "スキルを絞り込み",
+    "skillsHint": "チェックしたスキルはこのエージェント向けに有効になります（実行時の接続は今後）。",
+    "skillsEmpty": "一致するスキルがありません。「スキル」ページで追加するか、同梱スキルを利用してください。",
+    "skillCount": "スキル {{n}} 件をバインド",
+    "defaultNewName": "新しいエージェント",
+    "deleteModal": {
+      "title": "エージェントを削除",
+      "body": "「{{name}}」を削除しますか？元に戻せません（ローカル保存も更新されます）。",
+      "confirm": "削除"
+    }
   },
   "skillsPage": {
     "title": "スキル",
     "desc": "OpenClaw 同梱イメージのスキル例を見られ、アップロードや自然言語で書いたスキルをローカルに記録します（オフライン下書き・パスはこの端末のみ）。",
     "searchPlaceholder": "スキルを検索",
     "filterAll": "すべて",
+    "filterTabsAria": "カテゴリでスキルを絞り込み",
     "actions": {
       "upload": "ローカル登録",
       "createNl": "自然言語で作成",

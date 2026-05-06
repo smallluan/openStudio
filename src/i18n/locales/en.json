@@ -83,14 +83,37 @@
   },
   "lobsterPage": {
     "title": "Lobster management",
-    "desc": "Entry point for lobster-related configuration and status; details will be wired up later.",
-    "placeholder": "Room for a lobster list, feeding schedule, or an OpenClaw-linked console."
+    "desc": "Manage each sub-agent (“lobster”) in the studio: display name, description, bound skills, and an optional OpenClaw session key. Data is stored locally and stays in sync with the studio view.",
+    "actions": {
+      "create": "New agent",
+      "delete": "Delete"
+    },
+    "searchPlaceholder": "Search agents",
+    "emptyList": "No matching agents.",
+    "noSelection": "Pick an agent from the list or create one.",
+    "detailTitle": "Details",
+    "fieldName": "Display name",
+    "fieldDescription": "Description (optional)",
+    "fieldSessionKey": "OpenClaw session key (optional)",
+    "sessionKeyPlaceholder": "Session or agent identifier for OpenClaw",
+    "skillsHeading": "Bound skills",
+    "skillFilterPlaceholder": "Filter skills",
+    "skillsHint": "Checked skills are enabled for this agent (runtime wiring comes later).",
+    "skillsEmpty": "No skills match. Add local skills on the Skills page or use built-ins.",
+    "skillCount": "{{n}} skill(s) bound",
+    "defaultNewName": "New agent",
+    "deleteModal": {
+      "title": "Delete agent",
+      "body": "Remove “{{name}}”? This cannot be undone (local save will update).",
+      "confirm": "Delete"
+    }
   },
   "skillsPage": {
     "title": "Skills",
     "desc": "Browse placeholder OpenClaw capabilities and keep your own skills locally (offline draft; paths stay on this device).",
     "searchPlaceholder": "Search skills",
     "filterAll": "All",
+    "filterTabsAria": "Filter skills by category",
     "actions": {
       "upload": "Register local skill",
       "createNl": "Create from language",

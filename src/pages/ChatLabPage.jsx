@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import NavSettingsIcon from "../assets/svg/NavSettingsIcon.jsx";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -28,13 +27,17 @@ import {
   isSlashOnlyComposerDraft,
   stripSlashPickerPrefix,
 } from "../components/chat-lab/ChatLabComposerSkills.jsx";
-import { getTextareaCaretScreenPosition } from "../chat/textareaCaretPosition.js";
 import {
   listSkillsForPicker,
   pickRowFromSkillMeta,
   skillMetaFromPickRow,
   skillPickRowToPayload,
 } from "../skills/skillRegistry.js";
+import { isSkillCreationNlIntent } from "../skills/skillCreationNlIntent.js";
+import {
+  messagesWithTerminalAssistantPayload,
+  syncSkillCreatorResultToLibrary,
+} from "../skills/skillCreatorChatSync.js";
 import { cn } from "../ui/cn.js";
 
 /** Markdown pipelines for assistant bubbles (GFM + LaTeX via KaTeX). */
@@ -112,15 +115,6 @@ function deriveConfigIssueKey(cfg) {
   const url = String(cfg.openclaw?.gatewayBaseUrl ?? "").trim();
   if (!url) return "chatLab.gatewayUrlMissing";
   return null;
-}
-
-/** @param {*} cfg @param {(k: string, v?: Record<string, string | number>) => string} tr */
-function gatewayStatusLine(cfg, tr) {
-  const url = String(cfg?.openclaw?.gatewayBaseUrl ?? "").trim();
-  const badge = cfg?.openclaw?.hasGatewayToken ? tr("chatLab.gatewayTokenBadge") : "";
-  const sk = String(cfg?.openclaw?.sessionKey ?? "agent:dev:dev").trim();
-  if (!url) return null;
-  return tr("chatLab.gatewayLine", { url, tokenBadge: badge, sessionKey: sk });
 }
 
 /**
@@ -218,10 +212,6 @@ export default function ChatLabPage() {
   }
   const conversationId = paramC || draftIdRef.current;
 
-  const settingsLinkState = useMemo(
-    () => ({ backgroundLocation: location }),
-    [location],
-  );
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
   const isElectron = Boolean(bridge?.startChatStream);
 
@@ -237,7 +227,6 @@ export default function ChatLabPage() {
     /** @type {import("../skills/skillRegistry.js").SkillPickRow | null} */ (null),
   );
   const textareaRef = useRef(/** @type {HTMLTextAreaElement | null} */ (null));
-  const [textareaCaret, setTextareaCaret] = useState(0);
   /** When set, the next send replaces this user message and truncates the thread below it (unless the tag is dismissed). */
   const [pendingEditMessageId, setPendingEditMessageId] = useState(/** @type {string | null} */ (null));
   const pendingEditMessageIdRef = useRef(/** @type {string | null} */ (null));
@@ -276,15 +265,6 @@ export default function ChatLabPage() {
   const firstComposerLine = (input.split("\n")[0] ?? "");
   const slashSkillMenuActive = !composerSkillRow && firstComposerLine.startsWith("/");
   const slashFilterQuery = slashSkillMenuActive ? firstComposerLine.slice(1) : "";
-
-  const slashSkillAnchor = useMemo(() => {
-    if (!slashSkillMenuActive || typeof document === "undefined") return null;
-    const el = textareaRef.current;
-    if (!el) return null;
-    const pos = Math.min(Math.max(0, textareaCaret), el.value.length);
-    const c = getTextareaCaretScreenPosition(el, pos);
-    return { left: c.viewportLeft, top: c.viewportTop, height: c.height };
-  }, [input, slashSkillMenuActive, textareaCaret]);
 
   /** Background `#studio:` prewarm (non-blocking); `urgentFirst` keeps the visible thread ahead of historical sessions on the hydrate queue. */
   useEffect(() => {
@@ -358,6 +338,32 @@ export default function ChatLabPage() {
     autoScrollRef.current = true;
   }, [paramC]);
 
+  /** Deep-link from Skills: open chat with OpenClaw skill slug pre-selected (e.g. skill-creator). */
+  useEffect(() => {
+    if (paramC) return;
+    const slug = searchParams.get("composeSkill")?.trim();
+    if (!slug) return;
+    const row = listSkillsForPicker().find((r) => r.kind === "openclaw" && r.slug === slug);
+    if (row) setComposerSkillRow(row);
+    const prefillEnc = searchParams.get("prefill");
+    if (prefillEnc) {
+      try {
+        setInput(decodeURIComponent(prefillEnc));
+      } catch {
+        /* ignore malformed prefill */
+      }
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("composeSkill");
+        next.delete("prefill");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [paramC, searchParams, setSearchParams]);
+
   useEffect(() => {
     if (!conversationId) return;
     if (messages.length === 0) return;
@@ -412,7 +418,6 @@ export default function ChatLabPage() {
   }, [reloadConfig]);
 
   const configIssueKey = useMemo(() => deriveConfigIssueKey(config), [config]);
-  const gatewayLine = useMemo(() => (config ? gatewayStatusLine(config, t) : null), [config, t]);
 
   useEffect(() => {
     if (!isElectron || !bridge?.warmGatewayChatPrep) return;
@@ -533,12 +538,17 @@ export default function ChatLabPage() {
         return;
       }
       if (d.kind === "aborted" || d.kind === "done") {
-        finalizeAssistantById(d.assistantMessageId, {
+        const extra = {
           ...(typeof d.content === "string" ? { content: d.content } : {}),
           ...(typeof d.thinking === "string" ? { thinking: d.thinking } : {}),
           ...(Array.isArray(d.toolTrace) ? { toolTrace: d.toolTrace } : {}),
           ...(Array.isArray(d.activityLog) ? { activityLog: d.activityLog } : {}),
-        });
+        };
+        finalizeAssistantById(d.assistantMessageId, extra);
+        if (d.kind === "done") {
+          const merged = messagesWithTerminalAssistantPayload(messagesRef.current, d.assistantMessageId, extra);
+          syncSkillCreatorResultToLibrary(merged, conversationId, d.assistantMessageId);
+        }
       }
     };
     window.addEventListener("openstudio-gateway-chat-terminal", fn);
@@ -560,6 +570,9 @@ export default function ChatLabPage() {
     gatewayStreaming ||
     !configLoaded ||
     (!configIssueKey && (gatewayPhase !== "online" || chatApiBlocked));
+
+  /** Skill UI is local; keep it usable while waiting on gateway (matches `/` picker). Only lock while a reply streams. */
+  const composerSkillUiLocked = gatewayStreaming;
 
   const heroPlaceholder = useMemo(() => {
     if (!isElectron) return t("chatLab.heroInputPlaceholder");
@@ -763,10 +776,15 @@ export default function ChatLabPage() {
 
     const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
     const historyForRequest = buildGatewayPayloadRows(messagesRef.current);
+    let effectiveSkillRow = composerSkillRow;
+    if (!effectiveSkillRow && historyForRequest.length === 0 && isSkillCreationNlIntent(trimmed)) {
+      const hit = listSkillsForPicker().find((r) => r.kind === "openclaw" && r.slug === "skill-creator");
+      if (hit) effectiveSkillRow = hit;
+    }
 
     const now = Date.now();
-    const skillSnap = skillMetaFromPickRow(composerSkillRow);
-    const composerSkill = skillPickRowToPayload(composerSkillRow);
+    const skillSnap = skillMetaFromPickRow(effectiveSkillRow);
+    const composerSkill = skillPickRowToPayload(effectiveSkillRow);
     const userMsg = {
       id: newId(),
       role: /** @type {const} */ ("user"),
@@ -949,7 +967,7 @@ export default function ChatLabPage() {
             <div className="chat-lab__shell-skill-row">
               <ComposerSkillChip
                 row={composerSkillRow}
-                disabled={composerInputLocked}
+                disabled={composerSkillUiLocked}
                 onClear={() => setComposerSkillRow(null)}
                 t={t}
               />
@@ -962,12 +980,8 @@ export default function ChatLabPage() {
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
-              setTextareaCaret(e.target.selectionStart);
             }}
-            onClick={(e) => setTextareaCaret(e.currentTarget.selectionStart)}
-            onKeyUp={(e) => setTextareaCaret(e.currentTarget.selectionStart)}
             onKeyDown={onKeyDown}
-            onSelect={(e) => setTextareaCaret(e.currentTarget.selectionStart)}
             placeholder={heroPlaceholder}
             disabled={composerInputLocked}
             spellCheck
@@ -975,7 +989,7 @@ export default function ChatLabPage() {
         </div>
         <ComposerSkillSlashPopover
           open={slashSkillMenuActive}
-          anchor={slashSkillAnchor}
+          textareaRef={textareaRef}
           filterQuery={slashFilterQuery}
           skills={skillPickList}
           onPick={(row) => {
@@ -999,7 +1013,7 @@ export default function ChatLabPage() {
               skills={skillPickList}
               selected={composerSkillRow}
               onSelect={(row) => setComposerSkillRow(row)}
-              disabled={composerInputLocked}
+              disabled={composerSkillUiLocked}
               t={t}
             />
             {pendingEditMessageId ? (
@@ -1052,19 +1066,6 @@ export default function ChatLabPage() {
     <div className={cn("chat-lab", isLanding && "chat-lab--landing", !isLanding && "chat-lab--thread")}>
       {isLanding ? (
         <>
-          <div className="chat-lab__landing-top">
-            <div className="chat-lab__landing-actions">
-              <Link
-                to="/settings"
-                state={settingsLinkState}
-                className="chat-lab__landing-settings"
-                aria-label={t("chatLab.openSettings")}
-                title={t("chatLab.openSettings")}
-              >
-                <NavSettingsIcon className="h-[22px] w-[22px] text-[var(--os-text-muted)]" />
-              </Link>
-            </div>
-          </div>
           <div className="chat-lab__landing-mid">
             <div className="chat-lab__hero">
               <h1 className="chat-lab__hero-title">
@@ -1084,9 +1085,6 @@ export default function ChatLabPage() {
                 </span>
               </h1>
               <p className="chat-lab__hero-sub muted">{t("chatLab.heroSubtitle")}</p>
-              {gatewayLine && !configIssueKey ? (
-                <p className="chat-lab__hero-meta">{gatewayLine}</p>
-              ) : null}
             </div>
           </div>
           {composer}

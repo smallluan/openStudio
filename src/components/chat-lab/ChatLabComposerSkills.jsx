@@ -10,7 +10,7 @@ import {
   useInteractions,
   useRole,
 } from "@floating-ui/react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useState } from "react";
 import { filterSkillPickList } from "../../skills/skillRegistry.js";
 import { cn } from "../../ui/cn.js";
 
@@ -187,10 +187,10 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
 }
 
 /**
- * Slash-anchored picker (virtual reference at caret).
+ * Slash-triggered picker anchored above the composer textarea (not at the caret rect).
  * @param {{
  *   open: boolean;
- *   anchor: { left: number; top: number; height: number } | null;
+ *   textareaRef: import("react").RefObject<HTMLTextAreaElement | null>;
  *   filterQuery: string;
  *   skills: import("../../skills/skillRegistry.js").SkillPickRow[];
  *   onPick: (row: import("../../skills/skillRegistry.js").SkillPickRow) => void;
@@ -198,41 +198,32 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
  *   t: (k: string) => string;
  * }} props
  */
-export function ComposerSkillSlashPopover({ open, anchor, filterQuery, skills, onPick, onClose, t }) {
+export function ComposerSkillSlashPopover({ open, textareaRef, filterQuery, skills, onPick, onClose, t }) {
   const autoId = useId();
   const listId = `${autoId}-slash-skills`;
   const filtered = useMemo(() => filterSkillPickList(skills, filterQuery), [skills, filterQuery]);
 
-  const virtualRef = useMemo(() => {
-    if (!open || !anchor) return null;
-    const { left, top, height } = anchor;
-    const h = height || 18;
-    return {
-      getBoundingClientRect: () => new DOMRect(left, top, 0, h),
-    };
-  }, [open, anchor]);
-
-  const floatingOpen = Boolean(open && virtualRef);
-
   const { refs, floatingStyles, context } = useFloating({
-    open: floatingOpen,
+    open,
     onOpenChange: (v) => {
       if (!v) onClose();
     },
-    placement: "bottom-start",
+    placement: "top-start",
     strategy: "fixed",
-    elements: {
-      reference: virtualRef,
-    },
-    middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })],
+    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   });
+
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (open && el) refs.setReference(el);
+  }, [open, refs.setReference, textareaRef]);
 
   const dismiss = useDismiss(context);
   const role = useRole(context, { role: "listbox" });
   const { getFloatingProps } = useInteractions([dismiss, role]);
 
-  if (!floatingOpen || !virtualRef) return null;
+  if (!open) return null;
 
   return (
     <FloatingPortal>

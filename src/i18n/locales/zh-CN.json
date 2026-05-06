@@ -83,14 +83,37 @@
   },
   "lobsterPage": {
     "title": "龙虾管理",
-    "desc": "管理龙虾相关配置与状态的入口页面，具体内容后续接入。",
-    "placeholder": "此处可放置龙虾列表、投喂计划、或与 OpenClaw 联动的控制台。"
+    "desc": "管理工作室中的每只「龙虾」子智能体：名称与描述、可调用技能列表、以及与 OpenClaw 联动的会话键。数据保存在本机会话，并与工作室画布同步。",
+    "actions": {
+      "create": "新建智能体",
+      "delete": "删除"
+    },
+    "searchPlaceholder": "搜索智能体",
+    "emptyList": "没有匹配的智能体。",
+    "noSelection": "请从左侧选择一个智能体，或新建一个。",
+    "detailTitle": "基本信息",
+    "fieldName": "显示名称",
+    "fieldDescription": "描述（选填）",
+    "fieldSessionKey": "OpenClaw 会话键（可选）",
+    "sessionKeyPlaceholder": "用于对接 OpenClaw 会话 / 标识",
+    "skillsHeading": "绑定技能",
+    "skillFilterPlaceholder": "筛选技能",
+    "skillsHint": "勾选后，该智能体在执行任务时可使用该技能（具体调用链路由后续运行时接入）。",
+    "skillsEmpty": "没有匹配的技能。可先前往「技能」页添加本地技能，或使用内置列表。",
+    "skillCount": "已绑定 {{n}} 个技能",
+    "defaultNewName": "新建智能体",
+    "deleteModal": {
+      "title": "删除智能体",
+      "body": "确定要删除「{{name}}」吗？此操作无法撤销（本机存档将同步删除）。",
+      "confirm": "删除"
+    }
   },
   "skillsPage": {
     "title": "技能",
     "desc": "浏览 OpenClaw 内置能力示例，并在本机记录你上传或自然语言描述的技能（离线草稿；路径仅保存在此设备）。",
     "searchPlaceholder": "搜索技能",
     "filterAll": "全部",
+    "filterTabsAria": "按分类筛选技能",
     "actions": {
       "upload": "上传技能",
       "createNl": "自然语言创建",

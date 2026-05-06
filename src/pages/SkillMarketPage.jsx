@@ -1,9 +1,11 @@
 import { useCallback, useId, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { BUILTIN_CATEGORY_IDS, BUILTIN_SKILL_DEFS } from "../skills/skillsCatalog.js";
 import { OPENCLAW_BUNDLED_SKILLS, formatSkillTitle } from "../skills/skillRegistry.js";
 import { useSkillLibrary } from "../skills/useSkillLibrary.js";
+import FluidTabBar from "../ui/FluidTabBar.jsx";
 import Modal from "../ui/Modal.jsx";
 import ModalCloseButton from "../ui/ModalCloseButton.jsx";
 import TextField from "../ui/TextField.jsx";
@@ -36,6 +38,7 @@ function SkillCardShell({ className, children }) {
 
 export default function SkillMarketPage() {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const { lib, addUserSkill, removeUserSkill, addUserCategory, removeUserCategory } = useSkillLibrary();
   const titleId = useId();
 
@@ -43,15 +46,12 @@ export default function SkillMarketPage() {
   const [query, setQuery] = useState("");
 
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [nlOpen, setNlOpen] = useState(false);
   const [catOpen, setCatOpen] = useState(false);
 
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadDesc, setUploadDesc] = useState("");
   const [uploadPath, setUploadPath] = useState("");
   const [uploadCategoryId, setUploadCategoryId] = useState(BUILTIN_CATEGORY_IDS.GENERAL);
-
-  const [nlText, setNlText] = useState("");
 
   const [newCatLabel, setNewCatLabel] = useState("");
 
@@ -81,6 +81,11 @@ export default function SkillMarketPage() {
     }));
     return [...builtins, ...users];
   }, [builtinCategoryList, lib.userCategories, t]);
+
+  const filterTabs = useMemo(
+    () => [{ id: ALL_FILTER, label: t("skillsPage.filterAll") }, ...categoryRows.map((row) => ({ id: row.id, label: row.label }))],
+    [categoryRows, t],
+  );
 
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -132,19 +137,6 @@ export default function SkillMarketPage() {
     setUploadOpen(false);
   }, [addUserSkill, resetUploadForm, t, uploadCategoryId, uploadDesc, uploadPath, uploadTitle]);
 
-  const onconfirmNl = useCallback(() => {
-    const raw = nlText.trim();
-    if (!raw) return;
-    addUserSkill({
-      title: t("skillsPage.nl.stubTitle"),
-      description: raw,
-      categoryId: BUILTIN_CATEGORY_IDS.GENERAL,
-      fromNl: true,
-    });
-    setNlText("");
-    setNlOpen(false);
-  }, [addUserSkill, nlText, t]);
-
   const onAddCategory = useCallback(() => {
     const label = newCatLabel.trim();
     if (!label) return;
@@ -156,7 +148,7 @@ export default function SkillMarketPage() {
     <div className="route-page route-page--plain flex min-h-0 flex-1 flex-col bg-[color-mix(in_srgb,var(--os-bg-base)_96%,var(--os-bg-panel))]">
       <header className="route-page__header shrink-0">
         <h1 className="route-page__title">{t("skillsPage.title")}</h1>
-        <p className="route-page__desc muted">{t("skillsPage.desc")}</p>
+        {/* <p className="route-page__desc muted">{t("skillsPage.desc")}</p> */}
       </header>
 
       <div className="mb-4 flex min-h-0 shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -171,7 +163,7 @@ export default function SkillMarketPage() {
           <button
             type="button"
             className="rounded-[11px] border border-[color-mix(in_srgb,var(--os-border)_85%,transparent)] bg-[var(--os-bg-elevated)] px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-text)] transition hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_70%,var(--os-bg-elevated))]"
-            onClick={() => setNlOpen(true)}
+            onClick={() => navigate("/chat?composeSkill=skill-creator")}
           >
             {t("skillsPage.actions.createNl")}
           </button>
@@ -198,44 +190,22 @@ export default function SkillMarketPage() {
         </label>
       </div>
 
-      <div className="mb-4 flex shrink-0 flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => setFilterId(ALL_FILTER)}
-          className={cn(
-            "rounded-full px-3 py-1.5 text-[0.78rem] font-medium transition",
-            filterId === ALL_FILTER
-              ? "bg-[color-mix(in_srgb,var(--os-bg-panel)_55%,var(--os-border))] text-[var(--os-text)]"
-              : "text-[var(--os-text-muted)] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_40%,transparent)]",
-          )}
-        >
-          {t("skillsPage.filterAll")}
-        </button>
-        {categoryRows.map((row) => (
-          <button
-            key={row.id}
-            type="button"
-            onClick={() => setFilterId(row.id)}
-            className={cn(
-              "rounded-full px-3 py-1.5 text-[0.78rem] font-medium transition",
-              filterId === row.id
-                ? "bg-[color-mix(in_srgb,var(--os-bg-panel)_55%,var(--os-border))] text-[var(--os-text)]"
-                : "text-[var(--os-text-muted)] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_40%,transparent)]",
-            )}
-          >
-            {row.label}
-          </button>
-        ))}
-      </div>
+      <FluidTabBar
+        className="mb-4 shrink-0"
+        ariaLabel={t("skillsPage.filterTabsAria")}
+        items={filterTabs}
+        value={filterId}
+        onChange={setFilterId}
+      />
 
       <div className="min-h-0 flex-1 space-y-8 overflow-auto pb-10">
         <section aria-label={t("skillsPage.sectionBuiltin")}>
           <h2 className="mb-3 text-[0.72rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]">
-            {t("skillsPage.sectionBuiltin")}
+            {t("skillsPage.sectionBuiltin")}  
           </h2>
-          <p className="mb-3 text-[0.7rem] leading-snug text-[var(--os-text-faint)]">
+          {/* <p className="mb-3 text-[0.7rem] leading-snug text-[var(--os-text-faint)]">
             {t("skillsPage.openclawBuiltinDescHint")}
-          </p>
+          </p> */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filteredBuiltin.map((def) => {
               const meta = openclawSkillById.get(def.id);
@@ -391,53 +361,6 @@ export default function SkillMarketPage() {
                 onClick={onConfirmUpload}
               >
                 {t("skillsPage.upload.confirm")}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-
-      {nlOpen ? (
-        <Modal onClose={() => { setNlOpen(false); setNlText(""); }} labelledBy={`${titleId}-nl`}>
-          <div className="flex w-full min-w-[min(100vw-2rem,480px)] flex-col bg-[var(--os-bg-modal)]">
-            <div className="flex items-center justify-between border-b border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <h2 id={`${titleId}-nl`} className="text-base font-semibold">
-                {t("skillsPage.nl.title")}
-              </h2>
-              <ModalCloseButton
-                onClick={() => {
-                  setNlOpen(false);
-                  setNlText("");
-                }}
-              />
-            </div>
-            <div className="px-5 py-4">
-              <p className="mb-2 text-[0.78rem] text-[var(--os-text-muted)]">{t("skillsPage.nl.hint")}</p>
-              <textarea
-                className="min-h-[120px] w-full resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.8125rem] text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
-                value={nlText}
-                onChange={(e) => setNlText(e.target.value)}
-                placeholder={t("skillsPage.nl.placeholder")}
-              />
-            </div>
-            <div className="flex justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <button
-                type="button"
-                className="rounded-[10px] px-3 py-2 text-[0.8rem] text-[var(--os-text-muted)]"
-                onClick={() => {
-                  setNlOpen(false);
-                  setNlText("");
-                }}
-              >
-                {t("skillsPage.cancel")}
-              </button>
-              <button
-                type="button"
-                className="rounded-[10px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8rem] font-medium text-[var(--os-on-accent,#fff)] disabled:opacity-45"
-                disabled={!nlText.trim()}
-                onClick={onconfirmNl}
-              >
-                {t("skillsPage.nl.confirm")}
               </button>
             </div>
           </div>
