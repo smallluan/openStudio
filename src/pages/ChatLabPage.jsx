@@ -21,6 +21,20 @@ import {
 } from "../context/ChatLabStreamingContext.jsx";
 import { createChatLabMarkdownComponents } from "../components/chat-lab/chatLabMarkdown.jsx";
 import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
+import {
+  ComposerSkillChip,
+  ComposerSkillSlashPopover,
+  ComposerSkillToolbarPicker,
+  isSlashOnlyComposerDraft,
+  stripSlashPickerPrefix,
+} from "../components/chat-lab/ChatLabComposerSkills.jsx";
+import { getTextareaCaretScreenPosition } from "../chat/textareaCaretPosition.js";
+import {
+  listSkillsForPicker,
+  pickRowFromSkillMeta,
+  skillMetaFromPickRow,
+  skillPickRowToPayload,
+} from "../skills/skillRegistry.js";
 import { cn } from "../ui/cn.js";
 
 /** Markdown pipelines for assistant bubbles (GFM + LaTeX via KaTeX). */
@@ -218,6 +232,12 @@ export default function ChatLabPage() {
     ([]),
   );
   const [input, setInput] = useState("");
+  /** OpenClaw / user skill row for the composer — prefixed to gateway message only (not stored in bubble). */
+  const [composerSkillRow, setComposerSkillRow] = useState(
+    /** @type {import("../skills/skillRegistry.js").SkillPickRow | null} */ (null),
+  );
+  const textareaRef = useRef(/** @type {HTMLTextAreaElement | null} */ (null));
+  const [textareaCaret, setTextareaCaret] = useState(0);
   /** When set, the next send replaces this user message and truncates the thread below it (unless the tag is dismissed). */
   const [pendingEditMessageId, setPendingEditMessageId] = useState(/** @type {string | null} */ (null));
   const pendingEditMessageIdRef = useRef(/** @type {string | null} */ (null));
@@ -248,7 +268,23 @@ export default function ChatLabPage() {
     activeAssistantIdRef.current = null;
     activeStreamIdRef.current = null;
     setPendingEditMessageId(null);
+    setComposerSkillRow(null);
   }, [conversationId]);
+
+  const skillPickList = listSkillsForPicker();
+
+  const firstComposerLine = (input.split("\n")[0] ?? "");
+  const slashSkillMenuActive = !composerSkillRow && firstComposerLine.startsWith("/");
+  const slashFilterQuery = slashSkillMenuActive ? firstComposerLine.slice(1) : "";
+
+  const slashSkillAnchor = useMemo(() => {
+    if (!slashSkillMenuActive || typeof document === "undefined") return null;
+    const el = textareaRef.current;
+    if (!el) return null;
+    const pos = Math.min(Math.max(0, textareaCaret), el.value.length);
+    const c = getTextareaCaretScreenPosition(el, pos);
+    return { left: c.viewportLeft, top: c.viewportTop, height: c.height };
+  }, [input, slashSkillMenuActive, textareaCaret]);
 
   /** Background `#studio:` prewarm (non-blocking); `urgentFirst` keeps the visible thread ahead of historical sessions on the hydrate queue. */
   useEffect(() => {
@@ -307,6 +343,7 @@ export default function ChatLabPage() {
         ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
         ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
         ...(typeof m.createdAt === "number" && Number.isFinite(m.createdAt) ? { createdAt: m.createdAt } : {}),
+        ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
         streaming: false,
       }));
       setMessages(withBackfilledCreatedAt(mapped, rec.updatedAt));
@@ -336,6 +373,7 @@ export default function ChatLabPage() {
           ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
           ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
           ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
+          ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
         }));
       if (toSave.length === 0) return;
       const title = deriveTitleFromMessages(messages);
@@ -510,6 +548,7 @@ export default function ChatLabPage() {
   const canSend =
     !gatewayStreaming &&
     input.trim().length > 0 &&
+    !isSlashOnlyComposerDraft(input, Boolean(composerSkillRow)) &&
     isElectron &&
     configLoaded &&
     !configIssueKey &&
@@ -561,14 +600,16 @@ export default function ChatLabPage() {
       activeAssistantIdRef.current = null;
 
       const preservedCreated = prev[idx].createdAt;
-      const base = [
-        ...prev.slice(0, idx),
-        {
-          ...prev[idx],
-          content: trimmed,
-          createdAt: typeof preservedCreated === "number" ? preservedCreated : Date.now(),
-        },
-      ];
+      const skillSnap = skillMetaFromPickRow(composerSkillRow);
+      /** @type {Record<string, unknown>} */
+      const editedUser = {
+        ...prev[idx],
+        content: trimmed,
+        createdAt: typeof preservedCreated === "number" ? preservedCreated : Date.now(),
+      };
+      if (skillSnap) editedUser.skillMeta = skillSnap;
+      else delete editedUser.skillMeta;
+      const base = [...prev.slice(0, idx), editedUser];
 
       const priorRows = buildGatewayPayloadRows(base.slice(0, -1));
       const userText = String(base[base.length - 1]?.content ?? "").trim();
@@ -597,6 +638,7 @@ export default function ChatLabPage() {
           ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
           ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
           ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+          ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
         }));
       const persistableNext = [
         ...persistableBase,
@@ -634,6 +676,8 @@ export default function ChatLabPage() {
 
       const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
       const outgoing = [systemMessage, ...priorRows, { role: "user", content: userText }];
+      const composerSkill = skillPickRowToPayload(composerSkillRow);
+      setComposerSkillRow(null);
 
       const isFirstTurn = priorRows.length === 0;
       if (
@@ -651,7 +695,7 @@ export default function ChatLabPage() {
       }
 
       try {
-        await bridge.startChatStream({ streamId, conversationId, messages: outgoing });
+        await bridge.startChatStream({ streamId, conversationId, messages: outgoing, composerSkill });
       } catch (err) {
         resetGatewayStream(streamId);
         try {
@@ -673,6 +717,7 @@ export default function ChatLabPage() {
       beginGatewayStream,
       bridge,
       chatApiBlocked,
+      composerSkillRow,
       config?.chatLabAutoTitle,
       config?.credentials?.hasProviderApiKey,
       configIssueKey,
@@ -720,11 +765,14 @@ export default function ChatLabPage() {
     const historyForRequest = buildGatewayPayloadRows(messagesRef.current);
 
     const now = Date.now();
+    const skillSnap = skillMetaFromPickRow(composerSkillRow);
+    const composerSkill = skillPickRowToPayload(composerSkillRow);
     const userMsg = {
       id: newId(),
       role: /** @type {const} */ ("user"),
       content: trimmed,
       createdAt: now,
+      ...(skillSnap ? { skillMeta: skillSnap } : {}),
     };
     const assistantMsg = {
       id: newId(),
@@ -743,6 +791,9 @@ export default function ChatLabPage() {
         content: m.content,
         ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
         ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
+        ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
+        ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+        ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
       }));
     const persistableNext = [
       ...persistablePrior,
@@ -751,6 +802,7 @@ export default function ChatLabPage() {
         role: /** @type {const} */ ("user"),
         content: userMsg.content,
         createdAt: userMsg.createdAt,
+        ...(userMsg.skillMeta ? { skillMeta: userMsg.skillMeta } : {}),
       },
       {
         id: assistantMsg.id,
@@ -779,6 +831,7 @@ export default function ChatLabPage() {
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput("");
+    setComposerSkillRow(null);
     autoScrollRef.current = true;
 
     activeStreamIdRef.current = streamId;
@@ -806,7 +859,7 @@ export default function ChatLabPage() {
     }
 
     try {
-      await bridge.startChatStream({ streamId, conversationId, messages: outgoing });
+      await bridge.startChatStream({ streamId, conversationId, messages: outgoing, composerSkill });
     } catch (err) {
       resetGatewayStream(streamId);
       try {
@@ -826,6 +879,8 @@ export default function ChatLabPage() {
     beginGatewayStream,
     bridge,
     chatApiBlocked,
+    commitUserMessageEdit,
+    composerSkillRow,
     config,
     configIssueKey,
     conversationId,
@@ -835,7 +890,6 @@ export default function ChatLabPage() {
     input,
     isElectron,
     paramC,
-    commitUserMessageEdit,
     resetGatewayStream,
     setSearchParams,
     t,
@@ -877,24 +931,60 @@ export default function ChatLabPage() {
     return undefined;
   }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
 
-  const beginComposerEdit = useCallback((messageId, content) => {
+  const beginComposerEdit = useCallback((messageId, payload) => {
     setPendingEditMessageId(messageId);
-    setInput(String(content ?? ""));
+    const content = typeof payload === "string" ? payload : String(payload?.content ?? "");
+    const skillMeta = typeof payload === "object" && payload && "skillMeta" in payload ? payload.skillMeta : undefined;
+    const row = pickRowFromSkillMeta(skillMeta, listSkillsForPicker());
+    setComposerSkillRow(row);
+    setInput(content);
     autoScrollRef.current = true;
   }, []);
 
   const composer = (
     <div className={cn("chat-lab__composer-outer", isLanding && "chat-lab__composer-outer--landing")}>
       <div className={cn("chat-lab__shell", isLanding && "chat-lab__shell--hero")}>
-        <textarea
-          className="chat-lab__shell-textarea"
-          rows={3}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={heroPlaceholder}
-          disabled={composerInputLocked}
-          spellCheck
+        <div className="chat-lab__shell-body">
+          {composerSkillRow ? (
+            <div className="chat-lab__shell-skill-row">
+              <ComposerSkillChip
+                row={composerSkillRow}
+                disabled={composerInputLocked}
+                onClear={() => setComposerSkillRow(null)}
+                t={t}
+              />
+            </div>
+          ) : null}
+          <textarea
+            ref={textareaRef}
+            className={cn("chat-lab__shell-textarea", composerSkillRow && "chat-lab__shell-textarea--with-chip")}
+            rows={3}
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setTextareaCaret(e.target.selectionStart);
+            }}
+            onClick={(e) => setTextareaCaret(e.currentTarget.selectionStart)}
+            onKeyUp={(e) => setTextareaCaret(e.currentTarget.selectionStart)}
+            onKeyDown={onKeyDown}
+            onSelect={(e) => setTextareaCaret(e.currentTarget.selectionStart)}
+            placeholder={heroPlaceholder}
+            disabled={composerInputLocked}
+            spellCheck
+          />
+        </div>
+        <ComposerSkillSlashPopover
+          open={slashSkillMenuActive}
+          anchor={slashSkillAnchor}
+          filterQuery={slashFilterQuery}
+          skills={skillPickList}
+          onPick={(row) => {
+            setComposerSkillRow(row);
+            setInput((v) => stripSlashPickerPrefix(v));
+            requestAnimationFrame(() => textareaRef.current?.focus());
+          }}
+          onClose={() => {}}
+          t={t}
         />
         <div className="chat-lab__shell-toolbar">
           <div className="chat-lab__shell-toolbar-start">
@@ -905,6 +995,13 @@ export default function ChatLabPage() {
               {t("chatLab.toolbarAuto")}
               <ToolbarChevron />
             </button>
+            <ComposerSkillToolbarPicker
+              skills={skillPickList}
+              selected={composerSkillRow}
+              onSelect={(row) => setComposerSkillRow(row)}
+              disabled={composerInputLocked}
+              t={t}
+            />
             {pendingEditMessageId ? (
               <span className="chat-lab__composer-edit-tag" role="status">
                 <span className="chat-lab__composer-edit-tag-label">{t("chatLab.composerEditingMessageTag")}</span>
@@ -1522,11 +1619,18 @@ function MessageMetaEditIcon() {
  *     toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
  *     activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[];
  *     createdAt?: number;
+ *     skillMeta?: { kind: "openclaw" | "user"; slug?: string; userSkillId?: string; label: string; emoji: string };
  *   };
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  *   locale: import("../i18n/messages.js").LocaleId;
  *   streamLocked: boolean;
- *   onBeginUserEdit: (messageId: string, content: string) => void;
+ *   onBeginUserEdit: (
+ *     messageId: string,
+ *     payload: {
+ *       content: string;
+ *       skillMeta?: { kind: "openclaw" | "user"; slug?: string; userSkillId?: string; label: string; emoji: string };
+ *     },
+ *   ) => void;
  * }} props
  */
 const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLocked, onBeginUserEdit }) {
@@ -1604,8 +1708,11 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
   const disableUserEdit = streamLocked;
 
   const startComposerEdit = useCallback(() => {
-    onBeginUserEdit(message.id, String(message.content ?? ""));
-  }, [message.content, message.id, onBeginUserEdit]);
+    onBeginUserEdit(message.id, {
+      content: String(message.content ?? ""),
+      ...(message.skillMeta ? { skillMeta: message.skillMeta } : {}),
+    });
+  }, [message.content, message.id, message.skillMeta, onBeginUserEdit]);
 
   return (
     <div
@@ -1614,6 +1721,14 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
         isUser ? "chat-lab__msg--user" : "chat-lab__msg--assistant",
       )}
     >
+      {isUser && message.skillMeta ? (
+        <div className="chat-lab__msg-skill-pill" title={`${message.skillMeta.emoji} ${message.skillMeta.label}`}>
+          <span className="chat-lab__msg-skill-emoji" aria-hidden>
+            {message.skillMeta.emoji}
+          </span>
+          <span className="chat-lab__msg-skill-label">{message.skillMeta.label}</span>
+        </div>
+      ) : null}
       <article
         className={cn("chat-lab__bubble", isUser && "chat-lab__bubble--user")}
         data-role={message.role}
@@ -1734,12 +1849,19 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
  *     toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
  *     activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[];
  *     createdAt?: number;
+ *     skillMeta?: { kind: "openclaw" | "user"; slug?: string; userSkillId?: string; label: string; emoji: string };
  *   }>;
  *   messagesScrollRef: import("react").MutableRefObject<HTMLDivElement | null>;
  *   autoScrollRef: import("react").MutableRefObject<boolean>;
  *   gatewayStreaming: boolean;
  *   streamLocked: boolean;
- *   onBeginUserEdit: (messageId: string, content: string) => void;
+ *   onBeginUserEdit: (
+ *     messageId: string,
+ *     payload: {
+ *       content: string;
+ *       skillMeta?: { kind: "openclaw" | "user"; slug?: string; userSkillId?: string; label: string; emoji: string };
+ *     },
+ *   ) => void;
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  *   locale: LocaleId;
  *   threadLabel: string;
@@ -1761,7 +1883,8 @@ function ChatLabVirtualMessageList({
 
   const estimateSize = useCallback((index) => {
     const m = messagesEstRef.current[index];
-    return m?.role === "user" ? 96 : 228;
+    if (m?.role === "user") return m.skillMeta ? 118 : 96;
+    return 228;
   }, []);
 
   const getItemKey = useCallback((index) => messagesEstRef.current[index]?.id ?? index, []);

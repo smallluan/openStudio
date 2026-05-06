@@ -21,6 +21,7 @@
     "chatHistoryTimeYesterday": "Yesterday",
     "chatHistoryTimeDays": "{{n}} days ago",
     "lobster": "Lobster",
+    "skills": "Skills",
     "settings": "Settings",
     "primaryAria": "Primary navigation",
     "footerAria": "System navigation",
@@ -85,6 +86,60 @@
     "desc": "Entry point for lobster-related configuration and status; details will be wired up later.",
     "placeholder": "Room for a lobster list, feeding schedule, or an OpenClaw-linked console."
   },
+  "skillsPage": {
+    "title": "Skills",
+    "desc": "Browse placeholder OpenClaw capabilities and keep your own skills locally (offline draft; paths stay on this device).",
+    "searchPlaceholder": "Search skills",
+    "filterAll": "All",
+    "actions": {
+      "upload": "Register local skill",
+      "createNl": "Create from language",
+      "manageCategories": "Categories"
+    },
+    "sectionBuiltin": "OpenClaw bundled skills",
+    "sectionUser": "My skills",
+    "badgeBuiltin": "Built-in",
+    "badgeUser": "Local",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "close": "Done",
+    "noDescription": "No description",
+    "emptyBuiltin": "No built-in skills match your filter.",
+    "emptyUser": "No local skills yet — use the buttons above to add one.",
+    "openclawBuiltinDescHint": "Bundled descriptions come from OpenClaw SKILL.md (often English). Hover a card description to read the full text. To localize, add strings under skillsPage.openclawDesc.<skillId> in this locale file.",
+    "upload": {
+      "title": "Register skill (local path)",
+      "fieldTitle": "Name",
+      "fieldDesc": "Description (optional)",
+      "fieldPath": "Local path",
+      "pathPlaceholder": "e.g. C:\\skills\\my-skill or paste a path",
+      "pathHint": "Offline-only: we store the path in your local list. A system file picker can be added later.",
+      "fieldCategory": "Category",
+      "defaultTitle": "Untitled skill",
+      "confirm": "Save to list"
+    },
+    "nl": {
+      "title": "Natural-language draft",
+      "hint": "Scaffold: your text is saved as a draft; parsing into a SKILL definition comes later.",
+      "placeholder": "Describe what the skill should do, inputs/outputs, and any constraints…",
+      "confirm": "Save draft",
+      "stubTitle": "NL draft"
+    },
+    "catModal": {
+      "title": "Categories",
+      "builtinHint": "Built-in categories cannot be removed; add your own below.",
+      "builtin": "Built-in",
+      "newPlaceholder": "New category name",
+      "add": "Add"
+    },
+    "categoryLabels": {
+      "cat-openclaw": "OpenClaw bundle",
+      "cat-general": "General",
+      "cat-dev": "Engineering",
+      "cat-office": "Office",
+      "cat-data": "Data"
+    }
+  },
   "chatLab": {
     "title": "Chat",
     "subtitle": "Talks to your OpenClaw gateway default agent (tools and skills follow the gateway host). Streams replies and reasoning when the gateway streams them. Conversations are saved locally in History in the sidebar.",
@@ -94,6 +149,13 @@
     "toolbarAuto": "Auto",
     "toolbarConnect": "Connect",
     "toolbarAutoHint": "Coming soon",
+    "toolbarSkill": "Skill",
+    "toolbarSkillHint": "Pick a skill for this message; a short skill hint is prefixed when sending. Type / in the box to search.",
+    "skillPickerTitle": "Choose skill",
+    "skillPickerSearch": "Search skills…",
+    "skillPickerEmpty": "No matching skills",
+    "skillPickerClear": "Clear skill",
+    "skillChipClose": "Remove skill",
     "toolbarConnectHint": "Coming soon",
     "attachHint": "Attachments coming soon",
     "systemPrompt": "You are a capable, friendly assistant. Think briefly when helpful, then answer clearly in the user's language.",

@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "openclaw": "openclaw",
     "windows:defender-exclude-openclaw-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-defender-exclude-openclaw-dev.ps1",
-    "postinstall": "node scripts/apply-openclaw-memo.mjs"
+    "postinstall": "node scripts/apply-openclaw-memo.mjs && node scripts/generate-openclaw-bundled-skills.mjs"
   },
   "engines": {
     "node": ">=22.14.0"

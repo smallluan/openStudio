@@ -9,6 +9,16 @@ const MAX_SESSIONS = 50;
  */
 
 /**
+ * Serializable skill tag on a user message (UI + edit restore).
+ * @typedef {object} MessageSkillMeta
+ * @property {'openclaw'|'user'} kind
+ * @property {string} [slug]
+ * @property {string} [userSkillId]
+ * @property {string} label
+ * @property {string} emoji
+ */
+
+/**
  * @typedef {object} PersistedChatMessage
  * @property {string} id
  * @property {'user' | 'assistant'} role
@@ -17,6 +27,7 @@ const MAX_SESSIONS = 50;
  * @property {ToolTraceRow[]} [toolTrace]
  * @property {ActivityRow[]} [activityLog]
  * @property {number} [createdAt]
+ * @property {MessageSkillMeta} [skillMeta]
  */
 
 /**
@@ -134,6 +145,7 @@ function persistedMessagesEqual(a, b) {
     if (xt !== yt) return false;
     if (JSON.stringify(x.toolTrace ?? null) !== JSON.stringify(y.toolTrace ?? null)) return false;
     if (JSON.stringify(x.activityLog ?? null) !== JSON.stringify(y.activityLog ?? null)) return false;
+    if (JSON.stringify(x.skillMeta ?? null) !== JSON.stringify(y.skillMeta ?? null)) return false;
     const xc = typeof x.createdAt === "number" && Number.isFinite(x.createdAt) ? x.createdAt : -1;
     const yc = typeof y.createdAt === "number" && Number.isFinite(y.createdAt) ? y.createdAt : -1;
     if (xc !== yc) return false;
@@ -163,6 +175,21 @@ function sanitizeMessages(raw) {
       if (al?.length) row.activityLog = al;
     }
     if (typeof m.createdAt === "number" && Number.isFinite(m.createdAt)) row.createdAt = m.createdAt;
+    const sm = m.skillMeta;
+    if (sm && typeof sm === "object") {
+      const kind = sm.kind === "openclaw" || sm.kind === "user" ? sm.kind : null;
+      const label = typeof sm.label === "string" ? sm.label.trim().slice(0, 120) : "";
+      const emoji = typeof sm.emoji === "string" ? sm.emoji.slice(0, 8) : "";
+      if (kind && label) {
+        if (kind === "openclaw") {
+          const slug = typeof sm.slug === "string" ? sm.slug.trim().slice(0, 80) : "";
+          if (slug) row.skillMeta = { kind: "openclaw", slug, label, emoji };
+        } else {
+          const uid = typeof sm.userSkillId === "string" ? sm.userSkillId.trim().slice(0, 80) : "";
+          if (uid) row.skillMeta = { kind: "user", userSkillId: uid, label, emoji };
+        }
+      }
+    }
     out.push(row);
   }
   return out;

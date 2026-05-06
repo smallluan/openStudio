@@ -21,6 +21,7 @@
     "chatHistoryTimeDays": "{{n}} 天前",
     "chatHistoryGenerating": "正在生成…",
     "lobster": "龙虾管理",
+    "skills": "技能",
     "settings": "设置",
     "primaryAria": "主导航",
     "footerAria": "系统导航",
@@ -85,6 +86,60 @@
     "desc": "管理龙虾相关配置与状态的入口页面，具体内容后续接入。",
     "placeholder": "此处可放置龙虾列表、投喂计划、或与 OpenClaw 联动的控制台。"
   },
+  "skillsPage": {
+    "title": "技能",
+    "desc": "浏览 OpenClaw 内置能力示例，并在本机记录你上传或自然语言描述的技能（离线草稿；路径仅保存在此设备）。",
+    "searchPlaceholder": "搜索技能",
+    "filterAll": "全部",
+    "actions": {
+      "upload": "上传技能",
+      "createNl": "自然语言创建",
+      "manageCategories": "分类管理"
+    },
+    "sectionBuiltin": "OpenClaw 同捆技能",
+    "sectionUser": "我的技能",
+    "badgeBuiltin": "内置",
+    "badgeUser": "本地",
+    "delete": "删除",
+    "cancel": "取消",
+    "close": "完成",
+    "noDescription": "暂无描述",
+    "emptyBuiltin": "没有匹配的内置技能。",
+    "emptyUser": "还没有本地技能，点击上方按钮添加。",
+    "openclawBuiltinDescHint": "同捆说明多来自 OpenClaw 英文 SKILL.md。将鼠标悬停在卡片说明上可查看完整原文。需要其它语言时，可在本语言包中为 skillsPage.openclawDesc.<技能 id> 添加译文。",
+    "upload": {
+      "title": "上传技能（本地路径）",
+      "fieldTitle": "名称",
+      "fieldDesc": "描述（可选）",
+      "fieldPath": "本地路径或文件位置",
+      "pathPlaceholder": "例如 D:\\skills\\my-skill 或粘贴路径",
+      "pathHint": "离线工具：仅把路径记在本地列表中。后续可接入系统文件选择对话框。",
+      "fieldCategory": "分类",
+      "defaultTitle": "未命名技能",
+      "confirm": "保存到列表"
+    },
+    "nl": {
+      "title": "自然语言创建",
+      "hint": "架子阶段：你的描述会整段保存为草稿，后续再接解析与生成 SKILL 定义。",
+      "placeholder": "用一句话说明这个技能帮你做什么、输入输出大概是什么…",
+      "confirm": "保存草稿",
+      "stubTitle": "自然语言草稿"
+    },
+    "catModal": {
+      "title": "分类管理",
+      "builtinHint": "内置分类不可删除；可新增你自己的分类。",
+      "builtin": "内置",
+      "newPlaceholder": "新分类名称",
+      "add": "添加"
+    },
+    "categoryLabels": {
+      "cat-openclaw": "OpenClaw 同捆",
+      "cat-general": "通用",
+      "cat-dev": "开发",
+      "cat-office": "办公",
+      "cat-data": "数据"
+    }
+  },
   "chatLab": {
     "title": "对话",
     "subtitle": "通过 OpenClaw 网关的默认智能体对话（工具与技能由网关主机上的配置决定）。支持流式回复与推理片段（若网关推送）。会话内容保存在本机侧边栏「历史会话」中，可随时切换或删除。",
@@ -94,6 +149,13 @@
     "toolbarAuto": "自动",
     "toolbarConnect": "连接",
     "toolbarAutoHint": "即将推出",
+    "toolbarSkill": "技能",
+    "toolbarSkillHint": "为本条消息选择技能；发送时会在后台附加简短技能提示。输入 / 可搜索。",
+    "skillPickerTitle": "选择技能",
+    "skillPickerSearch": "搜索技能…",
+    "skillPickerEmpty": "没有匹配的技能",
+    "skillPickerClear": "清除技能",
+    "skillChipClose": "移除技能",
     "toolbarConnectHint": "即将推出",
     "attachHint": "附件功能即将推出",
     "systemPrompt": "你是一位专业、友好的助手。先理清思路再给清晰回答。使用与用户一致的语言作答。",

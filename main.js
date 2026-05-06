@@ -349,19 +349,20 @@ app.whenReady().then(() => {
     }
     const ac = new AbortController();
     chatStreamAbortControllers.set(streamId, ac);
-    const wc = event.sender;
-    try {
-      runOpenClawAgentSyncFromStudio("chat");
-      const cfg = userConfigStore.readRaw();
-      await dispatchOpenClawGatewayStream(
-        cfg,
-        messages,
-        ac.signal,
-        (evt) => {
-          if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
-        },
-        conversationId ? { conversationId } : {},
-      );
+      const wc = event.sender;
+      const composerSkill = payload?.composerSkill;
+      try {
+        runOpenClawAgentSyncFromStudio("chat");
+        const cfg = userConfigStore.readRaw();
+        await dispatchOpenClawGatewayStream(
+          cfg,
+          messages,
+          ac.signal,
+          (evt) => {
+            if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
+          },
+          conversationId ? { conversationId, composerSkill } : { composerSkill },
+        );
     } catch (e) {
       if (!wc.isDestroyed()) {
         if (ac.signal.aborted || e?.name === "AbortError") {

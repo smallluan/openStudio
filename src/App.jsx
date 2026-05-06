@@ -1,6 +1,7 @@
 import { Route, Routes, useLocation } from "react-router-dom";
 import MainLayout from "./layouts/MainLayout.jsx";
 import LobsterManagementPage from "./pages/LobsterManagementPage.jsx";
+import SkillMarketPage from "./pages/SkillMarketPage.jsx";
 import SettingsModalShell from "./routes/SettingsModalShell.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import StudioPage from "./pages/StudioPage.jsx";
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="studio" element={<StudioPage />} />
           <Route path="chat" element={<ChatLabPage />} />
           <Route path="lobster" element={<LobsterManagementPage />} />
+          <Route path="skills" element={<SkillMarketPage />} />
         </Route>
       </Routes>
       {isSettings ? (

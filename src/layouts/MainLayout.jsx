@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import NavChatLabIcon from "../assets/svg/NavChatLabIcon.jsx";
 import NavLobsterIcon from "../assets/svg/NavLobsterIcon.jsx";
+import NavSkillIcon from "../assets/svg/NavSkillIcon.jsx";
 import NavSettingsIcon from "../assets/svg/NavSettingsIcon.jsx";
 import NavStudioIcon from "../assets/svg/NavStudioIcon.jsx";
 import RailSearchInput from "../components/shell/RailSearchInput.jsx";
@@ -92,6 +93,12 @@ export default function MainLayout({ railResizeEnabled = false }) {
         to: "/lobster",
         label: t("nav.lobster"),
         icon: <NavLobsterIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
+      },
+      {
+        id: "skills",
+        to: "/skills",
+        label: t("nav.skills"),
+        icon: <NavSkillIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
       },
     ],
     [t],

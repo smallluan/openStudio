@@ -21,6 +21,7 @@
     "chatHistoryTimeYesterday": "昨日",
     "chatHistoryTimeDays": "{{n}} 日前",
     "lobster": "ロブスター管理",
+    "skills": "スキル",
     "settings": "設定",
     "primaryAria": "メインのナビゲーション",
     "footerAria": "システムナビゲーション",
@@ -85,6 +86,60 @@
     "desc": "ロブスター関連の設定と状態への入口です。詳細は後から接続します。",
     "placeholder": "ロブスター一覧、給餌スケジュール、OpenClaw 連携コンソールなどをここに配置できます。"
   },
+  "skillsPage": {
+    "title": "スキル",
+    "desc": "OpenClaw 同梱イメージのスキル例を見られ、アップロードや自然言語で書いたスキルをローカルに記録します（オフライン下書き・パスはこの端末のみ）。",
+    "searchPlaceholder": "スキルを検索",
+    "filterAll": "すべて",
+    "actions": {
+      "upload": "ローカル登録",
+      "createNl": "自然言語で作成",
+      "manageCategories": "カテゴリ"
+    },
+    "sectionBuiltin": "OpenClaw 同梱スキル",
+    "sectionUser": "マイスキル",
+    "badgeBuiltin": "同梱",
+    "badgeUser": "ローカル",
+    "delete": "削除",
+    "cancel": "キャンセル",
+    "close": "完了",
+    "noDescription": "説明なし",
+    "emptyBuiltin": "該当する同梱スキルがありません。",
+    "emptyUser": "ローカルスキルはまだありません。上のボタンから追加してください。",
+    "openclawBuiltinDescHint": "説明は OpenClaw の SKILL.md 由来で多くは英語です。カードの説明にマウスを乗せると全文が表示されます。locale ファイルに skillsPage.openclawDesc.<skillId> を追加すると出し分けできます。",
+    "upload": {
+      "title": "スキルを登録（ローカルパス）",
+      "fieldTitle": "名前",
+      "fieldDesc": "説明（任意）",
+      "fieldPath": "ローカルパス",
+      "pathPlaceholder": "例: C:\\skills\\my-skill やパスを貼り付け",
+      "pathHint": "オフライン: パスはこの端末のリストに保存します。後でファイル選択ダイアログを接続できます。",
+      "fieldCategory": "カテゴリ",
+      "defaultTitle": "無題のスキル",
+      "confirm": "リストに保存"
+    },
+    "nl": {
+      "title": "自然言語の下書き",
+      "hint": "骨組み段階: 全文を下書きとして保存します。SKILL 定義へのパースは後続です。",
+      "placeholder": "スキルが何をするか、入出力や制約を一文で…",
+      "confirm": "下書き保存",
+      "stubTitle": "NL 下書き"
+    },
+    "catModal": {
+      "title": "カテゴリ管理",
+      "builtinHint": "同梱カテゴリは削除できません。独自カテゴリを追加できます。",
+      "builtin": "同梱",
+      "newPlaceholder": "新しいカテゴリ名",
+      "add": "追加"
+    },
+    "categoryLabels": {
+      "cat-openclaw": "OpenClaw 同梱",
+      "cat-general": "一般",
+      "cat-dev": "開発",
+      "cat-office": "オフィス",
+      "cat-data": "データ"
+    }
+  },
   "chatLab": {
     "title": "チャット",
     "subtitle": "OpenClaw ゲートウェイの既定エージェント経由（ツール／スキルはゲートウェイ側の設定に従う）。ストリーミング応答と推論デルタ（ゲートウェイが送る場合）。会話はこの端末のサイドバー「履歴」に保存され、切り替えや削除ができます。",
@@ -94,6 +149,13 @@
     "toolbarAuto": "自動",
     "toolbarConnect": "接続",
     "toolbarAutoHint": "準備中",
+    "toolbarSkill": "スキル",
+    "toolbarSkillHint": "このメッセージ用のスキルを選びます。送信時に短いスキルヒントが前置されます。入力で / と打つと検索できます。",
+    "skillPickerTitle": "スキルを選択",
+    "skillPickerSearch": "スキルを検索…",
+    "skillPickerEmpty": "該当スキルがありません",
+    "skillPickerClear": "スキルを外す",
+    "skillChipClose": "スキルを削除",
     "toolbarConnectHint": "準備中",
     "attachHint": "添付は準備中です",
     "systemPrompt": "あなたは有能で親切なアシスタントです。必要なら短く考えてから、ユーザーの言語で明確に答えてください。",
