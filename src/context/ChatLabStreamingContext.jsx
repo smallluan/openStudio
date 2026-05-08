@@ -73,15 +73,7 @@ function persistAssistantMerge(conversationId, assistantMessageId, content, thin
     else if (Array.isArray(activityLog) && activityLog.length === 0) delete row.activityLog;
     return row;
   });
-  const flat = messages.map((m) => ({
-    id: m.id,
-    role: m.role,
-    content: m.content,
-    ...(m.thinking ? { thinking: m.thinking } : {}),
-    ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
-    ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
-  }));
-  const title = deriveTitleFromMessages(flat);
+  const title = deriveTitleFromMessages(messages);
   upsertSession(conversationId, title || "…", messages);
 }
 

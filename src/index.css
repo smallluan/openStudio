@@ -1338,6 +1338,147 @@ code {
   padding-top: 0.45rem;
 }
 
+.chat-lab__shell-textarea--with-attachments {
+  padding-top: 0.35rem;
+}
+
+.chat-lab__shell--drag {
+  border-color: color-mix(in srgb, var(--os-accent) 58%, var(--os-border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--os-accent) 22%, transparent),
+    0 8px 32px rgba(15, 23, 42, 0.09);
+}
+
+:root[data-theme="dark"] .chat-lab__shell--drag {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--os-accent) 35%, transparent),
+    0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.chat-lab__composer-attachments {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+  padding: 0.45rem 1.05rem 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.chat-lab__composer-att-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--os-border) 72%, transparent);
+  background: var(--os-bg-subtle);
+}
+
+.chat-lab__composer-att-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.chat-lab__composer-att-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  color: #fff;
+  background: color-mix(in srgb, #111827 65%, transparent);
+}
+
+.chat-lab__composer-att-remove:hover:not(:disabled) {
+  background: color-mix(in srgb, #111827 82%, transparent);
+}
+
+.chat-lab__composer-att-remove:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.chat-lab__composer-att-err {
+  padding: 0.15rem 1.05rem 0;
+  font-size: 0.74rem;
+  color: #c2410c;
+}
+
+:root[data-theme="dark"] .chat-lab__composer-att-err {
+  color: #fdba74;
+}
+
+.chat-lab__ctx-ring-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+}
+
+.chat-lab__ctx-ring-svg {
+  display: block;
+}
+
+.chat-lab__ctx-ring-track {
+  stroke: color-mix(in srgb, var(--os-border) 82%, transparent);
+}
+
+.chat-lab__ctx-ring-pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--os-text-muted);
+  pointer-events: none;
+}
+
+.chat-lab__user-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.chat-lab__user-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chat-lab__user-image-link {
+  display: block;
+  flex: 0 0 auto;
+  max-width: min(100%, 11rem);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--os-border) 65%, transparent);
+}
+
+.chat-lab__user-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 14rem;
+  object-fit: contain;
+}
+
 .chat-lab__shell-textarea {
   width: 100%;
   min-height: 5.5rem;

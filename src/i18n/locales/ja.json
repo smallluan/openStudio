@@ -241,7 +241,15 @@
     "messageSaveEdit": "保存して再生成",
     "messageCancelEdit": "編集を取り消す",
     "composerEditingMessageTag": "メッセージを編集中",
-    "composerDismissEditHint": "閉じると送信は末尾に新しいメッセージとして追加されます"
+    "composerDismissEditHint": "閉じると送信は末尾に新しいメッセージとして追加されます",
+    "contextUsageHint": "文脈の目安 {{pct}}% · ~{{approxTokens}} tokens · 基準ウィンドウ {{windowK}}k",
+    "composerAttachmentsLabel": "送信予定の画像",
+    "removeComposerImage": "画像を削除",
+    "chatUntitledImage": "[画像]",
+    "maxComposerImages": "画像は最大 {{max}} 枚までです",
+    "imageTooLarge": "各画像は 2 MB 未満にしてください",
+    "invalidImageType": "画像ファイルのみ追加できます",
+    "messageImagesCopyNote": "（別途 {{count}} 枚の画像あり・画像データはコピーされません）"
   },
   "bootstrap": {
     "title": "Open Studio を準備しています",

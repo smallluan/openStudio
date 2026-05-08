@@ -242,7 +242,15 @@
     "messageSaveEdit": "Save and regenerate",
     "messageCancelEdit": "Cancel edit",
     "composerEditingMessageTag": "Editing message",
-    "composerDismissEditHint": "Dismiss — send will append a new message instead of rewriting from here"
+    "composerDismissEditHint": "Dismiss — send will append a new message instead of rewriting from here",
+    "contextUsageHint": "~{{pct}}% of context (≈{{approxTokens}} tokens · vs ~{{windowK}}k window)",
+    "composerAttachmentsLabel": "Images to send",
+    "removeComposerImage": "Remove image",
+    "chatUntitledImage": "[Image]",
+    "maxComposerImages": "Maximum {{max}} images in the composer",
+    "imageTooLarge": "Each image must be under 2 MB",
+    "invalidImageType": "Only image files can be attached",
+    "messageImagesCopyNote": "({{count}} images attached — image data not copied)"
   },
   "bootstrap": {
     "title": "Open Studio is getting ready",

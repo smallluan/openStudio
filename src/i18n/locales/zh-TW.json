@@ -241,7 +241,15 @@
     "messageSaveEdit": "儲存並重新產生",
     "messageCancelEdit": "取消編輯",
     "composerEditingMessageTag": "修改訊息",
-    "composerDismissEditHint": "關閉後繼續送出將新增訊息，不從該則改寫分支"
+    "composerDismissEditHint": "關閉後繼續送出將新增訊息，不從該則改寫分支",
+    "contextUsageHint": "估算上下文約占 {{pct}}% · ~{{approxTokens}} tokens · 參照視窗 {{windowK}}k",
+    "composerAttachmentsLabel": "待傳送的圖片",
+    "removeComposerImage": "移除圖片",
+    "chatUntitledImage": "[圖片]",
+    "maxComposerImages": "已達圖片附件上限（最多 {{max}} 張）",
+    "imageTooLarge": "單張圖片不可超過 2 MB",
+    "invalidImageType": "只能新增圖片類型的檔案",
+    "messageImagesCopyNote": "（另有 {{count}} 張圖片，未複製影像資料）"
   },
   "bootstrap": {
     "title": "Open Studio 正在就緒",

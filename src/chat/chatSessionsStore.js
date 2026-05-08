@@ -19,6 +19,13 @@ const MAX_SESSIONS = 50;
  */
 
 /**
+ * Inline image on a user bubble (data URL). Keep payloads bounded by composer limits + storage quota.
+ * @typedef {object} PersistedImageAttachment
+ * @property {string} mime
+ * @property {string} dataUrl
+ */
+
+/**
  * @typedef {object} PersistedChatMessage
  * @property {string} id
  * @property {'user' | 'assistant'} role
@@ -28,6 +35,7 @@ const MAX_SESSIONS = 50;
  * @property {ActivityRow[]} [activityLog]
  * @property {number} [createdAt]
  * @property {MessageSkillMeta} [skillMeta]
+ * @property {PersistedImageAttachment[]} [imageAttachments]
  */
 
 /**
@@ -146,11 +154,28 @@ function persistedMessagesEqual(a, b) {
     if (JSON.stringify(x.toolTrace ?? null) !== JSON.stringify(y.toolTrace ?? null)) return false;
     if (JSON.stringify(x.activityLog ?? null) !== JSON.stringify(y.activityLog ?? null)) return false;
     if (JSON.stringify(x.skillMeta ?? null) !== JSON.stringify(y.skillMeta ?? null)) return false;
+    if (JSON.stringify(x.imageAttachments ?? null) !== JSON.stringify(y.imageAttachments ?? null)) return false;
     const xc = typeof x.createdAt === "number" && Number.isFinite(x.createdAt) ? x.createdAt : -1;
     const yc = typeof y.createdAt === "number" && Number.isFinite(y.createdAt) ? y.createdAt : -1;
     if (xc !== yc) return false;
   }
   return true;
+}
+
+/** @param {unknown} raw */
+function sanitizeImageAttachments(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  /** @type {{ mime: string; dataUrl: string }[]} */
+  const out = [];
+  for (const a of raw) {
+    if (!a || typeof a !== "object") continue;
+    const mime = typeof a.mime === "string" ? a.mime.trim() : "";
+    const dataUrl = typeof a.dataUrl === "string" ? a.dataUrl : "";
+    if (!mime.startsWith("image/") || !dataUrl.startsWith("data:image/")) continue;
+    out.push({ mime: mime.slice(0, 120), dataUrl });
+    if (out.length >= 12) break;
+  }
+  return out.length ? out : undefined;
 }
 
 /** @param {unknown[]} raw */
@@ -189,6 +214,10 @@ function sanitizeMessages(raw) {
           if (uid) row.skillMeta = { kind: "user", userSkillId: uid, label, emoji };
         }
       }
+    }
+    if (role === "user" && Array.isArray(m.imageAttachments) && m.imageAttachments.length > 0) {
+      const ia = sanitizeImageAttachments(m.imageAttachments);
+      if (ia?.length) row.imageAttachments = ia;
     }
     out.push(row);
   }
@@ -262,10 +291,25 @@ export function getSession(id) {
   return loadAllSessions().find((s) => s.id === id) ?? null;
 }
 
-/** @param {Array<{ id: string; role: string; content: string; thinking?: string }>} messages */
-export function deriveTitleFromMessages(messages) {
-  const first = messages.find((m) => m.role === "user" && String(m.content ?? "").trim());
-  const line = first ? String(first.content).trim().split(/\r?\n/)[0] : "";
+/**
+ * @param {Array<{ id: string; role: string; content: string; thinking?: string; imageAttachments?: unknown[] }>} messages
+ * @param {{ imageFallback?: string }} [opts]
+ */
+export function deriveTitleFromMessages(messages, opts = {}) {
+  const imageFb =
+    typeof opts.imageFallback === "string" && opts.imageFallback.trim()
+      ? opts.imageFallback.trim()
+      : "Image";
+  const first = messages.find(
+    (m) =>
+      m.role === "user" &&
+      (String(m.content ?? "").trim() ||
+        (Array.isArray(m.imageAttachments) && m.imageAttachments.length > 0)),
+  );
+  let line = first ? String(first.content ?? "").trim().split(/\r?\n/)[0] : "";
+  if (!line && first && Array.isArray(first.imageAttachments) && first.imageAttachments.length > 0) {
+    line = imageFb;
+  }
   if (!line) return "";
   return line.length > 80 ? `${line.slice(0, 79)}…` : line;
 }
