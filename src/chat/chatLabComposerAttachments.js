@@ -44,23 +44,59 @@ export function readImageFileAsComposerAttachment(file) {
 }
 
 /**
- * @param {unknown} text
- * @param {Array<{ dataUrl: string }> | undefined} attachments
+ * Base64 payload for OpenClaw `chat.send` attachments (no `data:` prefix).
+ * @param {string} dataUrl
  */
-export function gatewayContentFromUserParts(text, attachments) {
+export function base64FromImageDataUrl(dataUrl) {
+  const s = typeof dataUrl === "string" ? dataUrl : "";
+  const m = /^data:[^;]+;base64,([\s\S]*)$/.exec(s);
+  return m ? m[1].replace(/\s+/g, "") : "";
+}
+
+/**
+ * OpenClaw-compatible attachment rows (`parseMessageWithAttachments` / RPC normalize).
+ * @param {Array<{ mime: string; name?: string; dataUrl: string }> | undefined} attachments
+ * @returns {Array<{ mimeType: string; fileName: string; content: string }> | undefined}
+ */
+export function openClawAttachmentsFromComposer(attachments) {
+  const imgs = Array.isArray(attachments) ? attachments : [];
+  const out = [];
+  for (let i = 0; i < imgs.length; i++) {
+    const a = imgs[i];
+    const dataUrl = typeof a?.dataUrl === "string" ? a.dataUrl : "";
+    if (!dataUrl.startsWith("data:image/")) continue;
+    const content = base64FromImageDataUrl(dataUrl);
+    if (!content) continue;
+    const mime = typeof a.mime === "string" && a.mime.startsWith("image/") ? a.mime : "image/png";
+    const name =
+      typeof a.name === "string" && a.name.trim()
+        ? a.name.trim()
+        : imgs.length === 1
+          ? "image.png"
+          : `image-${i + 1}.png`;
+    out.push({ mimeType: mime, fileName: name, content });
+  }
+  return out.length ? out : undefined;
+}
+
+/**
+ * Plain-text user line for gateway history / `chat.send` (never inline base64).
+ * Images are sent via `attachments` on the pending user row only — see {@link openClawAttachmentsFromComposer}.
+ * @param {unknown} text
+ * @param {Array<{ dataUrl?: string }> | undefined} attachments
+ */
+export function gatewayUserMessageBody(text, attachments) {
   const t = String(text ?? "").trim();
   const imgs = Array.isArray(attachments) ? attachments : [];
-  if (imgs.length === 0) return t;
-  const md = imgs
-    .map((a, i) => {
-      const url = typeof a?.dataUrl === "string" ? a.dataUrl : "";
-      if (!url.startsWith("data:image/")) return "";
-      return `![Attached image ${i + 1}](${url})`;
-    })
-    .filter(Boolean)
-    .join("\n");
-  if (!md) return t;
-  return t ? `${t}\n\n${md}` : md;
+  let n = 0;
+  for (const a of imgs) {
+    const url = typeof a?.dataUrl === "string" ? a.dataUrl : "";
+    if (url.startsWith("data:image/")) n++;
+  }
+  if (n === 0) return t;
+  const note = n === 1 ? "[1 image attached]" : `[${n} images attached]`;
+  if (!t) return note;
+  return `${t}\n\n${note}`;
 }
 
 /** @param {number} chars */

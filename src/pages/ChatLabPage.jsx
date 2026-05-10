@@ -4,13 +4,13 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import {
   CONTEXT_WINDOW_APPROX_TOKENS,
   approxTokensFromChars,
   estimateThreadCharBudget,
-  gatewayContentFromUserParts,
+  gatewayUserMessageBody,
+  openClawAttachmentsFromComposer,
   MAX_CHAT_COMPOSER_IMAGES,
   readImageFileAsComposerAttachment,
 } from "../chat/chatLabComposerAttachments.js";
@@ -36,6 +36,7 @@ import {
   isSlashOnlyComposerDraft,
   stripSlashPickerPrefix,
 } from "../components/chat-lab/ChatLabComposerSkills.jsx";
+import { ChatLabContextMeter } from "../components/chat-lab/ChatLabContextMeter.jsx";
 import {
   listSkillsForPicker,
   pickRowFromSkillMeta,
@@ -48,10 +49,15 @@ import {
   syncSkillCreatorResultToLibrary,
 } from "../skills/skillCreatorChatSync.js";
 import { cn } from "../ui/cn.js";
+import { CHAT_MD_REHYPE_PLUGINS } from "../chat/chatLabRehypePlugins.js";
 
-/** Markdown pipelines for assistant bubbles (GFM + LaTeX via KaTeX). */
+/** Markdown pipelines for chat bubbles (GFM + LaTeX via KaTeX). */
 const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
-const CHAT_MD_REHYPE_PLUGINS = [rehypeKatex];
+
+/** Min height of the chat composer textarea in px (~5.5rem at default root font size). */
+const CHAT_LAB_COMPOSER_TEXT_MIN_PX = 88;
+/** Hard cap for composer textarea max height before viewport ratio is applied. */
+const CHAT_LAB_COMPOSER_TEXT_MAX_CAP_PX = 400;
 
 const ERROR_CODE_KEY_MAP = {
   missing_gateway_url: "chatLab.gatewayUrlMissing",
@@ -81,17 +87,26 @@ function formatMessageTimestamp(ts, locale) {
 
 /**
  * History rows posted to OpenClaw (system + tail user line are appended by the caller).
- * @param {Array<{role: string; content?: string; thinking?: string; error?: string}>} msgs
+ * Put OpenClaw `attachments` only when `includeImageAttachments` is true (latest user turn);
+ * earlier turns use short "[N images attached]" text so we do not resend base64 every request.
+ * @param {Array<{role: string; content?: string; thinking?: string; error?: string; imageAttachments?: unknown}>} msgs
+ * @param {{ includeImageAttachments?: boolean }} [opts]
  */
-function buildGatewayPayloadRows(msgs) {
+function buildGatewayPayloadRows(msgs, opts = {}) {
+  const includeImageAttachments = opts.includeImageAttachments === true;
   return msgs
     .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
     .map((m) => {
       if (m.role !== "assistant") {
-        return {
+        const row = {
           role: m.role,
-          content: gatewayContentFromUserParts(m.content, m.imageAttachments),
+          content: gatewayUserMessageBody(m.content, m.imageAttachments),
         };
+        if (includeImageAttachments) {
+          const att = openClawAttachmentsFromComposer(m.imageAttachments);
+          if (att) Object.assign(row, { attachments: att });
+        }
+        return row;
       }
       const c = String(m.content ?? "").trim();
       const th = String(m.thinking ?? "").trim();
@@ -211,48 +226,6 @@ function buildStudioGatewayPrewarmIds(currentConversationId, max) {
   return out.slice(0, cap);
 }
 
-/**
- * Circular gauge for approximate context window usage (character-based estimate).
- * @param {{ ratio: number; title: string }} props
- */
-function ChatLabContextRing({ ratio, title }) {
-  const pctFull = Math.round(Math.min(100, Math.max(0, ratio * 100)));
-  const r = 10;
-  const c = 2 * Math.PI * r;
-  const dashOffset = c * (1 - Math.min(1, ratio));
-  const hi = ratio >= 0.92;
-  const mid = !hi && ratio >= 0.78;
-  const stroke = hi ? "#e53935" : mid ? "#d97706" : "color-mix(in srgb, var(--os-accent) 82%, var(--os-text-muted))";
-
-  return (
-    <div className="chat-lab__ctx-ring-wrap" title={title} role="img" aria-label={title}>
-      <svg className="chat-lab__ctx-ring-svg" width="34" height="34" viewBox="0 0 34 34" aria-hidden>
-        <circle
-          cx="17"
-          cy="17"
-          r={r}
-          fill="none"
-          className="chat-lab__ctx-ring-track"
-          strokeWidth="3"
-        />
-        <circle
-          cx="17"
-          cy="17"
-          r={r}
-          fill="none"
-          stroke={stroke}
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={dashOffset}
-          transform="rotate(-90 17 17)"
-          className="chat-lab__ctx-ring-fill"
-        />
-      </svg>
-      <span className="chat-lab__ctx-ring-pct">{pctFull}</span>
-    </div>
-  );
-}
 
 export default function ChatLabPage() {
   const { t, locale } = useI18n();
@@ -293,6 +266,20 @@ export default function ChatLabPage() {
     /** @type {import("../skills/skillRegistry.js").SkillPickRow | null} */ (null),
   );
   const textareaRef = useRef(/** @type {HTMLTextAreaElement | null} */ (null));
+  const composerResizeDragRef = useRef(
+    /** @type {{ startY: number; startH: number }} */ ({ startY: 0, startH: CHAT_LAB_COMPOSER_TEXT_MIN_PX }),
+  );
+  const composerResizeDraggingRef = useRef(false);
+  const [composerMaxPx, setComposerMaxPx] = useState(() =>
+    typeof window === "undefined"
+      ? CHAT_LAB_COMPOSER_TEXT_MAX_CAP_PX
+      : Math.min(CHAT_LAB_COMPOSER_TEXT_MAX_CAP_PX, Math.round(window.innerHeight * 0.48)),
+  );
+  const [composerTextareaPx, setComposerTextareaPx] = useState(CHAT_LAB_COMPOSER_TEXT_MIN_PX);
+  const [composerLongTextMode, setComposerLongTextMode] = useState(false);
+  const [composerResizeDragging, setComposerResizeDragging] = useState(false);
+  const [composerResizeStripHover, setComposerResizeStripHover] = useState(false);
+  const [composerResizeGripX, setComposerResizeGripX] = useState(0);
   /** When set, the next send replaces this user message and truncates the thread below it (unless the tag is dismissed). */
   const [pendingEditMessageId, setPendingEditMessageId] = useState(/** @type {string | null} */ (null));
   const pendingEditMessageIdRef = useRef(/** @type {string | null} */ (null));
@@ -327,7 +314,40 @@ export default function ChatLabPage() {
     setComposerAttachments([]);
     setComposerDragActive(false);
     composerDragDepthRef.current = 0;
+    setComposerLongTextMode(false);
+    setComposerTextareaPx(CHAT_LAB_COMPOSER_TEXT_MIN_PX);
+    setComposerResizeDragging(false);
+    composerResizeDraggingRef.current = false;
+    setComposerResizeStripHover(false);
   }, [conversationId]);
+
+  const composerSnapPx = useMemo(() => Math.round(composerMaxPx * 0.72), [composerMaxPx]);
+
+  useEffect(() => {
+    const upd = () => {
+      setComposerMaxPx(
+        Math.min(CHAT_LAB_COMPOSER_TEXT_MAX_CAP_PX, Math.round(window.innerHeight * 0.48)),
+      );
+    };
+    upd();
+    window.addEventListener("resize", upd);
+    return () => window.removeEventListener("resize", upd);
+  }, []);
+
+  useEffect(() => {
+    setComposerTextareaPx((h) => {
+      if (composerLongTextMode) return composerMaxPx;
+      return Math.min(Math.max(h, CHAT_LAB_COMPOSER_TEXT_MIN_PX), composerMaxPx);
+    });
+  }, [composerMaxPx, composerLongTextMode]);
+
+  const composerLongTextEnteredRef = useRef(false);
+  useEffect(() => {
+    if (composerLongTextMode && !composerLongTextEnteredRef.current) {
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    }
+    composerLongTextEnteredRef.current = composerLongTextMode;
+  }, [composerLongTextMode]);
 
   const skillPickList = listSkillsForPicker();
 
@@ -700,7 +720,7 @@ export default function ChatLabPage() {
       const base = [...prev.slice(0, idx), editedUser];
 
       const priorRows = buildGatewayPayloadRows(base.slice(0, -1));
-      const tailUserRows = buildGatewayPayloadRows([editedUser]);
+      const tailUserRows = buildGatewayPayloadRows([editedUser], { includeImageAttachments: true });
       const lastUserGatewayRow = tailUserRows[tailUserRows.length - 1];
 
       if (!paramC) {
@@ -953,7 +973,7 @@ export default function ChatLabPage() {
     activeStreamIdRef.current = streamId;
     activeAssistantIdRef.current = assistantMsg.id;
 
-    const tailUserRows = buildGatewayPayloadRows([userMsg]);
+    const tailUserRows = buildGatewayPayloadRows([userMsg], { includeImageAttachments: true });
     const lastUserGatewayRow = tailUserRows[tailUserRows.length - 1];
     const outgoing = [systemMessage, ...historyForRequest, lastUserGatewayRow];
 
@@ -1018,15 +1038,115 @@ export default function ChatLabPage() {
     });
   }, [bridge]);
 
+  const exitComposerLongTextMode = useCallback(() => {
+    setComposerLongTextMode(false);
+    setComposerTextareaPx(CHAT_LAB_COMPOSER_TEXT_MIN_PX);
+  }, []);
+
+  const finishComposerResize = useCallback(
+    /** @param {HTMLDivElement} el @param {number} pointerId */
+    (el, pointerId) => {
+      composerResizeDraggingRef.current = false;
+      setComposerResizeDragging(false);
+      try {
+        el.releasePointerCapture(pointerId);
+      } catch {
+        /* ignore */
+      }
+      setComposerTextareaPx((current) => {
+        if (current >= composerSnapPx) {
+          setComposerLongTextMode(true);
+          return composerMaxPx;
+        }
+        setComposerLongTextMode(false);
+        return current;
+      });
+    },
+    [composerMaxPx, composerSnapPx],
+  );
+
+  const onComposerResizePointerDown = useCallback(
+    /** @param {import('react').PointerEvent<HTMLDivElement>} e */
+    (e) => {
+      if (composerInputLocked || composerLongTextMode) return;
+      if (e.button !== 0) return;
+      e.preventDefault();
+      composerResizeDragRef.current = { startY: e.clientY, startH: composerTextareaPx };
+      composerResizeDraggingRef.current = true;
+      setComposerResizeDragging(true);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [composerInputLocked, composerLongTextMode, composerTextareaPx],
+  );
+
+  const onComposerResizePointerMove = useCallback(
+    /** @param {import('react').PointerEvent<HTMLDivElement>} e */
+    (e) => {
+      if (!composerInputLocked && !composerLongTextMode) {
+        const r = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - r.left;
+        setComposerResizeGripX(Math.max(0, Math.min(r.width, x)));
+      }
+      if (!composerResizeDraggingRef.current) return;
+      const { startY, startH } = composerResizeDragRef.current;
+      const next = Math.min(
+        composerMaxPx,
+        Math.max(CHAT_LAB_COMPOSER_TEXT_MIN_PX, startH + (startY - e.clientY)),
+      );
+      setComposerTextareaPx(next);
+    },
+    [composerInputLocked, composerLongTextMode, composerMaxPx],
+  );
+
+  const onComposerResizeStripPointerEnter = useCallback(
+    /** @param {import('react').PointerEvent<HTMLDivElement>} e */
+    (e) => {
+      if (composerInputLocked || composerLongTextMode) return;
+      setComposerResizeStripHover(true);
+      const w = e.currentTarget.getBoundingClientRect().width;
+      setComposerResizeGripX(w / 2);
+    },
+    [composerInputLocked, composerLongTextMode],
+  );
+
+  const onComposerResizeStripPointerLeave = useCallback(
+    () => {
+      if (composerResizeDraggingRef.current) return;
+      setComposerResizeStripHover(false);
+    },
+    [],
+  );
+
+  const onComposerResizePointerUp = useCallback(
+    /** @param {import('react').PointerEvent<HTMLDivElement>} e */
+    (e) => {
+      if (!composerResizeDragging) return;
+      finishComposerResize(e.currentTarget, e.pointerId);
+    },
+    [composerResizeDragging, finishComposerResize],
+  );
+
   const onKeyDown = useCallback(
     /** @param {import('react').KeyboardEvent<HTMLTextAreaElement>} e */
     (e) => {
+      if (composerLongTextMode) {
+        if (
+          e.key === "Enter" &&
+          (e.ctrlKey || e.metaKey) &&
+          !e.shiftKey &&
+          !e.nativeEvent.isComposing
+        ) {
+          e.preventDefault();
+          if (canSend) send();
+        }
+        return;
+      }
       if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         if (canSend) send();
       }
     },
-    [canSend, send],
+    [canSend, composerLongTextMode, send],
   );
 
   const isLanding = messages.length === 0;
@@ -1067,13 +1187,12 @@ export default function ChatLabPage() {
     return { chars, tokens, frac };
   }, [composerDataChars, input.length, messages, t]);
 
-  const contextRingTitle = useMemo(() => {
+  const contextMeterLines = useMemo(() => {
     const pct = Math.round(Math.min(100, Math.max(0, contextUsageApprox.frac * 100)));
-    return t("chatLab.contextUsageHint", {
-      pct,
-      approxTokens: contextUsageApprox.tokens,
-      windowK: Math.round(CONTEXT_WINDOW_APPROX_TOKENS / 1000),
-    });
+    const windowK = Math.round(CONTEXT_WINDOW_APPROX_TOKENS / 1000);
+    const line1 = t("chatLab.contextMeterLine1", { pct });
+    const line2 = t("chatLab.contextMeterLine2", { n: contextUsageApprox.tokens, windowK });
+    return { line1, line2, ariaSummary: `${line1}，${line2}` };
   }, [contextUsageApprox.frac, contextUsageApprox.tokens, t]);
 
   const addComposerImageFiles = useCallback(
@@ -1115,6 +1234,9 @@ export default function ChatLabPage() {
     autoScrollRef.current = true;
   }, []);
 
+  const composerResizeSnapHint =
+    composerResizeDragging && composerTextareaPx >= composerSnapPx && !composerLongTextMode;
+
   const composer = (
     <div className={cn("chat-lab__composer-outer", isLanding && "chat-lab__composer-outer--landing")}>
       <div
@@ -1122,8 +1244,71 @@ export default function ChatLabPage() {
           "chat-lab__shell",
           isLanding && "chat-lab__shell--hero",
           composerDragActive && !composerInputLocked && "chat-lab__shell--drag",
+          composerLongTextMode && "chat-lab__shell--long-text",
+          composerResizeDragging && "chat-lab__shell--resize-drag",
         )}
       >
+        <div
+          className={cn(
+            "chat-lab__shell-resize",
+            composerInputLocked && !composerLongTextMode && "chat-lab__shell-resize--disabled",
+            composerLongTextMode && "chat-lab__shell-resize--long-text",
+            composerResizeSnapHint && "chat-lab__shell-resize--snapping",
+            (composerResizeStripHover || composerResizeDragging) &&
+              !composerLongTextMode &&
+              "chat-lab__shell-resize--hot",
+          )}
+          role={composerLongTextMode ? "presentation" : "separator"}
+          {...(composerLongTextMode
+            ? {}
+            : {
+                "aria-orientation": "horizontal",
+                "aria-valuemin": CHAT_LAB_COMPOSER_TEXT_MIN_PX,
+                "aria-valuemax": composerMaxPx,
+                "aria-valuenow": Math.round(composerTextareaPx),
+                "aria-label": t("chatLab.composerResizeHandleAria"),
+                "aria-disabled": composerInputLocked,
+              })}
+          onPointerEnter={onComposerResizeStripPointerEnter}
+          onPointerLeave={onComposerResizeStripPointerLeave}
+          onPointerDown={onComposerResizePointerDown}
+          onPointerMove={onComposerResizePointerMove}
+          onPointerUp={onComposerResizePointerUp}
+          onPointerCancel={onComposerResizePointerUp}
+        >
+          {composerLongTextMode ? (
+            <button
+              type="button"
+              className="chat-lab__shell-resize-close"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                exitComposerLongTextMode();
+              }}
+              title={t("chatLab.composerExitLongEditHint")}
+              aria-label={t("chatLab.composerExitLongEdit")}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M18 6 6 18M6 6l12 12"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          ) : composerResizeSnapHint ? (
+            <div className="chat-lab__shell-resize-hint-inline" role="status">
+              {t("chatLab.composerReleaseLongEdit")}
+            </div>
+          ) : (composerResizeStripHover || composerResizeDragging) && !composerInputLocked ? (
+            <div
+              className="chat-lab__shell-resize-grip"
+              style={{ left: composerResizeGripX }}
+              aria-hidden
+            />
+          ) : null}
+        </div>
         <div
           className="chat-lab__shell-body"
           onDragEnter={(e) => {
@@ -1197,7 +1382,10 @@ export default function ChatLabPage() {
               composerSkillRow && "chat-lab__shell-textarea--with-chip",
               composerAttachments.length > 0 && "chat-lab__shell-textarea--with-attachments",
             )}
-            rows={3}
+            style={{
+              height: composerTextareaPx,
+              maxHeight: composerMaxPx,
+            }}
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
@@ -1262,7 +1450,12 @@ export default function ChatLabPage() {
             ) : null}
           </div>
           <div className="chat-lab__shell-toolbar-end">
-            <ChatLabContextRing ratio={Math.min(1, contextUsageApprox.frac)} title={contextRingTitle} />
+            <ChatLabContextMeter
+              ratio={Math.min(1, contextUsageApprox.frac)}
+              ariaSummary={contextMeterLines.ariaSummary}
+              line1={contextMeterLines.line1}
+              line2={contextMeterLines.line2}
+            />
             {gatewayStreaming ? (
               <button
                 type="button"
@@ -1686,9 +1879,10 @@ function ToolRow({ row, t }) {
  * }} props
  */
 function ToolChainPanel({ rows, t, streaming }) {
-  const [open, setOpen] = useState(() => false);
+  const [open, setOpen] = useState(() => Boolean(streaming));
   useEffect(() => {
     if (streaming) setOpen(true);
+    else setOpen(false);
   }, [streaming]);
   if (!rows?.length) return null;
   return (
@@ -1781,6 +1975,7 @@ function ActivityChainPanel({ rows, t, streaming }) {
   const [open, setOpen] = useState(() => Boolean(streaming));
   useEffect(() => {
     if (streaming) setOpen(true);
+    else setOpen(false);
   }, [streaming]);
   if (!rows?.length) return null;
   return (
@@ -1833,6 +2028,124 @@ function MessageMetaEditIcon() {
     </svg>
   );
 }
+
+/** Max height before user-sent bubble content is collapsed by default. */
+const USER_MESSAGE_COLLAPSED_MAX_PX = 240;
+
+function UserMessageExpandChevronIcon() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M7 10l5.2 5.2L18 10"
+        stroke="currentColor"
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * @param {{
+ *   message: {
+ *     id: string;
+ *     content: string;
+ *     imageAttachments?: { mime: string; dataUrl: string }[];
+ *   };
+ *   mdComponents: import("react-markdown").Components;
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ *   expanded: boolean;
+ *   onExpandedChange: (next: boolean) => void;
+ *   onFoldableChange: (canFold: boolean) => void;
+ * }} props
+ */
+const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
+  message,
+  mdComponents,
+  t,
+  expanded,
+  onExpandedChange,
+  onFoldableChange,
+}) {
+  const innerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const [naturalH, setNaturalH] = useState(0);
+
+  const userMdSource = useMemo(
+    () => normalizeLatexMathDelimitersForRemark(String(message.content ?? "")),
+    [message.content],
+  );
+
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setNaturalH(el.scrollHeight));
+    ro.observe(el);
+    setNaturalH(el.scrollHeight);
+    return () => ro.disconnect();
+  }, [message.content, message.imageAttachments, userMdSource]);
+
+  const canFold = naturalH > USER_MESSAGE_COLLAPSED_MAX_PX;
+  const showCollapsed = canFold && !expanded;
+
+  useLayoutEffect(() => {
+    onFoldableChange(canFold);
+  }, [canFold, onFoldableChange]);
+
+  useLayoutEffect(() => {
+    if (!canFold) onExpandedChange(false);
+  }, [canFold, onExpandedChange]);
+
+  return (
+    <div
+      className={cn("chat-lab__user-body-clip", showCollapsed && "chat-lab__user-body-clip--collapsed")}
+      style={showCollapsed ? { maxHeight: USER_MESSAGE_COLLAPSED_MAX_PX } : undefined}
+    >
+      <div ref={innerRef} className="chat-lab__user-body">
+        {String(message.content ?? "").trim() ? (
+          <div className="chat-lab__md chat-lab__user-md">
+            <ReactMarkdown
+              remarkPlugins={CHAT_MD_REMARK_PLUGINS}
+              rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
+              components={mdComponents}
+            >
+              {userMdSource}
+            </ReactMarkdown>
+          </div>
+        ) : null}
+        {Array.isArray(message.imageAttachments) && message.imageAttachments.length > 0 ? (
+          <div className="chat-lab__user-images">
+            {message.imageAttachments.map((att, idx) => (
+              <a
+                key={`${message.id}-img-${idx}`}
+                className="chat-lab__user-image-link"
+                href={att.dataUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <img src={att.dataUrl} alt="" className="chat-lab__user-image" />
+              </a>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {showCollapsed ? (
+        <button
+          type="button"
+          className="chat-lab__user-body-expand"
+          onClick={() => onExpandedChange(true)}
+          aria-expanded="false"
+          aria-label={t("chatLab.userMessageExpand")}
+        >
+          <span className="chat-lab__user-body-expand__fade" aria-hidden />
+          <span className="chat-lab__user-body-expand__ico">
+            <UserMessageExpandChevronIcon />
+          </span>
+        </button>
+      ) : null}
+    </div>
+  );
+});
 
 /**
  * @param {{
@@ -1956,6 +2269,18 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
     });
   }, [message.content, message.id, message.skillMeta, onBeginUserEdit]);
 
+  const [userLongFoldable, setUserLongFoldable] = useState(false);
+  const [userLongExpanded, setUserLongExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!isUser) return;
+    setUserLongExpanded(false);
+  }, [isUser, message.id]);
+
+  const handleUserFoldable = useCallback((can) => {
+    setUserLongFoldable(can);
+  }, []);
+
   return (
     <div
       className={cn(
@@ -1999,26 +2324,14 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
           </TraceDisclosure>
         ) : null}
         {isUser ? (
-          <div className="chat-lab__user-body">
-            {String(message.content ?? "").trim() ? (
-              <div className="chat-lab__user-text">{message.content}</div>
-            ) : null}
-            {Array.isArray(message.imageAttachments) && message.imageAttachments.length > 0 ? (
-              <div className="chat-lab__user-images">
-                {message.imageAttachments.map((att, idx) => (
-                  <a
-                    key={`${message.id}-img-${idx}`}
-                    className="chat-lab__user-image-link"
-                    href={att.dataUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <img src={att.dataUrl} alt="" className="chat-lab__user-image" />
-                  </a>
-                ))}
-              </div>
-            ) : null}
-          </div>
+          <UserMessageCollapsibleBody
+            message={message}
+            mdComponents={mdComponents}
+            t={t}
+            expanded={userLongExpanded}
+            onExpandedChange={setUserLongExpanded}
+            onFoldableChange={handleUserFoldable}
+          />
         ) : (
           <div className="chat-lab__md">
             {message.content ? (
@@ -2053,6 +2366,15 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
             <time className="chat-lab__msg-time" dateTime={timeIso}>
               {timeLabel}
             </time>
+          ) : null}
+          {isUser && userLongFoldable && userLongExpanded ? (
+            <button
+              type="button"
+              className="chat-lab__msg-collapse-btn"
+              onClick={() => setUserLongExpanded(false)}
+            >
+              {t("chatLab.userMessageCollapse")}
+            </button>
           ) : null}
           <div className="chat-lab__msg-actions">
             {isUser ? (
