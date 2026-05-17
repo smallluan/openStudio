@@ -21,11 +21,15 @@ import {
   useState,
 } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { deleteSession, loadAllSessions, renameSession } from "../../chat/chatSessionsStore.js";
+import { deleteSession, deleteSessionsByIds, loadAllSessions, renameSession } from "../../chat/chatSessionsStore.js";
 import { formatSessionRelativeTime } from "../../i18n/relativeTime.js";
 import { useChatLabStreaming } from "../../context/ChatLabStreamingContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import EmptyState from "../../ui/EmptyState.jsx";
+import FluidConfirmDialog from "../../ui/FluidConfirmDialog.jsx";
+import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
+import { useFluidPopupBlob } from "../../ui/useFluidPopupBlob.js";
+import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 import { FluidNavHighlightApi } from "./FluidNavHighlightApi.jsx";
 import { cn } from "../../ui/cn.js";
 
@@ -117,9 +121,22 @@ function HistorySessionRow({
   const location = useLocation();
   const activeC = new URLSearchParams(location.search).get("c");
   const [open, setOpen] = useState(false);
+  const [menuHoverKey, setMenuHoverKey] = useState(/** @type {"rename" | "delete" | null} */ (null));
+  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
+
+  const { rootRef: menuBlobRootRef, setItemRef: setMenuItemRef, blobStyle: menuBlobStyle } = useFluidPopupBlob({
+    open,
+    hoverKey: menuHoverKey,
+    fallbackKey: null,
+    layoutKey: "",
+  });
+
+  useEffect(() => {
+    if (!open) setMenuHoverKey(null);
+  }, [open]);
 
   const { refs, floatingStyles, context } = useFloating({
-    open,
+    open: present,
     onOpenChange: setOpen,
     placement: "bottom-end",
     strategy: "fixed",
@@ -131,6 +148,8 @@ function HistorySessionRow({
   const dismiss = useDismiss(context);
   const role = useRole(context, { role: "menu" });
   const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role]);
+
+  const floatingProps = getFloatingProps();
 
   const handleRename = () => {
     setOpen(false);
@@ -185,13 +204,13 @@ function HistorySessionRow({
           className={cn(
             "chat-history-card__more flex h-7 w-7 shrink-0 items-center justify-center self-center rounded-md text-[0.9375rem] font-bold leading-none text-[var(--os-text-muted)] transition-colors hover:bg-transparent hover:text-[var(--os-text)]",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
-            open &&
+            present &&
               "bg-[color-mix(in_srgb,var(--os-border)_22%,transparent)] text-[var(--os-text)] hover:bg-[color-mix(in_srgb,var(--os-border)_22%,transparent)]",
           )}
           ref={refs.setReference}
           aria-label={t("nav.chatHistoryMore")}
           aria-haspopup="menu"
-          aria-expanded={open}
+          aria-expanded={present}
           {...getReferenceProps()}
           onPointerDown={(e) => e.stopPropagation()}
         >
@@ -200,27 +219,59 @@ function HistorySessionRow({
           </span>
         </button>
       </div>
-      {open ? (
+      {present ? (
         <FloatingPortal>
           <FloatingFocusManager context={context} modal={false} initialFocus={-1} returnFocus>
             <div
               ref={refs.setFloating}
               style={floatingStyles}
-              className="chat-history-card__menu"
-              {...getFloatingProps()}
+              className="outline-none"
+              {...floatingProps}
+              onPointerLeave={(e) => {
+                floatingProps.onPointerLeave?.(e);
+                setMenuHoverKey(null);
+              }}
             >
-              <button type="button" className="chat-history-card__menu-item" onClick={handleRename}>
-                <PencilIcon className="text-[var(--os-text-muted)]" />
-                {t("nav.chatHistoryRename")}
-              </button>
-              <button
-                type="button"
-                className="chat-history-card__menu-item chat-history-card__menu-item--danger"
-                onClick={handleDelete}
+              <FluidPopupAnimatedSurface
+                key={surfaceKey}
+                leaving={leaving}
+                finishLeave={finishLeave}
+                placement={context.placement}
+                morphBr="11px"
+                className={cn("chat-history-card__menu")}
               >
-                <TrashIcon className="text-[#e11d48]" />
-                {t("nav.chatHistoryDelete")}
-              </button>
+                <div ref={menuBlobRootRef} className="relative w-full">
+                  <div
+                    aria-hidden
+                    className="fluid-nav__blob fluid-popup-menu__blob pointer-events-none absolute top-0 left-0 z-0"
+                    style={menuBlobStyle}
+                  />
+                <div
+                  ref={(node) => setMenuItemRef("rename", node)}
+                  className="fluid-popup-menu__measure w-full"
+                  onPointerEnter={() => setMenuHoverKey("rename")}
+                >
+                  <button type="button" className="chat-history-card__menu-item" onClick={handleRename}>
+                    <PencilIcon className="text-[var(--os-text-muted)]" />
+                    {t("nav.chatHistoryRename")}
+                  </button>
+                </div>
+                <div
+                  ref={(node) => setMenuItemRef("delete", node)}
+                  className="fluid-popup-menu__measure w-full"
+                  onPointerEnter={() => setMenuHoverKey("delete")}
+                >
+                  <button
+                    type="button"
+                    className="chat-history-card__menu-item chat-history-card__menu-item--danger"
+                    onClick={handleDelete}
+                  >
+                    <TrashIcon className="text-[#e11d48]" />
+                    {t("nav.chatHistoryDelete")}
+                  </button>
+                </div>
+                </div>
+              </FluidPopupAnimatedSurface>
             </div>
           </FloatingFocusManager>
         </FloatingPortal>
@@ -236,10 +287,13 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   const { t } = useI18n();
   const { streamingSessionId } = useChatLabStreaming();
   const location = useLocation();
+  const navigate = useNavigate();
   const highlight = useContext(FluidNavHighlightApi);
 
   const [listVersion, setListVersion] = useState(0);
   const reload = useCallback(() => setListVersion((v) => v + 1), []);
+
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   const scrollRootRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const scrollContentRef = useRef(/** @type {HTMLDivElement | null} */ (null));
@@ -282,6 +336,24 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
 
   const emptyAll = allSessions.length === 0;
   const emptyFilter = !emptyAll && filtered.length === 0;
+
+  const bulkDeleteIds = useMemo(() => {
+    const skip = streamingSessionId ?? "";
+    return filtered.map((s) => s.id).filter((id) => id && id !== skip);
+  }, [filtered, streamingSessionId]);
+
+  const handleBulkConfirm = useCallback(() => {
+    const n = bulkDeleteIds.length;
+    if (n < 1) return;
+    deleteSessionsByIds(bulkDeleteIds);
+    reload();
+    if (activeC && bulkDeleteIds.includes(activeC)) navigate("/chat", { replace: true });
+  }, [activeC, bulkDeleteIds, navigate, reload]);
+
+  const handleBulkDeleteClick = useCallback(() => {
+    if (bulkDeleteIds.length < 1) return;
+    setBulkDialogOpen(true);
+  }, [bulkDeleteIds.length]);
 
   useLayoutEffect(() => {
     if (narrow || !highlight) return undefined;
@@ -369,8 +441,25 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
 
   return (
     <div className="chat-history-rail flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden border-t border-[color-mix(in_srgb,var(--os-border)_80%,transparent)] px-0.5 pt-2.5">
-      <div className="chat-history-rail__heading shrink-0 px-2 text-[0.72rem] font-semibold uppercase tracking-wide">
-        {t("nav.chatHistory")}
+      <div className="chat-history-rail__heading-row flex shrink-0 items-center justify-between gap-2 px-2">
+        <div className="chat-history-rail__heading min-w-0 truncate text-[0.72rem] font-semibold uppercase tracking-wide">
+          {t("nav.chatHistory")}
+        </div>
+        <button
+          type="button"
+          className={cn(
+            "chat-history-rail__bulk shrink-0 rounded-md px-1.5 py-0.5 text-[0.68rem] font-semibold uppercase tracking-wide transition-colors",
+            "text-[var(--os-text-muted)] hover:bg-[var(--os-bg-hover)] hover:text-[var(--os-text)]",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
+            "disabled:pointer-events-none disabled:opacity-40",
+          )}
+          disabled={bulkDeleteIds.length < 1}
+          aria-label={t("nav.chatHistoryBulkDeleteAria")}
+          title={t("nav.chatHistoryBulkDeleteAria")}
+          onClick={handleBulkDeleteClick}
+        >
+          {t("nav.chatHistoryBulkDelete")}
+        </button>
       </div>
       <div className="chat-history-rail__scroll-clip relative min-h-0 flex-1">
         <div
@@ -428,6 +517,9 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
           </div>
         </div>
       </div>
+      <FluidConfirmDialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen} danger onConfirm={handleBulkConfirm}>
+        {t("nav.chatHistoryBulkDeleteConfirm", { n: bulkDeleteIds.length })}
+      </FluidConfirmDialog>
     </div>
   );
 }

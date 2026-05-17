@@ -12,7 +12,9 @@ import {
   useRole,
 } from "@floating-ui/react";
 import { useId, useState } from "react";
+import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { cn } from "../../ui/cn.js";
+import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 
 /**
  * Context window gauge + compact two-line hover tooltip.
@@ -20,6 +22,7 @@ import { cn } from "../../ui/cn.js";
  */
 export function ChatLabContextMeter({ ratio, ariaSummary, line1, line2 }) {
   const [open, setOpen] = useState(false);
+  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
   const tooltipId = useId();
 
   const r = 10;
@@ -30,7 +33,7 @@ export function ChatLabContextMeter({ ratio, ariaSummary, line1, line2 }) {
   const stroke = hi ? "#e53935" : mid ? "#d97706" : "color-mix(in srgb, var(--os-accent) 82%, var(--os-text-muted))";
 
   const { refs, floatingStyles, context } = useFloating({
-    open,
+    open: present,
     onOpenChange: setOpen,
     placement: "top-end",
     strategy: "fixed",
@@ -51,10 +54,10 @@ export function ChatLabContextMeter({ ratio, ariaSummary, line1, line2 }) {
     <>
       <button
         type="button"
-        className={cn("chat-lab__ctx-ring-wrap", open && "chat-lab__ctx-ring-wrap--open")}
+        className={cn("chat-lab__ctx-ring-wrap", present && "chat-lab__ctx-ring-wrap--open")}
         ref={refs.setReference}
         aria-label={ariaSummary}
-        aria-describedby={open ? tooltipId : undefined}
+        aria-describedby={present ? tooltipId : undefined}
         {...getReferenceProps()}
       >
         <svg className="chat-lab__ctx-ring-svg" width="34" height="34" viewBox="0 0 34 34" aria-hidden>
@@ -82,19 +85,26 @@ export function ChatLabContextMeter({ ratio, ariaSummary, line1, line2 }) {
         </svg>
       </button>
 
-      {open ? (
+      {present ? (
         <FloatingPortal>
           <div
             id={tooltipId}
             ref={refs.setFloating}
             style={floatingStyles}
-            className="chat-lab__ctx-stats-popover"
+            className="chat-lab__ctx-stats-popover outline-none"
             {...getFloatingProps()}
           >
-            <div className="chat-lab__ctx-stats-popover__inner">
+            <FluidPopupAnimatedSurface
+              key={surfaceKey}
+              leaving={leaving}
+              finishLeave={finishLeave}
+              placement={context.placement}
+              morphBr="10px"
+              className="chat-lab__ctx-stats-popover__surface"
+            >
               <div className="chat-lab__ctx-stats-popover__line">{line1}</div>
               <div className="chat-lab__ctx-stats-popover__line">{line2}</div>
-            </div>
+            </FluidPopupAnimatedSurface>
           </div>
         </FloatingPortal>
       ) : null}

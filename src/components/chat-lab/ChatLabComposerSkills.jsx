@@ -12,7 +12,9 @@ import {
 } from "@floating-ui/react";
 import { useEffect, useId, useLayoutEffect, useMemo, useState } from "react";
 import { filterSkillPickList } from "../../skills/skillRegistry.js";
+import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { cn } from "../../ui/cn.js";
+import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 
 function Chevron({ open }) {
   return (
@@ -67,11 +69,12 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
   const listId = `${autoId}-skill-list`;
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
 
   const filtered = useMemo(() => filterSkillPickList(skills, q), [skills, q]);
 
   const { refs, floatingStyles, context } = useFloating({
-    open,
+    open: present,
     onOpenChange: (v) => {
       setOpen(v);
       if (!v) setQ("");
@@ -99,30 +102,38 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
         disabled={disabled}
         title={t("chatLab.toolbarSkillHint")}
         aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
+        aria-expanded={present}
+        aria-controls={present ? listId : undefined}
         {...getReferenceProps()}
       >
         <span className="chat-lab__pill-ico" aria-hidden>
           {selected ? selected.emoji : "✦"}
         </span>
         {selected ? selected.label : t("chatLab.toolbarSkill")}
-        <Chevron open={open} />
+        <Chevron open={present} />
       </button>
 
-      {open ? (
+      {present ? (
         <FloatingPortal>
           <FloatingFocusManager context={context} modal={false} initialFocus={-1} returnFocus>
             <div
               ref={refs.setFloating}
               style={floatingStyles}
-              className={cn(
-                "chat-lab__skill-popover z-[400] flex w-[min(100vw-2rem,320px)] flex-col overflow-hidden rounded-[14px] border",
-                "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
-                "shadow-[var(--os-shadow-soft)]",
-              )}
+              className="outline-none z-[400] w-[min(100vw-2rem,320px)] max-w-[min(100vw-2rem,320px)]"
               {...getFloatingProps()}
             >
+              <FluidPopupAnimatedSurface
+                key={surfaceKey}
+                leaving={leaving}
+                finishLeave={finishLeave}
+                placement={context.placement}
+                morphBr="14px"
+                className={cn(
+                  "chat-lab__skill-popover flex w-full flex-col overflow-hidden rounded-[14px] border",
+                  "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
+                  "shadow-[var(--os-shadow-soft)]",
+                )}
+              >
               <div className="border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-2.5 py-2">
                 <div className="text-[0.68rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]">
                   {t("chatLab.skillPickerTitle")}
@@ -178,6 +189,7 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
                   ))
                 )}
               </div>
+              </FluidPopupAnimatedSurface>
             </div>
           </FloatingFocusManager>
         </FloatingPortal>
@@ -203,8 +215,10 @@ export function ComposerSkillSlashPopover({ open, textareaRef, filterQuery, skil
   const listId = `${autoId}-slash-skills`;
   const filtered = useMemo(() => filterSkillPickList(skills, filterQuery), [skills, filterQuery]);
 
+  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
+
   const { refs, floatingStyles, context } = useFloating({
-    open,
+    open: present,
     onOpenChange: (v) => {
       if (!v) onClose();
     },
@@ -216,27 +230,35 @@ export function ComposerSkillSlashPopover({ open, textareaRef, filterQuery, skil
 
   useLayoutEffect(() => {
     const el = textareaRef.current;
-    if (open && el) refs.setReference(el);
-  }, [open, refs.setReference, textareaRef]);
+    if (present && el) refs.setReference(el);
+  }, [present, refs.setReference, textareaRef]);
 
   const dismiss = useDismiss(context);
   const role = useRole(context, { role: "listbox" });
   const { getFloatingProps } = useInteractions([dismiss, role]);
 
-  if (!open) return null;
+  if (!present) return null;
 
   return (
     <FloatingPortal>
       <div
         ref={refs.setFloating}
         style={floatingStyles}
-        className={cn(
-          "chat-lab__skill-popover z-[400] flex w-[min(100vw-2rem,300px)] flex-col overflow-hidden rounded-[14px] border",
-          "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
-          "shadow-[var(--os-shadow-soft)]",
-        )}
+        className="outline-none z-[400] w-[min(100vw-2rem,300px)] max-w-[min(100vw-2rem,300px)]"
         {...getFloatingProps()}
       >
+        <FluidPopupAnimatedSurface
+          key={surfaceKey}
+          leaving={leaving}
+          finishLeave={finishLeave}
+          placement={context.placement}
+          morphBr="14px"
+          className={cn(
+            "chat-lab__skill-popover flex w-full flex-col overflow-hidden rounded-[14px] border",
+            "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
+            "shadow-[var(--os-shadow-soft)]",
+          )}
+        >
         <div className="border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-2.5 py-1.5 text-[0.68rem] text-[var(--os-text-faint)]">
           {t("chatLab.skillPickerTitle")}
         </div>
@@ -263,6 +285,7 @@ export function ComposerSkillSlashPopover({ open, textareaRef, filterQuery, skil
             ))
           )}
         </div>
+        </FluidPopupAnimatedSurface>
       </div>
     </FloatingPortal>
   );

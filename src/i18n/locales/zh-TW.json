@@ -2,6 +2,12 @@
   "app": {
     "documentTitle": "Open Studio"
   },
+  "dialog": {
+    "titleDefault": "提示",
+    "confirm": "確定",
+    "cancel": "取消",
+    "closeAria": "關閉對話框"
+  },
   "nav": {
     "newChat": "新對話",
     "studio": "工作室",
@@ -15,6 +21,9 @@
     "chatHistoryRenamePrompt": "會話標題",
     "chatHistoryMore": "更多",
     "chatHistoryGenerating": "正在產生…",
+    "chatHistoryBulkDelete": "批次刪除",
+    "chatHistoryBulkDeleteAria": "刪除此列表中的會話（不含正在產生的會話）",
+    "chatHistoryBulkDeleteConfirm": "確定刪除 {{n}} 則會話嗎？此操作無法復原。",
     "chatHistoryTimeJustNow": "剛剛",
     "chatHistoryTimeMinutes": "{{n}} 分鐘前",
     "chatHistoryTimeHours": "{{n}} 小時前",
@@ -27,7 +36,9 @@
     "footerAria": "系統導覽",
     "modulesAria": "應用模組",
     "expandSidebar": "展開側邊欄",
-    "collapseSidebar": "收合側邊欄"
+    "collapseSidebar": "收合側邊欄",
+    "settingsRadialBack": "返回",
+    "settingsRadialMenuAria": "設定分區"
   },
   "titlebar": {
     "appName": "Open Studio",

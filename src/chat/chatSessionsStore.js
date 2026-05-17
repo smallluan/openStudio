@@ -315,6 +315,13 @@ export function deleteSession(id) {
   writeAll(loadAllSessions().filter((s) => s.id !== id));
 }
 
+/** @param {string[]} ids */
+export function deleteSessionsByIds(ids) {
+  const set = new Set((ids ?? []).filter((id) => typeof id === "string" && id.length > 0));
+  if (set.size === 0) return;
+  writeAll(loadAllSessions().filter((s) => !set.has(s.id)));
+}
+
 /** @param {string} id @returns {ChatSessionRecord | null} */
 export function getSession(id) {
   if (!id) return null;

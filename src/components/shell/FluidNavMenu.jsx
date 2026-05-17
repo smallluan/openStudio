@@ -70,6 +70,7 @@ export default function FluidNavMenu({
   onSelect,
   primaryItems,
   footerItems = [],
+  footerAccessory = null,
   primaryTrackClassName,
   footerTrackClassName,
   className,
@@ -221,6 +222,10 @@ export default function FluidNavMenu({
     };
   }, [fluidTargetId, narrow, router, controlledSelectedId, location.pathname, location.search, nestedScrollGeneration]);
 
+  const footerNavPresent = Boolean(footerItems?.length > 0);
+  const footerZone = footerNavPresent || footerAccessory;
+  const showRailDivider = Boolean(afterPrimary && footerZone);
+
   /** @param {*} item */
   const renderLeafItem = useCallback(
     (item, nested = false) => {
@@ -280,13 +285,6 @@ export default function FluidNavMenu({
     [fluidTargetId, location, narrow, onSelect, router, setFluidAnchor],
   );
 
-  const footer =
-    footerItems?.length > 0 ? (
-      <nav className={cn("fluid-nav__track fluid-nav__track--footer relative z-[1]", footerTrackClassName)} aria-label={t("nav.footerAria")}>
-        {footerItems.map((item) => renderLeafItem(item, false))}
-      </nav>
-    ) : null;
-
   return (
     <FluidNavHighlightApi.Provider value={highlightApi}>
       <div ref={rootRef} className={cn("fluid-nav-root relative flex min-h-0 flex-1 flex-col gap-2", className)}>
@@ -331,7 +329,17 @@ export default function FluidNavMenu({
         {afterPrimary ? (
           <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden">{afterPrimary}</div>
         ) : null}
-        {footer ? <div className="relative z-[1] mt-auto shrink-0">{footer}</div> : null}
+        {showRailDivider ? <div className="fluid-nav__rail-divider shrink-0" role="presentation" aria-hidden /> : null}
+        {footerZone ? (
+          <div className="relative z-[1] mt-auto flex shrink-0 flex-col gap-1">
+            {footerNavPresent ? (
+              <nav className={cn("fluid-nav__track fluid-nav__track--footer relative z-[1]", footerTrackClassName)} aria-label={t("nav.footerAria")}>
+                {footerItems.map((item) => renderLeafItem(item, false))}
+              </nav>
+            ) : null}
+            {footerAccessory ? <div className="fluid-nav__footer-accessory">{footerAccessory}</div> : null}
+          </div>
+        ) : null}
       </div>
     </FluidNavHighlightApi.Provider>
   );

@@ -2,6 +2,12 @@
   "app": {
     "documentTitle": "Open Studio"
   },
+  "dialog": {
+    "titleDefault": "Notice",
+    "confirm": "OK",
+    "cancel": "Cancel",
+    "closeAria": "Close dialog"
+  },
   "nav": {
     "newChat": "New chat",
     "studio": "Studio",
@@ -15,6 +21,9 @@
     "chatHistoryRenamePrompt": "Conversation title",
     "chatHistoryMore": "More",
     "chatHistoryGenerating": "Generating…",
+    "chatHistoryBulkDelete": "Bulk delete",
+    "chatHistoryBulkDeleteAria": "Delete conversations in this list (skips the session that is currently generating)",
+    "chatHistoryBulkDeleteConfirm": "Delete {{n}} conversation(s)? This cannot be undone.",
     "chatHistoryTimeJustNow": "Just now",
     "chatHistoryTimeMinutes": "{{n}} min ago",
     "chatHistoryTimeHours": "{{n}} h ago",
@@ -27,7 +36,9 @@
     "footerAria": "System navigation",
     "modulesAria": "App modules",
     "expandSidebar": "Expand sidebar",
-    "collapseSidebar": "Collapse sidebar"
+    "collapseSidebar": "Collapse sidebar",
+    "settingsRadialBack": "Back",
+    "settingsRadialMenuAria": "Settings sections"
   },
   "titlebar": {
     "appName": "Open Studio",

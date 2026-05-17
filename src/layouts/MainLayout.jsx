@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import NavChatLabIcon from "../assets/svg/NavChatLabIcon.jsx";
 import NavLobsterIcon from "../assets/svg/NavLobsterIcon.jsx";
 import NavSkillIcon from "../assets/svg/NavSkillIcon.jsx";
-import NavSettingsIcon from "../assets/svg/NavSettingsIcon.jsx";
 import NavStudioIcon from "../assets/svg/NavStudioIcon.jsx";
 import RailSearchInput from "../components/shell/RailSearchInput.jsx";
+import RailSettingsOrb from "../components/shell/RailSettingsOrb.jsx";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
 import ChatHistoryList from "../components/shell/ChatHistoryList.jsx";
@@ -65,10 +65,7 @@ function readRailPx() {
 }
 
 export default function MainLayout({ railResizeEnabled = false }) {
-  const location = useLocation();
   const { t } = useI18n();
-  const settingsBackground = useMemo(() => ({ backgroundLocation: location }), [location]);
-
   const primaryNavItems = useMemo(
     () => [
       {
@@ -102,20 +99,6 @@ export default function MainLayout({ railResizeEnabled = false }) {
       },
     ],
     [t],
-  );
-
-  const footerNavItems = useMemo(
-    () => [
-      {
-        id: "settings",
-        to: "/settings",
-        end: true,
-        label: t("nav.settings"),
-        state: settingsBackground,
-        icon: <NavSettingsIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
-      },
-    ],
-    [settingsBackground, t],
   );
 
   const [railSearchQuery, setRailSearchQuery] = useState("");
@@ -200,7 +183,8 @@ export default function MainLayout({ railResizeEnabled = false }) {
               narrow={isNarrow}
               router
               primaryItems={primaryNavItems}
-              footerItems={footerNavItems}
+              footerItems={[]}
+              footerAccessory={<RailSettingsOrb narrow={isNarrow} />}
               afterPrimary={<ChatHistoryList narrow={isNarrow} filterQuery={railSearchQuery} />}
               className="min-h-0 flex-1 pb-1"
             />

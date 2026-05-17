@@ -12,8 +12,11 @@ import {
   useInteractions,
   useRole,
 } from "@floating-ui/react";
-import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
+import FluidPopupAnimatedSurface from "./FluidPopupAnimatedSurface.jsx";
 import { cn } from "./cn.js";
+import { useFluidPopupBlob } from "./useFluidPopupBlob.js";
+import { useFloatingPresence } from "./useFloatingPresence.js";
 
 function Chevron({ open }) {
   return (
@@ -33,19 +36,25 @@ function Chevron({ open }) {
 export default function Select({ id, value, onChange, options, ariaLabel, className }) {
   const autoId = useId();
   const listId = `${autoId}-list`;
-  const listRootRef = useRef(null);
-  const itemRefs = useRef(new Map());
   const [open, setOpen] = useState(false);
-  const [blob, setBlob] = useState({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
+  const [hoverKey, setHoverKey] = useState(/** @type {string | null} */ (null));
+  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
 
-  const setItemRef = useCallback((optionValue, node) => {
-    const m = itemRefs.current;
-    if (node) m.set(optionValue, node);
-    else m.delete(optionValue);
-  }, []);
+  const layoutKey = useMemo(() => options.map((o) => String(o.value)).join("\x1e"), [options]);
+
+  const { rootRef: blobRootRef, setItemRef, blobStyle } = useFluidPopupBlob({
+    open,
+    hoverKey,
+    fallbackKey: String(value),
+    layoutKey,
+  });
+
+  useEffect(() => {
+    if (!open) setHoverKey(null);
+  }, [open]);
 
   const { refs, floatingStyles, context } = useFloating({
-    open,
+    open: present,
     onOpenChange: setOpen,
     placement: "bottom-end",
     strategy: "fixed",
@@ -71,47 +80,7 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
   const role = useRole(context, { role: "listbox" });
   const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role]);
 
-  useLayoutEffect(() => {
-    const root = listRootRef.current;
-    if (!open || !root) {
-      setBlob((b) => ({ ...b, opacity: 0 }));
-      return;
-    }
-    const el = itemRefs.current.get(value);
-    if (!el) {
-      setBlob((b) => ({ ...b, opacity: 0 }));
-      return;
-    }
-
-    const measure = () => {
-      const r = root.getBoundingClientRect();
-      const e = el.getBoundingClientRect();
-      const left = Math.round((e.left - r.left + root.scrollLeft) * 100) / 100;
-      const top = Math.round((e.top - r.top + root.scrollTop) * 100) / 100;
-      const width = Math.round(e.width * 100) / 100;
-      const height = Math.round(e.height * 100) / 100;
-      setBlob((prev) => {
-        if (prev.opacity === 1 && prev.left === left && prev.top === top && prev.width === width && prev.height === height) {
-          return prev;
-        }
-        return { left, top, width, height, opacity: 1 };
-      });
-    };
-
-    measure();
-
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    ro?.observe(root);
-    ro?.observe(el);
-
-    const onScroll = () => measure();
-    root.addEventListener("scroll", onScroll, { passive: true });
-
-    return () => {
-      ro?.disconnect();
-      root.removeEventListener("scroll", onScroll);
-    };
-  }, [open, value, options]);
+  const floatingProps = getFloatingProps();
 
   const selected = options.find((o) => o.value === value);
 
@@ -131,59 +100,73 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
         )}
       >
         <span className="min-w-0 truncate">{selected?.label ?? "—"}</span>
-        <Chevron open={open} />
+        <Chevron open={present} />
       </button>
 
-      {open ? (
+      {present ? (
         <FloatingPortal>
           <FloatingFocusManager context={context} modal={false} initialFocus={-1} returnFocus>
-            <ul
-              ref={(node) => {
-                listRootRef.current = node;
-                refs.setFloating(node);
-              }}
-              id={listId}
-              role="listbox"
+            <div
+              ref={refs.setFloating}
               style={{ ...floatingStyles, zIndex: 300 }}
-              className={cn(
-                "fluid-select-list relative flex flex-col gap-1 overflow-y-auto rounded-lg p-1.5 outline-none",
-                "border border-[var(--os-border-strong)] bg-[var(--os-bg-popover)] shadow-[var(--os-shadow-soft)]",
-              )}
-              {...getFloatingProps()}
+              className="outline-none"
+              {...floatingProps}
+              onPointerLeave={(e) => {
+                floatingProps.onPointerLeave?.(e);
+                setHoverKey(null);
+              }}
             >
-              <div
-                aria-hidden
-                className="fluid-nav__blob fluid-select__blob pointer-events-none absolute top-0 left-0 z-0 rounded-lg"
-                style={{
-                  transform: `translate3d(${blob.left}px, ${blob.top}px, 0)`,
-                  width: `${blob.width}px`,
-                  height: `${blob.height}px`,
-                  opacity: blob.opacity,
-                }}
-              />
-              {options.map((opt) => (
-                <li key={opt.value} role="option" aria-selected={opt.value === value}>
-                  <div ref={(node) => setItemRef(opt.value, node)} className="fluid-select__measure w-full">
-                    <button
-                      type="button"
-                      className={cn(
-                        "fluid-select__hit flex h-8 w-full items-center rounded-md border-none px-2.5 text-left text-[0.8125rem] outline-none transition-[color,background-color] duration-[0.45s] ease-[cubic-bezier(0.34,1.2,0.52,1)]",
-                        "bg-transparent",
-                        opt.value === value ?
-                          "fluid-select__hit--selected font-semibold"
-                        : "font-medium text-[var(--os-text-muted)] hover:bg-[var(--os-bg-hover)] hover:text-[var(--os-text)]",
-                      )}
-                      onClick={() => {
-                        onChange(opt.value);
-                        setOpen(false);
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+              <FluidPopupAnimatedSurface
+                key={surfaceKey}
+                leaving={leaving}
+                finishLeave={finishLeave}
+                placement={context.placement}
+                morphBr="10px"
+                className={cn(
+                  "relative flex max-h-[min(280px,calc(100vh-24px))] min-w-0 flex-col overflow-hidden rounded-lg",
+                  "border border-[var(--os-border-strong)] bg-[var(--os-bg-popover)] shadow-[var(--os-shadow-soft)]",
+                )}
+              >
+                <ul
+                  ref={blobRootRef}
+                  id={listId}
+                  role="listbox"
+                  className="fluid-select-list relative flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-1.5 outline-none"
+                >
+                  <div
+                    aria-hidden
+                    className="fluid-nav__blob fluid-select__blob pointer-events-none absolute top-0 left-0 z-0 rounded-lg"
+                    style={blobStyle}
+                  />
+                  {options.map((opt) => (
+                    <li key={opt.value} role="option" aria-selected={opt.value === value}>
+                      <div
+                        ref={(node) => setItemRef(String(opt.value), node)}
+                        className="fluid-select__measure w-full"
+                        onPointerEnter={() => setHoverKey(String(opt.value))}
+                      >
+                        <button
+                          type="button"
+                          className={cn(
+                            "fluid-select__hit flex h-8 w-full items-center rounded-md border-none px-2.5 text-left text-[0.8125rem] outline-none transition-colors duration-[0.45s] ease-[cubic-bezier(0.34,1.2,0.52,1)]",
+                            "bg-transparent",
+                            opt.value === value ?
+                              "fluid-select__hit--selected font-semibold"
+                            : "font-medium text-[var(--os-text-muted)] hover:text-[var(--os-text)]",
+                          )}
+                          onClick={() => {
+                            onChange(opt.value);
+                            setOpen(false);
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </FluidPopupAnimatedSurface>
+            </div>
           </FloatingFocusManager>
         </FloatingPortal>
       ) : null}

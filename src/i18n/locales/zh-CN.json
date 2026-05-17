@@ -2,6 +2,12 @@
   "app": {
     "documentTitle": "Open Studio"
   },
+  "dialog": {
+    "titleDefault": "提示",
+    "confirm": "确定",
+    "cancel": "取消",
+    "closeAria": "关闭对话框"
+  },
   "nav": {
     "newChat": "新增对话",
     "studio": "工作室",
@@ -20,6 +26,9 @@
     "chatHistoryTimeYesterday": "昨天",
     "chatHistoryTimeDays": "{{n}} 天前",
     "chatHistoryGenerating": "正在生成…",
+    "chatHistoryBulkDelete": "批量删除",
+    "chatHistoryBulkDeleteAria": "删除当前列表中的会话（不含正在生成的会话）",
+    "chatHistoryBulkDeleteConfirm": "确定删除 {{n}} 条会话吗？此操作无法撤销。",
     "lobster": "龙虾管理",
     "skills": "技能",
     "settings": "设置",
@@ -27,7 +36,9 @@
     "footerAria": "系统导航",
     "modulesAria": "应用模块",
     "expandSidebar": "展开侧边栏",
-    "collapseSidebar": "收起侧边栏"
+    "collapseSidebar": "收起侧边栏",
+    "settingsRadialBack": "返回",
+    "settingsRadialMenuAria": "设置分区"
   },
   "titlebar": {
     "appName": "Open Studio",

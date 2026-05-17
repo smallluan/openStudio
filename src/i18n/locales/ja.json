@@ -2,6 +2,12 @@
   "app": {
     "documentTitle": "Open Studio"
   },
+  "dialog": {
+    "titleDefault": "お知らせ",
+    "confirm": "OK",
+    "cancel": "キャンセル",
+    "closeAria": "ダイアログを閉じる"
+  },
   "nav": {
     "newChat": "新規チャット",
     "studio": "スタジオ",
@@ -15,6 +21,9 @@
     "chatHistoryRenamePrompt": "会話タイトル",
     "chatHistoryMore": "その他",
     "chatHistoryGenerating": "生成中…",
+    "chatHistoryBulkDelete": "まとめて削除",
+    "chatHistoryBulkDeleteAria": "一覧の会話を削除（生成中のセッションは除く）",
+    "chatHistoryBulkDeleteConfirm": "{{n}} 件の会話を削除しますか？この操作は取り消せません。",
     "chatHistoryTimeJustNow": "たった今",
     "chatHistoryTimeMinutes": "{{n}} 分前",
     "chatHistoryTimeHours": "{{n}} 時間前",
@@ -27,7 +36,9 @@
     "footerAria": "システムナビゲーション",
     "modulesAria": "アプリモジュール",
     "expandSidebar": "サイドバーを展開",
-    "collapseSidebar": "サイドバーを折りたたむ"
+    "collapseSidebar": "サイドバーを折りたたむ",
+    "settingsRadialBack": "戻る",
+    "settingsRadialMenuAria": "設定セクション"
   },
   "titlebar": {
     "appName": "Open Studio",

@@ -1,93 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { SettingsCell, SettingsCellRow } from "../components/settings/SettingsCells.jsx";
+import GeneralSettingsSection from "../components/settings/GeneralSettingsSection.jsx";
 import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
 import ModelProfilesPanel from "../components/shell/ModelProfilesPanel.jsx";
+import PlaceholderSettingsSection from "../components/settings/PlaceholderSettingsSection.jsx";
+import { SETTINGS_SECTION_IDS } from "../components/settings/settingsSectionIds.js";
 import { ModelSettingsProvider } from "../context/ModelSettingsContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
-import { useTheme } from "../context/ThemeContext.jsx";
-import { isLocaleId } from "../i18n/messages.js";
 import ModalCloseButton from "../ui/ModalCloseButton.jsx";
-import Select from "../ui/Select.jsx";
-import Switch from "../ui/Switch.jsx";
 import { cn } from "../ui/cn.js";
-
-const SECTION_IDS = /** @type {const} */ ([
-  "general",
-  "usage",
-  "skills",
-  "remote",
-  "model",
-  "about",
-]);
 
 export default function SettingsPage() {
   const { onClose } = useOutletContext() ?? {};
-  const { theme, setTheme } = useTheme();
-  const { t, locale, setLocale } = useI18n();
-  const [section, setSection] = useState(/** @type {(typeof SECTION_IDS)[number]} */ ("general"));
-  const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
-
-  const [chatLabAutoTitle, setChatLabAutoTitle] = useState(false);
-
-  useEffect(() => {
-    if (section !== "general") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const c = await bridge?.getUserConfig?.();
-        if (!cancelled && c && typeof c === "object") {
-          setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [bridge, section]);
-
-  const persistChatLabAutoTitle = async (next) => {
-    setChatLabAutoTitle(next);
-    try {
-      await bridge?.setUserConfig?.({ chatLabAutoTitle: next });
-    } catch {
-      /* revert on failure */
-      try {
-        const c = await bridge?.getUserConfig?.();
-        if (c && typeof c === "object") setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
-      } catch {
-        setChatLabAutoTitle(false);
-      }
-    }
-  };
-
-  const themeOptions = useMemo(
-    () => [
-      { value: "light", label: t("settings.appearanceMode.light") },
-      { value: "dark", label: t("settings.appearanceMode.dark") },
-    ],
-    [t],
-  );
-
-  const languageOptions = useMemo(
-    () => [
-      { value: "zh-CN", label: t("settings.lang.zhCN") },
-      { value: "zh-TW", label: t("settings.lang.zhTW") },
-      { value: "en", label: t("settings.lang.en") },
-      { value: "ja", label: t("settings.lang.ja") },
-    ],
-    [t],
-  );
+  const { t } = useI18n();
+  const [section, setSection] = useState(/** @type {(typeof SETTINGS_SECTION_IDS)[number]} */ ("general"));
 
   const settingsNavItems = useMemo(
-    () => SECTION_IDS.map((id) => ({ id, label: t(`settings.sections.${id}`) })),
+    () => SETTINGS_SECTION_IDS.map((id) => ({ id, label: t(`settings.sections.${id}`) })),
     [t],
   );
 
   const sectionTitle =
-    SECTION_IDS.includes(section) ? t(`settings.sections.${section}`) : t("settings.title");
+    SETTINGS_SECTION_IDS.includes(section) ? t(`settings.sections.${section}`) : t("settings.title");
 
   const modelSection = section === "model";
 
@@ -128,64 +62,21 @@ export default function SettingsPage() {
           >
             {section === "general" ? (
               <div className="mx-auto flex max-w-xl flex-col gap-6">
-                <div className="flex items-center gap-4 rounded-xl border border-[var(--os-border)] bg-[var(--os-bg-subtle)] px-4 py-3">
-                  <div
-                    className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-[var(--os-border)] bg-[var(--os-bg-elevated)] text-2xl"
-                    aria-hidden
-                  >
-                    🐾
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[0.75rem] text-[var(--os-text-muted)]">{t("settings.avatar")}</div>
-                    <div className="truncate text-[0.9rem] font-medium">{t("settings.localAccount")}</div>
-                  </div>
-                </div>
-
-                <SettingsCellRow>
-                  <SettingsCell label={t("settings.appearance")}>
-                    <Select
-                      id="theme-appearance"
-                      ariaLabel={t("settings.appearanceAria")}
-                      value={theme}
-                      onChange={(v) => setTheme(v)}
-                      options={themeOptions}
-                    />
-                  </SettingsCell>
-                  <SettingsCell label={t("settings.language")}>
-                    <Select
-                      id="app-language"
-                      ariaLabel={t("settings.languageAria")}
-                      value={locale}
-                      onChange={(v) => isLocaleId(v) && setLocale(v)}
-                      options={languageOptions}
-                    />
-                  </SettingsCell>
-                </SettingsCellRow>
-
-                <div className="rounded-xl border border-[var(--os-border)] px-3">
-                  <Switch
-                    id="sw-auto-chat-title"
-                    label={t("settings.autoSummarizeTitle")}
-                    checked={chatLabAutoTitle}
-                    onCheckedChange={(v) => void persistChatLabAutoTitle(v)}
-                  />
-                </div>
+                <GeneralSettingsSection />
               </div>
             ) : null}
 
-            {section === "model" ?
+            {section === "model" ? (
               <div className="mx-auto flex h-full min-h-0 w-full max-w-[min(100%,52rem)] flex-1 flex-col">
                 <ModelProfilesPanel />
               </div>
-            : null}
+            ) : null}
 
-            {section !== "general" && !modelSection ?
-              <div className="mx-auto max-w-xl rounded-xl border border-dashed border-[var(--os-border)] bg-[var(--os-bg-subtle)] px-4 py-8 text-center text-[0.875rem] text-[var(--os-text-muted)]">
-                {t("settings.sectionBuilding", {
-                  label: t(`settings.sections.${section}`),
-                })}
+            {section !== "general" && !modelSection ? (
+              <div className="mx-auto max-w-xl">
+                <PlaceholderSettingsSection sectionId={section} />
               </div>
-            : null}
+            ) : null}
           </div>
         </div>
       </div>
