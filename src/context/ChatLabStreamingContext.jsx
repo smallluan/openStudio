@@ -12,10 +12,17 @@ import {
   getSession,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
+import {
+  mergeTimelineAgentActivity,
+  mergeTimelineTextDelta,
+  mergeTimelineThinkingDelta,
+  mergeTimelineToolTrace,
+} from "../chat/streamTimelineMerge.js";
 import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
 
 /** @typedef {import("../chat/toolTraceMerge.js").ToolTraceRow} ToolTraceRow */
 /** @typedef {import("../chat/toolTraceMerge.js").ActivityRow} ActivityRow */
+/** @typedef {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment} AssistantTimelineSegment */
 
 /** @typedef {{
  *   streamingSessionId: string | null;
@@ -37,6 +44,7 @@ import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
  *   active: boolean;
  *   toolTrace?: ToolTraceRow[];
  *   activityLog?: ActivityRow[];
+ *   assistantTimeline?: AssistantTimelineSegment[];
  * }} GatewayStreamSlice */
 
 /** @type {import("react").Context<ChatLabStreamingApi | null>} */
@@ -51,8 +59,17 @@ const PERSIST_MS = 420;
  * @param {string} thinking
  * @param {ToolTraceRow[] | undefined} toolTrace
  * @param {ActivityRow[] | undefined} activityLog
+ * @param {AssistantTimelineSegment[] | undefined} assistantTimeline
  */
-function persistAssistantMerge(conversationId, assistantMessageId, content, thinking, toolTrace, activityLog) {
+function persistAssistantMerge(
+  conversationId,
+  assistantMessageId,
+  content,
+  thinking,
+  toolTrace,
+  activityLog,
+  assistantTimeline,
+) {
   const rec = getSession(conversationId);
   if (!rec) return;
   const messages = rec.messages.map((m) => {
@@ -71,6 +88,8 @@ function persistAssistantMerge(conversationId, assistantMessageId, content, thin
     else if (Array.isArray(toolTrace) && toolTrace.length === 0) delete row.toolTrace;
     if (Array.isArray(activityLog) && activityLog.length > 0) row.activityLog = activityLog;
     else if (Array.isArray(activityLog) && activityLog.length === 0) delete row.activityLog;
+    if (Array.isArray(assistantTimeline) && assistantTimeline.length > 0) row.assistantTimeline = assistantTimeline;
+    else if (Array.isArray(assistantTimeline) && assistantTimeline.length === 0) delete row.assistantTimeline;
     return row;
   });
   const title = deriveTitleFromMessages(messages);
@@ -112,6 +131,7 @@ export function ChatLabStreamingProvider({ children }) {
       thinking: "",
       toolTrace: [],
       activityLog: [],
+      assistantTimeline: [],
       active: true,
     };
     sliceRef.current = next;
@@ -146,6 +166,7 @@ export function ChatLabStreamingProvider({ children }) {
           s.thinking,
           s.toolTrace ?? [],
           s.activityLog ?? [],
+          s.assistantTimeline ?? [],
         );
       }, PERSIST_MS);
     };
@@ -164,6 +185,7 @@ export function ChatLabStreamingProvider({ children }) {
         s.thinking,
         s.toolTrace ?? [],
         s.activityLog ?? [],
+        s.assistantTimeline ?? [],
       );
     };
 
@@ -187,6 +209,7 @@ export function ChatLabStreamingProvider({ children }) {
           thinking: "",
           toolTrace: [],
           activityLog: [],
+          assistantTimeline: [],
         };
       }
       return {
@@ -196,6 +219,7 @@ export function ChatLabStreamingProvider({ children }) {
         thinking: s.thinking ?? "",
         toolTrace: s.toolTrace ?? [],
         activityLog: s.activityLog ?? [],
+        assistantTimeline: s.assistantTimeline ?? [],
       };
     };
 
@@ -230,7 +254,8 @@ export function ChatLabStreamingProvider({ children }) {
           const prev = sliceRef.current;
           if (!prev || prev.streamId !== evt.streamId) return;
           const toolTrace = mergeToolTrace(prev.toolTrace, evt);
-          const next = { ...prev, toolTrace };
+          const assistantTimeline = mergeTimelineToolTrace(prev.assistantTimeline, evt);
+          const next = { ...prev, toolTrace, assistantTimeline };
           sliceRef.current = next;
           setGatewayStreamSlice(next);
           schedulePersist();
@@ -240,7 +265,8 @@ export function ChatLabStreamingProvider({ children }) {
           const prev = sliceRef.current;
           if (!prev || prev.streamId !== evt.streamId) return;
           const activityLog = mergeActivityLog(prev.activityLog, evt);
-          const next = { ...prev, activityLog };
+          const assistantTimeline = mergeTimelineAgentActivity(prev.assistantTimeline, evt);
+          const next = { ...prev, activityLog, assistantTimeline };
           sliceRef.current = next;
           setGatewayStreamSlice(next);
           schedulePersist();
@@ -251,7 +277,12 @@ export function ChatLabStreamingProvider({ children }) {
           {
             const prev = sliceRef.current;
             if (!prev || prev.streamId !== evt.streamId) return;
-            const next = { ...prev, thinking: (prev.thinking ?? "") + evt.delta };
+            const assistantTimeline = mergeTimelineThinkingDelta(prev.assistantTimeline, evt.delta);
+            const next = {
+              ...prev,
+              thinking: (prev.thinking ?? "") + evt.delta,
+              assistantTimeline,
+            };
             sliceRef.current = next;
             setGatewayStreamSlice(next);
           }
@@ -262,7 +293,12 @@ export function ChatLabStreamingProvider({ children }) {
           {
             const prev = sliceRef.current;
             if (!prev || prev.streamId !== evt.streamId) return;
-            const next = { ...prev, content: (prev.content ?? "") + evt.delta };
+            const assistantTimeline = mergeTimelineTextDelta(prev.assistantTimeline, evt.delta);
+            const next = {
+              ...prev,
+              content: (prev.content ?? "") + evt.delta,
+              assistantTimeline,
+            };
             sliceRef.current = next;
             setGatewayStreamSlice(next);
           }
@@ -287,6 +323,7 @@ export function ChatLabStreamingProvider({ children }) {
                   thinking: snap.thinking,
                   toolTrace: snap.toolTrace ?? [],
                   activityLog: snap.activityLog ?? [],
+                  assistantTimeline: snap.assistantTimeline ?? [],
                 },
               }),
             );
@@ -314,6 +351,7 @@ export function ChatLabStreamingProvider({ children }) {
                   thinking: snap.thinking,
                   toolTrace: snap.toolTrace ?? [],
                   activityLog: snap.activityLog ?? [],
+                  assistantTimeline: snap.assistantTimeline ?? [],
                 },
               }),
             );
@@ -339,6 +377,7 @@ export function ChatLabStreamingProvider({ children }) {
                   thinking: snap.thinking,
                   toolTrace: snap.toolTrace ?? [],
                   activityLog: snap.activityLog ?? [],
+                  assistantTimeline: snap.assistantTimeline ?? [],
                 },
               }),
             );

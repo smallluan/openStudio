@@ -218,6 +218,7 @@
     "gatewayRetryHint": "This page will keep retrying every few seconds. If it never connects, start the gateway or check the URL under Settings → Model.",
     "chatUntitled": "Untitled chat",
     "toolsInvokedSummary": "Called {{count}} tools",
+    "timelineGapSummary": "{{toolCount}} tools · {{stepCount}} steps",
     "toolCallsTitle": "Tool calls",
     "toolArgs": "Arguments",
     "toolResult": "Result",

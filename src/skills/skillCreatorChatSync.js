@@ -4,7 +4,7 @@ import { loadSkillLibrary, saveSkillLibrary } from "./skillsLocalStore.js";
 /**
  * Mirrors ChatLabPage `mergeTerminalAssistantPayload` for a single assistant row.
  * @param {*} m
- * @param {{ content?: string; thinking?: string; error?: string; toolTrace?: unknown[]; activityLog?: unknown[] }} extra
+ * @param {{ content?: string; thinking?: string; error?: string; toolTrace?: unknown[]; activityLog?: unknown[]; assistantTimeline?: unknown[] }} extra
  */
 function mergeAssistantTerminal(m, extra) {
   /** @type {*} */
@@ -32,13 +32,18 @@ function mergeAssistantTerminal(m, extra) {
     if (extra.activityLog.length > 0) next.activityLog = /** @type {typeof m.activityLog} */ (extra.activityLog);
     else delete next.activityLog;
   }
+  if (Array.isArray(extra?.assistantTimeline)) {
+    if (extra.assistantTimeline.length > 0) {
+      next.assistantTimeline = /** @type {typeof m.assistantTimeline} */ (extra.assistantTimeline);
+    } else delete next.assistantTimeline;
+  }
   return next;
 }
 
 /**
  * @param {Array<{ id: string; role: string }>} messages
  * @param {string} assistantMessageId
- * @param {{ content?: string; thinking?: string; error?: string; toolTrace?: unknown[]; activityLog?: unknown[] }} extra
+ * @param {{ content?: string; thinking?: string; error?: string; toolTrace?: unknown[]; activityLog?: unknown[]; assistantTimeline?: unknown[] }} extra
  */
 export function messagesWithTerminalAssistantPayload(messages, assistantMessageId, extra) {
   return messages.map((m) =>

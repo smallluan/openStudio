@@ -217,6 +217,7 @@
     "gatewayRetryHint": "此頁面會每隔幾秒自動重試。若始終無法連線，請啟動閘道或在「設定 → 模型」檢查網址。",
     "chatUntitled": "未命名對話",
     "toolsInvokedSummary": "呼叫 {{count}} 個工具",
+    "timelineGapSummary": "工具 {{toolCount}} 次 · 步驟 {{stepCount}} 條",
     "toolCallsTitle": "呼叫工具",
     "toolArgs": "參數",
     "toolResult": "輸出",

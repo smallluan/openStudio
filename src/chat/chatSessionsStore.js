@@ -33,6 +33,7 @@ const MAX_SESSIONS = 50;
  * @property {string} [thinking]
  * @property {ToolTraceRow[]} [toolTrace]
  * @property {ActivityRow[]} [activityLog]
+ * @property {import("./streamTimelineMerge.js").AssistantTimelineSegment[]} [assistantTimeline]
  * @property {number} [createdAt]
  * @property {MessageSkillMeta} [skillMeta]
  * @property {PersistedImageAttachment[]} [imageAttachments]
@@ -134,6 +135,30 @@ function sanitizeActivityLog(raw) {
   return out.length ? out : undefined;
 }
 
+/** @param {unknown} raw */
+function sanitizeAssistantTimeline(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  /** @type {import("./streamTimelineMerge.js").AssistantTimelineSegment[]} */
+  const out = [];
+  for (const s of raw) {
+    if (!s || typeof s !== "object") continue;
+    const kind = /** @type {unknown} */ (s).kind;
+    if (kind === "text" || kind === "thinking") {
+      const body = typeof /** @type {{ body?: unknown }} */ (s).body === "string" ? /** @type {{ body?: unknown }} */ (s).body : "";
+      if (!body) continue;
+      if (kind === "text") out.push({ kind: "text", body });
+      else out.push({ kind: "thinking", body });
+    } else if (kind === "tool" || kind === "activity") {
+      const refId = typeof /** @type {{ refId?: unknown }} */ (s).refId === "string" ? /** @type {{ refId?: unknown }} */ (s).refId.trim() : "";
+      if (!refId) continue;
+      if (kind === "tool") out.push({ kind: "tool", refId });
+      else out.push({ kind: "activity", refId });
+    }
+    if (out.length >= 240) break;
+  }
+  return out.length ? out : undefined;
+}
+
 /** @returns {ChatSessionRecord[]} */
 export function loadAllSessions() {
   if (!sessionsLoadCache) sessionsLoadCache = parseSessionsFromStorage();
@@ -153,6 +178,7 @@ function persistedMessagesEqual(a, b) {
     if (xt !== yt) return false;
     if (JSON.stringify(x.toolTrace ?? null) !== JSON.stringify(y.toolTrace ?? null)) return false;
     if (JSON.stringify(x.activityLog ?? null) !== JSON.stringify(y.activityLog ?? null)) return false;
+    if (JSON.stringify(x.assistantTimeline ?? null) !== JSON.stringify(y.assistantTimeline ?? null)) return false;
     if (JSON.stringify(x.skillMeta ?? null) !== JSON.stringify(y.skillMeta ?? null)) return false;
     if (JSON.stringify(x.imageAttachments ?? null) !== JSON.stringify(y.imageAttachments ?? null)) return false;
     const xc = typeof x.createdAt === "number" && Number.isFinite(x.createdAt) ? x.createdAt : -1;
@@ -198,6 +224,10 @@ function sanitizeMessages(raw) {
     if (Array.isArray(m.activityLog) && m.activityLog.length > 0) {
       const al = sanitizeActivityLog(m.activityLog);
       if (al?.length) row.activityLog = al;
+    }
+    if (Array.isArray(m.assistantTimeline) && m.assistantTimeline.length > 0) {
+      const tl = sanitizeAssistantTimeline(m.assistantTimeline);
+      if (tl?.length) row.assistantTimeline = tl;
     }
     if (typeof m.createdAt === "number" && Number.isFinite(m.createdAt)) row.createdAt = m.createdAt;
     const sm = m.skillMeta;

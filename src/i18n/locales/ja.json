@@ -217,6 +217,7 @@
     "gatewayRetryHint": "このページから数秒ごとに自動で再試行します。接続できない場合はゲートウェイを起動するか、「設定 → モデル」で URL を確認してください。",
     "chatUntitled": "無題のチャット",
     "toolsInvokedSummary": "{{count}} 件のツールを呼び出し",
+    "timelineGapSummary": "ツール {{toolCount}} · ステップ {{stepCount}}",
     "toolCallsTitle": "ツール呼び出し",
     "toolArgs": "引数",
     "toolResult": "結果",

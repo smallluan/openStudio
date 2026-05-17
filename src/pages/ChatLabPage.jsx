@@ -177,7 +177,14 @@ function isChatHttp404(raw) {
  * Terminal IPC snapshots can briefly race ahead of the last `content_sync`; never clobber
  * non-empty assistant text/thinking with an empty terminal payload.
  * @param {*} m
- * @param {{ content?: string; thinking?: string; error?: string; toolTrace?: unknown[]; activityLog?: unknown[] }} extra
+ * @param {{
+ *   content?: string;
+ *   thinking?: string;
+ *   error?: string;
+ *   toolTrace?: unknown[];
+ *   activityLog?: unknown[];
+ *   assistantTimeline?: unknown[];
+ * }} extra
  */
 function mergeTerminalAssistantPayload(m, extra) {
   /** @type {*} */
@@ -204,6 +211,11 @@ function mergeTerminalAssistantPayload(m, extra) {
   if (Array.isArray(extra?.activityLog)) {
     if (extra.activityLog.length > 0) next.activityLog = /** @type {typeof m.activityLog} */ (extra.activityLog);
     else delete next.activityLog;
+  }
+  if (Array.isArray(extra?.assistantTimeline)) {
+    if (extra.assistantTimeline.length > 0) {
+      next.assistantTimeline = /** @type {typeof m.assistantTimeline} */ (extra.assistantTimeline);
+    } else delete next.assistantTimeline;
   }
   return next;
 }
@@ -248,7 +260,7 @@ export default function ChatLabPage() {
   const [config, setConfig] = useState(/** @type {* | null} */ (null));
   const [configLoaded, setConfigLoaded] = useState(false);
   const [messages, setMessages] = useState(
-    /** @type {Array<{id: string; role: "user" | "assistant"; content: string; thinking?: string; streaming?: boolean; error?: string; toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[]; activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[]; createdAt?: number}>} */
+    /** @type {Array<{id: string; role: "user" | "assistant"; content: string; thinking?: string; streaming?: boolean; error?: string; toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[]; activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[]; assistantTimeline?: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[]; createdAt?: number}>} */
     ([]),
   );
   const [input, setInput] = useState("");
@@ -411,6 +423,9 @@ export default function ChatLabPage() {
         ...(m.thinking ? { thinking: m.thinking } : {}),
         ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
         ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+        ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
+          ? { assistantTimeline: m.assistantTimeline }
+          : {}),
         ...(typeof m.createdAt === "number" && Number.isFinite(m.createdAt) ? { createdAt: m.createdAt } : {}),
         ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
         ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
@@ -470,6 +485,9 @@ export default function ChatLabPage() {
           ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
           ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
           ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+          ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
+            ? { assistantTimeline: m.assistantTimeline }
+            : {}),
           ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
           ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
           ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
@@ -574,7 +592,8 @@ export default function ChatLabPage() {
 
   useEffect(() => {
     if (!gatewaySliceForConv) return;
-    const { assistantMessageId, content, thinking, active, toolTrace, activityLog } = gatewaySliceForConv;
+    const { assistantMessageId, content, thinking, active, toolTrace, activityLog, assistantTimeline } =
+      gatewaySliceForConv;
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === assistantMessageId);
       if (idx === -1) return prev;
@@ -583,6 +602,10 @@ export default function ChatLabPage() {
         const next = { ...m, content, thinking, streaming: active };
         if (toolTrace && toolTrace.length > 0) next.toolTrace = toolTrace;
         if (activityLog && activityLog.length > 0) next.activityLog = activityLog;
+        if (Array.isArray(assistantTimeline)) {
+          if (assistantTimeline.length > 0) next.assistantTimeline = assistantTimeline;
+          else delete next.assistantTimeline;
+        }
         return next;
       });
     });
@@ -625,6 +648,7 @@ export default function ChatLabPage() {
           ...(typeof d.thinking === "string" ? { thinking: d.thinking } : {}),
           ...(Array.isArray(d.toolTrace) ? { toolTrace: d.toolTrace } : {}),
           ...(Array.isArray(d.activityLog) ? { activityLog: d.activityLog } : {}),
+          ...(Array.isArray(d.assistantTimeline) ? { assistantTimeline: d.assistantTimeline } : {}),
         });
         if (isChatHttp404(raw)) {
           setChatApiBlocked(true);
@@ -638,6 +662,7 @@ export default function ChatLabPage() {
           ...(typeof d.thinking === "string" ? { thinking: d.thinking } : {}),
           ...(Array.isArray(d.toolTrace) ? { toolTrace: d.toolTrace } : {}),
           ...(Array.isArray(d.activityLog) ? { activityLog: d.activityLog } : {}),
+          ...(Array.isArray(d.assistantTimeline) ? { assistantTimeline: d.assistantTimeline } : {}),
         };
         finalizeAssistantById(d.assistantMessageId, extra);
         if (d.kind === "done") {
@@ -747,6 +772,9 @@ export default function ChatLabPage() {
           ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
           ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
           ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+          ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
+            ? { assistantTimeline: m.assistantTimeline }
+            : {}),
           ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
           ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
             ? { imageAttachments: m.imageAttachments }
@@ -920,6 +948,9 @@ export default function ChatLabPage() {
         ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
         ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
         ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+        ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
+          ? { assistantTimeline: m.assistantTimeline }
+          : {}),
         ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
         ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
           ? { imageAttachments: m.imageAttachments }
@@ -1598,6 +1629,255 @@ function ChatStreamingIndicator({ label }) {
   );
 }
 
+/**
+ * One collapsible between prose segments: tools + agent steps in original timeline order.
+ * @param {{
+ *   segments: Array<{ kind: "tool"; refId: string } | { kind: "activity"; refId: string }>;
+ *   toolMap: Map<string, import("../chat/toolTraceMerge.js").ToolTraceRow>;
+ *   activityMap: Map<string, import("../chat/toolTraceMerge.js").ActivityRow>;
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ *   streaming: boolean;
+ * }} props
+ */
+function GapToolActivityPanel({ segments, toolMap, activityMap, t, streaming }) {
+  const [open, setOpen] = useState(() => Boolean(streaming));
+  useEffect(() => {
+    if (streaming) setOpen(true);
+    else setOpen(false);
+  }, [streaming]);
+
+  const summaryCounts = useMemo(() => {
+    let toolCount = 0;
+    let stepCount = 0;
+    for (const s of segments) {
+      if (s.kind === "tool") toolCount++;
+      else if (s.kind === "activity") stepCount++;
+    }
+    return { toolCount, stepCount };
+  }, [segments]);
+
+  const lastActivityIdx = useMemo(() => {
+    let last = -1;
+    segments.forEach((s, idx) => {
+      if (s.kind === "activity") last = idx;
+    });
+    return last;
+  }, [segments]);
+
+  if (!segments.length) return null;
+
+  return (
+    <TraceDisclosure
+      className="chat-lab__tool-chain chat-lab__timeline-gap-chain"
+      open={open}
+      onOpenChange={setOpen}
+      triggerClassName="chat-lab__tool-chain-summary"
+      summary={t("chatLab.timelineGapSummary", {
+        toolCount: summaryCounts.toolCount,
+        stepCount: summaryCounts.stepCount,
+      })}
+    >
+      <div className="chat-lab__tool-chain-body">
+        {segments.map((s, idx) => {
+          if (s.kind === "tool") {
+            const row = toolMap.get(s.refId);
+            if (!row) return null;
+            return <ToolRow key={`gap-${idx}-${s.refId}`} row={row} t={t} />;
+          }
+          const row = activityMap.get(s.refId);
+          if (!row) return null;
+          return (
+            <ActivityRow
+              key={`gap-${idx}-${s.refId}`}
+              row={row}
+              t={t}
+              streaming={streaming}
+              isTail={Boolean(streaming) && idx === lastActivityIdx}
+            />
+          );
+        })}
+      </div>
+    </TraceDisclosure>
+  );
+}
+
+/**
+ * Render assistant reply segments in gateway order (prose ⟷ tools ⟷ steps).
+ * @param {{
+ *   timeline: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[];
+ *   toolRows: import("../chat/toolTraceMerge.js").ToolTraceRow[];
+ *   activityRows: import("../chat/toolTraceMerge.js").ActivityRow[];
+ *   mdComponents: import("react-markdown").Components;
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ *   streaming: boolean;
+ *   tailBusy: boolean;
+ *   tailBusyLabel: string;
+ * }} props
+ */
+const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
+  timeline,
+  toolRows,
+  activityRows,
+  mdComponents,
+  t,
+  streaming,
+  tailBusy,
+  tailBusyLabel,
+}) {
+  const toolMap = useMemo(() => new Map(toolRows.map((r) => [r.id, r])), [toolRows]);
+  const activityMap = useMemo(() => new Map(activityRows.map((r) => [r.id, r])), [activityRows]);
+
+  /**
+   * Split by markdown text: everything between two text deltas merges into gap panels (tools ⟷ steps
+   * stay in order). Thinking splits gaps so reasoning can appear between execution bursts.
+   * @type {Array<
+   *   | { kind: "text"; body: string; key: string }
+   *   | { kind: "thinking"; body: string; key: string }
+   *   | { kind: "toolActivityGap"; segments: Array<{ kind: "tool"; refId: string } | { kind: "activity"; refId: string }>; key: string }
+   * >}
+   */
+  const renderParts = useMemo(() => {
+    /** @type {Array<
+     *   | { kind: "text"; body: string; key: string }
+     *   | { kind: "thinking"; body: string; key: string }
+     *   | {
+     *       kind: "toolActivityGap";
+     *       segments: Array<{ kind: "tool"; refId: string } | { kind: "activity"; refId: string }>;
+     *       key: string;
+     *     }
+     * >} */
+    const out = [];
+    /** @type {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[]} */
+    const gapBuf = [];
+
+    const flushGap = () => {
+      if (!gapBuf.length) return;
+      let i = 0;
+      while (i < gapBuf.length) {
+        const seg = gapBuf[i];
+        if (seg.kind === "thinking") {
+          out.push({
+            kind: "thinking",
+            body: seg.body,
+            key: `th-${out.length}-${i}`,
+          });
+          i++;
+          continue;
+        }
+        /** @type {Array<{ kind: "tool"; refId: string } | { kind: "activity"; refId: string }>} */
+        const ta = [];
+        while (i < gapBuf.length && gapBuf[i].kind !== "thinking") {
+          const s = gapBuf[i];
+          if (s.kind === "tool" || s.kind === "activity") {
+            ta.push({ kind: s.kind, refId: s.refId });
+          }
+          i++;
+        }
+        if (ta.length) {
+          out.push({
+            kind: "toolActivityGap",
+            segments: ta,
+            key: `gap-${out.length}-${ta.map((x) => x.refId).join("|")}`,
+          });
+        }
+      }
+      gapBuf.length = 0;
+    };
+
+    for (let ti = 0; ti < timeline.length; ti++) {
+      const seg = timeline[ti];
+      if (!seg) continue;
+      if (seg.kind === "text") {
+        flushGap();
+        out.push({ kind: "text", body: seg.body, key: `tx-${ti}` });
+      } else {
+        gapBuf.push(seg);
+      }
+    }
+    flushGap();
+    return out;
+  }, [timeline]);
+
+  const lastGapPartIdx = useMemo(() => {
+    let last = -1;
+    renderParts.forEach((p, idx) => {
+      if (p.kind === "toolActivityGap") last = idx;
+    });
+    return last;
+  }, [renderParts]);
+
+  const lastThinkingPartIdx = useMemo(() => {
+    let last = -1;
+    renderParts.forEach((p, idx) => {
+      if (p.kind === "thinking") last = idx;
+    });
+    return last;
+  }, [renderParts]);
+
+  return (
+    <div className="chat-lab__assistant-timeline">
+      {renderParts.map((p, ri) => {
+        if (p.kind === "text") {
+          if (!String(p.body ?? "").trim()) return null;
+          const src = normalizeLatexMathDelimitersForRemark(p.body);
+          return (
+            <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--text chat-lab__md">
+              <ReactMarkdown
+                remarkPlugins={CHAT_MD_REMARK_PLUGINS}
+                rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
+                components={mdComponents}
+              >
+                {src}
+              </ReactMarkdown>
+            </div>
+          );
+        }
+        if (p.kind === "thinking") {
+          if (!String(p.body ?? "").trim()) return null;
+          return (
+            <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--thinking">
+              <TraceDisclosure
+                className={cn(
+                  "chat-lab__think",
+                  streaming && ri === lastThinkingPartIdx && "thinking-pulse-border",
+                )}
+                defaultOpen={streaming}
+                triggerClassName="chat-lab__think-summary"
+                panelInnerClassName="chat-lab__think-panel-inner"
+                summary={
+                  <>
+                    {t("chatLab.thinking")}
+                    <span className="chat-lab__think-hint muted">· {t("chatLab.thinkingHint")}</span>
+                  </>
+                }
+              >
+                <pre className="chat-lab__think-body">{p.body}</pre>
+              </TraceDisclosure>
+            </div>
+          );
+        }
+        const panelStreaming = Boolean(streaming) && ri === lastGapPartIdx;
+        return (
+          <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--gap-chain">
+            <GapToolActivityPanel
+              segments={p.segments}
+              toolMap={toolMap}
+              activityMap={activityMap}
+              t={t}
+              streaming={panelStreaming}
+            />
+          </div>
+        );
+      })}
+      {tailBusy ? (
+        <div className="chat-lab__timeline-block chat-lab__timeline-block--pending">
+          <ChatStreamingIndicator label={tailBusyLabel} />
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
 /** @param {unknown} v */
 function formatJsonSafe(v) {
   try {
@@ -2158,6 +2438,7 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
  *     error?: string;
  *     toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
  *     activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[];
+ *     assistantTimeline?: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[];
  *     createdAt?: number;
  *     skillMeta?: { kind: "openclaw" | "user"; slug?: string; userSkillId?: string; label: string; emoji: string };
  *     imageAttachments?: { mime: string; dataUrl: string }[];
@@ -2176,8 +2457,22 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
  */
 const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLocked, onBeginUserEdit }) {
   const isUser = message.role === "user";
+  const timeline = Array.isArray(message.assistantTimeline) ? message.assistantTimeline : [];
+  const interleavedAssistant = timeline.length > 0;
   const showTyping =
-    !isUser && message.streaming && !message.content && !message.thinking && !message.error;
+    !isUser &&
+    message.streaming &&
+    !message.content &&
+    !message.thinking &&
+    !message.error &&
+    !interleavedAssistant;
+
+  const interleavedTailBusy =
+    interleavedAssistant &&
+    Boolean(message.streaming) &&
+    !message.error &&
+    !String(message.content ?? "").trim() &&
+    !String(message.thinking ?? "").trim();
 
   const mdComponents = useMemo(
     () => ({
@@ -2300,13 +2595,13 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
         className={cn("chat-lab__bubble", isUser && "chat-lab__bubble--user")}
         data-role={message.role}
       >
-        {!isUser && toolRows.length > 0 ? (
+        {!isUser && !interleavedAssistant && toolRows.length > 0 ? (
           <ToolChainPanel rows={toolRows} t={t} streaming={Boolean(message.streaming)} />
         ) : null}
-        {!isUser && activityRows.length > 0 ? (
+        {!isUser && !interleavedAssistant && activityRows.length > 0 ? (
           <ActivityChainPanel rows={activityRows} t={t} streaming={Boolean(message.streaming)} />
         ) : null}
-        {!isUser && message.thinking ? (
+        {!isUser && !interleavedAssistant && message.thinking ? (
           <TraceDisclosure
             className={cn("chat-lab__think", message.streaming && "thinking-pulse-border")}
             open={thinkOpen}
@@ -2332,6 +2627,24 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
             onExpandedChange={setUserLongExpanded}
             onFoldableChange={handleUserFoldable}
           />
+        ) : interleavedAssistant ? (
+          <div className="chat-lab__md chat-lab__md--assistant-interleaved">
+            <AssistantInterleavedBody
+              timeline={timeline}
+              toolRows={toolRows}
+              activityRows={activityRows}
+              mdComponents={mdComponents}
+              t={t}
+              streaming={Boolean(message.streaming)}
+              tailBusy={Boolean(interleavedTailBusy)}
+              tailBusyLabel={t("chatLab.streaming")}
+            />
+            {message.error ? (
+              <div className="mt-1 text-[0.78rem]" style={{ color: "#d84b4b" }}>
+                {message.error}
+              </div>
+            ) : null}
+          </div>
         ) : (
           <div className="chat-lab__md">
             {message.content ? (
@@ -2344,7 +2657,10 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
               </ReactMarkdown>
             ) : showTyping ? (
               <ChatStreamingIndicator label={t("chatLab.streaming")} />
-            ) : !message.thinking && !message.error && toolRows.length === 0 && activityRows.length === 0 ? (
+            ) : !message.thinking &&
+              !message.error &&
+              toolRows.length === 0 &&
+              activityRows.length === 0 ? (
               <p className="chat-lab__empty-reply muted">{t("chatLab.emptyAssistantReply")}</p>
             ) : null}
             {message.error ? (
@@ -2431,6 +2747,7 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
  *     error?: string;
  *     toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
  *     activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[];
+ *     assistantTimeline?: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[];
  *     createdAt?: number;
  *     skillMeta?: { kind: "openclaw" | "user"; slug?: string; userSkillId?: string; label: string; emoji: string };
  *   }>;

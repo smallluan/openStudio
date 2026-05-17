@@ -30,16 +30,40 @@ export const MAX_ACTIVITY_LOG = 120;
 const DONE_PHASES = new Set(["end", "error", "failed", "cancelled", "canceled", "complete", "completed", "ok"]);
 
 /**
+ * Stable row id for a `tool_trace` IPC event (matches {@link mergeToolTrace}).
+ * @param {*} evt
+ */
+export function toolTraceKeyFromEvent(evt) {
+  const toolCallId = typeof evt.toolCallId === "string" ? evt.toolCallId.trim() : "";
+  const toolName = typeof evt.toolName === "string" ? evt.toolName.trim() : "";
+  const seq = typeof evt.seq === "number" ? evt.seq : 0;
+  return toolCallId || `anon-${seq}-${toolName || "tool"}`;
+}
+
+/**
+ * Stable row id for an `agent_activity` IPC event (matches {@link mergeActivityLog}).
+ * @param {*} evt
+ */
+export function activityKeyFromEvent(evt) {
+  const stream = typeof evt.stream === "string" ? evt.stream : "";
+  const payload = evt.payload && typeof evt.payload === "object" ? evt.payload : {};
+  const itemId = typeof payload.itemId === "string" ? payload.itemId : "";
+  const tc = typeof payload.toolCallId === "string" ? payload.toolCallId : "";
+  const seq = typeof evt.seq === "number" ? evt.seq : 0;
+  return `${stream}:${itemId || tc || String(seq)}`;
+}
+
+/**
  * @param {ToolTraceRow[] | undefined} prev
  * @param {*} evt raw IPC `tool_trace` event
  * @returns {ToolTraceRow[]}
  */
 export function mergeToolTrace(prev, evt) {
   const list = Array.isArray(prev) ? [...prev] : [];
+  const key = toolTraceKeyFromEvent(evt);
   const toolCallId = typeof evt.toolCallId === "string" ? evt.toolCallId.trim() : "";
   const toolName = typeof evt.toolName === "string" ? evt.toolName.trim() : "";
   const seq = typeof evt.seq === "number" ? evt.seq : 0;
-  const key = toolCallId || `anon-${seq}-${toolName || "tool"}`;
   const phase = typeof evt.phase === "string" ? evt.phase : "";
   const idx = list.findIndex((r) => r.id === key);
   /** @type {ToolTraceRow} */
@@ -82,10 +106,8 @@ export function mergeActivityLog(prev, evt) {
   const list = Array.isArray(prev) ? [...prev] : [];
   const stream = typeof evt.stream === "string" ? evt.stream : "";
   const payload = evt.payload && typeof evt.payload === "object" ? evt.payload : {};
-  const itemId = typeof payload.itemId === "string" ? payload.itemId : "";
-  const tc = typeof payload.toolCallId === "string" ? payload.toolCallId : "";
   const seq = typeof evt.seq === "number" ? evt.seq : 0;
-  const id = `${stream}:${itemId || tc || String(seq)}`;
+  const id = activityKeyFromEvent(evt);
   const phase = typeof payload.phase === "string" ? payload.phase : "";
   const title =
     typeof payload.title === "string"

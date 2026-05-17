@@ -2382,6 +2382,25 @@ code {
   border-left-color: color-mix(in srgb, var(--os-text-muted) 38%, transparent);
 }
 
+/** Interleaved assistant stream: prose, thinking, tools, and activity in arrival order. */
+.chat-lab__assistant-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.chat-lab__timeline-block--text.chat-lab__md {
+  margin: 0;
+}
+
+.chat-lab__timeline-block--gap-chain .chat-lab__tool-chain {
+  margin-bottom: 0;
+}
+
+.chat-lab__timeline-block--pending {
+  padding-top: 0.1rem;
+}
+
 .chat-lab__tool-nested {
   margin: 0;
   padding: 0.1rem 0;
