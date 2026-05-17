@@ -270,7 +270,12 @@
     "imageTooLarge": "单张图片不能超过 2 MB",
     "invalidImageType": "只能添加图片类型的文件",
     "messageImagesCopyNote": "（另有 {{count}} 张图片，未复制图像数据）",
-    "quickReplyGroup": "快捷回复选项"
+    "quickReplyGroup": "快捷回复选项",
+    "questionnaireGroup": "请补充以下信息",
+    "questionnaireSubmit": "提交回复",
+    "questionnaireAnswerPlaceholder": "填写回答…",
+    "questionnaireUnanswered": "（未填写）",
+    "questionnaireReplyPreamble": "以下是我的补充信息："
   },
   "bootstrap": {
     "title": "Open Studio 正在就绪",

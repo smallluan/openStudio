@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -14,7 +23,10 @@ import {
   MAX_CHAT_COMPOSER_IMAGES,
   readImageFileAsComposerAttachment,
 } from "../chat/chatLabComposerAttachments.js";
-import { parseAssistantQuickReplies } from "../chat/assistantQuickReplyParse.js";
+import {
+  formatQuestionnaireReplyMessage,
+  parseAssistantQuickReplies,
+} from "../chat/assistantQuickReplyParse.js";
 import { normalizeLatexMathDelimitersForRemark } from "../chat/normalizeLatexMathDelimitersForRemark.js";
 import {
   deriveTitleFromMessages,
@@ -2521,6 +2533,133 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
 });
 
 /**
+ * Mini form when the assistant ends with a list of clarification questions (not a single-choice MCQ).
+ * @param {{
+ *   items: Array<{ id: string; prompt: string; badge: string }>;
+ *   disabled: boolean;
+ *   sent: boolean;
+ *   onSubmit: (text: string) => void;
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ * }} props
+ */
+const AssistantQuestionnaireCard = memo(function AssistantQuestionnaireCard({
+  items,
+  disabled,
+  sent,
+  onSubmit,
+  t,
+}) {
+  const baseId = useId();
+  const layoutKey = useMemo(() => items.map((it) => it.id).join("\x1e"), [items]);
+  /** @type {[string | null, import("react").Dispatch<import("react").SetStateAction<string | null>>]} */
+  const [hoverRowId, setHoverRowId] = useState(null);
+  /** @type {[Record<string, string>, import("react").Dispatch<import("react").SetStateAction<Record<string, string>>>]} */
+  const [answers, setAnswers] = useState(() =>
+    Object.fromEntries(items.map((it) => [it.id, ""])),
+  );
+
+  useEffect(() => {
+    setAnswers(Object.fromEntries(items.map((it) => [it.id, ""])));
+  }, [layoutKey]);
+
+  const { rootRef, setItemRef, blobStyle } = useFluidPopupBlob({
+    open: Boolean(items?.length && !sent),
+    hoverKey: hoverRowId,
+    fallbackKey: null,
+    layoutKey,
+  });
+
+  const canSubmit = useMemo(
+    () => items.some((it) => String(answers[it.id] ?? "").trim().length > 0),
+    [items, answers],
+  );
+
+  const handleSubmit = useCallback(
+    (e) => {
+      e.preventDefault();
+      if (disabled || sent || !canSubmit) return;
+      const body = formatQuestionnaireReplyMessage(
+        items,
+        answers,
+        t("chatLab.questionnaireUnanswered"),
+      );
+      const text = `${t("chatLab.questionnaireReplyPreamble")}\n\n${body}`;
+      onSubmit(text);
+    },
+    [answers, canSubmit, disabled, items, onSubmit, sent, t],
+  );
+
+  if (!items?.length) return null;
+
+  return (
+    <div
+      ref={rootRef}
+      className={cn("chat-lab__quick-replies", "chat-lab__questionnaire", sent && "chat-lab__questionnaire--sent")}
+      role="group"
+      aria-label={t("chatLab.questionnaireGroup")}
+      onPointerLeave={() => setHoverRowId(null)}
+    >
+      <div className="chat-lab__quick-replies__header" aria-hidden>
+        <span className="chat-lab__quick-replies__pin" aria-hidden />
+      </div>
+      <div
+        aria-hidden
+        className={cn(
+          "fluid-nav__blob fluid-popup-menu__blob pointer-events-none absolute top-0 left-0 z-0 rounded-[9px]",
+          "chat-lab__quick-replies__blob",
+        )}
+        style={blobStyle}
+      />
+      <form className="chat-lab__questionnaire__form" onSubmit={handleSubmit}>
+        {items.map((it) => {
+          const inputId = `${baseId}__${it.id}`;
+          return (
+            <div
+              key={it.id}
+              ref={(node) => setItemRef(it.id, node)}
+              className="chat-lab__quick-reply-row"
+              onPointerEnter={() => setHoverRowId(it.id)}
+            >
+              <div className="chat-lab__questionnaire-card">
+                <span className="chat-lab__questionnaire-card__badge">{it.badge}</span>
+                <label className="chat-lab__questionnaire-card__prompt" htmlFor={inputId}>
+                  {it.prompt}
+                </label>
+                <input
+                  id={inputId}
+                  name={it.id}
+                  type="text"
+                  className="chat-lab__questionnaire-card__input"
+                  autoComplete="off"
+                  value={answers[it.id] ?? ""}
+                  placeholder={t("chatLab.questionnaireAnswerPlaceholder")}
+                  disabled={disabled || sent}
+                  onChange={(e) =>
+                    setAnswers((prev) => ({
+                      ...prev,
+                      [it.id]: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          );
+        })}
+        <div className="chat-lab__questionnaire__actions">
+          <button
+            type="submit"
+            className="chat-lab__questionnaire-submit"
+            disabled={disabled || sent || !canSubmit}
+          >
+            {t("chatLab.questionnaireSubmit")}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+});
+
+/**
  * One-click replies when the assistant ends with a detected multi-choice list.
  * @param {{
  *   options: Array<{ id: string; label: string; sendText: string; badge: string }>;
@@ -2785,7 +2924,7 @@ const MessageBubble = memo(function MessageBubble({
     setUserLongFoldable(can);
   }, []);
 
-  const quickReplyData = useMemo(() => {
+  const assistantInteractive = useMemo(() => {
     if (isUser || !allowAssistantQuickReply || message.streaming || message.error || !onQuickReply) {
       return null;
     }
@@ -2801,8 +2940,10 @@ const MessageBubble = memo(function MessageBubble({
   ]);
 
   const [quickReplySent, setQuickReplySent] = useState(/** @type {string | null} */ (null));
+  const [questionnaireSent, setQuestionnaireSent] = useState(false);
   useEffect(() => {
     setQuickReplySent(null);
+    setQuestionnaireSent(false);
   }, [message.id]);
 
   const handleQuickReply = useCallback(
@@ -2814,13 +2955,30 @@ const MessageBubble = memo(function MessageBubble({
     [onQuickReply, quickReplyDisabled],
   );
 
+  const handleQuestionnaireSubmit = useCallback(
+    (text) => {
+      if (quickReplyDisabled || !onQuickReply) return;
+      setQuestionnaireSent(true);
+      void onQuickReply(text);
+    },
+    [onQuickReply, quickReplyDisabled],
+  );
+
   const quickReplyChipsEl =
-    quickReplyData && onQuickReply ? (
+    assistantInteractive?.kind === "choice" && onQuickReply ? (
       <AssistantQuickReplyChips
-        options={quickReplyData.options}
+        options={assistantInteractive.options}
         disabled={quickReplyDisabled}
         sentText={quickReplySent}
         onSelect={handleQuickReply}
+        t={t}
+      />
+    ) : assistantInteractive?.kind === "questionnaire" && onQuickReply ? (
+      <AssistantQuestionnaireCard
+        items={assistantInteractive.items}
+        disabled={quickReplyDisabled}
+        sent={questionnaireSent}
+        onSubmit={handleQuestionnaireSubmit}
         t={t}
       />
     ) : null;

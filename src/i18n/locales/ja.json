@@ -269,7 +269,12 @@
     "imageTooLarge": "各画像は 2 MB 未満にしてください",
     "invalidImageType": "画像ファイルのみ追加できます",
     "messageImagesCopyNote": "（別途 {{count}} 枚の画像あり・画像データはコピーされません）",
-    "quickReplyGroup": "クイック返信の選択肢"
+    "quickReplyGroup": "クイック返信の選択肢",
+    "questionnaireGroup": "質問への回答を入力",
+    "questionnaireSubmit": "回答を送信",
+    "questionnaireAnswerPlaceholder": "回答を入力…",
+    "questionnaireUnanswered": "（未回答）",
+    "questionnaireReplyPreamble": "補足情報は以下のとおりです。"
   },
   "bootstrap": {
     "title": "Open Studio を準備しています",

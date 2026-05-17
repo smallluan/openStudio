@@ -157,6 +157,87 @@ function tryParseInlineNumberBlock(block) {
 }
 
 /**
+ * Numbered/bulleted blocks used for "please answer these questions" are not mutually exclusive choices.
+ * If every line reads as a standalone question, skip quick-reply parsing (avoid fake "single choice" UI).
+ * @param {string[]} optionLines
+ */
+function looksLikeIndependentQuestionList(optionLines) {
+  if (optionLines.length < 2) return false;
+  let questionLike = 0;
+  for (const line of optionLines) {
+    const m = OPTION_LINE.exec(line);
+    const rest = m ? m[1] : line;
+    const text = stripInlineMd(rest);
+    if (!text) continue;
+    if (/[?？]\s*$/.test(text)) {
+      questionLike++;
+      continue;
+    }
+    // Chinese rhetorical question patterns often omit the final "?" in lists
+    if (
+      /(什么|哪些|哪[个些]|如何|怎么|为何|是否|有没有|能不能|要不要|行不行|多少|几页|几个)/.test(
+        text,
+      )
+    ) {
+      questionLike++;
+    }
+  }
+  return questionLike === optionLines.length;
+}
+
+/**
+ * @param {string[]} optionLines
+ * @returns {Array<{ id: string; prompt: string; badge: string }>}
+ */
+function buildQuestionnaireItems(optionLines) {
+  /** @type {Array<{ id: string; prompt: string; badge: string }>} */
+  const items = [];
+  for (let idx = 0; idx < optionLines.length; idx++) {
+    const line = optionLines[idx];
+    const m = OPTION_LINE.exec(line);
+    const rest = m ? m[1] : line;
+    const prompt = stripInlineMd(rest);
+    if (!prompt) continue;
+    items.push({
+      id: `qq-${idx}-${prompt.slice(0, 24)}`,
+      prompt,
+      badge: listMarkerBadge(line),
+    });
+  }
+  return items;
+}
+
+/**
+ * @param {string[]} optionLines
+ * @returns {{ kind: "choice"; options: Array<{ id: string; label: string; sendText: string; badge: string }> } | { kind: "questionnaire"; items: Array<{ id: string; prompt: string; badge: string }> } | null}
+ */
+function interactiveFromOptionLines(optionLines) {
+  if (looksLikeIndependentQuestionList(optionLines)) {
+    const items = buildQuestionnaireItems(optionLines);
+    return items.length >= 2 ? { kind: "questionnaire", items } : null;
+  }
+  const built = buildOptionsFromLines(optionLines);
+  if (!built) return null;
+  return { kind: "choice", options: built.options };
+}
+
+/**
+ * Plain-text bundle for one user turn (one line per answer under each prompt).
+ * @param {Array<{ id: string; prompt: string; badge: string }>} items
+ * @param {Record<string, string>} answersById
+ * @param {string} emptyLabel shown when a field is left blank
+ */
+export function formatQuestionnaireReplyMessage(items, answersById, emptyLabel) {
+  const label = String(emptyLabel ?? "").trim() || "—";
+  const parts = [];
+  for (const it of items) {
+    const v = String(answersById[it.id] ?? "").trim();
+    parts.push(`${it.prompt}\n${v || label}`);
+  }
+  return parts.join("\n\n");
+}
+
+/**
  * @param {string[]} optionLines
  */
 function buildOptionsFromLines(optionLines) {
@@ -209,7 +290,7 @@ function parseFromMultilineList(cleaned) {
   const beforeText = beforeLines.join("\n");
   if (!looksLikeChoicePrompt(beforeText)) return null;
 
-  return buildOptionsFromLines(optionLines);
+  return interactiveFromOptionLines(optionLines);
 }
 
 /**
@@ -232,7 +313,7 @@ function parseFromInlineParagraphs(cleaned) {
     if (letter) {
       const prompt = `${promptPrefix}\n${letter.beforeText}`.trim();
       if (looksLikeChoicePrompt(prompt)) {
-        const built = buildOptionsFromLines(letter.optionLines);
+        const built = interactiveFromOptionLines(letter.optionLines);
         if (built) return built;
       }
     }
@@ -240,7 +321,7 @@ function parseFromInlineParagraphs(cleaned) {
     if (num) {
       const prompt = `${promptPrefix}\n${num.beforeText}`.trim();
       if (looksLikeChoicePrompt(prompt)) {
-        const built = buildOptionsFromLines(num.optionLines);
+        const built = interactiveFromOptionLines(num.optionLines);
         if (built) return built;
       }
     }
@@ -264,7 +345,7 @@ function parseFromInlineParagraphs(cleaned) {
 
 /**
  * @param {string | undefined} markdown
- * @returns {{ options: Array<{ id: string; label: string; sendText: string; badge: string }> } | null}
+ * @returns {{ kind: "choice"; options: Array<{ id: string; label: string; sendText: string; badge: string }> } | { kind: "questionnaire"; items: Array<{ id: string; prompt: string; badge: string }> } | null}
  */
 export function parseAssistantQuickReplies(markdown) {
   const raw = String(markdown ?? "");

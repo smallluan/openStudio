@@ -270,7 +270,12 @@
     "imageTooLarge": "Each image must be under 2 MB",
     "invalidImageType": "Only image files can be attached",
     "messageImagesCopyNote": "({{count}} images attached — image data not copied)",
-    "quickReplyGroup": "Quick reply choices"
+    "quickReplyGroup": "Quick reply choices",
+    "questionnaireGroup": "Fill in your answers",
+    "questionnaireSubmit": "Send answers",
+    "questionnaireAnswerPlaceholder": "Your answer…",
+    "questionnaireUnanswered": "(No answer)",
+    "questionnaireReplyPreamble": "Here is the information:"
   },
   "bootstrap": {
     "title": "Open Studio is getting ready",

@@ -269,7 +269,12 @@
     "imageTooLarge": "單張圖片不可超過 2 MB",
     "invalidImageType": "只能新增圖片類型的檔案",
     "messageImagesCopyNote": "（另有 {{count}} 張圖片，未複製影像資料）",
-    "quickReplyGroup": "快捷回覆選項"
+    "quickReplyGroup": "快捷回覆選項",
+    "questionnaireGroup": "請補充以下資訊",
+    "questionnaireSubmit": "提交回覆",
+    "questionnaireAnswerPlaceholder": "填寫回答…",
+    "questionnaireUnanswered": "（未填寫）",
+    "questionnaireReplyPreamble": "以下是我的補充資訊："
   },
   "bootstrap": {
     "title": "Open Studio 正在就緒",

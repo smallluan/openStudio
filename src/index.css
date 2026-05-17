@@ -3077,6 +3077,124 @@ code {
   word-break: break-word;
 }
 
+.chat-lab__questionnaire__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  width: 100%;
+}
+
+.chat-lab__questionnaire-card {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  padding: 0.28rem 0.38rem 0.32rem 0.26rem;
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+
+.chat-lab__questionnaire-card__badge {
+  display: block;
+  font-size: 0.575rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--os-text-muted) 94%, transparent);
+  line-height: 1.08;
+}
+
+.chat-lab__questionnaire-card__prompt {
+  font-size: 0.8125rem;
+  line-height: 1.38;
+  font-weight: 500;
+  word-break: break-word;
+  color: var(--os-text);
+  cursor: default;
+}
+
+.chat-lab__questionnaire-card__input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.36rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 58%, var(--os-text-muted));
+  background: color-mix(in srgb, var(--os-bg-elevated) 88%, transparent);
+  color: var(--os-text);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.chat-lab__questionnaire-card__input:focus-visible {
+  border-color: color-mix(in srgb, var(--os-accent) 48%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--os-accent) 22%, transparent);
+}
+
+.chat-lab__questionnaire-card__input:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+.chat-lab__questionnaire__actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.55rem 0.35rem 0.05rem;
+}
+
+.chat-lab__questionnaire-submit {
+  margin: 0;
+  padding: 0.38rem 0.95rem;
+  border: none;
+  border-radius: 9px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--os-accent) 8%, #fff);
+  background: color-mix(in srgb, var(--os-accent) 82%, var(--os-text));
+  box-shadow:
+    0 2px 8px color-mix(in srgb, var(--os-accent) 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 22%, transparent);
+  transition:
+    filter 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.chat-lab__questionnaire-submit:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.chat-lab__questionnaire-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+  box-shadow: none;
+}
+
+.chat-lab__questionnaire--sent .chat-lab__questionnaire-card__input {
+  opacity: 0.88;
+}
+
+:root[data-theme="dark"] .chat-lab__questionnaire-card__input {
+  background: color-mix(in srgb, var(--os-bg-panel) 70%, #000);
+  border-color: color-mix(in srgb, var(--border) 48%, var(--os-text-muted));
+}
+
+:root[data-theme="dark"] .chat-lab__questionnaire-submit {
+  color: color-mix(in srgb, var(--os-text) 94%, #000);
+}
+
 :root[data-theme="dark"] .chat-lab__quick-reply-card__radio {
   border-color: color-mix(in srgb, var(--os-text-muted) 46%, var(--border));
 }
