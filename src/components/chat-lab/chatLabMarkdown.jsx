@@ -1,5 +1,7 @@
-import { useCallback, useMemo, useState, useSyncExternalStore, isValidElement } from "react";
+import { useCallback, useContext, useMemo, useState, useSyncExternalStore, isValidElement } from "react";
 import { cn } from "../../ui/cn.js";
+import { ChatLabPreviewContext } from "../../context/ChatLabPreviewContext.jsx";
+import { csvToHtmlDocument, svgToHtmlDocument, wrapLooseHtmlFragmentForSrcDoc } from "../../chat/chatLabDocumentPreview.js";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light.js";
 import bash from "react-syntax-highlighter/dist/esm/languages/prism/bash.js";
 import cpp from "react-syntax-highlighter/dist/esm/languages/prism/cpp.js";
@@ -103,13 +105,13 @@ function useDocTheme() {
 }
 
 /** Pull plain text from react-markdown cell children (often a `<p>` or inline mix). */
-function markdownCellPlainText(node) {
+export function chatMarkdownPlainText(node) {
   if (node == null || typeof node === "boolean") return "";
   if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(markdownCellPlainText).join("");
+  if (Array.isArray(node)) return node.map(chatMarkdownPlainText).join("");
   if (isValidElement(node)) {
     const ch = /** @type {{ children?: unknown }} */ (node.props).children;
-    return markdownCellPlainText(ch);
+    return chatMarkdownPlainText(ch);
   }
   return "";
 }
@@ -203,6 +205,32 @@ function CodeCopyIcon() {
   );
 }
 
+/** @param {{ onClick: () => void; t: (k: string) => string }} props */
+function FencePreviewBtn({ onClick, t }) {
+  return (
+    <button
+      type="button"
+      className="chat-lab__code-preview"
+      onClick={onClick}
+      aria-label={t("chatLab.previewOpen")}
+      title={t("chatLab.previewOpen")}
+    >
+      <span className="chat-lab__code-preview-ico" aria-hidden>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+      <span className="chat-lab__code-preview-label">{t("chatLab.previewOpen")}</span>
+    </button>
+  );
+}
+
 function CodeCopiedIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -226,6 +254,7 @@ function CodeCopiedIcon() {
  */
 function ChatMdCodeBlock({ code, fenceClassName, t }) {
   const theme = useDocTheme();
+  const preview = useContext(ChatLabPreviewContext);
   const { prism, label } = useMemo(
     () => resolveFenceLang(fenceClassName),
     [fenceClassName],
@@ -233,6 +262,20 @@ function ChatMdCodeBlock({ code, fenceClassName, t }) {
   const syntaxStyle = theme === "dark" ? vscDarkPlus : oneLight;
   const displayLang = label || t("chatLab.codePlain");
   const codeFont = "0.8125rem";
+  const canPreview =
+    Boolean(preview) && (label === "html" || label === "csv" || label === "svg");
+  const onPreview = useCallback(() => {
+    if (!preview) return;
+    if (label === "html") {
+      const doc = wrapLooseHtmlFragmentForSrcDoc(code);
+      if (!doc) return;
+      preview.openSrcDoc(doc, t("chatLab.previewTitleHtml"));
+    } else if (label === "csv") {
+      preview.openSrcDoc(csvToHtmlDocument(code), t("chatLab.previewTitleCsv"));
+    } else if (label === "svg") {
+      preview.openSrcDoc(svgToHtmlDocument(code), t("chatLab.previewTitleSvg"));
+    }
+  }, [code, label, preview, t]);
 
   return (
     <div className="chat-lab__code-block" data-theme={theme}>
@@ -240,7 +283,10 @@ function ChatMdCodeBlock({ code, fenceClassName, t }) {
         <span className="chat-lab__code-lang" title={displayLang}>
           {displayLang}
         </span>
-        <CodeCopyBtn text={code} t={t} />
+        <div className="chat-lab__code-block-actions">
+          {canPreview ? <FencePreviewBtn onClick={onPreview} t={t} /> : null}
+          <CodeCopyBtn text={code} t={t} />
+        </div>
       </div>
       <div className="chat-lab__code-block-body">
         {prism ? (
@@ -287,7 +333,7 @@ export function createChatLabMarkdownComponents(t) {
      * @param {import("react").ComponentPropsWithoutRef<"td"> & { children?: import("react").ReactNode }} props
      */
     td: ({ children, ...props }) => {
-      const plain = markdownCellPlainText(children);
+      const plain = chatMarkdownPlainText(children);
       const rank = MARKDOWN_RANK_CELL.exec(plain);
       if (rank) {
         return (

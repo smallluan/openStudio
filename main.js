@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { createRequire } = require("module");
@@ -14,6 +14,10 @@ const {
   prewarmStudioGatewaySessions,
 } = require("./lib/openclaw-gateway-session.cjs");
 const { syncOpenClawAgentFromStudioConfig } = require("./lib/sync-openclaw-agent-from-studio.cjs");
+const { readWorkspacePreviewFile, resolveWorkspacePreviewTarget } = require("./lib/chatlab-read-workspace-preview.cjs");
+
+/** Sidebar cannot embed Office; open these locally in the OS default viewer instead. */
+const OPEN_EXTERNALLY_SIDE_PREVIEW_EXT = new Set([".pptx", ".ppt", ".xlsx", ".xls"]);
 
 const isDev = process.env.NODE_ENV === "development";
 const requireFromApp = createRequire(__dirname);
@@ -238,6 +242,27 @@ app.whenReady().then(() => {
   ipcMain.handle("studio:getPaths", () => ({
     userData: app.getPath("userData"),
   }));
+
+  ipcMain.handle("studio:readWorkspacePreviewFile", (_event, rawPath) => {
+    if (!userConfigStore) return { ok: false, message: "config_unready" };
+    const cfg = userConfigStore.readRaw();
+    return readWorkspacePreviewFile(cfg, rawPath);
+  });
+
+  /**
+   * @returns {{ ok: boolean; opened: boolean; message?: string }}
+   */
+  ipcMain.handle("studio:maybeOpenWorkspaceOfficeFileExternally", async (_event, rawPath) => {
+    if (!userConfigStore) return { ok: false, opened: false, message: "config_unready" };
+    const cfg = userConfigStore.readRaw();
+    const r = resolveWorkspacePreviewTarget(cfg, rawPath);
+    if (!r.ok) return { ok: false, opened: false, message: r.message ?? "resolve_failed" };
+    const ext = String(r.ext ?? "").toLowerCase();
+    if (!OPEN_EXTERNALLY_SIDE_PREVIEW_EXT.has(ext)) return { ok: true, opened: false };
+    const openErr = await shell.openPath(r.filePath);
+    if (String(openErr ?? "").trim()) return { ok: false, opened: false, message: openErr };
+    return { ok: true, opened: true, filePath: r.filePath };
+  });
 
   ipcMain.handle("studio:probeGateway", async () => {
     try {

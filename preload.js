@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld("studioBridge", {
   getUserConfig: () => ipcRenderer.invoke("studio:getUserConfig"),
   setUserConfig: (patch) => ipcRenderer.invoke("studio:setUserConfig", patch),
   getPaths: () => ipcRenderer.invoke("studio:getPaths"),
+  readWorkspacePreviewFile: (rawPath) => ipcRenderer.invoke("studio:readWorkspacePreviewFile", rawPath),
+  maybeOpenWorkspaceOfficeFileExternally: (rawPath) =>
+    ipcRenderer.invoke("studio:maybeOpenWorkspaceOfficeFileExternally", rawPath),
   probeGateway: () => ipcRenderer.invoke("studio:probeGateway"),
   warmGatewayChatPrep: () => ipcRenderer.invoke("studio:warmGatewayChatPrep"),
   prewarmStudioGatewaySessions: (payload) => ipcRenderer.invoke("studio:prewarmStudioGatewaySessions", payload),

@@ -1,6 +1,36 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 /**
+ * Scroll containers between `node` and `until` (exclusive until), for blob repositioning —
+ * `scroll` does not bubble from nested overflow areas to the measurement root.
+ *
+ * @param {HTMLElement | null} node
+ * @param {HTMLElement | null} until
+ */
+function overflowScrollAncestorsUntil(node, until) {
+  /** @type {HTMLElement[]} */
+  const out = [];
+  let p = node?.parentElement ?? null;
+  while (p && p !== until) {
+    const st = getComputedStyle(p);
+    const oy = st.overflowY;
+    const ox = st.overflowX;
+    if (
+      oy === "auto" ||
+      oy === "scroll" ||
+      oy === "overlay" ||
+      ox === "auto" ||
+      ox === "scroll" ||
+      ox === "overlay"
+    ) {
+      out.push(p);
+    }
+    p = p.parentElement;
+  }
+  return out;
+}
+
+/**
  * Animated highlight blob inside popovers/lists (same visuals as `.fluid-nav__blob`).
  *
  * @param {{
@@ -82,10 +112,17 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
 
     const onScroll = () => measure();
     root.addEventListener("scroll", onScroll, { passive: true });
+    const nestedScrollers = overflowScrollAncestorsUntil(el, root);
+    for (const sc of nestedScrollers) {
+      sc.addEventListener("scroll", onScroll, { passive: true });
+    }
 
     return () => {
       ro?.disconnect();
       root.removeEventListener("scroll", onScroll);
+      for (const sc of nestedScrollers) {
+        sc.removeEventListener("scroll", onScroll);
+      }
     };
   }, [open, targetKey, hoverKey, fallbackKey, layoutKey]);
 

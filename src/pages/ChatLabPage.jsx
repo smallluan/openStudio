@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -24,6 +25,7 @@ import {
   readImageFileAsComposerAttachment,
 } from "../chat/chatLabComposerAttachments.js";
 import {
+  formatChoiceSequenceReply,
   formatQuestionnaireReplyMessage,
   parseAssistantQuickReplies,
 } from "../chat/assistantQuickReplyParse.js";
@@ -40,7 +42,15 @@ import {
   useChatLabStreaming,
   useGatewayStreamSlice,
 } from "../context/ChatLabStreamingContext.jsx";
-import { createChatLabMarkdownComponents } from "../components/chat-lab/chatLabMarkdown.jsx";
+import { createChatLabMarkdownComponents, chatMarkdownPlainText } from "../components/chat-lab/chatLabMarkdown.jsx";
+import ChatLabPreviewDock from "../components/chat-lab/ChatLabPreviewDock.jsx";
+import {
+  ChatLabPreviewContext,
+  ChatLabPreviewProvider,
+  useChatLabPreview,
+} from "../context/ChatLabPreviewContext.jsx";
+import { lastHtmlFenceAsSrcDocDocument, previewKindFromHref } from "../chat/chatLabDocumentPreview.js";
+import { pickPrimaryWorkspacePreviewCandidate } from "../chat/chatLabWorkspacePreviewCandidates.js";
 import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
 import {
   ComposerSkillChip,
@@ -67,7 +77,6 @@ import {
   syncSkillCreatorResultToLibrary,
 } from "../skills/skillCreatorChatSync.js";
 import { cn } from "../ui/cn.js";
-import { useFluidPopupBlob } from "../ui/useFluidPopupBlob.js";
 import { CHAT_MD_REHYPE_PLUGINS } from "../chat/chatLabRehypePlugins.js";
 
 /** Markdown pipelines for chat bubbles (GFM + LaTeX via KaTeX). */
@@ -1596,56 +1605,90 @@ export default function ChatLabPage() {
   );
 
   return (
-    <div className={cn("chat-lab", isLanding && "chat-lab--landing", !isLanding && "chat-lab--thread")}>
-      {isLanding ? (
-        <>
-          <div className="chat-lab__landing-mid">
-            <div className="chat-lab__hero">
-              <h1 className="chat-lab__hero-title">
-                <span className="chat-lab__hero-hi">Hi,</span>{" "}
-                {t("chatLab.heroGreeting", { brand: t("titlebar.appName") })}
-                <span className="chat-lab__hero-star" aria-hidden>
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path
-                      d="M10 2.2 11.8 7.2 17 7.2 13.1 10.4 14.6 15.8 10 12.7 5.4 15.8 6.9 10.4 3 7.2 8.2 7.2Z"
-                      fill="var(--os-accent)"
-                      fillOpacity="0.35"
-                      stroke="var(--os-accent)"
-                      strokeWidth="1"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </span>
-              </h1>
-              <p className="chat-lab__hero-sub muted">{t("chatLab.heroSubtitle")}</p>
+    <ChatLabPreviewProvider>
+      <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
+      <div className="chat-lab__workspace">
+        <div className={cn("chat-lab", isLanding && "chat-lab--landing", !isLanding && "chat-lab--thread")}>
+          {isLanding ? (
+            <>
+              <div className="chat-lab__landing-mid">
+                <div className="chat-lab__hero">
+                  <h1 className="chat-lab__hero-title">
+                    <span className="chat-lab__hero-hi">Hi,</span>{" "}
+                    {t("chatLab.heroGreeting", { brand: t("titlebar.appName") })}
+                    <span className="chat-lab__hero-star" aria-hidden>
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path
+                          d="M10 2.2 11.8 7.2 17 7.2 13.1 10.4 14.6 15.8 10 12.7 5.4 15.8 6.9 10.4 3 7.2 8.2 7.2Z"
+                          fill="var(--os-accent)"
+                          fillOpacity="0.35"
+                          stroke="var(--os-accent)"
+                          strokeWidth="1"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </span>
+                  </h1>
+                  <p className="chat-lab__hero-sub muted">{t("chatLab.heroSubtitle")}</p>
+                </div>
+              </div>
+              {composer}
+            </>
+          ) : (
+            <div className="chat-lab__thread-stack">
+              <header className="chat-lab__conv-header">
+                <h2 className="chat-lab__conv-title">{headerTitle || t("chatLab.chatUntitled")}</h2>
+              </header>
+              <ChatLabVirtualMessageList
+                key={conversationId}
+                messages={messages}
+                messagesScrollRef={messagesScrollRef}
+                autoScrollRef={autoScrollRef}
+                gatewayStreaming={gatewayStreaming}
+                streamLocked={streamLocked}
+                onBeginUserEdit={beginComposerEdit}
+                onQuickReply={quickReplySend}
+                quickReplyDisabled={streamLocked || Boolean(pendingEditMessageId)}
+                t={t}
+                locale={locale}
+                threadLabel={t("chatLab.title")}
+              />
+              {composer}
             </div>
-          </div>
-          {composer}
-        </>
-      ) : (
-        <div className="chat-lab__thread-stack">
-          <header className="chat-lab__conv-header">
-            <h2 className="chat-lab__conv-title">{headerTitle || t("chatLab.chatUntitled")}</h2>
-          </header>
-          <ChatLabVirtualMessageList
-            key={conversationId}
-            messages={messages}
-            messagesScrollRef={messagesScrollRef}
-            autoScrollRef={autoScrollRef}
-            gatewayStreaming={gatewayStreaming}
-            streamLocked={streamLocked}
-            onBeginUserEdit={beginComposerEdit}
-            onQuickReply={quickReplySend}
-            quickReplyDisabled={streamLocked || Boolean(pendingEditMessageId)}
-            t={t}
-            locale={locale}
-            threadLabel={t("chatLab.title")}
-          />
-          {composer}
+          )}
         </div>
-      )}
-    </div>
+        <ChatLabPreviewDock />
+      </div>
+    </ChatLabPreviewProvider>
   );
+}
+
+/**
+ * When the latest assistant reply finishes streaming and includes a ```html … ``` fence,
+ * open the preview dock (disk-only artifacts with no fenced body still need manual/open via link).
+ * @param {{ conversationId: string; messages: Array<{ id: string; role: string; content?: string; streaming?: boolean; error?: string }> }} props
+ */
+function ChatLabAutoHtmlPreview({ conversationId, messages }) {
+  const { t } = useI18n();
+  const preview = useChatLabPreview();
+  const handledTailIdRef = useRef(/** @type {string | null} */ (null));
+
+  useEffect(() => {
+    handledTailIdRef.current = null;
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!preview) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || last.streaming || last.error) return;
+    if (handledTailIdRef.current === last.id) return;
+    const doc = lastHtmlFenceAsSrcDocDocument(String(last.content ?? ""));
+    handledTailIdRef.current = last.id;
+    if (!doc) return;
+    preview.openSrcDoc(doc, t("chatLab.previewTitleHtml"));
+  }, [messages, preview, t]);
+
+  return null;
 }
 
 function ToolbarChevron() {
@@ -2551,8 +2594,6 @@ const AssistantQuestionnaireCard = memo(function AssistantQuestionnaireCard({
 }) {
   const baseId = useId();
   const layoutKey = useMemo(() => items.map((it) => it.id).join("\x1e"), [items]);
-  /** @type {[string | null, import("react").Dispatch<import("react").SetStateAction<string | null>>]} */
-  const [hoverRowId, setHoverRowId] = useState(null);
   /** @type {[Record<string, string>, import("react").Dispatch<import("react").SetStateAction<Record<string, string>>>]} */
   const [answers, setAnswers] = useState(() =>
     Object.fromEntries(items.map((it) => [it.id, ""])),
@@ -2561,13 +2602,6 @@ const AssistantQuestionnaireCard = memo(function AssistantQuestionnaireCard({
   useEffect(() => {
     setAnswers(Object.fromEntries(items.map((it) => [it.id, ""])));
   }, [layoutKey]);
-
-  const { rootRef, setItemRef, blobStyle } = useFluidPopupBlob({
-    open: Boolean(items?.length && !sent),
-    hoverKey: hoverRowId,
-    fallbackKey: null,
-    layoutKey,
-  });
 
   const canSubmit = useMemo(
     () => items.some((it) => String(answers[it.id] ?? "").trim().length > 0),
@@ -2592,59 +2626,48 @@ const AssistantQuestionnaireCard = memo(function AssistantQuestionnaireCard({
   if (!items?.length) return null;
 
   return (
-    <div
-      ref={rootRef}
-      className={cn("chat-lab__quick-replies", "chat-lab__questionnaire", sent && "chat-lab__questionnaire--sent")}
-      role="group"
-      aria-label={t("chatLab.questionnaireGroup")}
-      onPointerLeave={() => setHoverRowId(null)}
-    >
+    <div className="chat-lab__quick-replies-shell">
+      <div
+        className={cn("chat-lab__quick-replies", "chat-lab__questionnaire", sent && "chat-lab__questionnaire--sent")}
+        role="group"
+        aria-label={t("chatLab.questionnaireGroup")}
+      >
       <div className="chat-lab__quick-replies__header" aria-hidden>
         <span className="chat-lab__quick-replies__pin" aria-hidden />
       </div>
-      <div
-        aria-hidden
-        className={cn(
-          "fluid-nav__blob fluid-popup-menu__blob pointer-events-none absolute top-0 left-0 z-0 rounded-[9px]",
-          "chat-lab__quick-replies__blob",
-        )}
-        style={blobStyle}
-      />
       <form className="chat-lab__questionnaire__form" onSubmit={handleSubmit}>
-        {items.map((it) => {
-          const inputId = `${baseId}__${it.id}`;
-          return (
-            <div
-              key={it.id}
-              ref={(node) => setItemRef(it.id, node)}
-              className="chat-lab__quick-reply-row"
-              onPointerEnter={() => setHoverRowId(it.id)}
-            >
-              <div className="chat-lab__questionnaire-card">
-                <span className="chat-lab__questionnaire-card__badge">{it.badge}</span>
-                <label className="chat-lab__questionnaire-card__prompt" htmlFor={inputId}>
-                  {it.prompt}
-                </label>
-                <input
-                  id={inputId}
-                  name={it.id}
-                  type="text"
-                  className="chat-lab__questionnaire-card__input"
-                  autoComplete="off"
-                  value={answers[it.id] ?? ""}
-                  placeholder={t("chatLab.questionnaireAnswerPlaceholder")}
-                  disabled={disabled || sent}
-                  onChange={(e) =>
-                    setAnswers((prev) => ({
-                      ...prev,
-                      [it.id]: e.target.value,
-                    }))
-                  }
-                />
+        {/* Scroll on a plain div — Chromium/Electron often ignores ::-webkit-scrollbar on <form>. */}
+        <div className="chat-lab__questionnaire__fields">
+          {items.map((it) => {
+            const inputId = `${baseId}__${it.id}`;
+            return (
+              <div key={it.id} className="chat-lab__quick-reply-row">
+                <div className="chat-lab__questionnaire-card">
+                  <span className="chat-lab__questionnaire-card__badge">{it.badge}</span>
+                  <label className="chat-lab__questionnaire-card__prompt" htmlFor={inputId}>
+                    {it.prompt}
+                  </label>
+                  <input
+                    id={inputId}
+                    name={it.id}
+                    type="text"
+                    className="chat-lab__questionnaire-card__input"
+                    autoComplete="off"
+                    value={answers[it.id] ?? ""}
+                    placeholder={t("chatLab.questionnaireAnswerPlaceholder")}
+                    disabled={disabled || sent}
+                    onChange={(e) =>
+                      setAnswers((prev) => ({
+                        ...prev,
+                        [it.id]: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
         <div className="chat-lab__questionnaire__actions">
           <button
             type="submit"
@@ -2655,14 +2678,15 @@ const AssistantQuestionnaireCard = memo(function AssistantQuestionnaireCard({
           </button>
         </div>
       </form>
+      </div>
     </div>
   );
 });
 
 /**
- * One-click replies when the assistant ends with a detected multi-choice list.
+ * One-click replies for one or stacked multi-tier assistant choice lists.
  * @param {{
- *   options: Array<{ id: string; label: string; sendText: string; badge: string }>;
+ *   tiers: Array<{ id: string; options: Array<{ id: string; label: string; sendText: string; badge: string }> }>;
  *   disabled: boolean;
  *   sentText: string | null;
  *   onSelect: (text: string) => void;
@@ -2670,79 +2694,204 @@ const AssistantQuestionnaireCard = memo(function AssistantQuestionnaireCard({
  * }} props
  */
 const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
-  options,
+  tiers,
   disabled,
   sentText,
   onSelect,
   t,
 }) {
-  /** @type {[string | null, import("react").Dispatch<import("react").SetStateAction<string | null>>]} */
-  const [hoverRowId, setHoverRowId] = useState(null);
+  /** @type {[Array<string | null>, import("react").Dispatch<import("react").SetStateAction<Array<string | null>>>]} */
+  const [answers, setAnswers] = useState(/** @type {Array<string | null>} */ ([]));
+  /** @type {[number, import("react").Dispatch<import("react").SetStateAction<number>>]} */
+  const [viewIndex, setViewIndex] = useState(0);
+  /** @type {[boolean, import("react").Dispatch<import("react").SetStateAction<boolean>>]} */
+  const [tierExiting, setTierExiting] = useState(false);
+  /** @type {import("react").MutableRefObject<boolean>} */
+  const sequenceSubmittedRef = useRef(false);
 
-  const layoutKey = useMemo(() => options.map((o) => o.id).join("\x1e"), [options]);
-  const sentRowId = useMemo(() => {
+  const tiersSig = useMemo(() => tiers.map((x) => x.id).join("\x1e"), [tiers]);
+
+  useEffect(() => {
+    sequenceSubmittedRef.current = false;
+    setAnswers(tiers.map(() => null));
+    setViewIndex(0);
+    setTierExiting(false);
+  }, [tiersSig, tiers]);
+
+  const unansweredIdx = answers.findIndex((a) => !String(a ?? "").trim());
+  const progressTier = unansweredIdx === -1 ? tiers.length : unansweredIdx;
+
+  const safeTierIdx =
+    tiers.length <= 1 ? 0 : Math.min(Math.max(viewIndex, 0), Math.max(tiers.length - 1, 0));
+  const options = tiers[safeTierIdx]?.options ?? [];
+
+  const sentPieces = useMemo(() => {
+    if (sentText == null) return /** @type {string[]} */ ([]);
+    const s = sentText.trim();
+    if (!s) return [];
+    return s.includes("\n\n") ? s.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean) : [s];
+  }, [sentText]);
+
+  const snippetForTier = useMemo(() => {
+    const fromAnswer = String(answers[safeTierIdx] ?? "").trim();
+    if (fromAnswer) return fromAnswer;
     if (sentText == null) return null;
-    return options.find((o) => o.sendText === sentText)?.id ?? null;
-  }, [options, sentText]);
+    if (tiers.length <= 1) return sentText.trim() || null;
+    if (sentPieces.length >= tiers.length) return sentPieces[safeTierIdx] ?? null;
+    return null;
+  }, [answers, safeTierIdx, sentPieces.length, sentText, tiers.length]);
 
-  const { rootRef, setItemRef, blobStyle } = useFluidPopupBlob({
-    open: Boolean(options?.length),
-    hoverKey: hoverRowId,
-    fallbackKey: sentRowId,
-    layoutKey,
-  });
+  const frozen = disabled || tierExiting || Boolean(sentText);
+  const canInteractRadios =
+    tiers.length > 1 &&
+    !frozen &&
+    safeTierIdx === progressTier &&
+    progressTier < tiers.length;
 
-  if (!options?.length) return null;
+  const handleMultiPick = useCallback(
+    /** @param {string} picked */
+    (picked) => {
+      const trimmed = String(picked ?? "").trim();
+      if (!trimmed || frozen || tiers.length <= 1) return;
+      const u = unansweredIdx;
+      if (u < 0 || u >= tiers.length) return;
+      if (safeTierIdx !== u) return;
+
+      setTierExiting(true);
+
+      window.setTimeout(() => {
+        setAnswers((prev) => {
+          const base = tiers.map((_t, idx) =>
+            idx === u ? trimmed : String(prev[idx] ?? "").trim() || null,
+          );
+          const allDone =
+            tiers.length >= 2 && base.length === tiers.length && base.every((x) => String(x ?? "").trim());
+          if (allDone && !sequenceSubmittedRef.current) {
+            sequenceSubmittedRef.current = true;
+            void onSelect(formatChoiceSequenceReply(base.map((x) => String(x ?? "").trim())));
+          }
+          return base;
+        });
+
+        setViewIndex(() => Math.min(u + 1, tiers.length - 1));
+        setTierExiting(false);
+      }, 380);
+    },
+    [frozen, unansweredIdx, onSelect, safeTierIdx, tiers, tiers.length],
+  );
+
+  if (!tiers?.length) return null;
+
+  const pager = tiers.length > 1;
+
   return (
-    <div
-      ref={rootRef}
-      className="chat-lab__quick-replies"
-      role="radiogroup"
-      aria-label={t("chatLab.quickReplyGroup")}
-      onPointerLeave={() => setHoverRowId(null)}
-    >
-      <div className="chat-lab__quick-replies__header" aria-hidden>
-        <span className="chat-lab__quick-replies__pin" aria-hidden />
-      </div>
+    <div className="chat-lab__quick-replies-shell">
+      <div className="chat-lab__quick-replies">
       <div
-        aria-hidden
         className={cn(
-          "fluid-nav__blob fluid-popup-menu__blob pointer-events-none absolute top-0 left-0 z-0 rounded-[9px]",
-          "chat-lab__quick-replies__blob",
+          "chat-lab__quick-replies__header",
+          pager && "chat-lab__quick-replies__header--pager",
         )}
-        style={blobStyle}
-      />
-      {options.map((o) => {
-        const isSent = sentText != null && sentText === o.sendText;
-        return (
-          <div
-            key={o.id}
-            ref={(node) => setItemRef(o.id, node)}
-            className="chat-lab__quick-reply-row"
-            onPointerEnter={() => setHoverRowId(o.id)}
-          >
+      >
+        {pager ? (
+          <div className="chat-lab__quick-replies__header-nav">
             <button
               type="button"
-              role="radio"
-              aria-checked={isSent}
-              className={cn(
-                "chat-lab__quick-reply-card",
-                isSent && "chat-lab__quick-reply-card--sent",
-              )}
-              disabled={disabled || sentText != null}
-              onClick={() => onSelect(o.sendText)}
+              className="chat-lab__quick-replies__pager-btn"
+              disabled={frozen || viewIndex <= 0}
+              aria-label={t("chatLab.quickReplyPrevAria")}
+              onClick={() => setViewIndex((vi) => Math.max(0, vi - 1))}
             >
-              <span className="chat-lab__quick-reply-card__radio" aria-hidden>
-                <span className="chat-lab__quick-reply-card__radio-dot" />
-              </span>
-              <span className="chat-lab__quick-reply-card__body">
-                <span className="chat-lab__quick-reply-card__kicker">{o.badge}</span>
-                <span className="chat-lab__quick-reply-card__label">{o.label}</span>
-              </span>
+              {t("chatLab.quickReplyPrev")}
+            </button>
+            <span className="chat-lab__quick-replies__pager-count">
+              {t("chatLab.quickReplyStepCount", { current: viewIndex + 1, total: tiers.length })}
+            </span>
+            <button
+              type="button"
+              className="chat-lab__quick-replies__pager-btn"
+              disabled={frozen || viewIndex >= tiers.length - 1}
+              aria-label={t("chatLab.quickReplyNextAria")}
+              onClick={() => setViewIndex((vi) => Math.min(tiers.length - 1, vi + 1))}
+            >
+              {t("chatLab.quickReplyNext")}
             </button>
           </div>
-        );
-      })}
+        ) : (
+          <span className="chat-lab__quick-replies__header-spacer" aria-hidden />
+        )}
+        <span className="chat-lab__quick-replies__pin" aria-hidden />
+      </div>
+      <div className={cn("chat-lab__quick-replies__stack", pager && "chat-lab__quick-replies__stack--layered")}>
+        {pager
+          ? tiers
+              .slice(safeTierIdx + 1, Math.min(safeTierIdx + 4, tiers.length))
+              .map((peekTier, peekIdx) => {
+                const peekLabel =
+                  peekTier?.options?.[0]?.sendText ??
+                  peekTier?.options?.[0]?.label ??
+                  t("chatLab.quickReplyStackMore");
+                return (
+                  <div
+                    key={peekTier.id}
+                    aria-hidden
+                    className={cn(
+                      "chat-lab__quick-replies__stack-sheet",
+                      `chat-lab__quick-replies__stack-sheet--n${peekIdx + 2}`,
+                    )}
+                  >
+                    <span className="chat-lab__quick-replies__stack-sheet-title">{peekLabel}</span>
+                  </div>
+                );
+              })
+          : null}
+        <div className={cn("chat-lab__quick-replies__tier-front", tierExiting && "chat-lab__quick-replies__tier-front--exit")}>
+          <div
+            role="radiogroup"
+            aria-label={
+              tiers.length > 1
+                ? t("chatLab.quickReplyGroupStep", { current: safeTierIdx + 1, total: tiers.length })
+                : t("chatLab.quickReplyGroup")
+            }
+          >
+            {options.map((o) => {
+              const line = snippetForTier ?? "";
+              const isSent = line !== "" && o.sendText === line;
+
+              return (
+                <div key={o.id} className="chat-lab__quick-reply-row">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={Boolean(isSent)}
+                    className={cn(
+                      "chat-lab__quick-reply-card",
+                      isSent && "chat-lab__quick-reply-card--sent",
+                    )}
+                    disabled={
+                      frozen ||
+                      (tiers.length > 1
+                        ? !canInteractRadios
+                        : false) ||
+                      (sentText != null ? !isSent : false)
+                    }
+                    onClick={() => (tiers.length <= 1 ? onSelect(o.sendText) : handleMultiPick(o.sendText))}
+                  >
+                    <span className="chat-lab__quick-reply-card__radio" aria-hidden>
+                      <span className="chat-lab__quick-reply-card__radio-dot" />
+                    </span>
+                    <span className="chat-lab__quick-reply-card__body">
+                      <span className="chat-lab__quick-reply-card__kicker">{o.badge}</span>
+                      <span className="chat-lab__quick-reply-card__label">{o.label}</span>
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      </div>
     </div>
   );
 });
@@ -2806,17 +2955,52 @@ const MessageBubble = memo(function MessageBubble({
     !String(message.content ?? "").trim() &&
     !String(message.thinking ?? "").trim();
 
+  const previewApi = useContext(ChatLabPreviewContext);
+
+  const workspacePreviewTarget = useMemo(() => {
+    if (isUser || message.streaming || message.error) return null;
+    if (lastHtmlFenceAsSrcDocDocument(String(message.content ?? ""))) return null;
+    return pickPrimaryWorkspacePreviewCandidate(message);
+  }, [isUser, message]);
+
+  const workspaceOpensWithSystemApp = useMemo(() => {
+    const p = String(workspacePreviewTarget?.path ?? "").trim();
+    return /\.(?:pptx|ppt|xlsx|xls)$/i.test(p);
+  }, [workspacePreviewTarget?.path]);
+
+  const handleWorkspacePreviewClick = useCallback(() => {
+    if (!previewApi?.openFromWorkspacePath || !workspacePreviewTarget) return;
+    void previewApi.openFromWorkspacePath(workspacePreviewTarget.path, workspacePreviewTarget.label);
+  }, [previewApi, workspacePreviewTarget]);
+
   const mdComponents = useMemo(
     () => ({
       ...createChatLabMarkdownComponents(t),
       /** @param {import("react").AnchorHTMLAttributes<HTMLAnchorElement> & { children?: import("react").ReactNode }} props */
-      a: ({ href, children }) => (
-        <a href={href ?? "#"} target="_blank" rel="noreferrer noopener" className="chat-lab__md-a">
-          {children}
-        </a>
-      ),
+      a: ({ href, children }) => {
+        const kind = href ? previewKindFromHref(href) : null;
+        const text = chatMarkdownPlainText(children);
+        /** @param {import("react").MouseEvent<HTMLAnchorElement>} e */
+        const onClick = (e) => {
+          if (!previewApi || !href || !kind) return;
+          if (e.button !== 0) return;
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          if (previewApi.openFromMarkdownLink(href, text)) e.preventDefault();
+        };
+        return (
+          <a
+            href={href ?? "#"}
+            onClick={onClick}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="chat-lab__md-a"
+          >
+            {children}
+          </a>
+        );
+      },
     }),
-    [t],
+    [t, previewApi],
   );
 
   const [thinkOpen, setThinkOpen] = useState(() => Boolean(message.streaming));
@@ -2939,6 +3123,14 @@ const MessageBubble = memo(function MessageBubble({
     onQuickReply,
   ]);
 
+  const assistantQuickReplyTiers = useMemo(() => {
+    const hit = assistantInteractive;
+    if (!hit || hit.kind === "questionnaire") return null;
+    if (hit.kind === "choice") return [{ id: "quick-one", options: hit.options }];
+    if (hit.kind === "choice_sequence") return hit.stages;
+    return null;
+  }, [assistantInteractive]);
+
   const [quickReplySent, setQuickReplySent] = useState(/** @type {string | null} */ (null));
   const [questionnaireSent, setQuestionnaireSent] = useState(false);
   useEffect(() => {
@@ -2965,9 +3157,9 @@ const MessageBubble = memo(function MessageBubble({
   );
 
   const quickReplyChipsEl =
-    assistantInteractive?.kind === "choice" && onQuickReply ? (
+    assistantQuickReplyTiers?.length && onQuickReply ? (
       <AssistantQuickReplyChips
-        options={assistantInteractive.options}
+        tiers={assistantQuickReplyTiers}
         disabled={quickReplyDisabled}
         sentText={quickReplySent}
         onSelect={handleQuickReply}
@@ -3089,6 +3281,22 @@ const MessageBubble = memo(function MessageBubble({
           </div>
         )}
       </article>
+      {!isUser && !message.streaming && !message.error && workspacePreviewTarget ? (
+        <div className="chat-lab__msg-workspace-preview">
+          <button
+            type="button"
+            className="chat-lab__workspace-preview-btn"
+            onClick={handleWorkspacePreviewClick}
+          >
+            <span className="chat-lab__workspace-preview-btn__label">
+              {t(workspaceOpensWithSystemApp ? "chatLab.previewClickToOpenLocally" : "chatLab.previewClickToPreview")}
+            </span>
+            <span className="chat-lab__workspace-preview-btn__file muted" title={workspacePreviewTarget.path}>
+              {workspacePreviewTarget.label}
+            </span>
+          </button>
+        </div>
+      ) : null}
       {isUser || !message.streaming ? (
         <div
           className={cn(
