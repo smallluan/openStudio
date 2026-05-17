@@ -3672,6 +3672,201 @@ code {
   }
 }
 
+/** Sparkler tail at the end of streaming assistant prose (fades like a typewriter caret when done). */
+.chat-lab__stream-sparkler {
+  display: inline-flex;
+  position: relative;
+  width: 0.95em;
+  height: 1.05em;
+  vertical-align: baseline;
+  margin-left: 0.12em;
+  margin-bottom: 0;
+  pointer-events: none;
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity 0.38s cubic-bezier(0.33, 1, 0.68, 1),
+    transform 0.38s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.chat-lab__stream-sparkler--exit {
+  opacity: 0;
+  transform: scale(0.52);
+}
+
+.chat-lab__stream-sparkler__glow {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 0.88em;
+  height: 0.88em;
+  margin: -0.44em 0 0 -0.44em;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, #ffd27a 52%, transparent) 0%,
+    color-mix(in srgb, #ff9a3c 18%, transparent) 48%,
+    transparent 70%
+  );
+  filter: blur(3px);
+  opacity: 0.5;
+  animation: chat-lab-sparkler-glow 0.95s ease-in-out infinite;
+}
+
+.chat-lab__stream-sparkler__ember {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: #fff8e8;
+  box-shadow:
+    0 0 5px 1.5px rgba(255, 210, 120, 0.95),
+    0 0 12px 4px rgba(255, 150, 60, 0.48),
+    0 0 22px 9px rgba(255, 120, 40, 0.2);
+  animation: chat-lab-sparkler-ember 0.5s ease-in-out infinite;
+}
+
+.chat-lab__stream-sparkler__rays {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.chat-lab__stream-sparkler__spark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.chat-lab__stream-sparkler__spark-line {
+  display: block;
+  width: 0.44em;
+  height: 1.5px;
+  margin: -0.75px 0 0 0;
+  transform-origin: 0 50%;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, #fff4d6 90%, transparent),
+    color-mix(in srgb, #ffb347 62%, transparent) 38%,
+    transparent 100%
+  );
+  animation: chat-lab-sparkler-spark-line 0.55s ease-in-out infinite;
+}
+
+.chat-lab__stream-sparkler__spark--n0 .chat-lab__stream-sparkler__spark-line {
+  animation-delay: 0ms;
+}
+.chat-lab__stream-sparkler__spark--n1 .chat-lab__stream-sparkler__spark-line {
+  animation-delay: 45ms;
+}
+.chat-lab__stream-sparkler__spark--n2 .chat-lab__stream-sparkler__spark-line {
+  animation-delay: 90ms;
+}
+.chat-lab__stream-sparkler__spark--n3 .chat-lab__stream-sparkler__spark-line {
+  animation-delay: 135ms;
+}
+.chat-lab__stream-sparkler__spark--n4 .chat-lab__stream-sparkler__spark-line {
+  animation-delay: 22ms;
+}
+.chat-lab__stream-sparkler__spark--n5 .chat-lab__stream-sparkler__spark-line {
+  animation-delay: 67ms;
+}
+.chat-lab__stream-sparkler__spark--n6 .chat-lab__stream-sparkler__spark-line {
+  animation-delay: 112ms;
+}
+.chat-lab__stream-sparkler__spark--n7 .chat-lab__stream-sparkler__spark-line {
+  animation-delay: 157ms;
+}
+
+@keyframes chat-lab-sparkler-glow {
+  0%,
+  100% {
+    opacity: 0.38;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.62;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes chat-lab-sparkler-ember {
+  0%,
+  100% {
+    opacity: 0.88;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.35);
+  }
+}
+
+@keyframes chat-lab-sparkler-spark-line {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: translateX(0.1em) scaleX(0.28);
+  }
+  50% {
+    opacity: 0.98;
+    transform: translateX(0.22em) scaleX(1.08);
+  }
+}
+
+:root[data-theme="dark"] .chat-lab__stream-sparkler__glow {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, #ffc878 48%, transparent) 0%,
+    color-mix(in srgb, #e88840 14%, transparent) 52%,
+    transparent 72%
+  );
+}
+
+:root[data-theme="dark"] .chat-lab__stream-sparkler__ember {
+  background: #fff2d6;
+  box-shadow:
+    0 0 6px 2px rgba(255, 200, 130, 0.9),
+    0 0 14px 5px rgba(255, 140, 70, 0.42),
+    0 0 24px 10px rgba(255, 100, 50, 0.18);
+}
+
+:root[data-theme="dark"] .chat-lab__stream-sparkler__spark-line {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, #fff0d0 82%, transparent),
+    color-mix(in srgb, #ff9f55 58%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-lab__stream-sparkler {
+    transition-duration: 0.15s;
+  }
+
+  .chat-lab__stream-sparkler__glow,
+  .chat-lab__stream-sparkler__ember,
+  .chat-lab__stream-sparkler__spark-line {
+    animation: none;
+  }
+
+  .chat-lab__stream-sparkler__spark-line {
+    opacity: 0.55;
+    transform: translateX(0.16em) scaleX(0.65);
+  }
+}
+
 .chat-lab__empty-reply {
   margin-top: 0.35rem;
   font-size: 0.82rem;

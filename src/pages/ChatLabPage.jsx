@@ -37,6 +37,11 @@ import {
   stripSlashPickerPrefix,
 } from "../components/chat-lab/ChatLabComposerSkills.jsx";
 import { ChatLabContextMeter } from "../components/chat-lab/ChatLabContextMeter.jsx";
+import { ChatStreamSparklerTail } from "../components/chat-lab/ChatStreamSparklerTail.jsx";
+import {
+  getAssistantStreamTailPlacement,
+  mergeMarkdownComponentsWithStreamTail,
+} from "../chat/assistantMarkdownStreamTail.jsx";
 import {
   listSkillsForPicker,
   pickRowFromSkillMeta,
@@ -1724,6 +1729,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
   tailBusy,
   tailBusyLabel,
 }) {
+  const streamTailOrdinalRef = useRef({ p: 0, h: {} });
   const toolMap = useMemo(() => new Map(toolRows.map((r) => [r.id, r])), [toolRows]);
   const activityMap = useMemo(() => new Map(activityRows.map((r) => [r.id, r])), [activityRows]);
 
@@ -1814,21 +1820,43 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
     return last;
   }, [renderParts]);
 
+  const lastTextPartIdx = useMemo(() => {
+    let last = -1;
+    renderParts.forEach((p, idx) => {
+      if (p.kind === "text" && String(p.body ?? "").trim()) last = idx;
+    });
+    return last;
+  }, [renderParts]);
+
   return (
     <div className="chat-lab__assistant-timeline">
       {renderParts.map((p, ri) => {
         if (p.kind === "text") {
           if (!String(p.body ?? "").trim()) return null;
           const src = normalizeLatexMathDelimitersForRemark(p.body);
+          const showStreamTailHere = ri === lastTextPartIdx;
+          const placement = showStreamTailHere ? getAssistantStreamTailPlacement(src) : null;
+          const mdForBlock =
+            showStreamTailHere && placement
+              ? mergeMarkdownComponentsWithStreamTail(
+                  mdComponents,
+                  placement,
+                  streamTailOrdinalRef,
+                  ChatStreamSparklerTail,
+                  streaming,
+                )
+              : mdComponents;
+          streamTailOrdinalRef.current = { p: 0, h: {} };
           return (
             <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--text chat-lab__md">
               <ReactMarkdown
                 remarkPlugins={CHAT_MD_REMARK_PLUGINS}
                 rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
-                components={mdComponents}
+                components={mdForBlock}
               >
                 {src}
               </ReactMarkdown>
+              {showStreamTailHere && !placement ? <ChatStreamSparklerTail active={streaming} /> : null}
             </div>
           );
         }
@@ -2501,6 +2529,22 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
     [message.content],
   );
 
+  const streamTailOrdinalRef = useRef({ p: 0, h: {} });
+  const assistantStreamPlacement = useMemo(
+    () => getAssistantStreamTailPlacement(assistantMdSource),
+    [assistantMdSource],
+  );
+  const assistantMdComponents = useMemo(() => {
+    if (!assistantStreamPlacement) return mdComponents;
+    return mergeMarkdownComponentsWithStreamTail(
+      mdComponents,
+      assistantStreamPlacement,
+      streamTailOrdinalRef,
+      ChatStreamSparklerTail,
+      Boolean(message.streaming),
+    );
+  }, [assistantStreamPlacement, mdComponents, message.streaming]);
+
   const timeLabel =
     typeof message.createdAt === "number" ? formatMessageTimestamp(message.createdAt, locale) : "";
   const timeIso =
@@ -2576,6 +2620,10 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
     setUserLongFoldable(can);
   }, []);
 
+  if (!isUser && message.content) {
+    streamTailOrdinalRef.current = { p: 0, h: {} };
+  }
+
   return (
     <div
       className={cn(
@@ -2648,13 +2696,18 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
         ) : (
           <div className="chat-lab__md">
             {message.content ? (
-              <ReactMarkdown
-                remarkPlugins={CHAT_MD_REMARK_PLUGINS}
-                rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
-                components={mdComponents}
-              >
-                {assistantMdSource}
-              </ReactMarkdown>
+              <>
+                <ReactMarkdown
+                  remarkPlugins={CHAT_MD_REMARK_PLUGINS}
+                  rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
+                  components={assistantMdComponents}
+                >
+                  {assistantMdSource}
+                </ReactMarkdown>
+                {!assistantStreamPlacement ? (
+                  <ChatStreamSparklerTail active={Boolean(message.streaming)} />
+                ) : null}
+              </>
             ) : showTyping ? (
               <ChatStreamingIndicator label={t("chatLab.streaming")} />
             ) : !message.thinking &&
