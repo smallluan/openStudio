@@ -1,6 +1,7 @@
 /**
  * Heuristically detect multiple-choice lists in assistant Markdown so the UI can offer one-click replies.
- * Supports: one option per line, or several letter/number options packed in the same paragraph.
+ * Uses lightweight preprocessing (strip fenced code + GFM `|` table lines) so Markdown document
+ * structure is less likely to be mistaken for tap targets — **not** a full Markdown AST.
  */
 
 /** @param {string} src */
@@ -9,29 +10,86 @@ function stripFencedCodeBlocks(src) {
 }
 
 /**
+ * GFM tables are `|` lines. Docs often mix `1.` / `2.` ordered lists with tables; strip table lines
+ * before quick-reply peeling so pipes/rows are not merged into a fake “option”.
+ *
+ * @param {string} src
+ */
+function stripGFMPipeTableLines(src) {
+  return String(src ?? "")
+    .split(/\r?\n/)
+    .filter((line) => {
+      const t = line.trim();
+      if (!t) return true;
+      if (t.startsWith("|")) return false;
+      return true;
+    })
+    .join("\n");
+}
+
+/**
  * Models often wrap choice markers in bold: `**A)** label`, which breaks line/inline parsers
  * that expect `[A-Za-z][.)]\s+` immediately before the label.
  * @param {string} src
  */
 function normalizeBoldChoiceMarkers(src) {
-  return String(src ?? "")
-    .replace(/\*\*([A-Za-z][.)])\*\*(\s*)/g, "$1$2")
-    .replace(/\*\*(\d{1,2}[.)])\*\*(\s*)/g, "$1$2");
+  return String(src ?? "").replace(/\*\*([A-Z])\s*([：:.．）)])\*\*(\s*)/g, "$1$2$3");
 }
 
 /**
- * Option line: `- x`, `* x`, `• x`, `1. x`, `1) x`, `1、x`, `A. x`, `A) x`
+ * Only **uppercase Latin** markers in strict **A → B → C** order (see `strictUppercaseLetterSequence`).
+ * Spaces allowed. Supports `A：` / `A:` plus `A.` `A)`.
+ *
+ * Capture groups: [1] letter, [2] body
+ *
  * @type {RegExp}
  */
 const OPTION_LINE =
-  /^\s*(?:(?:[-*•]\s+)|(?:\d{1,2}[.)）、]\s+)|(?:[A-Za-z][.)]\s+))(.+)$/;
+  /^\s*([A-Z])\s*(?:[：:]\s*|[.．]\s+|[\)）]\s+)(.+)$/u;
+
+/**
+ * @param {RegExpExecArray | null} m
+ */
+function optionLineLetter(m) {
+  return m?.[1] ?? "";
+}
+
+/**
+ * @param {RegExpExecArray | null} m
+ */
+function optionLineBody(m) {
+  return m?.[2] ?? "";
+}
+
+/**
+ * Parsers reject peels unless every row is A, B, C, … in order.
+ *
+ * @param {string[]} optionLines
+ */
+function strictUppercaseLetterSequence(optionLines) {
+  if (optionLines.length < 2 || optionLines.length > 26) return false;
+  let expect = "A".charCodeAt(0);
+  for (const line of optionLines) {
+    const m = OPTION_LINE.exec(line);
+    if (!m) return false;
+    const ch = optionLineLetter(m);
+    if (ch.charCodeAt(0) !== expect) return false;
+    expect += 1;
+  }
+  return true;
+}
 
 /** @param {string} line */
 function isContinuationLine(line) {
   const t = line.trim();
   if (!t || OPTION_LINE.test(line)) return false;
+  /** Never absorb Markdown block starts into a peeled "option" row. */
+  if (/^\s*#{1,6}\s+/u.test(line)) return false;
+  if (t.startsWith("|") || /^\|[^|\n]+\|[^|\n]+\|/.test(t)) return false;
+  if (/^\s*[-_*]{3,}\s*$/.test(t) || /^[﹣－-]{3,}\s*$/.test(t)) return false;
   if (/^[0-9]+(?:\.[0-9]+)?$/.test(t)) return true;
-  if (t.length <= 28 && /^[0-9.~～％%\s\-–]+$/.test(t)) return true;
+  /** Streaming fragments only — do not use broad `\-` (would treat `---` HR as continuation). */
+  if (t.length <= 28 && /^[0-9.~～％%\s]+$/.test(t)) return true;
   return false;
 }
 
@@ -136,25 +194,7 @@ function stripTrailingMarkdownStars(line) {
 /** @param {string} line */
 function stripListBulletForBody(line) {
   const m = OPTION_LINE.exec(String(line ?? ""));
-  return m ? m[1] : String(line ?? "");
-}
-
-/**
- * Markdown / chat summaries often use emoji-led bullets (🎨 …) for *features*, not tap-to-send options.
- *
- * @param {string[]} optionLines
- */
-function looksLikeEmojiLedFeatureBullets(optionLines) {
-  if (optionLines.length < 2) return false;
-  let emojiLed = 0;
-  for (const line of optionLines) {
-    const rest = stripListBulletForBody(line);
-    const text = stripInlineMd(rest).trim();
-    if (!text) return false;
-    const first = Array.from(text)[0];
-    if (first && /\p{Extended_Pictographic}/u.test(first)) emojiLed++;
-  }
-  return emojiLed === optionLines.length;
+  return m ? optionLineBody(m) : String(line ?? "");
 }
 
 /** @param {string} beforeText */
@@ -188,55 +228,30 @@ function looksLikeChoicePrompt(beforeText) {
 
 /** @param {string} line */
 function listMarkerBadge(line) {
-  const m =
-    /^\s*((?:\d{1,2}[.)）、])|(?:[A-Za-z][.)])|(?:[-*•]))\s+/.exec(String(line ?? ""));
-  if (!m) return "·";
-  const raw = m[1].trim();
-  if (raw === "*" || raw === "-" || raw === "•") return "·";
-  return raw.replace(/[.)、]/g, "").trim() || raw;
+  const m = OPTION_LINE.exec(String(line ?? ""));
+  return m ? optionLineLetter(m) : "·";
 }
 
 /**
- * Letter options jammed in one paragraph: `A. foo B. bar C. baz`
+ * Letter options in one paragraph: `A: foo B: bar` or `A. foo B. bar`
+ *
  * @param {string} block
  * @returns {{ optionLines: string[]; beforeText: string } | null}
  */
 function tryParseInlineLetterBlock(block) {
-  const re = /\b([A-Za-z])[.)]\s+/g;
-  /** @type {{ index: number }[]} */
+  const re = /(?:^|[^\dA-Za-z])([A-Z])\s*(?:[：:]\s*|[.．]\s+|[\)）]\s+)/g;
+  /** @type {{ index: number; letter: string }[]} */
   const hits = [];
   let m;
   while ((m = re.exec(block)) !== null) {
-    hits.push({ index: m.index });
+    const letter = m[1];
+    const idx = m.index + m[0].indexOf(letter ?? "");
+    hits.push({ index: idx, letter: letter ?? "" });
   }
   if (hits.length < 2 || hits.length > 8) return null;
-
-  /** @type {string[]} */
-  const optionLines = [];
   for (let i = 0; i < hits.length; i++) {
-    const start = hits[i].index;
-    const end = i + 1 < hits.length ? hits[i + 1].index : block.length;
-    optionLines.push(block.slice(start, end).trim());
+    if (hits[i].letter !== String.fromCharCode(65 + i)) return null;
   }
-
-  const beforeText = block.slice(0, hits[0].index).trim();
-  return { optionLines, beforeText };
-}
-
-/**
- * Number options in one paragraph: `1. foo 2. bar`
- * @param {string} block
- * @returns {{ optionLines: string[]; beforeText: string } | null}
- */
-function tryParseInlineNumberBlock(block) {
-  const re = /(?:^|[\s\u00a0\u3000])(\d{1,2})([.)、])\s+/g;
-  /** @type {{ index: number }[]} */
-  const hits = [];
-  let m;
-  while ((m = re.exec(block)) !== null) {
-    hits.push({ index: m.index });
-  }
-  if (hits.length < 2 || hits.length > 8) return null;
 
   /** @type {string[]} */
   const optionLines = [];
@@ -297,7 +312,7 @@ function looksLikeIndependentQuestionList(optionLines) {
   let questionLike = 0;
   for (const line of optionLines) {
     const m = OPTION_LINE.exec(line);
-    const rest = m ? m[1] : line;
+    const rest = m ? optionLineBody(m) : line;
     const text = stripInlineMd(rest);
     if (!text) continue;
     if (lineLooksLikeQuestionnaireField(text)) questionLike++;
@@ -315,7 +330,7 @@ function buildQuestionnaireItems(optionLines) {
   for (let idx = 0; idx < optionLines.length; idx++) {
     const line = optionLines[idx];
     const m = OPTION_LINE.exec(line);
-    const rest = m ? m[1] : line;
+    const rest = m ? optionLineBody(m) : line;
     const prompt = stripInlineMd(rest);
     if (!prompt) continue;
     items.push({
@@ -328,12 +343,30 @@ function buildQuestionnaireItems(optionLines) {
 }
 
 /**
+ * Option text accidentally merged with doc blocks (headings / pipe tables) — reject whole peel.
+ *
+ * @param {string} rest body after `A:` / `A.` etc.
+ */
+function enumeratedRestLooksLikeStructuredMarkdown(rest) {
+  const s = String(rest ?? "");
+  if (/#{1,6}\s+\S/u.test(s)) return true;
+  if (/\|[^|\r\n]+(?:\|[^|\r\n]+){2,}/.test(s)) return true;
+  if (/\|[\s\-:|]{2,}\|/.test(s)) return true;
+  return false;
+}
+
+/**
  * @param {string[]} optionLines
  * @param {string} beforeText prose chronologically above the list (disambiguate MCQ vs fill-in)
  * @returns {{ kind: "choice"; options: Array<{ id: string; label: string; sendText: string; badge: string }> } | { kind: "questionnaire"; items: Array<{ id: string; prompt: string; badge: string }> } | null}
  */
 function interactiveFromOptionLines(optionLines, beforeText = "") {
-  if (looksLikeEmojiLedFeatureBullets(optionLines)) return null;
+  if (!strictUppercaseLetterSequence(optionLines)) return null;
+  for (const line of optionLines) {
+    const m = OPTION_LINE.exec(line);
+    const rest = m ? optionLineBody(m) : line;
+    if (enumeratedRestLooksLikeStructuredMarkdown(rest)) return null;
+  }
   if (looksLikeInformationGatheringPrompt(beforeText)) {
     const items = buildQuestionnaireItems(optionLines);
     return items.length >= 2 ? { kind: "questionnaire", items } : null;
@@ -372,7 +405,7 @@ function buildOptionsFromLines(optionLines) {
   for (let idx = 0; idx < optionLines.length; idx++) {
     const line = optionLines[idx];
     const m = OPTION_LINE.exec(line);
-    const rest = m ? m[1] : line;
+    const rest = m ? optionLineBody(m) : line;
     const label = stripInlineMd(rest);
     const sendText = label || stripInlineMd(line);
     if (!sendText) continue;
@@ -387,7 +420,7 @@ function buildOptionsFromLines(optionLines) {
 }
 
 /**
- * Strip the assistant's bottom-most contiguous option list (bullet / number / letter lines).
+ * Strip the assistant's bottom-most contiguous A→B→C list (`A:`/`A：`/`A.`/`A)` …).
  * Questionnaires peel as a terminal tier only (no layering with earlier choice tiers).
  * @param {string} cleaned
  * @returns {{
@@ -491,11 +524,6 @@ function peelTrailingInlineInteractive(markdownRemainder) {
       const prompt = `${promptPrefix}\n${letter.beforeText}`.trim();
       if (looksLikeChoicePrompt(prompt)) return interactiveFromOptionLines(letter.optionLines, prompt);
     }
-    const num = tryParseInlineNumberBlock(block);
-    if (num) {
-      const prompt = `${promptPrefix}\n${num.beforeText}`.trim();
-      if (looksLikeChoicePrompt(prompt)) return interactiveFromOptionLines(num.optionLines, prompt);
-    }
     return null;
   };
 
@@ -574,7 +602,8 @@ function parseSequentialInlineStacks(cleaned) {
  */
 export function parseAssistantQuickReplies(markdown) {
   const raw = String(markdown ?? "");
-  const cleaned = normalizeBoldChoiceMarkers(stripFencedCodeBlocks(raw));
+  let cleaned = normalizeBoldChoiceMarkers(stripFencedCodeBlocks(raw));
+  cleaned = stripGFMPipeTableLines(cleaned);
 
   const multiline = parseFromMultilineList(cleaned);
   if (multiline) return multiline;

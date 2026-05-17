@@ -1826,6 +1826,73 @@ function GapToolActivityPanel({ segments, toolMap, activityMap, t, streaming }) 
   );
 }
 
+/** Do not treat long follow-ups as “hanging”; only fold obvious short tails. */
+const POST_GAP_TAIL_MAX_CHARS = 560;
+const POST_GAP_TAIL_MAX_LINES = 5;
+
+/**
+ * @param {string} tail
+ * @returns {boolean}
+ */
+function shouldMergePostGapTail(tail) {
+  const t = tail.trim();
+  if (!t) return false;
+  const lines = t.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (t.length <= POST_GAP_TAIL_MAX_CHARS && lines.length <= POST_GAP_TAIL_MAX_LINES) return true;
+  return false;
+}
+
+/**
+ * Merges short `text` blocks that arrive *after* a tool/step gap into the previous prose
+ * segment so a lifecycle panel does not sit between a paragraph and a one-line follow-up.
+ * @param {Array<
+ *   | { kind: "text"; body: string; key: string }
+ *   | { kind: "thinking"; body: string; key: string }
+ *   | {
+ *       kind: "toolActivityGap";
+ *       segments: Array<{ kind: "tool"; refId: string } | { kind: "activity"; refId: string }>;
+ *       key: string;
+ *     }
+ * >} parts
+ */
+function mergePostGapShortProse(parts) {
+  /** @type {typeof parts} */
+  const arr = parts.map((p) =>
+    p.kind === "text"
+      ? { ...p }
+      : p.kind === "toolActivityGap"
+        ? { ...p, segments: [...p.segments] }
+        : { ...p },
+  );
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = arr.length - 1; i >= 2; i--) {
+      if (arr[i].kind !== "text" || arr[i - 1].kind !== "toolActivityGap") continue;
+      const tail = String(arr[i].body ?? "").trim();
+      if (!tail) {
+        arr.splice(i, 1);
+        changed = true;
+        break;
+      }
+      if (!shouldMergePostGapTail(tail)) continue;
+      let j = i - 2;
+      while (j >= 0 && arr[j].kind !== "text") j--;
+      if (j < 0) continue;
+      const head = String(arr[j].body ?? "");
+      arr[j] = {
+        ...arr[j],
+        body: `${head.trimEnd()}\n\n${tail}`,
+        key: `${arr[j].key}|postgap-${arr[i].key}`,
+      };
+      arr.splice(i, 1);
+      changed = true;
+      break;
+    }
+  }
+  return arr;
+}
+
 /**
  * Render assistant reply segments in gateway order (prose ⟷ tools ⟷ steps).
  * @param {{
@@ -1856,6 +1923,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
   /**
    * Split by markdown text: everything between two text deltas merges into gap panels (tools ⟷ steps
    * stay in order). Thinking splits gaps so reasoning can appear between execution bursts.
+   * Short `text` after a gap is folded into the previous prose block (see mergePostGapShortProse).
    * @type {Array<
    *   | { kind: "text"; body: string; key: string }
    *   | { kind: "thinking"; body: string; key: string }
@@ -1921,7 +1989,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
       }
     }
     flushGap();
-    return out;
+    return mergePostGapShortProse(out);
   }, [timeline]);
 
   const lastGapPartIdx = useMemo(() => {
