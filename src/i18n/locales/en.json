@@ -269,7 +269,8 @@
     "maxComposerImages": "Maximum {{max}} images in the composer",
     "imageTooLarge": "Each image must be under 2 MB",
     "invalidImageType": "Only image files can be attached",
-    "messageImagesCopyNote": "({{count}} images attached — image data not copied)"
+    "messageImagesCopyNote": "({{count}} images attached — image data not copied)",
+    "quickReplyGroup": "Quick reply choices"
   },
   "bootstrap": {
     "title": "Open Studio is getting ready",

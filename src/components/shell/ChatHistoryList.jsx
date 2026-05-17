@@ -240,36 +240,32 @@ function HistorySessionRow({
                 morphBr="11px"
                 className={cn("chat-history-card__menu")}
               >
-                <div ref={menuBlobRootRef} className="relative w-full">
+                <div ref={menuBlobRootRef} className="relative w-full chat-history-card__menu-blob-scope">
                   <div
                     aria-hidden
                     className="fluid-nav__blob fluid-popup-menu__blob pointer-events-none absolute top-0 left-0 z-0"
                     style={menuBlobStyle}
                   />
-                <div
-                  ref={(node) => setMenuItemRef("rename", node)}
-                  className="fluid-popup-menu__measure w-full"
-                  onPointerEnter={() => setMenuHoverKey("rename")}
-                >
-                  <button type="button" className="chat-history-card__menu-item" onClick={handleRename}>
-                    <PencilIcon className="text-[var(--os-text-muted)]" />
-                    {t("nav.chatHistoryRename")}
-                  </button>
-                </div>
-                <div
-                  ref={(node) => setMenuItemRef("delete", node)}
-                  className="fluid-popup-menu__measure w-full"
-                  onPointerEnter={() => setMenuHoverKey("delete")}
-                >
-                  <button
-                    type="button"
-                    className="chat-history-card__menu-item chat-history-card__menu-item--danger"
-                    onClick={handleDelete}
-                  >
-                    <TrashIcon className="text-[#e11d48]" />
-                    {t("nav.chatHistoryDelete")}
-                  </button>
-                </div>
+                  <div className="chat-history-card__menu-row" onPointerEnter={() => setMenuHoverKey("rename")}>
+                    <div ref={(node) => setMenuItemRef("rename", node)} className="fluid-popup-menu__measure">
+                      <button type="button" className="chat-history-card__menu-item w-full min-w-0" onClick={handleRename}>
+                        <PencilIcon className="text-[var(--os-text-muted)]" />
+                        {t("nav.chatHistoryRename")}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="chat-history-card__menu-row chat-history-card__menu-row--with-divider" onPointerEnter={() => setMenuHoverKey("delete")}>
+                    <div ref={(node) => setMenuItemRef("delete", node)} className="fluid-popup-menu__measure">
+                      <button
+                        type="button"
+                        className="chat-history-card__menu-item chat-history-card__menu-item--danger w-full min-w-0"
+                        onClick={handleDelete}
+                      >
+                        <TrashIcon className="shrink-0" />
+                        {t("nav.chatHistoryDelete")}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </FluidPopupAnimatedSurface>
             </div>

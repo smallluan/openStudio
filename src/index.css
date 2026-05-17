@@ -1654,25 +1654,83 @@ code {
   isolation: isolate;
   z-index: 4000;
   min-width: 9.5rem;
-  padding: 0.35rem;
-  border-radius: 11px;
+  padding: 4px;
+  border-radius: 10px;
   background: var(--os-bg-elevated);
-  border: 1px solid color-mix(in srgb, var(--os-border) 75%, transparent);
+  border: 1px solid color-mix(in srgb, var(--os-border) 38%, transparent);
+  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.04);
+}
+
+:root[data-theme="dark"] .chat-history-card__menu {
+  border-color: color-mix(in srgb, var(--os-border) 48%, transparent);
+  box-shadow: none;
+}
+
+/* Inset rows so `.fluid-nav__blob` hover pill matches sidebar width (not edge-to-edge). */
+.chat-history-card__menu-row {
+  position: relative;
+  z-index: 1;
+  padding: 3px 5px;
+}
+
+.chat-history-card__menu-row:first-child {
+  padding-top: 4px;
+}
+
+.chat-history-card__menu-row:last-child {
+  padding-bottom: 4px;
+}
+
+.chat-history-card__menu-row--with-divider {
+  padding-top: 4px;
+  margin-top: 2px;
+  border-top: 1px solid color-mix(in srgb, var(--os-border) 36%, transparent);
+}
+
+:root[data-theme="dark"] .chat-history-card__menu-row--with-divider {
+  border-top-color: color-mix(in srgb, var(--os-border) 44%, transparent);
+}
+
+/* Popup menu blob: same motion as sidebar, flatter wash (lighter ring + softer depth). */
+.chat-history-card__menu .fluid-popup-menu__blob {
+  border-radius: 9px;
+  background:
+    radial-gradient(118% 150% at 32% -8%, rgba(255, 255, 255, 0.78), transparent 60%),
+    linear-gradient(
+      162deg,
+      color-mix(in srgb, var(--os-bg-hover) 72%, rgba(243, 244, 246, 0.94)),
+      color-mix(in srgb, rgba(239, 242, 255, 0.88) 55%, var(--os-bg-panel))
+    );
   box-shadow:
-    0 4px 18px rgba(15, 23, 42, 0.1),
-    0 1px 3px rgba(15, 23, 42, 0.06);
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 22%, transparent);
+  filter: saturate(1);
+}
+
+:root[data-theme="dark"] .chat-history-card__menu .fluid-popup-menu__blob {
+  background:
+    radial-gradient(118% 150% at 32% -8%, rgba(255, 255, 255, 0.08), transparent 58%),
+    linear-gradient(
+      162deg,
+      color-mix(in srgb, var(--os-bg-panel) 78%, transparent),
+      color-mix(in srgb, var(--os-bg-panel) 62%, transparent)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 38%, transparent);
+  filter: saturate(1.06);
 }
 
 .fluid-popup-menu__blob {
-  border-radius: 8px;
+  border-radius: 9px;
 }
 
 .chat-history-card__menu-item {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.48rem 0.55rem;
+  gap: 0.45rem;
+  padding: 0.42rem 0.42rem;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -1685,7 +1743,15 @@ code {
 }
 
 .chat-history-card__menu-item--danger {
-  color: #e11d48;
+  color: color-mix(in srgb, #e11d48 82%, var(--os-text-muted));
+}
+
+.chat-history-card__menu-item--danger svg {
+  color: inherit;
+}
+
+:root[data-theme="dark"] .chat-history-card__menu-item--danger {
+  color: color-mix(in srgb, #fb7185 72%, var(--os-text-muted));
 }
 
 :root[data-theme="dark"] .chat-history-card__glyph path {
@@ -2755,6 +2821,268 @@ code {
 
 .chat-lab__msg-footer--user {
   justify-content: flex-end;
+}
+
+.chat-lab__quick-replies {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  /* One strip width for all choices (narrow viewports shrink) */
+  --chat-lab-quick-replies-w: min(26rem, 100%);
+  width: var(--chat-lab-quick-replies-w);
+  max-width: 100%;
+  margin-top: 0.95rem;
+  /* 横向不留白：黄条与卡片上沿一体通栏；底部交给选项区 */
+  padding: 0 0 0.72rem;
+  overflow: visible;
+  border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--border) 44%, transparent);
+  background: transparent;
+  /* “钉在墙上”的便签微微歪着，阴影保留 */
+  transform: rotate(-1.35deg);
+  transform-origin: 50% 0;
+  box-shadow:
+    0 10px 26px rgba(62, 48, 20, 0.09),
+    0 3px 10px rgba(62, 48, 20, 0.06),
+    0 1px 2px rgba(62, 48, 20, 0.05);
+}
+
+.chat-lab__quick-replies__header {
+  position: relative;
+  z-index: 4;
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 100%;
+  box-sizing: border-box;
+  height: 1.45rem;
+  margin: 0 0 0.42rem;
+  /* 与外壳上圆角一致，与卡片顶边连成一条 */
+  border-radius: 11px 11px 0 0;
+  border: none;
+  border-bottom: 1px solid rgba(212, 168, 40, 0.38);
+  background: linear-gradient(180deg, #fff199 0%, #ffe74a 45%, #ffd43a 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
+  pointer-events: none;
+}
+
+:root[data-theme="dark"] .chat-lab__quick-replies__header {
+  background: linear-gradient(180deg, #867520 6%, #6a5c18 94%);
+  border-bottom-color: rgba(255, 210, 100, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+/* Pushpin — sits on the yellow strip, “piercing” into the card */
+.chat-lab__quick-replies__pin {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  z-index: 1;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-left: -0.525rem;
+  margin-top: -0.36rem;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 230, 220, 0.95), transparent 40%),
+    radial-gradient(circle at 72% 78%, rgba(0, 0, 0, 0.06), transparent 42%),
+    linear-gradient(148deg, #ff8f85 0%, #e03131 68%, #b32525 100%);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.28),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  pointer-events: none;
+}
+
+.chat-lab__quick-replies__pin::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 82%;
+  width: 2px;
+  height: 0.58rem;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #e5e7eb, #6b7280);
+  box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.22);
+  transform: rotate(5deg);
+}
+
+:root[data-theme="dark"] .chat-lab__quick-replies__pin::after {
+  background: linear-gradient(180deg, #9ca3af, #4b5563);
+}
+
+:root[data-theme="dark"] .chat-lab__quick-replies {
+  border-color: color-mix(in srgb, var(--border) 52%, transparent);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.36),
+    0 3px 10px rgba(0, 0, 0, 0.22);
+}
+
+/* Sliding hover pill — neutral so it reads on transparent bubble */
+.chat-lab__quick-replies__blob.fluid-nav__blob {
+  border-radius: 9px;
+  background:
+    radial-gradient(ellipse 140% 120% at 30% -6%, rgba(255, 255, 255, 0.78), transparent 54%),
+    linear-gradient(
+      154deg,
+      color-mix(in srgb, var(--os-bg-panel) 90%, transparent),
+      color-mix(in srgb, var(--os-bg-hover) 58%, transparent)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.48),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 22%, transparent);
+  filter: saturate(1);
+}
+
+:root[data-theme="dark"] .chat-lab__quick-replies__blob.fluid-nav__blob {
+  background:
+    radial-gradient(ellipse 130% 120% at 30% -6%, rgba(255, 255, 255, 0.07), transparent 52%),
+    linear-gradient(
+      152deg,
+      color-mix(in srgb, var(--os-bg-panel) 78%, transparent),
+      color-mix(in srgb, var(--os-bg-panel) 52%, transparent)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 38%, transparent);
+  filter: saturate(1.02);
+}
+
+.chat-lab__quick-reply-row {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  padding-inline: 0.72rem;
+}
+
+.chat-lab__quick-reply-row:not(:last-child) {
+  padding-bottom: 0.42rem;
+  margin-bottom: 0.42rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 30%, transparent);
+}
+
+:root[data-theme="dark"] .chat-lab__quick-reply-row:not(:last-child) {
+  border-bottom-color: color-mix(in srgb, var(--border) 38%, transparent);
+}
+
+.chat-lab__quick-reply-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.32rem 0.38rem 0.34rem 0.26rem;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--os-text);
+  cursor: pointer;
+  text-align: left;
+  box-shadow: none;
+  outline: none;
+  transition:
+    color 0.18s ease,
+    opacity 0.2s ease;
+}
+
+.chat-lab__quick-reply-card:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--os-accent) 55%, transparent);
+  outline-offset: 3px;
+}
+
+.chat-lab__quick-reply-card:disabled {
+  cursor: default;
+}
+
+.chat-lab__quick-reply-card:disabled:not(.chat-lab__quick-reply-card--sent) {
+  opacity: 0.5;
+}
+
+.chat-lab__quick-reply-card--sent:disabled {
+  opacity: 1;
+}
+
+.chat-lab__quick-reply-card--sent:not(:disabled) {
+  opacity: 1;
+}
+
+.chat-lab__quick-reply-card__radio {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-top: 0.06rem;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--os-text-muted) 42%, var(--border));
+  background: transparent;
+  transition: border-color 0.2s ease;
+}
+
+.chat-lab__quick-reply-card:focus-visible:not(:disabled) .chat-lab__quick-reply-card__radio {
+  border-color: color-mix(in srgb, var(--os-accent) 40%, var(--os-text-muted));
+}
+
+.chat-lab__quick-reply-card__radio-dot {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: transparent;
+  transform: scale(0);
+  transition:
+    transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.2s ease;
+}
+
+.chat-lab__quick-reply-card--sent .chat-lab__quick-reply-card__radio {
+  border-color: color-mix(in srgb, var(--os-accent) 58%, var(--border));
+}
+
+.chat-lab__quick-reply-card--sent .chat-lab__quick-reply-card__radio-dot {
+  background: color-mix(in srgb, var(--os-accent) 88%, #fff);
+  transform: scale(1);
+}
+
+.chat-lab__quick-reply-card__body {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.chat-lab__quick-reply-card__kicker {
+  font-size: 0.575rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--os-text-muted) 94%, transparent);
+  line-height: 1.08;
+}
+
+.chat-lab__quick-reply-card__label {
+  font-size: 0.8125rem;
+  line-height: 1.38;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+:root[data-theme="dark"] .chat-lab__quick-reply-card__radio {
+  border-color: color-mix(in srgb, var(--os-text-muted) 46%, var(--border));
+}
+
+:root[data-theme="dark"] .chat-lab__quick-reply-card--sent .chat-lab__quick-reply-card__radio-dot {
+  background: color-mix(in srgb, var(--os-accent) 88%, var(--os-text));
 }
 
 .chat-lab__msg-actions {

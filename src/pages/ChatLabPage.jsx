@@ -14,6 +14,7 @@ import {
   MAX_CHAT_COMPOSER_IMAGES,
   readImageFileAsComposerAttachment,
 } from "../chat/chatLabComposerAttachments.js";
+import { parseAssistantQuickReplies } from "../chat/assistantQuickReplyParse.js";
 import { normalizeLatexMathDelimitersForRemark } from "../chat/normalizeLatexMathDelimitersForRemark.js";
 import {
   deriveTitleFromMessages,
@@ -54,6 +55,7 @@ import {
   syncSkillCreatorResultToLibrary,
 } from "../skills/skillCreatorChatSync.js";
 import { cn } from "../ui/cn.js";
+import { useFluidPopupBlob } from "../ui/useFluidPopupBlob.js";
 import { CHAT_MD_REHYPE_PLUGINS } from "../chat/chatLabRehypePlugins.js";
 
 /** Markdown pipelines for chat bubbles (GFM + LaTeX via KaTeX). */
@@ -882,6 +884,161 @@ export default function ChatLabPage() {
     ],
   );
 
+  const submitNewUserTurn = useCallback(
+    /**
+     * @param {{
+     *   trimmed: string;
+     *   imageAttachments?: { mime: string; dataUrl: string }[];
+     *   skillPickRow: import("../skills/skillRegistry.js").SkillPickRow | null;
+     *   onCommitted?: () => void;
+     * }} args
+     */
+    async ({ trimmed, imageAttachments, skillPickRow, onCommitted }) => {
+      if (!paramC) {
+        setSearchParams({ c: conversationId }, { replace: true });
+      }
+
+      const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
+      const historyForRequest = buildGatewayPayloadRows(messagesRef.current);
+
+      const now = Date.now();
+      const skillSnap = skillMetaFromPickRow(skillPickRow ?? null);
+      const composerSkill = skillPickRowToPayload(skillPickRow ?? null);
+      const userMsg = {
+        id: newId(),
+        role: /** @type {const} */ ("user"),
+        content: trimmed,
+        createdAt: now,
+        ...(skillSnap ? { skillMeta: skillSnap } : {}),
+        ...(imageAttachments && imageAttachments.length ? { imageAttachments: imageAttachments } : {}),
+      };
+      const assistantMsg = {
+        id: newId(),
+        role: /** @type {const} */ ("assistant"),
+        content: "",
+        thinking: "",
+        streaming: true,
+        createdAt: now,
+      };
+
+      const persistablePrior = messagesRef.current
+        .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
+        .map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
+          ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
+          ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
+          ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+          ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
+            ? { assistantTimeline: m.assistantTimeline }
+            : {}),
+          ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
+          ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
+            ? { imageAttachments: m.imageAttachments }
+            : {}),
+        }));
+      const persistableNext = [
+        ...persistablePrior,
+        {
+          id: userMsg.id,
+          role: /** @type {const} */ ("user"),
+          content: userMsg.content,
+          createdAt: userMsg.createdAt,
+          ...(userMsg.skillMeta ? { skillMeta: userMsg.skillMeta } : {}),
+          ...(userMsg.imageAttachments ? { imageAttachments: userMsg.imageAttachments } : {}),
+        },
+        {
+          id: assistantMsg.id,
+          role: /** @type {const} */ ("assistant"),
+          content: "",
+          thinking: "",
+          createdAt: assistantMsg.createdAt,
+        },
+      ];
+      const provisionalTitle = deriveTitleFromMessages(
+        persistableNext.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          thinking: m.thinking,
+          ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
+            ? { imageAttachments: m.imageAttachments }
+            : {}),
+        })),
+        { imageFallback: t("chatLab.chatUntitledImage") },
+      );
+      upsertSession(conversationId, provisionalTitle || "…", persistableNext);
+
+      const streamId = newId();
+      beginGatewayStream({
+        conversationId,
+        streamId,
+        assistantMessageId: assistantMsg.id,
+      });
+
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      onCommitted?.();
+
+      autoScrollRef.current = true;
+
+      activeStreamIdRef.current = streamId;
+      activeAssistantIdRef.current = assistantMsg.id;
+
+      const tailUserRows = buildGatewayPayloadRows([userMsg], { includeImageAttachments: true });
+      const lastUserGatewayRow = tailUserRows[tailUserRows.length - 1];
+      const outgoing = [systemMessage, ...historyForRequest, lastUserGatewayRow];
+
+      const isFirstTurn = historyForRequest.length === 0;
+      if (
+        isFirstTurn &&
+        config?.chatLabAutoTitle &&
+        bridge?.generateChatTitle &&
+        config?.credentials?.hasProviderApiKey
+      ) {
+        void bridge.generateChatTitle({ userText: trimmed || t("chatLab.chatUntitledImage") }).then((r) => {
+          if (!r?.ok || typeof r.title !== "string" || !r.title.trim()) return;
+          const rec = getSession(conversationId);
+          if (!rec) return;
+          renameSession(conversationId, r.title.trim());
+        });
+      }
+
+      try {
+        await bridge.startChatStream({ streamId, conversationId, messages: outgoing, composerSkill });
+      } catch (err) {
+        resetGatewayStream(streamId);
+        try {
+          await bridge.abortChatStream(streamId);
+        } catch {
+          /* ignore */
+        }
+        const raw = String(err?.message ?? err);
+        const msg = formatStreamError(raw, t);
+        finalizeAssistantById(assistantMsg.id, { error: msg });
+        if (isChatHttp404(raw)) {
+          setChatApiBlocked(true);
+          setProbeRestartKey((k) => k + 1);
+        }
+      }
+    },
+    [
+      beginGatewayStream,
+      bridge,
+      chatApiBlocked,
+      config,
+      conversationId,
+      finalizeAssistantById,
+      paramC,
+      resetGatewayStream,
+      setProbeRestartKey,
+      setSearchParams,
+      setMessages,
+      t,
+    ],
+  );
+
   const send = useCallback(async () => {
     if (activeAssistantIdRef.current) return;
     if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
@@ -911,11 +1068,6 @@ export default function ChatLabPage() {
       }
     }
 
-    if (!paramC) {
-      setSearchParams({ c: conversationId }, { replace: true });
-    }
-
-    const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
     const historyForRequest = buildGatewayPayloadRows(messagesRef.current);
     let effectiveSkillRow = composerSkillRow;
     if (!effectiveSkillRow && historyForRequest.length === 0 && isSkillCreationNlIntent(trimmed)) {
@@ -923,148 +1075,59 @@ export default function ChatLabPage() {
       if (hit) effectiveSkillRow = hit;
     }
 
-    const now = Date.now();
-    const skillSnap = skillMetaFromPickRow(effectiveSkillRow);
-    const composerSkill = skillPickRowToPayload(effectiveSkillRow);
-    const userMsg = {
-      id: newId(),
-      role: /** @type {const} */ ("user"),
-      content: trimmed,
-      createdAt: now,
-      ...(skillSnap ? { skillMeta: skillSnap } : {}),
-      ...(attachmentSnap ? { imageAttachments: attachmentSnap } : {}),
-    };
-    const assistantMsg = {
-      id: newId(),
-      role: /** @type {const} */ ("assistant"),
-      content: "",
-      thinking: "",
-      streaming: true,
-      createdAt: now,
-    };
-
-    const persistablePrior = messagesRef.current
-      .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
-      .map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
-        ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
-        ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
-        ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
-        ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
-          ? { assistantTimeline: m.assistantTimeline }
-          : {}),
-        ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
-        ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
-          ? { imageAttachments: m.imageAttachments }
-          : {}),
-      }));
-    const persistableNext = [
-      ...persistablePrior,
-      {
-        id: userMsg.id,
-        role: /** @type {const} */ ("user"),
-        content: userMsg.content,
-        createdAt: userMsg.createdAt,
-        ...(userMsg.skillMeta ? { skillMeta: userMsg.skillMeta } : {}),
-        ...(userMsg.imageAttachments ? { imageAttachments: userMsg.imageAttachments } : {}),
+    await submitNewUserTurn({
+      trimmed,
+      imageAttachments: attachmentSnap,
+      skillPickRow: effectiveSkillRow ?? null,
+      onCommitted: () => {
+        setInput("");
+        setComposerSkillRow(null);
+        setComposerAttachments([]);
       },
-      {
-        id: assistantMsg.id,
-        role: /** @type {const} */ ("assistant"),
-        content: "",
-        thinking: "",
-        createdAt: assistantMsg.createdAt,
-      },
-    ];
-    const provisionalTitle = deriveTitleFromMessages(
-      persistableNext.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        thinking: m.thinking,
-        ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
-          ? { imageAttachments: m.imageAttachments }
-          : {}),
-      })),
-      { imageFallback: t("chatLab.chatUntitledImage") },
-    );
-    upsertSession(conversationId, provisionalTitle || "…", persistableNext);
-
-    const streamId = newId();
-    beginGatewayStream({
-      conversationId,
-      streamId,
-      assistantMessageId: assistantMsg.id,
     });
-
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-    setInput("");
-    setComposerSkillRow(null);
-    setComposerAttachments([]);
-    autoScrollRef.current = true;
-
-    activeStreamIdRef.current = streamId;
-    activeAssistantIdRef.current = assistantMsg.id;
-
-    const tailUserRows = buildGatewayPayloadRows([userMsg], { includeImageAttachments: true });
-    const lastUserGatewayRow = tailUserRows[tailUserRows.length - 1];
-    const outgoing = [systemMessage, ...historyForRequest, lastUserGatewayRow];
-
-    const isFirstTurn = historyForRequest.length === 0;
-    if (
-      isFirstTurn &&
-      config?.chatLabAutoTitle &&
-      bridge?.generateChatTitle &&
-      config?.credentials?.hasProviderApiKey
-    ) {
-      void bridge.generateChatTitle({ userText: trimmed || t("chatLab.chatUntitledImage") }).then((r) => {
-        if (!r?.ok || typeof r.title !== "string" || !r.title.trim()) return;
-        const rec = getSession(conversationId);
-        if (!rec) return;
-        renameSession(conversationId, r.title.trim());
-      });
-    }
-
-    try {
-      await bridge.startChatStream({ streamId, conversationId, messages: outgoing, composerSkill });
-    } catch (err) {
-      resetGatewayStream(streamId);
-      try {
-        await bridge.abortChatStream(streamId);
-      } catch {
-        /* ignore */
-      }
-      const raw = String(err?.message ?? err);
-      const msg = formatStreamError(raw, t);
-      finalizeAssistantById(assistantMsg.id, { error: msg });
-      if (isChatHttp404(raw)) {
-        setChatApiBlocked(true);
-        setProbeRestartKey((k) => k + 1);
-      }
-    }
   }, [
-    beginGatewayStream,
     bridge,
     chatApiBlocked,
     commitUserMessageEdit,
+    composerAttachments,
     composerSkillRow,
-    config,
     configIssueKey,
-    conversationId,
-    finalizeAssistantById,
     gatewayPhase,
     gatewayStreaming,
     input,
     isElectron,
-    paramC,
-    resetGatewayStream,
-    setSearchParams,
-    t,
-    composerAttachments,
+    submitNewUserTurn,
   ]);
+
+  const quickReplySend = useCallback(
+    async (text) => {
+      if (pendingEditMessageIdRef.current) return;
+      if (activeAssistantIdRef.current) return;
+      if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
+      if (gatewayStreaming) return;
+      const trimmed = String(text ?? "").trim();
+      if (!trimmed) return;
+      if (!isElectron || !bridge?.startChatStream) return;
+      if (configIssueKey) return;
+      if (gatewayPhase !== "online" || chatApiBlocked) return;
+
+      await submitNewUserTurn({
+        trimmed,
+        imageAttachments: undefined,
+        skillPickRow: null,
+        onCommitted: () => {},
+      });
+    },
+    [
+      bridge,
+      chatApiBlocked,
+      configIssueKey,
+      gatewayPhase,
+      gatewayStreaming,
+      isElectron,
+      submitNewUserTurn,
+    ],
+  );
 
   const stop = useCallback(() => {
     const sid = activeStreamIdRef.current;
@@ -1560,6 +1623,8 @@ export default function ChatLabPage() {
             gatewayStreaming={gatewayStreaming}
             streamLocked={streamLocked}
             onBeginUserEdit={beginComposerEdit}
+            onQuickReply={quickReplySend}
+            quickReplyDisabled={streamLocked || Boolean(pendingEditMessageId)}
             t={t}
             locale={locale}
             threadLabel={t("chatLab.title")}
@@ -2456,6 +2521,94 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
 });
 
 /**
+ * One-click replies when the assistant ends with a detected multi-choice list.
+ * @param {{
+ *   options: Array<{ id: string; label: string; sendText: string; badge: string }>;
+ *   disabled: boolean;
+ *   sentText: string | null;
+ *   onSelect: (text: string) => void;
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ * }} props
+ */
+const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
+  options,
+  disabled,
+  sentText,
+  onSelect,
+  t,
+}) {
+  /** @type {[string | null, import("react").Dispatch<import("react").SetStateAction<string | null>>]} */
+  const [hoverRowId, setHoverRowId] = useState(null);
+
+  const layoutKey = useMemo(() => options.map((o) => o.id).join("\x1e"), [options]);
+  const sentRowId = useMemo(() => {
+    if (sentText == null) return null;
+    return options.find((o) => o.sendText === sentText)?.id ?? null;
+  }, [options, sentText]);
+
+  const { rootRef, setItemRef, blobStyle } = useFluidPopupBlob({
+    open: Boolean(options?.length),
+    hoverKey: hoverRowId,
+    fallbackKey: sentRowId,
+    layoutKey,
+  });
+
+  if (!options?.length) return null;
+  return (
+    <div
+      ref={rootRef}
+      className="chat-lab__quick-replies"
+      role="radiogroup"
+      aria-label={t("chatLab.quickReplyGroup")}
+      onPointerLeave={() => setHoverRowId(null)}
+    >
+      <div className="chat-lab__quick-replies__header" aria-hidden>
+        <span className="chat-lab__quick-replies__pin" aria-hidden />
+      </div>
+      <div
+        aria-hidden
+        className={cn(
+          "fluid-nav__blob fluid-popup-menu__blob pointer-events-none absolute top-0 left-0 z-0 rounded-[9px]",
+          "chat-lab__quick-replies__blob",
+        )}
+        style={blobStyle}
+      />
+      {options.map((o) => {
+        const isSent = sentText != null && sentText === o.sendText;
+        return (
+          <div
+            key={o.id}
+            ref={(node) => setItemRef(o.id, node)}
+            className="chat-lab__quick-reply-row"
+            onPointerEnter={() => setHoverRowId(o.id)}
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={isSent}
+              className={cn(
+                "chat-lab__quick-reply-card",
+                isSent && "chat-lab__quick-reply-card--sent",
+              )}
+              disabled={disabled || sentText != null}
+              onClick={() => onSelect(o.sendText)}
+            >
+              <span className="chat-lab__quick-reply-card__radio" aria-hidden>
+                <span className="chat-lab__quick-reply-card__radio-dot" />
+              </span>
+              <span className="chat-lab__quick-reply-card__body">
+                <span className="chat-lab__quick-reply-card__kicker">{o.badge}</span>
+                <span className="chat-lab__quick-reply-card__label">{o.label}</span>
+              </span>
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+});
+
+/**
  * @param {{
  *   message: {
  *     id: string;
@@ -2474,6 +2627,9 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  *   locale: import("../i18n/messages.js").LocaleId;
  *   streamLocked: boolean;
+ *   allowAssistantQuickReply: boolean;
+ *   quickReplyDisabled: boolean;
+ *   onQuickReply?: (text: string) => void | Promise<void>;
  *   onBeginUserEdit: (
  *     messageId: string,
  *     payload: {
@@ -2483,7 +2639,16 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
  *   ) => void;
  * }} props
  */
-const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLocked, onBeginUserEdit }) {
+const MessageBubble = memo(function MessageBubble({
+  message,
+  t,
+  locale,
+  streamLocked,
+  allowAssistantQuickReply,
+  quickReplyDisabled,
+  onQuickReply,
+  onBeginUserEdit,
+}) {
   const isUser = message.role === "user";
   const timeline = Array.isArray(message.assistantTimeline) ? message.assistantTimeline : [];
   const interleavedAssistant = timeline.length > 0;
@@ -2620,6 +2785,46 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
     setUserLongFoldable(can);
   }, []);
 
+  const quickReplyData = useMemo(() => {
+    if (isUser || !allowAssistantQuickReply || message.streaming || message.error || !onQuickReply) {
+      return null;
+    }
+    /** Full assistant text (streaming merges plain `text` deltas here even when a timeline exists). */
+    return parseAssistantQuickReplies(String(message.content ?? ""));
+  }, [
+    allowAssistantQuickReply,
+    isUser,
+    message.content,
+    message.error,
+    message.streaming,
+    onQuickReply,
+  ]);
+
+  const [quickReplySent, setQuickReplySent] = useState(/** @type {string | null} */ (null));
+  useEffect(() => {
+    setQuickReplySent(null);
+  }, [message.id]);
+
+  const handleQuickReply = useCallback(
+    (text) => {
+      if (quickReplyDisabled || !onQuickReply) return;
+      setQuickReplySent(text);
+      void onQuickReply(text);
+    },
+    [onQuickReply, quickReplyDisabled],
+  );
+
+  const quickReplyChipsEl =
+    quickReplyData && onQuickReply ? (
+      <AssistantQuickReplyChips
+        options={quickReplyData.options}
+        disabled={quickReplyDisabled}
+        sentText={quickReplySent}
+        onSelect={handleQuickReply}
+        t={t}
+      />
+    ) : null;
+
   if (!isUser && message.content) {
     streamTailOrdinalRef.current = { p: 0, h: {} };
   }
@@ -2692,6 +2897,7 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
                 {message.error}
               </div>
             ) : null}
+            {quickReplyChipsEl}
           </div>
         ) : (
           <div className="chat-lab__md">
@@ -2707,6 +2913,7 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
                 {!assistantStreamPlacement ? (
                   <ChatStreamSparklerTail active={Boolean(message.streaming)} />
                 ) : null}
+                {quickReplyChipsEl}
               </>
             ) : showTyping ? (
               <ChatStreamingIndicator label={t("chatLab.streaming")} />
@@ -2818,6 +3025,8 @@ const MessageBubble = memo(function MessageBubble({ message, t, locale, streamLo
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  *   locale: LocaleId;
  *   threadLabel: string;
+ *   onQuickReply: (text: string) => void | Promise<void>;
+ *   quickReplyDisabled: boolean;
  * }} props
  */
 function ChatLabVirtualMessageList({
@@ -2827,6 +3036,8 @@ function ChatLabVirtualMessageList({
   gatewayStreaming,
   streamLocked,
   onBeginUserEdit,
+  onQuickReply,
+  quickReplyDisabled,
   t,
   locale,
   threadLabel,
@@ -2913,6 +3124,11 @@ function ChatLabVirtualMessageList({
                 t={t}
                 locale={locale}
                 streamLocked={streamLocked}
+                allowAssistantQuickReply={
+                  virtualRow.index === messages.length - 1 && m.role === "assistant"
+                }
+                quickReplyDisabled={quickReplyDisabled}
+                onQuickReply={onQuickReply}
                 onBeginUserEdit={onBeginUserEdit}
               />
             </div>

@@ -51,6 +51,8 @@ import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
 const ChatLabStreamingContext = createContext(null);
 
 const PERSIST_MS = 420;
+/** Delay before treating `done` as final — some gateways flush one last delta right after signalling end */
+const STREAM_DONE_GRACE_MS = 1600;
 
 /**
  * @param {string} conversationId
@@ -102,6 +104,8 @@ export function ChatLabStreamingProvider({ children }) {
 
   const sliceRef = useRef(/** @type {GatewayStreamSlice | null} */ (null));
   const persistTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+  /** Deferred finalization after a `{ type: "done" }` event — absorbs trailing deltas that arrive milliseconds late */
+  const doneGraceTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
   /** Active gateway stream id; keeps matching `done`/`error` after a terminal clears React slice (main always sends `done`). */
   const processingStreamIdRef = useRef(/** @type {string | null} */ (null));
 
@@ -121,6 +125,10 @@ export function ChatLabStreamingProvider({ children }) {
     if (persistTimerRef.current) {
       clearTimeout(persistTimerRef.current);
       persistTimerRef.current = null;
+    }
+    if (doneGraceTimerRef.current) {
+      clearTimeout(doneGraceTimerRef.current);
+      doneGraceTimerRef.current = null;
     }
     processingStreamIdRef.current = args.streamId;
     const next = {
@@ -143,6 +151,10 @@ export function ChatLabStreamingProvider({ children }) {
     if (persistTimerRef.current) {
       clearTimeout(persistTimerRef.current);
       persistTimerRef.current = null;
+    }
+    if (doneGraceTimerRef.current) {
+      clearTimeout(doneGraceTimerRef.current);
+      doneGraceTimerRef.current = null;
     }
     processingStreamIdRef.current = null;
     sliceRef.current = null;
@@ -223,6 +235,49 @@ export function ChatLabStreamingProvider({ children }) {
       };
     };
 
+    const cancelPendingDoneFinalize = () => {
+      if (doneGraceTimerRef.current != null) {
+        clearTimeout(doneGraceTimerRef.current);
+        doneGraceTimerRef.current = null;
+      }
+    };
+
+    /** Keeps streaming state live until STREAM_DONE_GRACE_MS so trailing `text`/`thinking`/… can merge */
+    const scheduleDoneFinalize = (/** @type {string} */ streamId) => {
+      if (doneGraceTimerRef.current != null) return;
+      const sid = streamId;
+      doneGraceTimerRef.current = setTimeout(() => {
+        doneGraceTimerRef.current = null;
+        const cur = sliceRef.current;
+        if (!cur || cur.streamId !== sid) {
+          if (processingStreamIdRef.current === sid) processingStreamIdRef.current = null;
+          return;
+        }
+        const snap = snapshotSlice();
+        flushPersistNow();
+        clearSlice();
+        try {
+          window.dispatchEvent(
+            new CustomEvent("openstudio-gateway-chat-terminal", {
+              detail: {
+                kind: /** @type {const} */ ("done"),
+                conversationId: snap.conversationId,
+                assistantMessageId: snap.assistantMessageId,
+                content: snap.content,
+                thinking: snap.thinking,
+                toolTrace: snap.toolTrace ?? [],
+                activityLog: snap.activityLog ?? [],
+                assistantTimeline: snap.assistantTimeline ?? [],
+              },
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
+        endProcessing(sid);
+      }, STREAM_DONE_GRACE_MS);
+    };
+
     const off = bridge.onChatStream((evt) => {
       if (!evt || typeof evt !== "object") return;
       if (!evt.streamId) return;
@@ -238,6 +293,7 @@ export function ChatLabStreamingProvider({ children }) {
 
       switch (evt.type) {
         case "content_sync": {
+          cancelPendingDoneFinalize();
           const prev = sliceRef.current;
           if (!prev || prev.streamId !== evt.streamId) return;
           const next = {
@@ -251,6 +307,7 @@ export function ChatLabStreamingProvider({ children }) {
           return;
         }
         case "tool_trace": {
+          cancelPendingDoneFinalize();
           const prev = sliceRef.current;
           if (!prev || prev.streamId !== evt.streamId) return;
           const toolTrace = mergeToolTrace(prev.toolTrace, evt);
@@ -262,6 +319,7 @@ export function ChatLabStreamingProvider({ children }) {
           return;
         }
         case "agent_activity": {
+          cancelPendingDoneFinalize();
           const prev = sliceRef.current;
           if (!prev || prev.streamId !== evt.streamId) return;
           const activityLog = mergeActivityLog(prev.activityLog, evt);
@@ -273,6 +331,7 @@ export function ChatLabStreamingProvider({ children }) {
           return;
         }
         case "thinking":
+          cancelPendingDoneFinalize();
           if (typeof evt.delta !== "string") return;
           {
             const prev = sliceRef.current;
@@ -289,6 +348,7 @@ export function ChatLabStreamingProvider({ children }) {
           schedulePersist();
           return;
         case "text":
+          cancelPendingDoneFinalize();
           if (typeof evt.delta !== "string") return;
           {
             const prev = sliceRef.current;
@@ -308,6 +368,7 @@ export function ChatLabStreamingProvider({ children }) {
         case "usage":
           return;
         case "aborted": {
+          cancelPendingDoneFinalize();
           const sid = evt.streamId;
           const snap = snapshotSlice();
           flushPersistNow();
@@ -334,6 +395,7 @@ export function ChatLabStreamingProvider({ children }) {
           return;
         }
         case "error": {
+          cancelPendingDoneFinalize();
           const sid = evt.streamId;
           const snap = snapshotSlice();
           const raw = String(evt.message ?? "");
@@ -362,29 +424,7 @@ export function ChatLabStreamingProvider({ children }) {
           return;
         }
         case "done": {
-          const sid = evt.streamId;
-          const snap = snapshotSlice();
-          flushPersistNow();
-          clearSlice();
-          try {
-            window.dispatchEvent(
-              new CustomEvent("openstudio-gateway-chat-terminal", {
-                detail: {
-                  kind: /** @type {const} */ ("done"),
-                  conversationId: snap.conversationId,
-                  assistantMessageId: snap.assistantMessageId,
-                  content: snap.content,
-                  thinking: snap.thinking,
-                  toolTrace: snap.toolTrace ?? [],
-                  activityLog: snap.activityLog ?? [],
-                  assistantTimeline: snap.assistantTimeline ?? [],
-                },
-              }),
-            );
-          } catch {
-            /* ignore */
-          }
-          endProcessing(sid);
+          scheduleDoneFinalize(evt.streamId);
           return;
         }
         default:
@@ -398,7 +438,14 @@ export function ChatLabStreamingProvider({ children }) {
       } catch {
         /* ignore */
       }
-      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+      if (doneGraceTimerRef.current) {
+        clearTimeout(doneGraceTimerRef.current);
+        doneGraceTimerRef.current = null;
+      }
     };
   }, []);
 

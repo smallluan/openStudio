@@ -268,7 +268,8 @@
     "maxComposerImages": "画像は最大 {{max}} 枚までです",
     "imageTooLarge": "各画像は 2 MB 未満にしてください",
     "invalidImageType": "画像ファイルのみ追加できます",
-    "messageImagesCopyNote": "（別途 {{count}} 枚の画像あり・画像データはコピーされません）"
+    "messageImagesCopyNote": "（別途 {{count}} 枚の画像あり・画像データはコピーされません）",
+    "quickReplyGroup": "クイック返信の選択肢"
   },
   "bootstrap": {
     "title": "Open Studio を準備しています",

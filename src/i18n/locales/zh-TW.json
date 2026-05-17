@@ -268,7 +268,8 @@
     "maxComposerImages": "已達圖片附件上限（最多 {{max}} 張）",
     "imageTooLarge": "單張圖片不可超過 2 MB",
     "invalidImageType": "只能新增圖片類型的檔案",
-    "messageImagesCopyNote": "（另有 {{count}} 張圖片，未複製影像資料）"
+    "messageImagesCopyNote": "（另有 {{count}} 張圖片，未複製影像資料）",
+    "quickReplyGroup": "快捷回覆選項"
   },
   "bootstrap": {
     "title": "Open Studio 正在就緒",
