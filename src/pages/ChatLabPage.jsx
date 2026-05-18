@@ -1826,25 +1826,29 @@ function GapToolActivityPanel({ segments, toolMap, activityMap, t, streaming }) 
   );
 }
 
-/** Do not treat long follow-ups as “hanging”; only fold obvious short tails. */
-const POST_GAP_TAIL_MAX_CHARS = 560;
-const POST_GAP_TAIL_MAX_LINES = 5;
-
 /**
- * @param {string} tail
- * @returns {boolean}
+ * @param {{
+ *   kind: "text";
+ *   body: string;
+ *   key: string;
+ * } | {
+ *   kind: "thinking";
+ *   body: string;
+ *   key: string;
+ * } | {
+ *   kind: "toolActivityGap";
+ *   segments: Array<{ kind: "tool"; refId: string } | { kind: "activity"; refId: string }>;
+ *   key: string;
+ * }} p
  */
-function shouldMergePostGapTail(tail) {
-  const t = tail.trim();
-  if (!t) return false;
-  const lines = t.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (t.length <= POST_GAP_TAIL_MAX_CHARS && lines.length <= POST_GAP_TAIL_MAX_LINES) return true;
-  return false;
+function cloneTimelineRenderPart(p) {
+  return p.kind === "toolActivityGap" ? { ...p, segments: [...p.segments] } : { ...p };
 }
 
 /**
- * Merges short `text` blocks that arrive *after* a tool/step gap into the previous prose
- * segment so a lifecycle panel does not sit between a paragraph and a one-line follow-up.
+ * Only touches the **last** tool/step gap: consecutive `text` deltas right after it are folded into
+ * the nearest preceding prose segment (nothing earlier changes). That gap is then rendered last so
+ * lifecycle stays visually at the bottom even when thinking/text follows in stream order.
  * @param {Array<
  *   | { kind: "text"; body: string; key: string }
  *   | { kind: "thinking"; body: string; key: string }
@@ -1855,42 +1859,52 @@ function shouldMergePostGapTail(tail) {
  *     }
  * >} parts
  */
-function mergePostGapShortProse(parts) {
-  /** @type {typeof parts} */
-  const arr = parts.map((p) =>
-    p.kind === "text"
-      ? { ...p }
-      : p.kind === "toolActivityGap"
-        ? { ...p, segments: [...p.segments] }
-        : { ...p },
-  );
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (let i = arr.length - 1; i >= 2; i--) {
-      if (arr[i].kind !== "text" || arr[i - 1].kind !== "toolActivityGap") continue;
-      const tail = String(arr[i].body ?? "").trim();
-      if (!tail) {
-        arr.splice(i, 1);
-        changed = true;
-        break;
-      }
-      if (!shouldMergePostGapTail(tail)) continue;
-      let j = i - 2;
-      while (j >= 0 && arr[j].kind !== "text") j--;
-      if (j < 0) continue;
-      const head = String(arr[j].body ?? "");
-      arr[j] = {
-        ...arr[j],
-        body: `${head.trimEnd()}\n\n${tail}`,
-        key: `${arr[j].key}|postgap-${arr[i].key}`,
-      };
-      arr.splice(i, 1);
-      changed = true;
+function finalizeLastLifecycleGapTail(parts) {
+  let idxGap = -1;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].kind === "toolActivityGap") {
+      idxGap = i;
       break;
     }
   }
-  return arr;
+  if (idxGap < 0) return parts;
+
+  /** @type {number[]} */
+  const absorbedTailIndices = [];
+  for (let i = idxGap + 1; i < parts.length; i++) {
+    const p = parts[i];
+    if (p.kind === "text" && String(p.body ?? "").trim()) absorbedTailIndices.push(i);
+    else break;
+  }
+
+  const mergedTail = absorbedTailIndices.map((ti) => String(parts[ti].body ?? "").trim()).join("\n\n");
+
+  let proseIdx = idxGap - 1;
+  while (proseIdx >= 0 && parts[proseIdx].kind !== "text") proseIdx--;
+
+  const absorbTrailingText = mergedTail.length > 0 && proseIdx >= 0;
+  const absorbed = new Set(absorbedTailIndices);
+
+  /** @type {typeof parts} */
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (i === idxGap) continue;
+    if (absorbed.has(i)) continue;
+    if (i === proseIdx && absorbTrailingText) {
+      const p = parts[i];
+      const head = String(p.body ?? "").trimEnd();
+      out.push({
+        ...p,
+        body: `${head}\n\n${mergedTail}`,
+        key: `${p.key}|aft-last-gap`,
+      });
+      continue;
+    }
+    out.push(cloneTimelineRenderPart(parts[i]));
+  }
+
+  out.push(cloneTimelineRenderPart(parts[idxGap]));
+  return out;
 }
 
 /**
@@ -1923,7 +1937,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
   /**
    * Split by markdown text: everything between two text deltas merges into gap panels (tools ⟷ steps
    * stay in order). Thinking splits gaps so reasoning can appear between execution bursts.
-   * Short `text` after a gap is folded into the previous prose block (see mergePostGapShortProse).
+   * Only the **last** tool/step gap is post-processed (see finalizeLastLifecycleGapTail).
    * @type {Array<
    *   | { kind: "text"; body: string; key: string }
    *   | { kind: "thinking"; body: string; key: string }
@@ -1989,7 +2003,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
       }
     }
     flushGap();
-    return mergePostGapShortProse(out);
+    return finalizeLastLifecycleGapTail(out);
   }, [timeline]);
 
   const lastGapPartIdx = useMemo(() => {

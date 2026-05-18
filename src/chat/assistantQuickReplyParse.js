@@ -37,15 +37,96 @@ function normalizeBoldChoiceMarkers(src) {
 }
 
 /**
+ * Peel outermost `** … **` / `__ … __` when the interior does not contain the same delimiter pair
+ * (models wrap whole rows as `**A) …**`; strict “startsWith && endsWith” misses spaced/closing variants).
+ *
+ * @param {string} t trimmed
+ */
+function stripOuterDoubleEmphasis(t) {
+  let s = String(t ?? "").trim();
+  for (let i = 0; i < 8; i++) {
+    let changed = false;
+    if (s.startsWith("**")) {
+      const last = s.lastIndexOf("**");
+      if (last > 2) {
+        const inner = s.slice(2, last).trim();
+        const tail = s.slice(last + 2).trim();
+        if (!/\*\*/.test(inner)) {
+          s = tail ? `${inner} ${tail}`.trim() : inner;
+          changed = true;
+          continue;
+        }
+      }
+    }
+    if (s.startsWith("__")) {
+      const last = s.lastIndexOf("__");
+      if (last > 2) {
+        const inner = s.slice(2, last).trim();
+        const tail = s.slice(last + 2).trim();
+        if (!/__/.test(inner)) {
+          s = tail ? `${inner} ${tail}`.trim() : inner;
+          changed = true;
+          continue;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  return s;
+}
+
+/**
  * Only **uppercase Latin** markers in strict **A → B → C** order (see `strictUppercaseLetterSequence`).
- * Spaces allowed. Supports `A：` / `A:` plus `A.` `A)`.
+ * Spaces allowed. Supports `A：` / `A:` plus `A.` `A)`. Dot/paren allow zero whitespace before body (`A.📄`).
  *
  * Capture groups: [1] letter, [2] body
  *
  * @type {RegExp}
  */
 const OPTION_LINE =
-  /^\s*([A-Z])\s*(?:[：:]\s*|[.．]\s+|[\)）]\s+)(.+)$/u;
+  /^\s*([A-Z])\s*(?:[：:]\s*|[.．]\s*|[\)）]\s*)(.+)$/u;
+
+/**
+ * Models often bold whole rows (`**A. foo**`) or prefix Markdown bullets (`- A.` / `- **A.**`).
+ * Applied before `OPTION_LINE`; not a full Markdown parser.
+ *
+ * @param {string} line
+ */
+function normalizeChoiceCandidateLine(line) {
+  let t = String(line ?? "").trim();
+  if (!t) return "";
+
+  const MAX = 12;
+  for (let guard = 0; guard < MAX; guard++) {
+    const prev = t;
+
+    t = t.replace(/^\s*[-*+]\s*\[[ xX]\]\s+/, "");
+    /** `- option` only when an uppercase lettered marker (or bold wrapper of one) follows. */
+    t = t.replace(/^\s*[-*+]\s+(?=(?:\*\*|__|[A-Z]))/, "").trimStart();
+
+    /**
+     * Strip Markdown ordered-list ordinals (`1.` / `12)` …) before the letter marker — not `A.` bullets.
+     * Require whitespace after `.`/`)` so versions like `1.2.3` are untouched.
+     */
+    t = t.replace(/^\s*\d{1,2}\s*[.)]\s+(?=[A-Z*_])/u, "").trimStart();
+
+    t = stripOuterDoubleEmphasis(t);
+
+    if (t === prev) break;
+  }
+
+  return t;
+}
+
+/** @param {string} line */
+function execOptionLine(line) {
+  return OPTION_LINE.exec(normalizeChoiceCandidateLine(line));
+}
+
+/** @param {string} line */
+function testOptionLine(line) {
+  return !!execOptionLine(line);
+}
 
 /**
  * @param {RegExpExecArray | null} m
@@ -70,7 +151,7 @@ function strictUppercaseLetterSequence(optionLines) {
   if (optionLines.length < 2 || optionLines.length > 26) return false;
   let expect = "A".charCodeAt(0);
   for (const line of optionLines) {
-    const m = OPTION_LINE.exec(line);
+    const m = execOptionLine(line);
     if (!m) return false;
     const ch = optionLineLetter(m);
     if (ch.charCodeAt(0) !== expect) return false;
@@ -82,7 +163,7 @@ function strictUppercaseLetterSequence(optionLines) {
 /** @param {string} line */
 function isContinuationLine(line) {
   const t = line.trim();
-  if (!t || OPTION_LINE.test(line)) return false;
+  if (!t || testOptionLine(line)) return false;
   /** Never absorb Markdown block starts into a peeled "option" row. */
   if (/^\s*#{1,6}\s+/u.test(line)) return false;
   if (t.startsWith("|") || /^\|[^|\n]+\|[^|\n]+\|/.test(t)) return false;
@@ -104,7 +185,7 @@ function mergeOptionContinuations(lines) {
     const line = lines[k];
     if (
       out.length > 0 &&
-      OPTION_LINE.test(out[out.length - 1]) &&
+      testOptionLine(out[out.length - 1]) &&
       isContinuationLine(line)
     ) {
       out[out.length - 1] = `${out[out.length - 1].trimEnd()} ${line.trim()}`;
@@ -123,7 +204,7 @@ function mergeOptionContinuations(lines) {
  */
 function trailingSoftLineAfterChoices(t) {
   if (!t) return false;
-  if (OPTION_LINE.test(t)) return false;
+  if (testOptionLine(t)) return false;
 
   /** Do not chew through long narrative paragraphs appended after selections. */
 
@@ -165,7 +246,7 @@ function stripTrailingEpilogueLines(lines) {
     }
     if (!out.length) break;
     const last = /** @type {string} */ (out[out.length - 1]);
-    if (OPTION_LINE.test(last)) break;
+    if (testOptionLine(last)) break;
     const t = last.trim();
     if (!trailingSoftLineAfterChoices(t)) break;
     out.pop();
@@ -193,7 +274,7 @@ function stripTrailingMarkdownStars(line) {
 
 /** @param {string} line */
 function stripListBulletForBody(line) {
-  const m = OPTION_LINE.exec(String(line ?? ""));
+  const m = execOptionLine(String(line ?? ""));
   return m ? optionLineBody(m) : String(line ?? "");
 }
 
@@ -228,7 +309,7 @@ function looksLikeChoicePrompt(beforeText) {
 
 /** @param {string} line */
 function listMarkerBadge(line) {
-  const m = OPTION_LINE.exec(String(line ?? ""));
+  const m = execOptionLine(String(line ?? ""));
   return m ? optionLineLetter(m) : "·";
 }
 
@@ -239,7 +320,7 @@ function listMarkerBadge(line) {
  * @returns {{ optionLines: string[]; beforeText: string } | null}
  */
 function tryParseInlineLetterBlock(block) {
-  const re = /(?:^|[^\dA-Za-z])([A-Z])\s*(?:[：:]\s*|[.．]\s+|[\)）]\s+)/g;
+  const re = /(?:^|[^\dA-Za-z])([A-Z])\s*(?:[：:]\s*|[.．]\s*|[\)）]\s*)/g;
   /** @type {{ index: number; letter: string }[]} */
   const hits = [];
   let m;
@@ -311,7 +392,7 @@ function looksLikeIndependentQuestionList(optionLines) {
   if (optionLines.length < 2) return false;
   let questionLike = 0;
   for (const line of optionLines) {
-    const m = OPTION_LINE.exec(line);
+    const m = execOptionLine(line);
     const rest = m ? optionLineBody(m) : line;
     const text = stripInlineMd(rest);
     if (!text) continue;
@@ -329,7 +410,7 @@ function buildQuestionnaireItems(optionLines) {
   const items = [];
   for (let idx = 0; idx < optionLines.length; idx++) {
     const line = optionLines[idx];
-    const m = OPTION_LINE.exec(line);
+    const m = execOptionLine(line);
     const rest = m ? optionLineBody(m) : line;
     const prompt = stripInlineMd(rest);
     if (!prompt) continue;
@@ -363,7 +444,7 @@ function enumeratedRestLooksLikeStructuredMarkdown(rest) {
 function interactiveFromOptionLines(optionLines, beforeText = "") {
   if (!strictUppercaseLetterSequence(optionLines)) return null;
   for (const line of optionLines) {
-    const m = OPTION_LINE.exec(line);
+    const m = execOptionLine(line);
     const rest = m ? optionLineBody(m) : line;
     if (enumeratedRestLooksLikeStructuredMarkdown(rest)) return null;
   }
@@ -404,7 +485,7 @@ function buildOptionsFromLines(optionLines) {
   const options = [];
   for (let idx = 0; idx < optionLines.length; idx++) {
     const line = optionLines[idx];
-    const m = OPTION_LINE.exec(line);
+    const m = execOptionLine(line);
     const rest = m ? optionLineBody(m) : line;
     const label = stripInlineMd(rest);
     const sendText = label || stripInlineMd(line);
@@ -446,8 +527,9 @@ function peelTrailingMultilineInteractive(cleaned) {
       i--;
       continue;
     }
-    if (!OPTION_LINE.test(line)) break;
-    optionLines.unshift(line);
+    const normalizedLine = normalizeChoiceCandidateLine(line);
+    if (!OPTION_LINE.exec(normalizedLine)) break;
+    optionLines.unshift(normalizedLine);
     i--;
   }
 
