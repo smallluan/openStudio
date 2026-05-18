@@ -1,7 +1,6 @@
 const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const { createRequire } = require("module");
 const { createConfigStore } = require("./lib/config-store.cjs");
 const { dispatchOpenClawGatewayStream, probeOpenClawGateway } = require("./lib/openclaw-gateway-stream.cjs");
 const { resolveGateway } = require("./lib/openclaw-gateway-ws.cjs");
@@ -15,12 +14,17 @@ const {
 } = require("./lib/openclaw-gateway-session.cjs");
 const { syncOpenClawAgentFromStudioConfig } = require("./lib/sync-openclaw-agent-from-studio.cjs");
 const { readWorkspacePreviewFile, resolveWorkspacePreviewTarget } = require("./lib/chatlab-read-workspace-preview.cjs");
+const { initStudioLogger, getStudioLog } = require("./lib/studio-logger.cjs");
+const {
+  ensureLocalGatewayRunning,
+  attachGatewayQuitHandlers,
+  resolveBundledOpenClawPackageMetaSync,
+} = require("./lib/openclaw-gateway-supervisor.cjs");
 
 /** Sidebar cannot embed Office; open these locally in the OS default viewer instead. */
 const OPEN_EXTERNALLY_SIDE_PREVIEW_EXT = new Set([".pptx", ".ppt", ".xlsx", ".xls"]);
 
 const isDev = process.env.NODE_ENV === "development";
-const requireFromApp = createRequire(__dirname);
 
 /* Windows: Fluent/overlay scrollbars often ignore ::-webkit-scrollbar — disable so rail CSS applies. */
 if (process.platform === "win32") {
@@ -66,7 +70,7 @@ async function maybeHydrateGatewayForChat(cfg) {
     return { ok: true };
   } catch (e) {
     const msg = String(e?.message ?? e);
-    console.warn("[open-studio] gateway chat hydrate:", msg);
+    getStudioLog().warn("[open-studio] gateway chat hydrate:", msg);
     return { ok: false, message: msg };
   } finally {
     clearTimeout(timer);
@@ -166,11 +170,7 @@ function patchTouchesGatewayWorkspace(patch) {
 
 function getOpenClawPackageMeta() {
   try {
-    const pkgPath = requireFromApp.resolve("openclaw/package.json");
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-    const root = path.dirname(pkgPath);
-    const cliEntry = path.join(root, pkg.bin.openclaw.replace(/^\.\//, ""));
-    return { version: pkg.version, root, cliEntry };
+    return resolveBundledOpenClawPackageMetaSync();
   } catch {
     return null;
   }
@@ -212,11 +212,26 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  initStudioLogger(app, { isDev });
+  attachGatewayQuitHandlers(app);
+
   Menu.setApplicationMenu(null);
 
   userConfigStore = createConfigStore(app.getPath("userData"));
   runOpenClawAgentSyncFromStudio("startup");
+
+  if (!isDev) {
+    try {
+      const sup = await ensureLocalGatewayRunning(() => userConfigStore.readRaw(), {
+        log: getStudioLog(),
+        probeOpenClawGateway,
+      });
+      getStudioLog().info("[startup] supervised gateway:", sup);
+    } catch (e) {
+      getStudioLog().error("[startup] supervised gateway threw:", /** @type {any} */ (e)?.message ?? e);
+    }
+  }
 
   ipcMain.handle("openclaw:getRuntime", async () => {
     const meta = getOpenClawPackageMeta();
@@ -241,7 +256,30 @@ app.whenReady().then(() => {
 
   ipcMain.handle("studio:getPaths", () => ({
     userData: app.getPath("userData"),
+    logs: app.getPath("logs"),
   }));
+
+  ipcMain.handle("studio:openLogsDirectory", async () => {
+    const logsDir = app.getPath("logs");
+    const errMsg = await shell.openPath(logsDir);
+    if (String(errMsg ?? "").trim()) {
+      getStudioLog().warn("[logs] shell.openPath failed:", errMsg);
+      return { ok: false, path: logsDir, message: String(errMsg) };
+    }
+    return { ok: true, path: logsDir };
+  });
+
+  ipcMain.handle("studio:logRendererMessage", (_e, payload) => {
+    const levelRaw = typeof payload?.level === "string" ? payload.level.toLowerCase() : "info";
+    const message =
+      typeof payload?.message === "string" ? payload.message : String(payload?.message ?? payload ?? "");
+    const log = getStudioLog();
+    if (levelRaw === "error") log.error("[renderer]", message);
+    else if (levelRaw === "warn") log.warn("[renderer]", message);
+    else if (levelRaw === "verbose" || levelRaw === "debug") log.verbose?.("[renderer]", message);
+    else log.info("[renderer]", message);
+    return { ok: true };
+  });
 
   ipcMain.handle("studio:readWorkspacePreviewFile", (_event, rawPath) => {
     if (!userConfigStore) return { ok: false, message: "config_unready" };
@@ -269,9 +307,12 @@ app.whenReady().then(() => {
       runOpenClawAgentSyncFromStudio("probe");
       const cfg = userConfigStore.readRaw();
       await probeOpenClawGateway(cfg);
+      getStudioLog().info("[gateway] probe ok");
       return { ok: true };
     } catch (e) {
-      return { ok: false, message: String(e?.message ?? e) };
+      const msg = String(e?.message ?? e);
+      getStudioLog().warn("[gateway] probe failed:", msg);
+      return { ok: false, message: msg };
     }
   });
 
@@ -316,6 +357,7 @@ app.whenReady().then(() => {
       }
     } catch (e) {
       if (isDev) console.warn("[open-studio] prewarmStudioGatewaySessions:", e?.message ?? e);
+      getStudioLog().warn("[open-studio] prewarmStudioGatewaySessions:", /** @type {any} */ (e)?.message ?? e);
       return { ok: false, message: String(e?.message ?? e) };
     }
   });
@@ -352,6 +394,7 @@ app.whenReady().then(() => {
       } catch (e) {
         studioInvalidateGatewaySession();
         const message = String(e?.message ?? e);
+        getStudioLog().error("[bootstrap] failed:", message);
         emit({ phase: "error", message });
         return { ok: false, message };
       } finally {

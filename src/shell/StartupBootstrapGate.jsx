@@ -81,7 +81,9 @@ export default function StartupBootstrapGate({ children }) {
         const result = await bridge.bootstrapGateway();
         if (cancelled) return;
         if (!result?.ok) {
-          setFailure(result?.message ? String(result.message) : t("bootstrap.unknownError"));
+          const failureMsg = result?.message ? String(result.message) : t("bootstrap.unknownError");
+          bridge.logRendererMessage?.({ level: "error", message: `bootstrap_gate: ${failureMsg}` });
+          setFailure(failureMsg);
           return;
         }
         if (bridge.prewarmStudioGatewaySessions) {
@@ -94,7 +96,9 @@ export default function StartupBootstrapGate({ children }) {
         setGateDone(true);
       } catch (e) {
         if (!cancelled) {
-          setFailure(String(e?.message ?? e));
+          const msg = String(e?.message ?? e);
+          bridge.logRendererMessage?.({ level: "error", message: `bootstrap_gate_throw: ${msg}` });
+          setFailure(msg);
         }
       } finally {
         progressOff?.();
@@ -202,6 +206,16 @@ export default function StartupBootstrapGate({ children }) {
               >
                 {t("bootstrap.openSettings")}
               </Link>
+              {bridge?.openLogsDirectory ? (
+                <button
+                  type="button"
+                  className="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm font-medium text-[color:var(--os-text)] shadow-sm transition hover:bg-black/[0.03]"
+                  aria-label={t("settings.openLogsAria")}
+                  onClick={() => void bridge.openLogsDirectory?.()}
+                >
+                  {t("settings.openLogsFolder")}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="rounded-full border border-dashed border-black/20 bg-transparent px-5 py-2.5 text-sm font-medium text-[var(--os-text-muted)] transition hover:border-black/35 hover:text-[color:var(--os-text)]"

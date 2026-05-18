@@ -63,6 +63,8 @@
     "language": "界面语言",
     "languageAria": "选择界面语言",
     "autoSummarizeTitle": "自动总结对话内容为标题",
+    "openLogsFolder": "打开日志目录",
+    "openLogsAria": "在资源管理器中打开应用日志文件夹",
     "lang": {
       "zhCN": "简体中文",
       "zhTW": "繁體中文",

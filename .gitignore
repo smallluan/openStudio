@@ -1,6 +1,7 @@
 node_modules/
 tmp-pack/
 dist/
+release/
 out/
 *.log
 .DS_Store

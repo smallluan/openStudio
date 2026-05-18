@@ -63,6 +63,8 @@
     "language": "介面語言",
     "languageAria": "選擇介面語言",
     "autoSummarizeTitle": "自動將對話內容總結為標題",
+    "openLogsFolder": "開啟日誌資料夾",
+    "openLogsAria": "在檔案總管中開啟應用程式日誌資料夾",
     "lang": {
       "zhCN": "簡體中文",
       "zhTW": "繁體中文",

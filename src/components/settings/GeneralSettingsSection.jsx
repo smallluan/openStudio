@@ -107,6 +107,19 @@ export default function GeneralSettingsSection() {
           onCheckedChange={(v) => void persistChatLabAutoTitle(v)}
         />
       </div>
+
+      {bridge?.openLogsDirectory ? (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            className="rounded-full border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--os-text)] transition hover:bg-[var(--os-bg-subtle)]"
+            aria-label={t("settings.openLogsAria")}
+            onClick={() => void bridge.openLogsDirectory?.()}
+          >
+            {t("settings.openLogsFolder")}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
