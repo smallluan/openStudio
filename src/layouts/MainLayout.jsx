@@ -5,7 +5,6 @@ import NavLobsterIcon from "../assets/svg/NavLobsterIcon.jsx";
 import NavSkillIcon from "../assets/svg/NavSkillIcon.jsx";
 import NavStudioIcon from "../assets/svg/NavStudioIcon.jsx";
 import RailSearchInput from "../components/shell/RailSearchInput.jsx";
-import RailSettingsOrb from "../components/shell/RailSettingsOrb.jsx";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
 import ChatHistoryList from "../components/shell/ChatHistoryList.jsx";
@@ -184,7 +183,6 @@ export default function MainLayout({ railResizeEnabled = false }) {
               router
               primaryItems={primaryNavItems}
               footerItems={[]}
-              footerAccessory={<RailSettingsOrb narrow={isNarrow} />}
               afterPrimary={<ChatHistoryList narrow={isNarrow} filterQuery={railSearchQuery} />}
               className="min-h-0 flex-1 pb-1"
             />

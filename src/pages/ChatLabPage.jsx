@@ -44,6 +44,7 @@ import {
 } from "../context/ChatLabStreamingContext.jsx";
 import { createChatLabMarkdownComponents, chatMarkdownPlainText } from "../components/chat-lab/chatLabMarkdown.jsx";
 import ChatLabPreviewDock from "../components/chat-lab/ChatLabPreviewDock.jsx";
+import ChatLabTopPullPanel from "../components/shell/ChatLabTopPullPanel.jsx";
 import {
   ChatLabPreviewContext,
   ChatLabPreviewProvider,
@@ -316,6 +317,7 @@ export default function ChatLabPage() {
       : Math.min(CHAT_LAB_COMPOSER_TEXT_MAX_CAP_PX, Math.round(window.innerHeight * 0.48)),
   );
   const [composerTextareaPx, setComposerTextareaPx] = useState(CHAT_LAB_COMPOSER_TEXT_MIN_PX);
+  const [topPanelExpanded, setTopPanelExpanded] = useState(false);
   const [composerLongTextMode, setComposerLongTextMode] = useState(false);
   const [composerResizeDragging, setComposerResizeDragging] = useState(false);
   const [composerResizeStripHover, setComposerResizeStripHover] = useState(false);
@@ -1607,7 +1609,11 @@ export default function ChatLabPage() {
   return (
     <ChatLabPreviewProvider>
       <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
-      <div className="chat-lab__workspace">
+      <div className="chat-lab__workspace relative">
+        <ChatLabTopPullPanel
+          expanded={topPanelExpanded}
+          onToggle={() => setTopPanelExpanded(!topPanelExpanded)}
+        />
         <div className={cn("chat-lab", isLanding && "chat-lab--landing", !isLanding && "chat-lab--thread")}>
           {isLanding ? (
             <>
