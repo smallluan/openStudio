@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "dev:vite": "vite",
-    "dev:gateway": "openclaw --dev gateway run --bind loopback --port 19001 --force",
+    "dev:gateway": "cross-env OPENCLAW_ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS=1 openclaw --dev gateway run --bind loopback --port 19001 --force",
     "dev:electron": "wait-on http://127.0.0.1:5173 && cross-env NODE_ENV=development electron .",
     "dev": "cross-env NODE_ENV=development concurrently -k -n vite,gateway,electron \"npm:dev:vite\" \"npm:dev:gateway\" \"npm:dev:electron\"",
     "build": "vite build",
