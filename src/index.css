@@ -538,13 +538,7 @@ code {
   inset: -28%;
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(120% 120% at 30% 18%, rgba(255, 255, 255, 0.92), transparent 55%),
-    linear-gradient(
-      148deg,
-      color-mix(in srgb, rgba(236, 242, 255, 1) 78%, var(--os-bg-panel)),
-      color-mix(in srgb, rgba(255, 246, 252, 1) 68%, var(--os-bg-panel))
-    );
+  background: var(--os-liquid-highlight-bg);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.75),
     0 6px 18px color-mix(in srgb, var(--os-accent) 12%, transparent);
@@ -553,13 +547,6 @@ code {
 }
 
 :root[data-theme="dark"] .rail-settings-orb__liquid-blob {
-  background:
-    radial-gradient(110% 110% at 28% 16%, rgba(255, 255, 255, 0.16), transparent 52%),
-    linear-gradient(
-      148deg,
-      color-mix(in srgb, var(--os-bg-panel) 86%, transparent),
-      color-mix(in srgb, var(--os-bg-panel) 58%, transparent)
-    );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 8px 22px rgba(0, 0, 0, 0.45);
@@ -761,24 +748,15 @@ code {
 }
 
 .fluid-nav__blob {
-  background:
-    radial-gradient(130% 170% at 28% 0%, rgba(255, 255, 255, 0.96), transparent 58%),
-    linear-gradient(
-      158deg,
-      color-mix(in srgb, rgba(236, 242, 255, 1) 82%, var(--os-bg-panel)),
-      color-mix(in srgb, rgba(255, 248, 252, 1) 72%, var(--os-bg-panel))
-    );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 10px 26px rgba(15, 23, 42, 0.055),
-    0 0 0 1px color-mix(in srgb, var(--os-border) 42%, rgba(255, 255, 255, 0.65));
+  background: var(--os-liquid-highlight-bg);
+  box-shadow: var(--os-liquid-highlight-shadow);
   transition:
     transform 0.55s cubic-bezier(0.33, 1.42, 0.42, 1),
     width 0.55s cubic-bezier(0.33, 1.42, 0.42, 1),
     height 0.55s cubic-bezier(0.33, 1.42, 0.42, 1),
     opacity 0.35s cubic-bezier(0.34, 1.52, 0.42, 1),
     filter 0.55s ease;
-  filter: saturate(1.05);
+  filter: var(--os-liquid-highlight-filter);
 }
 
 /* Select下拉中的blob入场动画 */
@@ -789,32 +767,13 @@ code {
     width 0.55s cubic-bezier(0.33, 1.42, 0.42, 1),
     height 0.55s cubic-bezier(0.33, 1.42, 0.42, 1),
     opacity 0.35s cubic-bezier(0.34, 1.52, 0.42, 1) 0.12s; /* opacity延迟入场 */
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 0 0 1px color-mix(in srgb, var(--os-border) 42%, rgba(255, 255, 255, 0.65));
-}
-
-:root[data-theme="dark"] .fluid-select__blob {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 0 0 1px color-mix(in srgb, var(--os-border) 68%, transparent);
+  box-shadow: var(--os-liquid-highlight-shadow-nested);
 }
 
 .fluid-select-list {
   isolation: isolate;
   background-color: transparent;
   overflow-x: hidden; /* 防止blob阴影横向溢出 */
-}
-
-:root[data-theme="dark"] .fluid-nav__blob {
-  background:
-    radial-gradient(110% 140% at 28% 0%, rgba(255, 255, 255, 0.14), transparent 58%),
-    linear-gradient(155deg, color-mix(in srgb, var(--os-bg-panel) 85%, transparent), color-mix(in srgb, var(--os-bg-panel) 62%, transparent));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 18px 46px rgba(0, 0, 0, 0.42),
-    0 0 0 1px color-mix(in srgb, var(--os-border) 68%, transparent);
-  filter: saturate(1.08);
 }
 
 /* —— Floating popup entrance / exit (inner shell; anchor keeps Floating UI transform) —— */
@@ -1047,31 +1006,8 @@ code {
   width: 100%;
   max-width: min(26rem, calc(100vw - 2rem));
   border-radius: var(--os-popup-morph-br, 14px);
-  background:
-    radial-gradient(130% 175% at 22% -12%, rgba(255, 255, 255, 0.98), transparent 54%),
-    linear-gradient(
-      154deg,
-      color-mix(in srgb, rgba(236, 242, 255, 1) 76%, var(--os-bg-panel)),
-      color-mix(in srgb, rgba(255, 246, 252, 1) 66%, var(--os-bg-panel))
-    );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.94),
-    0 20px 48px rgba(15, 23, 42, 0.1),
-    0 0 0 1px color-mix(in srgb, var(--os-border) 36%, rgba(255, 255, 255, 0.72));
-}
-
-:root[data-theme="dark"] .fluid-dialog__liquid-shell {
-  background:
-    radial-gradient(112% 148% at 24% -10%, rgba(255, 255, 255, 0.15), transparent 54%),
-    linear-gradient(
-      154deg,
-      color-mix(in srgb, var(--os-bg-panel) 84%, transparent),
-      color-mix(in srgb, var(--os-bg-panel) 56%, transparent)
-    );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.09),
-    0 26px 62px rgba(0, 0, 0, 0.52),
-    0 0 0 1px color-mix(in srgb, var(--os-border) 62%, transparent);
+  background: var(--os-liquid-panel-bg);
+  box-shadow: var(--os-liquid-panel-shadow);
 }
 
 .fluid-dialog__inner {
@@ -1854,34 +1790,12 @@ code {
   border-top-color: color-mix(in srgb, var(--os-border) 44%, transparent);
 }
 
-/* Popup menu blob: same motion as sidebar, flatter wash (lighter ring + softer depth). */
+/* Popup menu blob — same fill as FluidNav; nested shadow so it stacks with `.chat-history-card__menu`. */
 .chat-history-card__menu .fluid-popup-menu__blob {
   border-radius: 9px;
-  background:
-    radial-gradient(118% 150% at 32% -8%, rgba(255, 255, 255, 0.78), transparent 60%),
-    linear-gradient(
-      162deg,
-      color-mix(in srgb, var(--os-bg-hover) 72%, rgba(243, 244, 246, 0.94)),
-      color-mix(in srgb, rgba(239, 242, 255, 0.88) 55%, var(--os-bg-panel))
-    );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.45),
-    0 0 0 1px color-mix(in srgb, var(--os-border) 22%, transparent);
-  filter: saturate(1);
-}
-
-:root[data-theme="dark"] .chat-history-card__menu .fluid-popup-menu__blob {
-  background:
-    radial-gradient(118% 150% at 32% -8%, rgba(255, 255, 255, 0.08), transparent 58%),
-    linear-gradient(
-      162deg,
-      color-mix(in srgb, var(--os-bg-panel) 78%, transparent),
-      color-mix(in srgb, var(--os-bg-panel) 62%, transparent)
-    );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 0 0 1px color-mix(in srgb, var(--os-border) 38%, transparent);
-  filter: saturate(1.06);
+  background: var(--os-liquid-highlight-bg);
+  box-shadow: var(--os-liquid-highlight-shadow-nested);
+  filter: var(--os-liquid-highlight-filter);
 }
 
 .fluid-popup-menu__blob {
@@ -2277,30 +2191,31 @@ code {
   min-height: 1.5em;
 }
 
-/* 打字机效果 */
-.chat-lab__hero-typewriter {
-  color: var(--os-text-muted);
-  display: inline;
-}
-
-.chat-lab__hero-cursor {
+/* 首页副标题轮播 */
+.chat-lab__hero-rotator {
   display: inline-block;
-  width: 2px;
-  height: 1em;
-  background: var(--os-accent);
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  animation: cursor-blink 0.8s ease-in-out infinite;
-}
-
-.chat-lab__hero-cursor--typing {
-  animation: none;
+  color: var(--os-text-muted);
+  transition:
+    opacity 0.42s cubic-bezier(0.33, 1, 0.42, 1),
+    transform 0.42s cubic-bezier(0.33, 1.42, 0.42, 1);
   opacity: 1;
+  transform: translateY(0);
 }
 
-@keyframes cursor-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.2; }
+.chat-lab__hero-rotator--leaving {
+  opacity: 0;
+  transform: translateY(0.35rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-lab__hero-rotator {
+    transition: none;
+  }
+
+  .chat-lab__hero-rotator--leaving {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .chat-lab__hero-meta {
@@ -2426,29 +2341,46 @@ code {
   position: absolute;
   left: 0;
   top: 50%;
-  width: 2.25rem;
-  height: 4px;
+  width: 2.85rem;
+  height: 5px;
   border-radius: 999px;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  background: color-mix(in srgb, var(--os-text-muted) 32%, transparent);
+  isolation: isolate;
+  background: var(--os-liquid-highlight-bg);
+  box-shadow: var(--os-liquid-highlight-shadow-nested);
+  filter: var(--os-liquid-highlight-filter);
+  transition:
+    width 0.22s cubic-bezier(0.33, 1.42, 0.42, 1),
+    height 0.22s cubic-bezier(0.33, 1.42, 0.42, 1),
+    box-shadow 0.22s ease,
+    filter 0.22s ease;
 }
 
 .chat-lab__shell-resize--hot .chat-lab__shell-resize-grip {
-  background: color-mix(in srgb, var(--os-accent) 45%, var(--os-text-muted));
+  width: 3.15rem;
+  height: 6px;
+  box-shadow: var(--os-liquid-highlight-shadow);
 }
 
 .chat-lab__shell-resize-hint-inline {
-  padding: 0.1rem 0.55rem;
+  position: relative;
+  isolation: isolate;
+  padding: 0.22rem 0.72rem;
   border-radius: 999px;
   font-size: 0.68rem;
   font-weight: 600;
   line-height: 1.25;
   text-align: center;
-  color: color-mix(in srgb, var(--os-accent) 92%, var(--os-text));
-  background: color-mix(in srgb, var(--os-accent) 14%, var(--os-bg-elevated));
-  border: 1px solid color-mix(in srgb, var(--os-accent) 35%, var(--os-border));
+  color: var(--os-text);
+  background: var(--os-liquid-highlight-bg);
+  box-shadow: var(--os-liquid-highlight-shadow-nested);
+  filter: var(--os-liquid-highlight-filter);
   pointer-events: none;
+}
+
+.chat-lab__shell-resize--snapping .chat-lab__shell-resize-hint-inline {
+  box-shadow: var(--os-liquid-highlight-shadow);
 }
 
 .chat-lab__shell--long-text {
@@ -2475,17 +2407,20 @@ code {
 }
 
 .chat-lab__skill-chip {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
   max-width: 100%;
-  padding: 0.2rem 0.45rem 0.2rem 0.55rem;
+  padding: 0.22rem 0.45rem 0.22rem 0.55rem;
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--os-text);
-  background: color-mix(in srgb, var(--os-accent) 14%, var(--os-bg-panel));
-  border: 1px solid color-mix(in srgb, var(--os-accent) 32%, var(--os-border));
+  background: var(--os-liquid-highlight-bg);
+  box-shadow: var(--os-liquid-highlight-shadow-nested);
+  filter: var(--os-liquid-highlight-filter);
 }
 
 .chat-lab__skill-chip-ico {
@@ -2515,7 +2450,21 @@ code {
 
 .chat-lab__skill-chip-x:hover {
   color: var(--os-text);
-  background: color-mix(in srgb, var(--os-border) 38%, transparent);
+  background: color-mix(in srgb, var(--os-bg-hover) 72%, transparent);
+}
+
+.chat-lab__pill-btn--liquid {
+  color: var(--os-text);
+  font-weight: 600;
+  border-color: transparent;
+  background: var(--os-liquid-highlight-bg);
+  box-shadow: var(--os-liquid-highlight-shadow-nested);
+  filter: var(--os-liquid-highlight-filter);
+}
+
+.chat-lab__pill-btn--liquid:not(:disabled):hover {
+  color: var(--os-text);
+  box-shadow: var(--os-liquid-highlight-shadow);
 }
 
 .chat-lab__skill-chip-x:disabled {
@@ -3126,6 +3075,8 @@ code {
 }
 
 .chat-lab__msg-skill-pill {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   max-width: 100%;
   align-items: center;
@@ -3135,9 +3086,10 @@ code {
   border-radius: 999px;
   font-size: 0.72rem;
   line-height: 1.2;
-  color: var(--os-text-muted, #5c5c5c);
-  background: color-mix(in srgb, var(--os-bg-panel, #f4f4f4) 88%, var(--os-border, #ddd) 12%);
-  border: 1px solid color-mix(in srgb, var(--os-border, #ddd) 55%, transparent);
+  color: var(--os-text);
+  background: var(--os-liquid-highlight-bg);
+  box-shadow: var(--os-liquid-highlight-shadow-nested);
+  filter: var(--os-liquid-highlight-filter);
   box-sizing: border-box;
 }
 
@@ -3155,8 +3107,7 @@ code {
 }
 
 :root[data-theme="dark"] .chat-lab__msg-skill-pill {
-  background: color-mix(in srgb, var(--os-bg-panel) 90%, var(--os-accent) 6%);
-  border-color: color-mix(in srgb, var(--os-border) 70%, transparent);
+  color: var(--os-text);
 }
 
 .chat-lab__bubble {

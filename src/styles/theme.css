@@ -92,6 +92,33 @@
 
   /** Settings nav column aligns with primary rail tone. */
   --os-settings-aside-bg: var(--os-rail-surface);
+
+  /**
+   * Liquid / frosted highlight surfaces (FluidNav pill, Select rows, popup menus, settings orb fill).
+   * Nested shadow = inset + hairline only when the parent popover/card already provides elevation.
+   */
+  --os-liquid-highlight-bg:
+    radial-gradient(130% 170% at 28% 0%, rgba(255, 255, 255, 0.96), transparent 58%),
+    linear-gradient(
+      158deg,
+      color-mix(in srgb, rgba(236, 242, 255, 1) 82%, var(--os-bg-panel)),
+      color-mix(in srgb, rgba(255, 248, 252, 1) 72%, var(--os-bg-panel))
+    );
+  --os-liquid-highlight-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 10px 26px rgba(15, 23, 42, 0.055),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 42%, rgba(255, 255, 255, 0.65));
+  --os-liquid-highlight-shadow-nested:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 42%, rgba(255, 255, 255, 0.65));
+  --os-liquid-highlight-filter: saturate(1.05);
+
+  /** Full elevated panel (confirm dialog shell); same pastel fill as highlights, stronger depth. */
+  --os-liquid-panel-bg: var(--os-liquid-highlight-bg);
+  --os-liquid-panel-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 20px 48px rgba(15, 23, 42, 0.1),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 36%, rgba(255, 255, 255, 0.72));
 }
 
 :root[data-theme="dark"] {
@@ -169,6 +196,47 @@
   --rail-bg: var(--os-rail-surface);
 
   --os-settings-aside-bg: color-mix(in srgb, var(--os-bg-modal) 88%, transparent);
+
+  --os-liquid-highlight-bg:
+    radial-gradient(110% 140% at 28% 0%, rgba(255, 255, 255, 0.14), transparent 58%),
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--os-bg-panel) 85%, transparent),
+      color-mix(in srgb, var(--os-bg-panel) 62%, transparent)
+    );
+  --os-liquid-highlight-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 18px 46px rgba(0, 0, 0, 0.42),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 68%, transparent);
+  --os-liquid-highlight-shadow-nested:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 68%, transparent);
+  --os-liquid-highlight-filter: saturate(1.08);
+
+  --os-liquid-panel-bg: var(--os-liquid-highlight-bg);
+  --os-liquid-panel-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 26px 62px rgba(0, 0, 0, 0.52),
+    0 0 0 1px color-mix(in srgb, var(--os-border) 62%, transparent);
+}
+
+/**
+ * Building blocks for new menus / popovers — same tokens as `.fluid-nav__blob`.
+ * Add motion (`transition`) in the component layer.
+ */
+.os-liquid-highlight {
+  background: var(--os-liquid-highlight-bg);
+  box-shadow: var(--os-liquid-highlight-shadow);
+  filter: var(--os-liquid-highlight-filter);
+}
+
+.os-liquid-highlight--nested {
+  box-shadow: var(--os-liquid-highlight-shadow-nested);
+}
+
+.os-liquid-panel {
+  background: var(--os-liquid-panel-bg);
+  box-shadow: var(--os-liquid-panel-shadow);
 }
 
 html {

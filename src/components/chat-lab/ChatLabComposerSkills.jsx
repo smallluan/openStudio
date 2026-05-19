@@ -98,7 +98,7 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
       <button
         ref={refs.setReference}
         type="button"
-        className="chat-lab__pill-btn"
+        className={cn("chat-lab__pill-btn", selected && "chat-lab__pill-btn--liquid")}
         disabled={disabled}
         title={t("chatLab.toolbarSkillHint")}
         aria-haspopup="listbox"

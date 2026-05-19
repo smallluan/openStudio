@@ -728,8 +728,9 @@ export default function ChatLabPage() {
   /** Skill UI is local; keep it usable while waiting on gateway (matches `/` picker). Only lock while a reply streams. */
   const composerSkillUiLocked = gatewayStreaming;
 
-  const heroPlaceholder = useMemo(() => {
-    if (!isElectron) return t("chatLab.heroInputPlaceholder");
+  const composerPlaceholder = useMemo(() => {
+    const readyKey = messages.length === 0 ? "chatLab.heroInputPlaceholder" : "chatLab.placeholder";
+    if (!isElectron) return t(readyKey);
     if (!configLoaded) return t("chatLab.configLoadingPlaceholder");
     if (
       !configIssueKey &&
@@ -737,8 +738,8 @@ export default function ChatLabPage() {
     ) {
       return t("chatLab.gatewayConnectingPlaceholder");
     }
-    return t("chatLab.heroInputPlaceholder");
-  }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
+    return t(readyKey);
+  }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, messages.length, t]);
 
   const commitUserMessageEdit = useCallback(
     async (messageId, nextRaw) => {
@@ -1524,7 +1525,7 @@ export default function ChatLabPage() {
                 void addComposerImageFiles(fl);
               }
             }}
-            placeholder={heroPlaceholder}
+            placeholder={composerPlaceholder}
             disabled={composerInputLocked}
             spellCheck
           />
@@ -1641,7 +1642,7 @@ export default function ChatLabPage() {
                   </h1>
 
                   <p className="chat-lab__hero-sub">
-                    <TypewriterText
+                    <HeroPhraseRotator
                       phrases={[
                         t("chatLab.heroPhrase1"),
                         t("chatLab.heroPhrase2"),
@@ -1711,68 +1712,50 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
   return null;
 }
 
-/** 打字机效果组件，轮播显示多条文案 */
-function TypewriterText({ phrases, speed = 120, pause = 2500 }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [displayText, setDisplayText] = useState("");
-  const [isTyping, setIsTyping] = useState(true);
-  const phrasesRef = useRef(phrases);
-
-  // 语言切换时重置状态
-  useEffect(() => {
-    phrasesRef.current = phrases;
-    setCurrentIndex(0);
-    setDisplayText("");
-    setIsTyping(true);
-  }, [phrases]);
+/** 首页副标题：淡入淡出轮播（比打字机更稳定，避免多 timer 竞态）。 */
+function HeroPhraseRotator({ phrases, holdMs = 3200, fadeMs = 420 }) {
+  const [index, setIndex] = useState(0);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     if (!phrases?.length) return;
+    if (phrases.length === 1) {
+      setIndex(0);
+      setLeaving(false);
+      return;
+    }
 
-    const phrase = phrases[currentIndex];
-    let charIndex = 0;
+    let cancelled = false;
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let timer;
 
-    // 打字阶段
-    const typeInterval = setInterval(() => {
-      if (charIndex < phrase.length) {
-        setDisplayText(phrase.slice(0, charIndex + 1));
-        charIndex++;
-      } else {
-        clearInterval(typeInterval);
-        setIsTyping(false);
+    const schedule = (/** @type {() => void} */ fn, /** @type {number} */ delay) => {
+      timer = setTimeout(() => {
+        if (!cancelled) fn();
+      }, delay);
+    };
 
-        // 暂停后开始删除
-        const deleteTimeout = setTimeout(() => {
-          setIsTyping(true);
+    const cycle = () => {
+      setLeaving(true);
+      schedule(() => {
+        setIndex((prev) => (prev + 1) % phrases.length);
+        setLeaving(false);
+        schedule(cycle, holdMs);
+      }, fadeMs);
+    };
 
-          const deleteInterval = setInterval(() => {
-            if (charIndex > 0) {
-              charIndex--;
-              setDisplayText(phrase.slice(0, charIndex));
-            } else {
-              clearInterval(deleteInterval);
+    schedule(cycle, holdMs);
 
-              // 切换到下一句
-              setCurrentIndex((prev) => (prev + 1) % phrases.length);
-              setIsTyping(true);
-            }
-          }, speed / 2);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [phrases, holdMs, fadeMs]);
 
-          return () => clearInterval(deleteInterval);
-        }, pause);
-
-        return () => clearTimeout(deleteTimeout);
-      }
-    }, speed);
-
-    return () => clearInterval(typeInterval);
-  }, [currentIndex, phrases, speed, pause]);
+  const phrase = phrases[index] ?? "";
 
   return (
-    <span className="chat-lab__hero-typewriter">
-      {displayText}
-      <span className={cn("chat-lab__hero-cursor", isTyping && "chat-lab__hero-cursor--typing")} />
-    </span>
+    <span className={cn("chat-lab__hero-rotator", leaving && "chat-lab__hero-rotator--leaving")}>{phrase}</span>
   );
 }
 

@@ -31,7 +31,7 @@ function overflowScrollAncestorsUntil(node, until) {
 }
 
 /**
- * Animated highlight blob inside popovers/lists (same visuals as `.fluid-nav__blob`).
+ * Animated highlight blob inside popovers/lists (`--os-liquid-highlight-*` / `.fluid-nav__blob`).
  *
  * @param {{
  *   open: boolean;
