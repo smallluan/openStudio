@@ -312,23 +312,9 @@
   },
   "bootstrap": {
     "title": "Open Studio 正在就绪",
-    "subtitle": "连接网关并预建工具与会话（tools.catalog → sessions.create → tools.effective）。不向模型计费发送界面里的对话文本，但会触发网关本地鉴权与模型解析。说明：OpenClaw 在每条 chat.send 内仍会重建 embedded 运行时的很大一部分；完整预热只能减轻「跳过启动屏 / 网关重启」带来的额外冷启动，无法把每条消息压到毫秒级。",
-    "phase": {
-      "starting": "正在准备…",
-      "configSync": "正在同步本机配置到 OpenClaw 工作区…",
-      "connect": "正在连接网关并完成握手（含侧车服务就绪重试）…",
-      "toolsCatalog": "正在加载工具目录与插件注册表…",
-      "sessionEnsure": "正在确保会话已写入网关会话存储…",
-      "toolsEffective": "正在构建可执行工具句柄（与首条消息的 core-plugin-tools 阶段一致，可能较慢）…",
-      "ready": "网关与工具面已就绪",
-      "skippedNoGateway": "尚未填写网关地址，已跳过网关预加载。稍后在「设置」中配置即可使用对话。",
-      "error": "启动过程中出错"
-    },
-    "banner": "尽量完成此屏：跳过或网关重启后，每条对话仍可能在网关内做较重的 embedded 准备（见日志 core-plugin-tools / stream-setup）。进入对话页后 Studio 也会按需补跑一次相同的网关 RPC（约每 90 秒最多一次）。",
     "retry": "重试",
     "openSettings": "打开设置",
-    "skipEnter": "跳过预加载（首轮对话可能仍很慢）",
-    "gatewayUnreachableHint": "通常表示本机网关进程尚未监听对应端口。若使用仓库脚本，请运行带网关的 `npm run dev`，或手动执行 `npm run dev:gateway` / `openclaw gateway` 后再点「重试」。",
+    "skipEnter": "跳过",
     "unknownError": "启动失败"
   },
   "studio": {
@@ -375,6 +361,7 @@
       "openai": "OpenAI",
       "anthropic": "Anthropic",
       "google": "Google Gemini",
+      "deepseek": "DeepSeek",
       "openai-compatible": "OpenAI 兼容（自定义 Base URL）"
     },
     "modelId": "模型 ID",

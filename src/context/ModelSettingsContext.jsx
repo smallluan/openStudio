@@ -5,6 +5,7 @@ const MODEL_PROVIDER_IDS = /** @type {const} */ ([
   "openai",
   "anthropic",
   "google",
+  "deepseek",
   "openai-compatible",
 ]);
 
@@ -179,7 +180,7 @@ export function ModelSettingsProvider({ children }) {
           label,
           provider: MODEL_PROVIDER_IDS.includes(/** @type {*} */ (provider)) ? provider : "",
           modelId: modelId.trim(),
-          baseUrl: provider === "openai-compatible" ? baseUrl.trim() : "",
+          baseUrl: (provider === "openai-compatible" || provider === "deepseek") ? baseUrl.trim() : "",
         })),
         activeModelProfileId: sendProfiles.length === 0 ? "" : sendActive || "",
         openclaw: openclawPatch,
