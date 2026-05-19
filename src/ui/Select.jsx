@@ -47,11 +47,13 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
     hoverKey,
     fallbackKey: String(value),
     layoutKey,
+    inset: 2, // blob内缩2px，避免覆盖到button边缘
   });
 
   useEffect(() => {
     if (!open) setHoverKey(null);
-  }, [open]);
+    else setHoverKey(String(value)); // 打开时立即显示选中项的高亮
+  }, [open, value]);
 
   const { refs, floatingStyles, context } = useFloating({
     open: present,
@@ -141,11 +143,11 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
                   {options.map((opt) => (
                     <li key={opt.value} role="option" aria-selected={opt.value === value}>
                       <div
-                        ref={(node) => setItemRef(String(opt.value), node)}
                         className="fluid-select__measure w-full"
                         onPointerEnter={() => setHoverKey(String(opt.value))}
                       >
                         <button
+                          ref={(node) => setItemRef(String(opt.value), node)}
                           type="button"
                           className={cn(
                             "fluid-select__hit flex h-8 w-full items-center rounded-md border-none px-2.5 text-left text-[0.8125rem] outline-none transition-colors duration-[0.45s] ease-[cubic-bezier(0.34,1.2,0.52,1)]",

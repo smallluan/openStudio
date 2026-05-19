@@ -38,11 +38,13 @@ function overflowScrollAncestorsUntil(node, until) {
  *   hoverKey: string | null;
  *   fallbackKey?: string | null;
  *   layoutKey?: string;
+ *   inset?: number; // blob内缩像素，让blob不覆盖到元素边缘
  * }} opts
  */
-export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKey = "" }) {
+export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKey = "", inset = 0 }) {
   const rootRef = useRef(/** @type {HTMLElement | null} */ (null));
   const itemRefs = useRef(new Map());
+  const blobReadyRef = useRef(false); // 记录blob是否准备好显示
 
   const setItemRef = useCallback((/** @type {string} */ key, /** @type {HTMLElement | null} */ node) => {
     const m = itemRefs.current;
@@ -60,6 +62,14 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
 
   const targetKey = hoverKey ?? fallbackKey;
 
+  // 当open变为false时重置ready状态
+  useLayoutEffect(() => {
+    if (!open) {
+      blobReadyRef.current = false;
+      setBlob((b) => ({ ...b, opacity: 0 }));
+    }
+  }, [open]);
+
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!open || !root) {
@@ -76,7 +86,7 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
       return;
     }
 
-    const measure = () => {
+    const measure = (forceOpacity = false) => {
       const rootLive = rootRef.current;
       const idLive = hoverKey ?? fallbackKey;
       const rowLive = idLive != null ? itemRefs.current.get(idLive) : null;
@@ -86,13 +96,16 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
       }
       const r = rootLive.getBoundingClientRect();
       const e = rowLive.getBoundingClientRect();
-      const left = Math.round((e.left - r.left + rootLive.scrollLeft) * 100) / 100;
-      const top = Math.round((e.top - r.top + rootLive.scrollTop) * 100) / 100;
-      const width = Math.round(e.width * 100) / 100;
-      const height = Math.round(e.height * 100) / 100;
+      const left = Math.round((e.left - r.left + rootLive.scrollLeft + inset) * 100) / 100;
+      const top = Math.round((e.top - r.top + rootLive.scrollTop + inset) * 100) / 100;
+      const width = Math.round((e.width - inset * 2) * 100) / 100;
+      const height = Math.round((e.height - inset * 2) * 100) / 100;
+
+      const opacity = blobReadyRef.current || forceOpacity ? 1 : 0;
+
       setBlob((prev) => {
         if (
-          prev.opacity === 1 &&
+          prev.opacity === opacity &&
           prev.left === left &&
           prev.top === top &&
           prev.width === width &&
@@ -100,11 +113,17 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
         ) {
           return prev;
         }
-        return { left, top, width, height, opacity: 1 };
+        return { left, top, width, height, opacity };
       });
     };
 
     measure();
+
+    // 延迟显示blob，等待popup入场动画稳定
+    const showTimeout = setTimeout(() => {
+      blobReadyRef.current = true;
+      measure(true); // 强制显示
+    }, 180);
 
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
     ro?.observe(root);
@@ -118,13 +137,14 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
     }
 
     return () => {
+      clearTimeout(showTimeout);
       ro?.disconnect();
       root.removeEventListener("scroll", onScroll);
       for (const sc of nestedScrollers) {
         sc.removeEventListener("scroll", onScroll);
       }
     };
-  }, [open, targetKey, hoverKey, fallbackKey, layoutKey]);
+  }, [open, targetKey, hoverKey, fallbackKey, layoutKey, inset]);
 
   const blobStyle = {
     transform: `translate3d(${blob.left}px, ${blob.top}px, 0)`,
