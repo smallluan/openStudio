@@ -441,6 +441,68 @@ code {
   }
 }
 
+/* Skill row 进入动画 */
+@keyframes skill-row-enter {
+  0% {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    transform: translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    max-height: 40px;
+    padding-top: 0.65rem;
+    transform: translateY(0);
+  }
+}
+
+@keyframes skill-row-exit {
+  0% {
+    opacity: 1;
+    max-height: 40px;
+    padding-top: 0.65rem;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Attachments row 进入动画 */
+@keyframes attachments-row-enter {
+  0% {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    transform: translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    max-height: 80px;
+    padding-top: 0.45rem;
+    transform: translateY(0);
+  }
+}
+
+@keyframes attachments-row-exit {
+  0% {
+    opacity: 1;
+    max-height: 80px;
+    padding-top: 0.45rem;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    transform: translateY(-4px);
+  }
+}
+
 /* 圆形按钮 */
 .chat-lab-top-pull__orb {
   width: 28px;
@@ -2216,6 +2278,15 @@ code {
     opacity: 1;
     transform: none;
   }
+
+  .chat-lab__shell-skill-row,
+  .chat-lab__composer-attachments {
+    animation: none;
+  }
+
+  .chat-lab__shell-textarea {
+    transition: none;
+  }
 }
 
 .chat-lab__hero-meta {
@@ -2391,6 +2462,10 @@ code {
   user-select: none;
 }
 
+.chat-lab__shell--resize-drag .chat-lab__shell-textarea {
+  transition: none;
+}
+
 .chat-lab__shell-body {
   display: flex;
   flex-direction: column;
@@ -2404,6 +2479,11 @@ code {
   align-items: center;
   gap: 0.35rem;
   padding: 0.65rem 1.1rem 0;
+  animation: skill-row-enter 0.22s ease-out;
+}
+
+.chat-lab__shell-skill-row--leaving {
+  animation: skill-row-exit 0.18s ease-in forwards;
 }
 
 .chat-lab__skill-chip {
@@ -2500,6 +2580,11 @@ code {
   padding: 0.45rem 1.05rem 0;
   overflow-x: auto;
   scrollbar-width: thin;
+  animation: attachments-row-enter 0.22s ease-out;
+}
+
+.chat-lab__composer-attachments--leaving {
+  animation: attachments-row-exit 0.18s ease-in forwards;
 }
 
 .chat-lab__composer-att-thumb {
@@ -2752,6 +2837,7 @@ code {
   font-family: inherit;
   padding: 1rem 1.1rem 0.5rem;
   outline: none;
+  transition: height 0.18s ease, padding-top 0.18s ease;
 }
 
 .chat-lab__shell-textarea:disabled {
