@@ -37,6 +37,9 @@ import {
   renameSession,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
+import { useTheme } from "../context/ThemeContext.jsx";
+import heroAvatarLight from "../assets/images/hero-avatar-light.png";
+import heroAvatarDark from "../assets/images/hero-avatar-dark.png";
 import { useI18n } from "../context/I18nContext.jsx";
 import {
   useChatLabStreaming,
@@ -269,6 +272,7 @@ function buildStudioGatewayPrewarmIds(currentConversationId, max) {
 
 
 export default function ChatLabPage() {
+  const { theme } = useTheme();
   const { t, locale } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
@@ -1619,23 +1623,33 @@ export default function ChatLabPage() {
             <>
               <div className="chat-lab__landing-mid">
                 <div className="chat-lab__hero">
+                  {/* 机器人头像 */}
+                  <div className="chat-lab__hero-avatar">
+                    <img
+                      className="chat-lab__hero-avatar-icon"
+                      src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
+                      alt=""
+                      aria-hidden
+                    />
+                  </div>
+
                   <h1 className="chat-lab__hero-title">
                     <span className="chat-lab__hero-hi">Hi,</span>{" "}
-                    {t("chatLab.heroGreeting", { brand: t("titlebar.appName") })}
-                    <span className="chat-lab__hero-star" aria-hidden>
-                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path
-                          d="M10 2.2 11.8 7.2 17 7.2 13.1 10.4 14.6 15.8 10 12.7 5.4 15.8 6.9 10.4 3 7.2 8.2 7.2Z"
-                          fill="var(--os-accent)"
-                          fillOpacity="0.35"
-                          stroke="var(--os-accent)"
-                          strokeWidth="1"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
+                    <span className="chat-lab__hero-brand">
+                      {t("chatLab.heroGreeting", { brand: t("titlebar.appName") })}
                     </span>
                   </h1>
-                  <p className="chat-lab__hero-sub muted">{t("chatLab.heroSubtitle")}</p>
+
+                  <p className="chat-lab__hero-sub">
+                    <TypewriterText
+                      phrases={[
+                        t("chatLab.heroPhrase1"),
+                        t("chatLab.heroPhrase2"),
+                        t("chatLab.heroPhrase3"),
+                        t("chatLab.heroPhrase4"),
+                      ]}
+                    />
+                  </p>
                 </div>
               </div>
               {composer}
@@ -1695,6 +1709,71 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
   }, [messages, preview, t]);
 
   return null;
+}
+
+/** 打字机效果组件，轮播显示多条文案 */
+function TypewriterText({ phrases, speed = 120, pause = 2500 }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [displayText, setDisplayText] = useState("");
+  const [isTyping, setIsTyping] = useState(true);
+  const phrasesRef = useRef(phrases);
+
+  // 语言切换时重置状态
+  useEffect(() => {
+    phrasesRef.current = phrases;
+    setCurrentIndex(0);
+    setDisplayText("");
+    setIsTyping(true);
+  }, [phrases]);
+
+  useEffect(() => {
+    if (!phrases?.length) return;
+
+    const phrase = phrases[currentIndex];
+    let charIndex = 0;
+
+    // 打字阶段
+    const typeInterval = setInterval(() => {
+      if (charIndex < phrase.length) {
+        setDisplayText(phrase.slice(0, charIndex + 1));
+        charIndex++;
+      } else {
+        clearInterval(typeInterval);
+        setIsTyping(false);
+
+        // 暂停后开始删除
+        const deleteTimeout = setTimeout(() => {
+          setIsTyping(true);
+
+          const deleteInterval = setInterval(() => {
+            if (charIndex > 0) {
+              charIndex--;
+              setDisplayText(phrase.slice(0, charIndex));
+            } else {
+              clearInterval(deleteInterval);
+
+              // 切换到下一句
+              setCurrentIndex((prev) => (prev + 1) % phrases.length);
+              setIsTyping(true);
+            }
+          }, speed / 2);
+
+          return () => clearInterval(deleteInterval);
+        }, pause);
+
+        return () => clearTimeout(deleteTimeout);
+      }
+    }, speed);
+
+    return () => clearInterval(typeInterval);
+  }, [currentIndex, phrases, speed, pause]);
+
+  return (
+    <span className="chat-lab__hero-typewriter">
+      {displayText}
+      <span className={cn("chat-lab__hero-cursor", isTyping && "chat-lab__hero-cursor--typing")} />
+    </span>
+  );
 }
 
 function ToolbarChevron() {
