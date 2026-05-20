@@ -1,3 +1,4 @@
+import { preferLongerAssistantText } from "../chat/streamTimelineMerge.js";
 import { BUILTIN_CATEGORY_IDS } from "./skillsCatalog.js";
 import { loadSkillLibrary, saveSkillLibrary } from "./skillsLocalStore.js";
 
@@ -10,18 +11,10 @@ function mergeAssistantTerminal(m, extra) {
   /** @type {*} */
   const next = { ...m, streaming: false };
   if (typeof extra?.content === "string") {
-    const incoming = extra.content;
-    const prev = String(m.content ?? "");
-    if (incoming.trim().length > 0 || prev.trim().length === 0) {
-      next.content = incoming;
-    }
+    next.content = preferLongerAssistantText(String(m.content ?? ""), extra.content);
   }
   if (typeof extra?.thinking === "string") {
-    const incoming = extra.thinking;
-    const prev = String(m.thinking ?? "");
-    if (incoming.trim().length > 0 || prev.trim().length === 0) {
-      next.thinking = incoming;
-    }
+    next.thinking = preferLongerAssistantText(String(m.thinking ?? ""), extra.thinking);
   }
   if (extra?.error) next.error = extra.error;
   if (Array.isArray(extra?.toolTrace)) {

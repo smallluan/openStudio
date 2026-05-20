@@ -8,6 +8,7 @@ export default function StudioChatBar() {
   const { setAgentMode, agents } = useStudio();
   const primaryId = agents[0]?.id;
   const [text, setText] = useState("");
+  const canSend = Boolean(text.trim() && primaryId);
 
   const send = () => {
     const t = text.trim();
@@ -38,7 +39,12 @@ export default function StudioChatBar() {
             if (e.key === "Enter") send();
           }}
         />
-        <button type="button" className="btn-primary" onClick={send}>
+        <button
+          type="button"
+          className={`btn-primary studio-chat__send ${canSend ? "studio-chat__send--ready" : ""}`}
+          onClick={send}
+          disabled={!canSend}
+        >
           {t("studio.chat.send")}
         </button>
       </div>

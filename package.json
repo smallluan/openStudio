@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "dev:vite": "vite",
-    "dev:gateway": "cross-env OPENCLAW_ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS=1 openclaw --dev gateway run --bind loopback --port 19001 --force",
+    "dev:gateway": "cross-env OPENCLAW_ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS=1 node scripts/run-openclaw-gateway.mjs",
+    "pack:openclaw": "node scripts/pack-openclaw-asar.mjs",
     "dev:electron": "wait-on http://127.0.0.1:5173 && cross-env NODE_ENV=development electron .",
     "dev": "cross-env NODE_ENV=development concurrently -k -n vite,gateway,electron \"npm:dev:vite\" \"npm:dev:gateway\" \"npm:dev:electron\"",
     "build": "vite build",
@@ -14,7 +15,7 @@
     "preview": "vite preview",
     "openclaw": "openclaw",
     "windows:defender-exclude-openclaw-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-defender-exclude-openclaw-dev.ps1",
-    "postinstall": "node scripts/apply-openclaw-memo.mjs && node scripts/patch-openclaw-chat-image-inline.mjs && node scripts/generate-openclaw-bundled-skills.mjs"
+    "postinstall": "node scripts/apply-openclaw-memo.mjs && node scripts/patch-openclaw-chat-image-inline.mjs && node scripts/patch-openclaw-studio-lean-chat.mjs && node scripts/generate-openclaw-bundled-skills.mjs"
   },
   "engines": {
     "node": ">=22.14.0"
@@ -43,9 +44,11 @@
       "en-US",
       "zh-CN"
     ],
+    "asar": true,
     "asarUnpack": [
       "**/*.{node,dll}",
-      "node_modules/**"
+      "node_modules/openclaw/openclaw.mjs",
+      "node_modules/openclaw/dist/**"
     ],
     "win": {
       "artifactName": "${productName}-Setup-${version}.${ext}",

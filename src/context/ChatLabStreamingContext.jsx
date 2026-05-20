@@ -14,9 +14,12 @@ import {
 } from "../chat/chatSessionsStore.js";
 import {
   mergeTimelineAgentActivity,
+  mergeAssistantTextChunk,
+  mergeTimelineContentSync,
   mergeTimelineTextDelta,
   mergeTimelineThinkingDelta,
   mergeTimelineToolTrace,
+  preferLongerAssistantText,
 } from "../chat/streamTimelineMerge.js";
 import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
 
@@ -80,8 +83,8 @@ function persistAssistantMerge(
     const prevT = String(m.thinking ?? "");
     const incC = typeof content === "string" ? content : "";
     const incT = typeof thinking === "string" ? thinking : "";
-    const nextC = incC.trim().length > 0 || prevC.trim().length === 0 ? incC : prevC;
-    const nextT = incT.trim().length > 0 || prevT.trim().length === 0 ? incT : prevT;
+    const nextC = preferLongerAssistantText(prevC, incC);
+    const nextT = preferLongerAssistantText(prevT, incT);
     /** @type {typeof m} */
     const row = { ...m, content: nextC };
     if (nextT.trim()) row.thinking = nextT;
@@ -296,11 +299,16 @@ export function ChatLabStreamingProvider({ children }) {
           cancelPendingDoneFinalize();
           const prev = sliceRef.current;
           if (!prev || prev.streamId !== evt.streamId) return;
-          const next = {
-            ...prev,
-            content: typeof evt.content === "string" ? evt.content : prev.content ?? "",
-            thinking: typeof evt.thinking === "string" ? evt.thinking : prev.thinking ?? "",
-          };
+          const content = preferLongerAssistantText(
+            prev.content ?? "",
+            typeof evt.content === "string" ? evt.content : "",
+          );
+          const thinking = preferLongerAssistantText(
+            prev.thinking ?? "",
+            typeof evt.thinking === "string" ? evt.thinking : "",
+          );
+          const assistantTimeline = mergeTimelineContentSync(prev.assistantTimeline, content, thinking);
+          const next = { ...prev, content, thinking, assistantTimeline };
           sliceRef.current = next;
           setGatewayStreamSlice(next);
           schedulePersist();
@@ -339,7 +347,7 @@ export function ChatLabStreamingProvider({ children }) {
             const assistantTimeline = mergeTimelineThinkingDelta(prev.assistantTimeline, evt.delta);
             const next = {
               ...prev,
-              thinking: (prev.thinking ?? "") + evt.delta,
+              thinking: mergeAssistantTextChunk(prev.thinking ?? "", evt.delta),
               assistantTimeline,
             };
             sliceRef.current = next;
@@ -356,7 +364,7 @@ export function ChatLabStreamingProvider({ children }) {
             const assistantTimeline = mergeTimelineTextDelta(prev.assistantTimeline, evt.delta);
             const next = {
               ...prev,
-              content: (prev.content ?? "") + evt.delta,
+              content: mergeAssistantTextChunk(prev.content ?? "", evt.delta),
               assistantTimeline,
             };
             sliceRef.current = next;

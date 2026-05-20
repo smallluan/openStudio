@@ -109,12 +109,13 @@ export function pickPrimaryWorkspacePreviewCandidate(message) {
     }
   }
 
-  const content = String(message.content ?? "");
-  for (const p of scrapePathsFromText(content)) {
-    ranked.push({ path: p, label: filenameHint(p), score: 30 });
-  }
+  // Do not scrape assistant prose alone — models often mention hypothetical filenames
+  // (e.g. clarify-intent-card.html) without writing them to the workspace.
 
   if (!ranked.length) return null;
+
+  const hasWriteEvidence = ranked.some((x) => x.score >= 100);
+  if (!hasWriteEvidence) return null;
 
   /** @type {Map<string, { path: string; label: string; score: number }>} */
   const byPath = new Map();

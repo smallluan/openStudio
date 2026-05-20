@@ -47,10 +47,17 @@ export function toolTraceKeyFromEvent(evt) {
 export function activityKeyFromEvent(evt) {
   const stream = typeof evt.stream === "string" ? evt.stream : "";
   const payload = evt.payload && typeof evt.payload === "object" ? evt.payload : {};
+  const runId = typeof evt.runId === "string" ? evt.runId.trim() : "";
+  const phase = typeof payload.phase === "string" ? payload.phase.trim().toLowerCase() : "";
   const itemId = typeof payload.itemId === "string" ? payload.itemId : "";
   const tc = typeof payload.toolCallId === "string" ? payload.toolCallId : "";
   const seq = typeof evt.seq === "number" ? evt.seq : 0;
-  return `${stream}:${itemId || tc || String(seq)}`;
+  if (stream === "lifecycle") {
+    const runPart = runId || itemId || tc || "run";
+    if (phase) return `lifecycle:${runPart}:${phase}`;
+    return `lifecycle:${runPart}:${seq}`;
+  }
+  return `${stream}:${itemId || tc || runId || String(seq)}`;
 }
 
 /**

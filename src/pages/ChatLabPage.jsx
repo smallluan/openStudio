@@ -29,6 +29,7 @@ import {
   formatQuestionnaireReplyMessage,
   parseAssistantQuickReplies,
 } from "../chat/assistantQuickReplyParse.js";
+import { preferLongerAssistantText, reconcileTimelineWithCanonicalText } from "../chat/streamTimelineMerge.js";
 import { normalizeLatexMathDelimitersForRemark } from "../chat/normalizeLatexMathDelimitersForRemark.js";
 import {
   deriveTitleFromMessages,
@@ -222,18 +223,10 @@ function mergeTerminalAssistantPayload(m, extra) {
   /** @type {*} */
   const next = { ...m, streaming: false };
   if (typeof extra?.content === "string") {
-    const incoming = extra.content;
-    const prev = String(m.content ?? "");
-    if (incoming.trim().length > 0 || prev.trim().length === 0) {
-      next.content = incoming;
-    }
+    next.content = preferLongerAssistantText(String(m.content ?? ""), extra.content);
   }
   if (typeof extra?.thinking === "string") {
-    const incoming = extra.thinking;
-    const prev = String(m.thinking ?? "");
-    if (incoming.trim().length > 0 || prev.trim().length === 0) {
-      next.thinking = incoming;
-    }
+    next.thinking = preferLongerAssistantText(String(m.thinking ?? ""), extra.thinking);
   }
   if (extra?.error) next.error = extra.error;
   if (Array.isArray(extra?.toolTrace)) {
@@ -246,7 +239,12 @@ function mergeTerminalAssistantPayload(m, extra) {
   }
   if (Array.isArray(extra?.assistantTimeline)) {
     if (extra.assistantTimeline.length > 0) {
-      next.assistantTimeline = /** @type {typeof m.assistantTimeline} */ (extra.assistantTimeline);
+      const tl = /** @type {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[]} */ (
+        extra.assistantTimeline
+      );
+      const canon = typeof next.content === "string" ? next.content : "";
+      next.assistantTimeline =
+        canon.trim().length > 0 ? reconcileTimelineWithCanonicalText(tl, canon) : tl;
     } else delete next.assistantTimeline;
   }
   return next;
@@ -1319,7 +1317,7 @@ export default function ChatLabPage() {
     const windowK = Math.round(CONTEXT_WINDOW_APPROX_TOKENS / 1000);
     const line1 = t("chatLab.contextMeterLine1", { pct });
     const line2 = t("chatLab.contextMeterLine2", { n: contextUsageApprox.tokens, windowK });
-    return { line1, line2, ariaSummary: `${line1}，${line2}` };
+    return { line1, line2, pct, ariaSummary: `${line1}，${line2}` };
   }, [contextUsageApprox.frac, contextUsageApprox.tokens, t]);
 
   const addComposerImageFiles = useCallback(
@@ -1580,31 +1578,25 @@ export default function ChatLabPage() {
             <ChatLabContextMeter
               ratio={Math.min(1, contextUsageApprox.frac)}
               ariaSummary={contextMeterLines.ariaSummary}
-              line1={contextMeterLines.line1}
-              line2={contextMeterLines.line2}
+              percentText={`${contextMeterLines.pct}%`}
             />
-            {gatewayStreaming ? (
-              <button
-                type="button"
-                className="chat-lab__send-round chat-lab__send-round--stop"
-                onClick={stop}
-                title={t("chatLab.stop")}
-                aria-label={t("chatLab.stop")}
-              >
+            <button
+              type="button"
+              className={cn(
+                "chat-lab__send-round",
+                gatewayStreaming ? "chat-lab__send-round--stop" : "chat-lab__send-round--send",
+                !gatewayStreaming && canSend && "chat-lab__send-round--active",
+              )}
+              disabled={!gatewayStreaming && !canSend}
+              onClick={gatewayStreaming ? stop : send}
+              title={gatewayStreaming ? t("chatLab.stop") : sendButtonTitle}
+              aria-label={gatewayStreaming ? t("chatLab.stop") : t("chatLab.send")}
+            >
+              <span className="chat-lab__send-round-label">{t("chatLab.send")}</span>
+              <span className="chat-lab__send-round-stop-icon" aria-hidden>
                 <ChatStreamPauseIcon />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={cn("chat-lab__send-round", canSend && "chat-lab__send-round--active")}
-                disabled={!canSend}
-                onClick={send}
-                title={sendButtonTitle}
-                aria-label={t("chatLab.send")}
-              >
-                <ChatSendIcon />
-              </button>
-            )}
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -1621,40 +1613,37 @@ export default function ChatLabPage() {
         />
         <div className={cn("chat-lab", isLanding && "chat-lab--landing", !isLanding && "chat-lab--thread")}>
           {isLanding ? (
-            <>
-              <div className="chat-lab__landing-mid">
-                <div className="chat-lab__hero">
-                  {/* 机器人头像 */}
-                  <div className="chat-lab__hero-avatar">
-                    <img
-                      className="chat-lab__hero-avatar-icon"
-                      src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
-                      alt=""
-                      aria-hidden
-                    />
-                  </div>
-
-                  <h1 className="chat-lab__hero-title">
-                    <span className="chat-lab__hero-hi">Hi,</span>{" "}
-                    <span className="chat-lab__hero-brand">
-                      {t("chatLab.heroGreeting", { brand: t("titlebar.appName") })}
-                    </span>
-                  </h1>
-
-                  <p className="chat-lab__hero-sub">
-                    <HeroPhraseRotator
-                      phrases={[
-                        t("chatLab.heroPhrase1"),
-                        t("chatLab.heroPhrase2"),
-                        t("chatLab.heroPhrase3"),
-                        t("chatLab.heroPhrase4"),
-                      ]}
-                    />
-                  </p>
+            <div className="chat-lab__landing-mid">
+              <div className="chat-lab__hero">
+                {/* 机器人头像 */}
+                <div className="chat-lab__hero-avatar">
+                  <img
+                    className="chat-lab__hero-avatar-icon"
+                    src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
+                    alt=""
+                    aria-hidden
+                  />
                 </div>
+
+                <h1 className="chat-lab__hero-title">
+                  <span className="chat-lab__hero-hi">Hi,</span>{" "}
+                  <span className="chat-lab__hero-brand">
+                    {t("chatLab.heroGreeting", { brand: t("titlebar.appName") })}
+                  </span>
+                </h1>
+
+                <p className="chat-lab__hero-sub">
+                  <HeroPhraseRotator
+                    phrases={[
+                      t("chatLab.heroPhrase1"),
+                      t("chatLab.heroPhrase2"),
+                      t("chatLab.heroPhrase3"),
+                      t("chatLab.heroPhrase4"),
+                    ]}
+                  />
+                </p>
               </div>
-              {composer}
-            </>
+            </div>
           ) : (
             <div className="chat-lab__thread-stack">
               <header className="chat-lab__conv-header">
@@ -1674,9 +1663,9 @@ export default function ChatLabPage() {
                 locale={locale}
                 threadLabel={t("chatLab.title")}
               />
-              {composer}
             </div>
           )}
+          <div className="chat-lab__composer-slot">{composer}</div>
         </div>
         <ChatLabPreviewDock />
       </div>
@@ -1770,20 +1759,6 @@ function ToolbarChevron() {
       aria-hidden
     >
       <path d="M3 4.5 6 7.5l3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ChatSendIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }
@@ -1895,88 +1870,8 @@ function GapToolActivityPanel({ segments, toolMap, activityMap, t, streaming }) 
 }
 
 /**
- * @param {{
- *   kind: "text";
- *   body: string;
- *   key: string;
- * } | {
- *   kind: "thinking";
- *   body: string;
- *   key: string;
- * } | {
- *   kind: "toolActivityGap";
- *   segments: Array<{ kind: "tool"; refId: string } | { kind: "activity"; refId: string }>;
- *   key: string;
- * }} p
- */
-function cloneTimelineRenderPart(p) {
-  return p.kind === "toolActivityGap" ? { ...p, segments: [...p.segments] } : { ...p };
-}
-
-/**
- * Only touches the **last** tool/step gap: consecutive `text` deltas right after it are folded into
- * the nearest preceding prose segment (nothing earlier changes). That gap is then rendered last so
- * lifecycle stays visually at the bottom even when thinking/text follows in stream order.
- * @param {Array<
- *   | { kind: "text"; body: string; key: string }
- *   | { kind: "thinking"; body: string; key: string }
- *   | {
- *       kind: "toolActivityGap";
- *       segments: Array<{ kind: "tool"; refId: string } | { kind: "activity"; refId: string }>;
- *       key: string;
- *     }
- * >} parts
- */
-function finalizeLastLifecycleGapTail(parts) {
-  let idxGap = -1;
-  for (let i = parts.length - 1; i >= 0; i--) {
-    if (parts[i].kind === "toolActivityGap") {
-      idxGap = i;
-      break;
-    }
-  }
-  if (idxGap < 0) return parts;
-
-  /** @type {number[]} */
-  const absorbedTailIndices = [];
-  for (let i = idxGap + 1; i < parts.length; i++) {
-    const p = parts[i];
-    if (p.kind === "text" && String(p.body ?? "").trim()) absorbedTailIndices.push(i);
-    else break;
-  }
-
-  const mergedTail = absorbedTailIndices.map((ti) => String(parts[ti].body ?? "").trim()).join("\n\n");
-
-  let proseIdx = idxGap - 1;
-  while (proseIdx >= 0 && parts[proseIdx].kind !== "text") proseIdx--;
-
-  const absorbTrailingText = mergedTail.length > 0 && proseIdx >= 0;
-  const absorbed = new Set(absorbedTailIndices);
-
-  /** @type {typeof parts} */
-  const out = [];
-  for (let i = 0; i < parts.length; i++) {
-    if (i === idxGap) continue;
-    if (absorbed.has(i)) continue;
-    if (i === proseIdx && absorbTrailingText) {
-      const p = parts[i];
-      const head = String(p.body ?? "").trimEnd();
-      out.push({
-        ...p,
-        body: `${head}\n\n${mergedTail}`,
-        key: `${p.key}|aft-last-gap`,
-      });
-      continue;
-    }
-    out.push(cloneTimelineRenderPart(parts[i]));
-  }
-
-  out.push(cloneTimelineRenderPart(parts[idxGap]));
-  return out;
-}
-
-/**
- * Render assistant reply segments in gateway order (prose ⟷ tools ⟷ steps).
+ * Render assistant reply in timeline order: prose blocks alternate with gap panels.
+ * Consecutive tool/step refs between two text segments merge into one gap panel.
  * @param {{
  *   timeline: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[];
  *   toolRows: import("../chat/toolTraceMerge.js").ToolTraceRow[];
@@ -2002,16 +1897,11 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
   const toolMap = useMemo(() => new Map(toolRows.map((r) => [r.id, r])), [toolRows]);
   const activityMap = useMemo(() => new Map(activityRows.map((r) => [r.id, r])), [activityRows]);
 
-  /**
-   * Split by markdown text: everything between two text deltas merges into gap panels (tools ⟷ steps
-   * stay in order). Thinking splits gaps so reasoning can appear between execution bursts.
-   * Only the **last** tool/step gap is post-processed (see finalizeLastLifecycleGapTail).
-   * @type {Array<
+  /** @type {Array<
    *   | { kind: "text"; body: string; key: string }
    *   | { kind: "thinking"; body: string; key: string }
    *   | { kind: "toolActivityGap"; segments: Array<{ kind: "tool"; refId: string } | { kind: "activity"; refId: string }>; key: string }
-   * >}
-   */
+   * >} */
   const renderParts = useMemo(() => {
     /** @type {Array<
      *   | { kind: "text"; body: string; key: string }
@@ -2071,7 +1961,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
       }
     }
     flushGap();
-    return finalizeLastLifecycleGapTail(out);
+    return out;
   }, [timeline]);
 
   const lastGapPartIdx = useMemo(() => {
@@ -2491,8 +2381,12 @@ function ToolChainPanel({ rows, t, streaming }) {
 function ActivityRow({ row, t, streaming, isTail }) {
   const stream = truncateOneLine(String(row.stream ?? "").trim(), 64);
   const titleRaw = String(row.title ?? "").trim();
-  const title = truncateOneLine(titleRaw || stream || "—", 104);
   const phase = String(row.phase ?? "").trim();
+  const headline =
+    stream.toLowerCase() === "lifecycle" && phase
+      ? `${titleRaw || stream} · ${phase}`
+      : titleRaw || stream || "—";
+  const title = truncateOneLine(headline, 104);
   const textRaw = typeof row.text === "string" ? row.text.trim() : "";
   const truncatedText = textRaw.length > 2000 ? `${textRaw.slice(0, 2000)}…` : textRaw;
 
@@ -3397,7 +3291,6 @@ const MessageBubble = memo(function MessageBubble({
                 {message.error}
               </div>
             ) : null}
-            {quickReplyChipsEl}
           </div>
         ) : (
           <div className="chat-lab__md">
@@ -3413,7 +3306,6 @@ const MessageBubble = memo(function MessageBubble({
                 {!assistantStreamPlacement ? (
                   <ChatStreamSparklerTail active={Boolean(message.streaming)} />
                 ) : null}
-                {quickReplyChipsEl}
               </>
             ) : showTyping ? (
               <ChatStreamingIndicator label={t("chatLab.streaming")} />
@@ -3506,6 +3398,9 @@ const MessageBubble = memo(function MessageBubble({
             )}
           </div>
         </div>
+      ) : null}
+      {!isUser && quickReplyChipsEl ? (
+        <div className="chat-lab__msg-quick-replies">{quickReplyChipsEl}</div>
       ) : null}
     </div>
   );
