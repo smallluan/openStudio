@@ -308,6 +308,8 @@ export default function ChatLabPage() {
   const [composerSkillRow, setComposerSkillRow] = useState(
     /** @type {import("../skills/skillRegistry.js").SkillPickRow | null} */ (null),
   );
+  const [composerSkillRowLeaving, setComposerSkillRowLeaving] = useState(false);
+  const [composerAttachmentsLeaving, setComposerAttachmentsLeaving] = useState(false);
   const textareaRef = useRef(/** @type {HTMLTextAreaElement | null} */ (null));
   const composerResizeDragRef = useRef(
     /** @type {{ startY: number; startH: number }} */ ({ startY: 0, startH: CHAT_LAB_COMPOSER_TEXT_MIN_PX }),
@@ -394,6 +396,22 @@ export default function ChatLabPage() {
   }, [composerLongTextMode]);
 
   const skillPickList = listSkillsForPicker();
+
+  const clearComposerSkillRow = useCallback(() => {
+    setComposerSkillRowLeaving(true);
+    setTimeout(() => {
+      setComposerSkillRow(null);
+      setComposerSkillRowLeaving(false);
+    }, 180);
+  }, []);
+
+  const clearComposerAttachments = useCallback(() => {
+    setComposerAttachmentsLeaving(true);
+    setTimeout(() => {
+      setComposerAttachments([]);
+      setComposerAttachmentsLeaving(false);
+    }, 180);
+  }, []);
 
   const firstComposerLine = (input.split("\n")[0] ?? "");
   const slashSkillMenuActive = !composerSkillRow && firstComposerLine.startsWith("/");
@@ -1462,18 +1480,21 @@ export default function ChatLabPage() {
             if (e.dataTransfer?.files?.length) void addComposerImageFiles(e.dataTransfer.files);
           }}
         >
-          {composerSkillRow ? (
-            <div className="chat-lab__shell-skill-row">
+          {composerSkillRow || composerSkillRowLeaving ? (
+            <div className={cn("chat-lab__shell-skill-row", composerSkillRowLeaving && "chat-lab__shell-skill-row--leaving")}>
               <ComposerSkillChip
                 row={composerSkillRow}
                 disabled={composerSkillUiLocked}
-                onClear={() => setComposerSkillRow(null)}
+                onClear={clearComposerSkillRow}
                 t={t}
               />
             </div>
           ) : null}
-          {composerAttachments.length > 0 ? (
-            <div className="chat-lab__composer-attachments" aria-label={t("chatLab.composerAttachmentsLabel")}>
+          {composerAttachments.length > 0 || composerAttachmentsLeaving ? (
+            <div
+              className={cn("chat-lab__composer-attachments", composerAttachmentsLeaving && "chat-lab__composer-attachments--leaving")}
+              aria-label={t("chatLab.composerAttachmentsLabel")}
+            >
               {composerAttachments.map((a) => (
                 <div key={a.id} className="chat-lab__composer-att-thumb">
                   <img src={a.dataUrl} alt="" className="chat-lab__composer-att-img" />

@@ -206,7 +206,7 @@ export default function ModelProfilesPanel() {
           />
         </label>
 
-        {selectedProfile.provider === "openai-compatible" ?
+        {selectedProfile.provider === "openai-compatible" || selectedProfile.provider === "deepseek" ?
           <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
             <span className="font-medium">{t("userConfig.baseUrl")}</span>
             <TextField

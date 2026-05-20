@@ -223,6 +223,7 @@ app.whenReady().then(async () => {
 
   if (!isDev) {
     try {
+      getStudioLog().info("[startup] supervised gateway begin");
       const sup = await ensureLocalGatewayRunning(() => userConfigStore.readRaw(), {
         log: getStudioLog(),
         probeOpenClawGateway,
@@ -387,8 +388,6 @@ app.whenReady().then(async () => {
         }
 
         await runGatewayBootstrapReadiness(cfg, ac.signal, emit);
-        gatewayWarmState.lastChatHydrateMs = Date.now();
-        /* `hydrateGatewayChatPrep` marks the configured base sessionKey; no redundant prep on first `chat.send` without `#studio:` */
         emit({ phase: "complete" });
         return { ok: true };
       } catch (e) {

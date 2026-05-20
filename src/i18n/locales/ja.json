@@ -311,23 +311,9 @@
   },
   "bootstrap": {
     "title": "Open Studio を準備しています",
-    "subtitle": "ゲートウェイへ接続しツールとセッションを準備します（tools.catalog → sessions.create → tools.effective）。UI の文言はモデル課金に送られませんが、ローカル認証／モデル解決は動くことがあります。OpenClaw は chat.send のたびに embedded ランタイムの多くを再構築するため、プリロードは「この画面を飛ばした／ゲートウェイ再起動後」の冷え込み緩和に限定されます。",
-    "phase": {
-      "starting": "準備中…",
-      "configSync": "Studio の設定を OpenClaw ワークスペースへ同期しています…",
-      "connect": "ゲートウェイへ接続しハンドシェイクを完了しています（サイドカー起動中は再試行します）…",
-      "toolsCatalog": "ツールカタログとプラグインレジストリを読み込んでいます…",
-      "sessionEnsure": "セッションストアにセッションを確保しています…",
-      "toolsEffective": "実行可能なツールハンドルを構築しています（初回メッセージの core-plugin-tools と同等で時間がかかることがあります）…",
-      "ready": "ゲートウェイとツール面の準備ができました",
-      "skippedNoGateway": "ゲートウェイ URL が未設定のためプリロードをスキップしました。チャットを使う前に「設定」で指定してください。",
-      "error": "起動に失敗しました"
-    },
-    "banner": "できるだけこの画面を完了してください。スキップ／ゲートウェイ再起動後も各送信で embedded 準備が重くなることがあります。チャット画面でも約 90 秒に一度まで同じ RPC を自動で再実行します。",
     "retry": "再試行",
     "openSettings": "設定を開く",
-    "skipEnter": "プリロードをスキップ（初回ターンはまだ遅くなることがあります）",
-    "gatewayUnreachableHint": "多くの場合、ゲートウェイがまだそのポートで待ち受けていません。このリポジトリなら `npm run dev`（ゲートウェイ同梱）、または `npm run dev:gateway` / `openclaw gateway` を実行してから「再試行」してください。",
+    "skipEnter": "スキップ",
     "unknownError": "起動に失敗しました"
   },
   "studio": {
@@ -374,6 +360,7 @@
       "openai": "OpenAI",
       "anthropic": "Anthropic",
       "google": "Google Gemini",
+      "deepseek": "DeepSeek",
       "openai-compatible": "OpenAI 互換（Base URL を指定）"
     },
     "modelId": "モデル ID",

@@ -12,9 +12,7 @@ import {
 } from "@floating-ui/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import NavSettingsIcon from "../../assets/svg/NavSettingsIcon.jsx";
-import NavSkillIcon from "../../assets/svg/NavSkillIcon.jsx";
 import GeneralSettingsSection from "../settings/GeneralSettingsSection.jsx";
-import PlaceholderSettingsSection from "../settings/PlaceholderSettingsSection.jsx";
 import { ModelSettingsProvider } from "../../context/ModelSettingsContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { SETTINGS_SECTION_IDS } from "../settings/settingsSectionIds.js";
@@ -416,9 +414,6 @@ export default function RailSettingsOrb({ narrow = false }) {
                       <ModelProfilesPanel />
                     </div>
                   </ModelSettingsProvider>
-                ) : null}
-                {selectedSection !== "general" && selectedSection !== "model" ? (
-                  <PlaceholderSettingsSection sectionId={selectedSection} />
                 ) : null}
               </div>
             </div>

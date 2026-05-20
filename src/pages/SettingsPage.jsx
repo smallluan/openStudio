@@ -3,7 +3,6 @@ import { useOutletContext } from "react-router-dom";
 import GeneralSettingsSection from "../components/settings/GeneralSettingsSection.jsx";
 import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
 import ModelProfilesPanel from "../components/shell/ModelProfilesPanel.jsx";
-import PlaceholderSettingsSection from "../components/settings/PlaceholderSettingsSection.jsx";
 import { SETTINGS_SECTION_IDS } from "../components/settings/settingsSectionIds.js";
 import { ModelSettingsProvider } from "../context/ModelSettingsContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -69,12 +68,6 @@ export default function SettingsPage() {
             {section === "model" ? (
               <div className="mx-auto flex h-full min-h-0 w-full max-w-[min(100%,52rem)] flex-1 flex-col">
                 <ModelProfilesPanel />
-              </div>
-            ) : null}
-
-            {section !== "general" && !modelSection ? (
-              <div className="mx-auto max-w-xl">
-                <PlaceholderSettingsSection sectionId={section} />
               </div>
             ) : null}
           </div>

@@ -312,23 +312,9 @@
   },
   "bootstrap": {
     "title": "Open Studio is getting ready",
-    "subtitle": "Connects to your gateway and materializes tools + session (`tools.catalog`, then `sessions.create` + `tools.effective`). This does not bill a user chat turn, but can still run local auth/model resolution. Note: OpenClaw rebuilds much of the embedded runner on every `chat.send`; startup preload only trims extra cold work when you skipped this screen or restarted the gateway.",
-    "phase": {
-      "starting": "Preparing…",
-      "configSync": "Syncing Studio settings into the OpenClaw workspace…",
-      "connect": "Connecting to the gateway and finishing the WebSocket handshake (retries while sidecars start)…",
-      "toolsCatalog": "Loading the tool catalog and plugin registry…",
-      "sessionEnsure": "Ensuring your session exists in the gateway store…",
-      "toolsEffective": "Building executable tool handles (this mirrors first-message prep and can take a while)…",
-      "ready": "Gateway and tool surface are ready",
-      "skippedNoGateway": "No gateway URL is configured yet — gateway preload was skipped. Add it in Settings when you are ready to chat.",
-      "error": "Startup failed"
-    },
-    "banner": "Finish this screen when you can. If you skip it or restart the gateway, each send may still pay heavy embedded prep on the gateway (`core-plugin-tools`, `stream-setup`, …). Studio also re-runs the same RPCs from Chat when needed (throttled about once per 90s).",
     "retry": "Retry",
     "openSettings": "Open settings",
-    "skipEnter": "Skip preload (first turns may still be slow)",
-    "gatewayUnreachableHint": "Usually the gateway process is not listening on that port yet. From this repo, use `npm run dev` (includes the gateway), or run `npm run dev:gateway` / `openclaw gateway`, then tap Retry.",
+    "skipEnter": "Skip",
     "unknownError": "Startup failed"
   },
   "studio": {
@@ -375,6 +361,7 @@
       "openai": "OpenAI",
       "anthropic": "Anthropic",
       "google": "Google Gemini",
+      "deepseek": "DeepSeek",
       "openai-compatible": "OpenAI-compatible (custom base URL)"
     },
     "modelId": "Model ID",

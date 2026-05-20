@@ -311,23 +311,9 @@
   },
   "bootstrap": {
     "title": "Open Studio 正在就緒",
-    "subtitle": "連線閘道並建立工具與工作階段（tools.catalog → sessions.create → tools.effective）。不向模型計費送出 UI 文字，但仍會做本機鑑權／解析。OpenClaw 在每次 chat.send 仍會重建 embedded 運行時很大一部分；預載入只能降低「跳過此畫面／閘道重啟」造成的額外冷啟動。",
-    "phase": {
-      "starting": "準備中…",
-      "configSync": "正在將 Studio 設定同步到 OpenClaw 工作區…",
-      "connect": "正在連線閘道並完成交握（若側車尚未就緒會自動重試）…",
-      "toolsCatalog": "正在載入工具目錄與外掛登錄…",
-      "sessionEnsure": "正在確保工作階段已寫入閘道工作階段存放…",
-      "toolsEffective": "正在建構可執行工具控點（與第一則訊息的 core-plugin-tools 階段一致，可能較久）…",
-      "ready": "閘道與工具面已就緒",
-      "skippedNoGateway": "尚未填寫閘道位址，已跳過預載入。稍後在「設定」中設定即可使用對話。",
-      "error": "啟動過程發生錯誤"
-    },
-    "banner": "盡量跑完此畫面；跳過或閘道重啟後，每一則對話仍可能在閘道內做較重的 embedded 準備。進入對話後 Studio 也會約每 90 秒最多補跑一次相同的閘道 RPC。",
     "retry": "重試",
     "openSettings": "開啟設定",
-    "skipEnter": "跳過預載入（首輪對話仍可能很慢）",
-    "gatewayUnreachableHint": "通常代表本機閘道尚未在該埠監聽。若使用此專案腳本，請執行含閘道的 `npm run dev`，或手動執行 `npm run dev:gateway` / `openclaw gateway` 後再按「重試」。",
+    "skipEnter": "跳過",
     "unknownError": "啟動失敗"
   },
   "studio": {
@@ -374,6 +360,7 @@
       "openai": "OpenAI",
       "anthropic": "Anthropic",
       "google": "Google Gemini",
+      "deepseek": "DeepSeek",
       "openai-compatible": "OpenAI 相容（自訂 Base URL）"
     },
     "modelId": "模型 ID",
