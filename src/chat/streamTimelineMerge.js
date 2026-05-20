@@ -44,6 +44,26 @@ function sharedSuffixLength(a, b, max = 240) {
 }
 
 /**
+ * Normalize whitespace for tolerant duplicate comparisons.
+ * @param {string | undefined} s
+ */
+function normalizeCompareText(s) {
+  return String(s ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Aggressive compare form for mixed newline/spacing stream artifacts.
+ * @param {string | undefined} s
+ */
+function normalizeCompactText(s) {
+  return String(s ?? "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+/**
  * Merge streamed assistant prose into an accumulated body.
  * Appends true deltas only; treats duplicate / full snapshots as replace, never `a + b` dup.
  * @param {string | undefined} body
@@ -94,6 +114,11 @@ export function mergeAssistantTextChunk(body, delta) {
   }
 
   if (b.length > 120 && a.length > 120) {
+    return preferLongerAssistantText(a, b);
+  }
+
+  // Safety valve: avoid catastrophic duplicated concatenation for long snapshots.
+  if (a.length > 80 && b.length > 80) {
     return preferLongerAssistantText(a, b);
   }
 
@@ -219,6 +244,26 @@ export function reconcileTimelineWithCanonicalText(list, canonical) {
       if (!hasInterleaving && body.length >= 40 && c.includes(body)) continue;
       out.push(seg);
       continue;
+    }
+    {
+      const prior = priorTextBeforeIndex(list, i);
+      const normPrior = normalizeCompareText(prior);
+      const normBody = normalizeCompareText(body);
+      const normCanon = normalizeCompareText(c);
+      const compactPrior = normalizeCompactText(prior);
+      const compactCanon = normalizeCompactText(c);
+      const hasInterleavingBefore = list.slice(0, i).some((s) => s?.kind !== "text");
+      // Interleaved timeline already covers canonical prose; drop terminal full-body echo.
+      if (
+        hasInterleavingBefore &&
+        normPrior &&
+        normBody &&
+        normCanon &&
+        normBody === normCanon &&
+        (normCanon.includes(normPrior) || (compactPrior && compactCanon.includes(compactPrior)))
+      ) {
+        continue;
+      }
     }
     const tail = canonicalTailForLastTextSegment(list, i, c);
     if (typeof tail === "string" && !tail.trim()) {

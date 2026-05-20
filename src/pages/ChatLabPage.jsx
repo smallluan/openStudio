@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
@@ -38,9 +39,10 @@ import {
   renameSession,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
+import ChatLabHero from "../components/chat-lab/ChatLabHero.jsx";
+import { useBootstrapHeroRelease } from "../components/chat-lab/useBootstrapHeroRelease.js";
+import { useBootstrapGate } from "../context/BootstrapGateContext.jsx";
 import { useTheme } from "../context/ThemeContext.jsx";
-import heroAvatarLight from "../assets/images/hero-avatar-light.png";
-import heroAvatarDark from "../assets/images/hero-avatar-dark.png";
 import { useI18n } from "../context/I18nContext.jsx";
 import {
   useChatLabStreaming,
@@ -1293,6 +1295,18 @@ export default function ChatLabPage() {
   );
 
   const isLanding = messages.length === 0;
+  const { landingRevealReady, playHeroTitleEntrance, shellPhase, progressFrac, progressExiting, gatePortalEl } =
+    useBootstrapGate();
+  const portalHeroRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const landingHeroRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  useBootstrapHeroRelease(portalHeroRef, landingHeroRef, shellPhase);
+
+  const gatePending = isLanding && shellPhase !== "ready";
+  const showPortalChrome = gatePending && (shellPhase === "loading" || shellPhase === "exiting");
+  const hideLandingHero = gatePending && (shellPhase === "loading" || shellPhase === "exiting");
+  const gatePortalTarget =
+    gatePortalEl ??
+    (typeof document !== "undefined" ? document.querySelector(".bootstrap-gate-chrome") : null);
 
   const streamLocked = useMemo(
     () => gatewayStreaming || messages.some((m) => m.role === "assistant" && m.streaming),
@@ -1632,39 +1646,54 @@ export default function ChatLabPage() {
           expanded={topPanelExpanded}
           onToggle={() => setTopPanelExpanded(!topPanelExpanded)}
         />
-        <div className={cn("chat-lab", isLanding && "chat-lab--landing", !isLanding && "chat-lab--thread")}>
+        <div
+          className={cn(
+            "chat-lab",
+            isLanding && "chat-lab--landing",
+            gatePending && "chat-lab--gate-pending",
+            isLanding && landingRevealReady && "chat-lab--gate-revealed",
+            !isLanding && "chat-lab--thread",
+          )}
+        >
           {isLanding ? (
-            <div className="chat-lab__landing-mid">
-              <div className="chat-lab__hero">
-                {/* 机器人头像 */}
-                <div className="chat-lab__hero-avatar">
-                  <img
-                    className="chat-lab__hero-avatar-icon"
-                    src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
-                    alt=""
-                    aria-hidden
-                  />
-                </div>
-
-                <h1 className="chat-lab__hero-title">
-                  <span className="chat-lab__hero-hi">Hi,</span>{" "}
-                  <span className="chat-lab__hero-brand">
-                    {t("chatLab.heroGreeting", { brand: t("titlebar.appName") })}
-                  </span>
-                </h1>
-
-                <p className="chat-lab__hero-sub">
-                  <HeroPhraseRotator
-                    phrases={[
-                      t("chatLab.heroPhrase1"),
-                      t("chatLab.heroPhrase2"),
-                      t("chatLab.heroPhrase3"),
-                      t("chatLab.heroPhrase4"),
-                    ]}
-                  />
-                </p>
+            <>
+              {showPortalChrome && gatePortalTarget
+                ? createPortal(
+                    <div className="bootstrap-gate-chrome__stack">
+                      <ChatLabHero
+                        ref={portalHeroRef}
+                        className={cn(
+                          shellPhase === "loading" && "chat-lab__hero--gate-splash",
+                          shellPhase === "exiting" && "chat-lab__hero--gate-releasing",
+                        )}
+                        suppressTitleEntrance={!playHeroTitleEntrance}
+                      />
+                      <div
+                        className={cn(
+                          "chat-lab__gate-progress",
+                          progressExiting && "chat-lab__gate-progress--exit",
+                        )}
+                        aria-hidden={shellPhase === "exiting" ? true : undefined}
+                      >
+                        <div className="chat-lab__gate-progress-track">
+                          <div
+                            className="chat-lab__gate-progress-fill"
+                            style={{ width: `${Math.round(progressFrac * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>,
+                    gatePortalTarget,
+                  )
+                : null}
+              <div className="chat-lab__landing-mid">
+                <ChatLabHero
+                  ref={landingHeroRef}
+                  className={cn(hideLandingHero && "chat-lab__hero--gate-measure")}
+                  suppressTitleEntrance={!playHeroTitleEntrance}
+                />
               </div>
-            </div>
+            </>
           ) : (
             <div className="chat-lab__thread-stack">
               <header className="chat-lab__conv-header">
@@ -1720,53 +1749,6 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
   }, [messages, preview, t]);
 
   return null;
-}
-
-/** 首页副标题：淡入淡出轮播（比打字机更稳定，避免多 timer 竞态）。 */
-function HeroPhraseRotator({ phrases, holdMs = 3200, fadeMs = 420 }) {
-  const [index, setIndex] = useState(0);
-  const [leaving, setLeaving] = useState(false);
-
-  useEffect(() => {
-    if (!phrases?.length) return;
-    if (phrases.length === 1) {
-      setIndex(0);
-      setLeaving(false);
-      return;
-    }
-
-    let cancelled = false;
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let timer;
-
-    const schedule = (/** @type {() => void} */ fn, /** @type {number} */ delay) => {
-      timer = setTimeout(() => {
-        if (!cancelled) fn();
-      }, delay);
-    };
-
-    const cycle = () => {
-      setLeaving(true);
-      schedule(() => {
-        setIndex((prev) => (prev + 1) % phrases.length);
-        setLeaving(false);
-        schedule(cycle, holdMs);
-      }, fadeMs);
-    };
-
-    schedule(cycle, holdMs);
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [phrases, holdMs, fadeMs]);
-
-  const phrase = phrases[index] ?? "";
-
-  return (
-    <span className={cn("chat-lab__hero-rotator", leaving && "chat-lab__hero-rotator--leaving")}>{phrase}</span>
-  );
 }
 
 function ToolbarChevron() {

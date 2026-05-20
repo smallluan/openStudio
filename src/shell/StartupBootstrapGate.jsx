@@ -1,25 +1,39 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import heroAvatarLight from "../assets/images/hero-avatar-light.png";
-import { useI18n } from "../context/I18nContext.jsx";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BootstrapGateProvider } from "../context/BootstrapGateContext.jsx";
 import { cn } from "../ui/cn.js";
 
+import { HERO_RELEASE_MS } from "../components/chat-lab/useBootstrapHeroRelease.js";
+
+const MIN_VISIBLE_MS = 520;
+const PROGRESS_EXIT_MS = 400;
+const BACKDROP_FADE_MS = 1000;
+const SETTLING_MS = 120;
+const BOOT_RETRY_MS = 4000;
+
+const GATE_READY_PHASES = new Set(["gateway_ready", "complete", "skipped_no_gateway"]);
+
 /**
- * First-run full-screen gate (Electron only): sync OpenClaw workspace files,
- * then connect to the gateway. Tool/session prep runs later on first chat.
+ * Electron bootstrap: fullscreen backdrop; hero + progress render in gatePortalEl (above backdrop).
  */
 export default function StartupBootstrapGate({ children }) {
-  const { t } = useI18n();
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
   const isElectron = Boolean(bridge?.bootstrapGateway);
 
-  const [gateDone, setGateDone] = useState(!isElectron);
-  const [phase, setPhase] = useState(/** @type {string} */ ("idle"));
-  const [failure, setFailure] = useState(/** @type {string | null} */ (null));
+  const [shellPhase, setShellPhase] = useState(isElectron ? "loading" : "ready");
+  const [bootPhase, setBootPhase] = useState("idle");
   const [bootPass, setBootPass] = useState(0);
+  const [progressExiting, setProgressExiting] = useState(false);
+  const [gatePortalEl, setGatePortalEl] = useState(null);
+
+  const bootPhaseRef = useRef("idle");
+  const bootStartedAtRef = useRef(null);
+
+  const onPortalRef = useCallback((el) => {
+    setGatePortalEl(el);
+  }, []);
 
   const progressFrac = useMemo(() => {
-    switch (phase) {
+    switch (bootPhase) {
       case "config_synced":
         return 0.35;
       case "gateway_connect":
@@ -31,20 +45,46 @@ export default function StartupBootstrapGate({ children }) {
       default:
         return 0.15;
     }
-  }, [phase]);
+  }, [bootPhase]);
 
-  const failureDisplay = useMemo(() => {
-    if (!failure) return null;
-    if (/gateway_missing_operator_scope/i.test(failure)) return t("chatLab.gatewayMissingOperatorScope");
-    return failure;
-  }, [failure, t]);
+  const overlayActive = isElectron && shellPhase !== "ready";
+
+  const gateContext = useMemo(
+    () => ({
+      shellPhase: isElectron ? shellPhase : "ready",
+      landingRevealReady: !isElectron || shellPhase === "ready",
+      playHeroTitleEntrance: !isElectron,
+      progressFrac,
+      progressExiting,
+      gatePortalEl:
+        isElectron && (shellPhase === "loading" || shellPhase === "exiting") ? gatePortalEl : null,
+    }),
+    [isElectron, shellPhase, progressFrac, progressExiting, overlayActive, gatePortalEl],
+  );
+
+  const beginExitTransition = (startedAt) => {
+    const remain = Math.max(0, MIN_VISIBLE_MS - (Date.now() - startedAt));
+    window.setTimeout(() => {
+      setProgressExiting(true);
+      window.setTimeout(() => {
+        setShellPhase("exiting");
+        window.setTimeout(() => {
+          setShellPhase("settling");
+        }, HERO_RELEASE_MS);
+        window.setTimeout(() => {
+          setShellPhase("ready");
+          setProgressExiting(false);
+        }, Math.max(BACKDROP_FADE_MS, HERO_RELEASE_MS + SETTLING_MS));
+      }, PROGRESS_EXIT_MS);
+    }, remain);
+  };
 
   useEffect(() => {
     if (!isElectron) return undefined;
 
     try {
       if (sessionStorage.getItem("openstudio_bootstrap_skipped") === "1") {
-        setGateDone(true);
+        setShellPhase("ready");
         return undefined;
       }
     } catch {
@@ -52,32 +92,68 @@ export default function StartupBootstrapGate({ children }) {
     }
 
     let cancelled = false;
-    /** @type {(() => void) | undefined} */
     let progressOff;
+    let retryTimer;
+
+    async function waitForGateReadyPhase(maxMs = 60000) {
+      const deadline = Date.now() + maxMs;
+      while (!cancelled && Date.now() < deadline) {
+        if (GATE_READY_PHASES.has(bootPhaseRef.current)) return true;
+        await new Promise((r) => window.setTimeout(r, 40));
+      }
+      return GATE_READY_PHASES.has(bootPhaseRef.current);
+    }
 
     async function runBoot() {
-      setFailure(null);
-      setPhase("idle");
+      setBootPhase("idle");
+      bootPhaseRef.current = "idle";
+      setShellPhase("loading");
+      setProgressExiting(false);
+      const startedAt = Date.now();
+      bootStartedAtRef.current = startedAt;
+
       try {
         progressOff = bridge.onBootstrapProgress?.((p) => {
           if (cancelled || !p || typeof p !== "object") return;
-          if (typeof p.phase === "string") setPhase(p.phase);
+          if (typeof p.phase === "string") {
+            bootPhaseRef.current = p.phase;
+            setBootPhase(p.phase);
+          }
         });
 
         const result = await bridge.bootstrapGateway();
         if (cancelled) return;
+
         if (!result?.ok) {
-          const failureMsg = result?.message ? String(result.message) : t("bootstrap.unknownError");
+          const failureMsg = result?.message ? String(result.message) : "bootstrap failed";
           bridge.logRendererMessage?.({ level: "error", message: `bootstrap_gate: ${failureMsg}` });
-          setFailure(failureMsg);
+          retryTimer = window.setTimeout(() => {
+            if (!cancelled) setBootPass((n) => n + 1);
+          }, BOOT_RETRY_MS);
           return;
         }
-        setGateDone(true);
+
+        const ready = await waitForGateReadyPhase();
+        if (cancelled) return;
+        if (!ready) {
+          bridge.logRendererMessage?.({
+            level: "warn",
+            message: "bootstrap_gate: timed out waiting for gateway_ready",
+          });
+          retryTimer = window.setTimeout(() => {
+            if (!cancelled) setBootPass((n) => n + 1);
+          }, BOOT_RETRY_MS);
+          return;
+        }
+
+        beginExitTransition(startedAt);
       } catch (e) {
         if (!cancelled) {
           const msg = String(e?.message ?? e);
           bridge.logRendererMessage?.({ level: "error", message: `bootstrap_gate_throw: ${msg}` });
-          setFailure(msg);
+          retryTimer = window.setTimeout(() => {
+            if (!cancelled) setBootPass((n) => n + 1);
+          }, BOOT_RETRY_MS);
         }
       } finally {
         progressOff?.();
@@ -89,94 +165,38 @@ export default function StartupBootstrapGate({ children }) {
     return () => {
       cancelled = true;
       progressOff?.();
+      if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, [bridge, bootPass, isElectron, t]);
-
-  if (gateDone) {
-    return children;
-  }
+  }, [bridge, bootPass, isElectron]);
 
   return (
-    <div
-      className={cn(
-        "fixed inset-0 z-[1000] flex flex-col items-center justify-center overflow-hidden bg-[#f8f9fd]",
-        "text-[color:var(--os-text)]",
-      )}
-    >
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[42vh] opacity-90"
-        style={{
-          background:
-            "radial-gradient(ellipse 120% 80% at 50% -20%, rgba(120, 170, 255, 0.28), transparent 55%)",
-        }}
-      />
-
-      <div className="relative z-[1] flex w-full max-w-sm flex-col items-center px-6 text-center">
-        <div className="mb-6 h-24 w-24">
-          <img
-            className="h-full w-full object-contain"
-            src={heroAvatarLight}
-            alt=""
-            aria-hidden
-          />
+    <BootstrapGateProvider value={gateContext}>
+      <div className="bootstrap-gate-root">
+        <div
+          className={cn(
+            "bootstrap-gate-root__app",
+            overlayActive && "bootstrap-gate-root__app--masked",
+          )}
+          aria-hidden={overlayActive ? true : undefined}
+        >
+          {children}
         </div>
-        <h1 className="text-balance text-xl font-semibold tracking-tight">
-          {t("bootstrap.title")}
-        </h1>
 
-        <div className="mt-8 w-full">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.07]">
+        {overlayActive ? (
+          <>
             <div
-              className="h-full rounded-full bg-[color:var(--os-text)] transition-[width] duration-500 ease-out"
-              style={{ width: `${Math.round(progressFrac * 100)}%` }}
+              className={cn(
+                "bootstrap-gate",
+                (shellPhase === "exiting" || shellPhase === "settling") && "bootstrap-gate--exiting",
+              )}
+              role="status"
+              aria-live="polite"
+              aria-busy={shellPhase === "loading"}
             />
-          </div>
-          {failureDisplay ? (
-            <p className="mt-4 text-pretty text-xs leading-relaxed text-[var(--os-text-muted)]">
-              {failureDisplay}
-            </p>
-          ) : null}
-        </div>
-
-        {failure ? (
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <button
-              type="button"
-              className="rounded-full bg-[color:var(--os-text)] px-5 py-2.5 text-sm font-medium text-[color:var(--os-bg)] shadow-sm transition hover:opacity-90"
-              onClick={() => {
-                try {
-                  sessionStorage.removeItem("openstudio_bootstrap_skipped");
-                } catch {
-                  /* ignore */
-                }
-                setBootPass((n) => n + 1);
-              }}
-            >
-              {t("bootstrap.retry")}
-            </button>
-            <Link
-              to="/settings"
-              className="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm font-medium text-[color:var(--os-text)] shadow-sm transition hover:bg-black/[0.03]"
-            >
-              {t("bootstrap.openSettings")}
-            </Link>
-            <button
-              type="button"
-              className="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm font-medium text-[var(--os-text-muted)] transition hover:bg-black/[0.03] hover:text-[color:var(--os-text)]"
-              onClick={() => {
-                try {
-                  sessionStorage.setItem("openstudio_bootstrap_skipped", "1");
-                } catch {
-                  /* ignore */
-                }
-                setGateDone(true);
-              }}
-            >
-              {t("bootstrap.skipEnter")}
-            </button>
-          </div>
+            <div ref={onPortalRef} className="bootstrap-gate-chrome" />
+          </>
         ) : null}
       </div>
-    </div>
+    </BootstrapGateProvider>
   );
 }

@@ -2290,6 +2290,69 @@ code {
   animation: hero-title-entrance 0.6s ease-out;
 }
 
+.chat-lab__hero-title--static {
+  animation: none;
+}
+
+.chat-lab__hero--gate-splash {
+  width: 100%;
+  margin: 0;
+  pointer-events: none;
+}
+
+.chat-lab__hero--gate-releasing {
+  will-change: transform;
+}
+
+.chat-lab__gate-slot-spacer {
+  flex: 1 1 auto;
+  min-height: 12.5rem;
+  width: 100%;
+  max-width: 36rem;
+  pointer-events: none;
+}
+
+.chat-lab__hero--gate-measure {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.chat-lab--gate-pending .chat-lab__composer-outer {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-lab__gate-progress {
+  width: 100%;
+  max-width: 24rem;
+  margin-top: 2rem;
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s cubic-bezier(0.33, 1, 0.42, 1);
+}
+
+.chat-lab__gate-progress--exit {
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+}
+
+.chat-lab__gate-progress-track {
+  height: 0.375rem;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--os-text) 7%, transparent);
+}
+
+.chat-lab__gate-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--os-text);
+  transition: width 0.5s ease-out;
+}
+
 @keyframes hero-title-entrance {
   0% {
     opacity: 0;
@@ -2421,7 +2484,12 @@ code {
   width: 100%;
 }
 
-.chat-lab--landing .chat-lab__composer-outer {
+.chat-lab--landing:not(.chat-lab--gate-revealed):not(.chat-lab--gate-pending) .chat-lab__composer-outer {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chat-lab--landing.chat-lab--gate-revealed .chat-lab__composer-outer {
   animation: chat-lab-composer-enter-landing 0.24s cubic-bezier(0.25, 1, 0.38, 1);
 }
 
@@ -5388,4 +5456,73 @@ code {
   background: rgba(0, 0, 0, 0.35);
   border-radius: 6px;
   white-space: pre-wrap;
+}
+
+/* —— Bootstrap gate (fullscreen → landing handoff) —— */
+.bootstrap-gate-root {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.bootstrap-gate-root__app {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.bootstrap-gate-root__app--masked {
+  pointer-events: none;
+  user-select: none;
+}
+
+.bootstrap-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  background: var(--os-bg-app);
+  background-image: var(--os-bg-app-gradient);
+  background-attachment: fixed;
+  transition: opacity 1s cubic-bezier(0.33, 1, 0.42, 1);
+  pointer-events: auto;
+}
+
+.bootstrap-gate--exiting {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bootstrap-gate-chrome {
+  position: fixed;
+  inset: 0;
+  z-index: 100001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.bootstrap-gate-chrome__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(36rem, calc(100vw - 3rem));
+  max-width: 36rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bootstrap-gate,
+  .bootstrap-gate-chrome__stack .chat-lab__gate-progress,
+  .chat-lab__hero--gate-releasing {
+    transition: none;
+  }
+
+  .bootstrap-gate--exiting {
+    opacity: 0;
+  }
 }
