@@ -26,6 +26,7 @@
     "appId": "dev.openstudio.app",
     "productName": "Open Studio",
     "copyright": "Copyright © Open Studio contributors",
+    "beforePack": "scripts/electron-builder-before-pack.cjs",
     "directories": {
       "output": "release"
     },
@@ -35,6 +36,7 @@
       "!scripts/**/*",
       "!release/**/*",
       "!tmp-pack/**/*",
+      "!node_modules/openclaw{,/**}",
       "!**/*.map",
       "!**/builder-debug.yml",
       "!**/.cursor/**/*"
@@ -50,6 +52,12 @@
     "win": {
       "artifactName": "${productName}-Setup-${version}.${ext}",
       "signAndEditExecutable": false,
+      "extraResources": [
+        {
+          "from": "tmp-pack/openclaw.asar",
+          "to": "openclaw.asar"
+        }
+      ],
       "target": [
         {
           "target": "nsis",
@@ -68,6 +76,8 @@
     }
   },
   "dependencies": {
+    "concat-map": "0.0.1",
+    "@electron/asar": "^4.0.1",
     "@floating-ui/react": "^0.27.19",
     "@tanstack/react-virtual": "^3.13.24",
     "electron-log": "^5.4.4",

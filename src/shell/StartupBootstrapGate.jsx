@@ -1,18 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import LogoMarkIcon from "../assets/svg/LogoMarkIcon.jsx";
+import heroAvatarLight from "../assets/images/hero-avatar-light.png";
 import { useI18n } from "../context/I18nContext.jsx";
-import { loadAllSessions } from "../chat/chatSessionsStore.js";
 import { cn } from "../ui/cn.js";
 
 /**
  * First-run full-screen gate (Electron only): sync OpenClaw workspace files,
- * connect to the gateway with startup-sidecar retries, then call
- * `tools.catalog` plus `tools.effective` (plus `sessions.create`) so the heavy
- * `createOpenClawCodingTools` path runs **before** the main shell is shown.
- * After success, kicks off a **background** prewarm of recent `#studio:` conversation
- * session keys so opening an existing thread does not block on cold prep.
- * No chat traffic and no provider billing — only documented gateway RPCs.
+ * then connect to the gateway. Tool/session prep runs later on first chat.
  */
 export default function StartupBootstrapGate({ children }) {
   const { t } = useI18n();
@@ -22,28 +16,20 @@ export default function StartupBootstrapGate({ children }) {
   const [gateDone, setGateDone] = useState(!isElectron);
   const [phase, setPhase] = useState(/** @type {string} */ ("idle"));
   const [failure, setFailure] = useState(/** @type {string | null} */ (null));
-  /** Increment to re-run the bootstrap sequence (retry button). */
   const [bootPass, setBootPass] = useState(0);
 
   const progressFrac = useMemo(() => {
     switch (phase) {
       case "config_synced":
-        return 0.18;
+        return 0.35;
       case "gateway_connect":
-        return 0.32;
-      case "tools_catalog":
-        return 0.48;
-      case "session_ensure":
-        return 0.58;
-      case "tools_effective":
-        return 0.82;
+        return 0.65;
       case "gateway_ready":
-        return 0.94;
       case "skipped_no_gateway":
       case "complete":
         return 1;
       default:
-        return 0.08;
+        return 0.15;
     }
   }, [phase]);
 
@@ -86,13 +72,6 @@ export default function StartupBootstrapGate({ children }) {
           setFailure(failureMsg);
           return;
         }
-        if (bridge.prewarmStudioGatewaySessions) {
-          const ids = [...loadAllSessions()]
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .map((r) => r.id)
-            .filter((id) => typeof id === "string" && id.trim());
-          void bridge.prewarmStudioGatewaySessions({ conversationIds: ids, max: 12 }).catch(() => {});
-        }
         setGateDone(true);
       } catch (e) {
         if (!cancelled) {
@@ -113,29 +92,6 @@ export default function StartupBootstrapGate({ children }) {
     };
   }, [bridge, bootPass, isElectron, t]);
 
-  const phaseLine = useMemo(() => {
-    switch (phase) {
-      case "config_synced":
-        return t("bootstrap.phase.configSync");
-      case "gateway_connect":
-        return t("bootstrap.phase.connect");
-      case "tools_catalog":
-        return t("bootstrap.phase.toolsCatalog");
-      case "session_ensure":
-        return t("bootstrap.phase.sessionEnsure");
-      case "tools_effective":
-        return t("bootstrap.phase.toolsEffective");
-      case "gateway_ready":
-        return t("bootstrap.phase.ready");
-      case "skipped_no_gateway":
-        return t("bootstrap.phase.skippedNoGateway");
-      case "error":
-        return t("bootstrap.phase.error");
-      default:
-        return t("bootstrap.phase.starting");
-    }
-  }, [phase, t]);
-
   if (gateDone) {
     return children;
   }
@@ -143,7 +99,7 @@ export default function StartupBootstrapGate({ children }) {
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[1000] flex flex-col overflow-hidden bg-[#f8f9fd]",
+        "fixed inset-0 z-[1000] flex flex-col items-center justify-center overflow-hidden bg-[#f8f9fd]",
         "text-[color:var(--os-text)]",
       )}
     >
@@ -155,95 +111,71 @@ export default function StartupBootstrapGate({ children }) {
         }}
       />
 
-      <div className="relative z-[1] flex min-h-0 flex-1 flex-col items-center px-6 py-14">
-        <div className="flex w-full max-w-md flex-col items-center text-center">
-          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-black/[0.06]">
-            <LogoMarkIcon className="h-10 w-10 text-[#c45c2e]" />
-          </div>
-          <h1 className="text-balance text-xl font-semibold tracking-tight text-[color:var(--os-text)]">
-            {t("bootstrap.title")}
-          </h1>
-          <p className="mt-2 text-pretty text-sm leading-relaxed text-[var(--os-text-muted)]">
-            {t("bootstrap.subtitle")}
-          </p>
+      <div className="relative z-[1] flex w-full max-w-sm flex-col items-center px-6 text-center">
+        <div className="mb-6 h-24 w-24">
+          <img
+            className="h-full w-full object-contain"
+            src={heroAvatarLight}
+            alt=""
+            aria-hidden
+          />
+        </div>
+        <h1 className="text-balance text-xl font-semibold tracking-tight">
+          {t("bootstrap.title")}
+        </h1>
 
-          <div className="mt-8 w-full">
-            <div className="h-2 w-full overflow-hidden rounded-full bg-black/[0.07]">
-              <div
-                className="h-full rounded-full bg-[color:var(--os-text)] transition-[width] duration-500 ease-out"
-                style={{ width: `${Math.round(progressFrac * 100)}%` }}
-              />
-            </div>
-            <p className="mt-3 min-h-[2.75rem] text-pretty text-xs leading-relaxed text-[var(--os-text-muted)]">
-              {failureDisplay ?? phaseLine}
+        <div className="mt-8 w-full">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.07]">
+            <div
+              className="h-full rounded-full bg-[color:var(--os-text)] transition-[width] duration-500 ease-out"
+              style={{ width: `${Math.round(progressFrac * 100)}%` }}
+            />
+          </div>
+          {failureDisplay ? (
+            <p className="mt-4 text-pretty text-xs leading-relaxed text-[var(--os-text-muted)]">
+              {failureDisplay}
             </p>
-            {failure && /gateway_unreachable/i.test(failure) ? (
-              <p className="mt-2 text-pretty text-[0.75rem] leading-relaxed text-[var(--os-text-muted)]">
-                {t("bootstrap.gatewayUnreachableHint")}
-              </p>
-            ) : null}
-          </div>
-
-          {failure ? (
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-              <button
-                type="button"
-                className="rounded-full bg-[color:var(--os-text)] px-5 py-2.5 text-sm font-medium text-[color:var(--os-bg)] shadow-sm transition hover:opacity-90"
-                onClick={() => {
-                  try {
-                    sessionStorage.removeItem("openstudio_bootstrap_skipped");
-                  } catch {
-                    /* ignore */
-                  }
-                  setBootPass((n) => n + 1);
-                }}
-              >
-                {t("bootstrap.retry")}
-              </button>
-              <Link
-                to="/settings"
-                className="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm font-medium text-[color:var(--os-text)] shadow-sm transition hover:bg-black/[0.03]"
-              >
-                {t("bootstrap.openSettings")}
-              </Link>
-              {bridge?.openLogsDirectory ? (
-                <button
-                  type="button"
-                  className="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm font-medium text-[color:var(--os-text)] shadow-sm transition hover:bg-black/[0.03]"
-                  aria-label={t("settings.openLogsAria")}
-                  onClick={() => void bridge.openLogsDirectory?.()}
-                >
-                  {t("settings.openLogsFolder")}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="rounded-full border border-dashed border-black/20 bg-transparent px-5 py-2.5 text-sm font-medium text-[var(--os-text-muted)] transition hover:border-black/35 hover:text-[color:var(--os-text)]"
-                onClick={() => {
-                  try {
-                    sessionStorage.setItem("openstudio_bootstrap_skipped", "1");
-                  } catch {
-                    /* ignore */
-                  }
-                  setGateDone(true);
-                }}
-              >
-                {t("bootstrap.skipEnter")}
-              </button>
-            </div>
           ) : null}
         </div>
-      </div>
 
-      <div className="relative z-[1] flex shrink-0 justify-center px-4 pb-8 pt-2">
-        <div
-          className="max-w-xl rounded-full border border-white/40 px-5 py-3 text-center text-xs leading-relaxed shadow-sm backdrop-blur-md"
-          style={{
-            background: "linear-gradient(105deg, rgba(186, 220, 255, 0.55), rgba(255, 210, 230, 0.45))",
-          }}
-        >
-          {t("bootstrap.banner")}
-        </div>
+        {failure ? (
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              className="rounded-full bg-[color:var(--os-text)] px-5 py-2.5 text-sm font-medium text-[color:var(--os-bg)] shadow-sm transition hover:opacity-90"
+              onClick={() => {
+                try {
+                  sessionStorage.removeItem("openstudio_bootstrap_skipped");
+                } catch {
+                  /* ignore */
+                }
+                setBootPass((n) => n + 1);
+              }}
+            >
+              {t("bootstrap.retry")}
+            </button>
+            <Link
+              to="/settings"
+              className="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm font-medium text-[color:var(--os-text)] shadow-sm transition hover:bg-black/[0.03]"
+            >
+              {t("bootstrap.openSettings")}
+            </Link>
+            <button
+              type="button"
+              className="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm font-medium text-[var(--os-text-muted)] transition hover:bg-black/[0.03] hover:text-[color:var(--os-text)]"
+              onClick={() => {
+                try {
+                  sessionStorage.setItem("openstudio_bootstrap_skipped", "1");
+                } catch {
+                  /* ignore */
+                }
+                setGateDone(true);
+              }}
+            >
+              {t("bootstrap.skipEnter")}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
