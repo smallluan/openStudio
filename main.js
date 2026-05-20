@@ -20,6 +20,11 @@ const {
   attachGatewayQuitHandlers,
   resolveBundledOpenClawPackageMetaSync,
 } = require("./lib/openclaw-gateway-supervisor.cjs");
+const {
+  resolveBundledSkillDirectorySync,
+  resolveUserSkillDirectorySync,
+  getSkillEnvironmentCached,
+} = require("./lib/skill-runtime.cjs");
 
 /** Sidebar cannot embed Office; open these locally in the OS default viewer instead. */
 const OPEN_EXTERNALLY_SIDE_PREVIEW_EXT = new Set([".pptx", ".ppt", ".xlsx", ".xls"]);
@@ -220,6 +225,9 @@ app.whenReady().then(async () => {
 
   userConfigStore = createConfigStore(app.getPath("userData"));
   runOpenClawAgentSyncFromStudio("startup");
+  getSkillEnvironmentCached().catch((e) => {
+    getStudioLog().warn("[skills] env probe failed:", /** @type {any} */ (e)?.message ?? e);
+  });
 
   if (!isDev) {
     try {
@@ -268,6 +276,29 @@ app.whenReady().then(async () => {
       return { ok: false, path: logsDir, message: String(errMsg) };
     }
     return { ok: true, path: logsDir };
+  });
+
+  ipcMain.handle("studio:getSkillEnvironment", async () => {
+    return getSkillEnvironmentCached();
+  });
+
+  ipcMain.handle("studio:openSkillDirectory", async (_event, payload) => {
+    const kind = payload?.kind === "user" ? "user" : "bundled";
+    let dir = "";
+    if (kind === "user") {
+      dir = resolveUserSkillDirectorySync(payload?.localPath);
+    } else {
+      dir = resolveBundledSkillDirectorySync(payload?.skillId);
+    }
+    if (!dir) {
+      return { ok: false, message: "path_not_found" };
+    }
+    const errMsg = await shell.openPath(dir);
+    if (String(errMsg ?? "").trim()) {
+      getStudioLog().warn("[skills] shell.openPath failed:", errMsg, dir);
+      return { ok: false, path: dir, message: String(errMsg) };
+    }
+    return { ok: true, path: dir };
   });
 
   ipcMain.handle("studio:logRendererMessage", (_e, payload) => {

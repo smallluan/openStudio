@@ -78,6 +78,7 @@ import {
   skillMetaFromPickRow,
   skillPickRowToPayload,
 } from "../skills/skillRegistry.js";
+import { useSkillEnvironment } from "../skills/useSkillEnvironment.js";
 import { isSkillCreationNlIntent } from "../skills/skillCreationNlIntent.js";
 import {
   messagesWithTerminalAssistantPayload,
@@ -289,6 +290,11 @@ export default function ChatLabPage() {
 
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
   const isElectron = Boolean(bridge?.startChatStream);
+  const skillEnv = useSkillEnvironment();
+  const skillPickEnv = useMemo(
+    () => (skillEnv.loading ? { platform: skillEnv.platform, loading: true } : skillEnv),
+    [skillEnv],
+  );
 
   const [config, setConfig] = useState(/** @type {* | null} */ (null));
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -397,7 +403,7 @@ export default function ChatLabPage() {
     composerLongTextEnteredRef.current = composerLongTextMode;
   }, [composerLongTextMode]);
 
-  const skillPickList = listSkillsForPicker();
+  const skillPickList = useMemo(() => listSkillsForPicker(skillPickEnv), [skillPickEnv]);
 
   const clearComposerSkillRow = useCallback(() => {
     setComposerSkillRowLeaving(true);
@@ -502,7 +508,7 @@ export default function ChatLabPage() {
     if (paramC) return;
     const slug = searchParams.get("composeSkill")?.trim();
     if (!slug) return;
-    const row = listSkillsForPicker().find((r) => r.kind === "openclaw" && r.slug === slug);
+    const row = skillPickList.find((r) => r.kind === "openclaw" && r.slug === slug);
     if (row) setComposerSkillRow(row);
     const prefillEnc = searchParams.get("prefill");
     if (prefillEnc) {
@@ -521,7 +527,7 @@ export default function ChatLabPage() {
       },
       { replace: true },
     );
-  }, [paramC, searchParams, setSearchParams]);
+  }, [paramC, searchParams, setSearchParams, skillPickList]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -571,7 +577,7 @@ export default function ChatLabPage() {
 
   useEffect(() => {
     reloadConfig();
-  }, [reloadConfig, location.pathname]);
+  }, [reloadConfig]);
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
@@ -1117,7 +1123,7 @@ export default function ChatLabPage() {
     const historyForRequest = buildGatewayPayloadRows(messagesRef.current);
     let effectiveSkillRow = composerSkillRow;
     if (!effectiveSkillRow && historyForRequest.length === 0 && isSkillCreationNlIntent(trimmed)) {
-      const hit = listSkillsForPicker().find((r) => r.kind === "openclaw" && r.slug === "skill-creator");
+      const hit = skillPickList.find((r) => r.kind === "openclaw" && r.slug === "skill-creator");
       if (hit) effectiveSkillRow = hit;
     }
 
@@ -1385,11 +1391,11 @@ export default function ChatLabPage() {
     setPendingEditMessageId(messageId);
     const content = typeof payload === "string" ? payload : String(payload?.content ?? "");
     const skillMeta = typeof payload === "object" && payload && "skillMeta" in payload ? payload.skillMeta : undefined;
-    const row = pickRowFromSkillMeta(skillMeta, listSkillsForPicker());
+    const row = pickRowFromSkillMeta(skillMeta, skillPickList);
     setComposerSkillRow(row);
     setInput(content);
     autoScrollRef.current = true;
-  }, []);
+  }, [skillPickList]);
 
   const composerResizeSnapHint =
     composerResizeDragging && composerTextareaPx >= composerSnapPx && !composerLongTextMode;

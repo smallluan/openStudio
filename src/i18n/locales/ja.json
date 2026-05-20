@@ -146,6 +146,9 @@
     "noDescription": "説明なし",
     "emptyBuiltin": "該当する同梱スキルがありません。",
     "emptyUser": "ローカルスキルはまだありません。上のボタンから追加してください。",
+    "openFolder": "フォルダを開く",
+    "openFolderFailed": "スキルフォルダを開けませんでした。",
+    "openFolderNotFound": "パスが見つかりません。有効なフォルダパスで再登録してください。",
     "openclawBuiltinDescHint": "説明は OpenClaw の SKILL.md 由来で多くは英語です。カードの説明にマウスを乗せると全文が表示されます。locale ファイルに skillsPage.openclawDesc.<skillId> を追加すると出し分けできます。",
     "upload": {
       "title": "スキルを登録（ローカルパス）",

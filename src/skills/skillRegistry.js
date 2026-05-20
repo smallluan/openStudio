@@ -1,4 +1,6 @@
 import openclawManifest from "./openclawBundledSkillManifest.json";
+import { filterUsableBundledSkills } from "./skillAvailability.js";
+import { userSkillDisplayTitle } from "./skillDisplay.js";
 import { loadSkillLibrary } from "./skillsLocalStore.js";
 
 /** @typedef {{ generatedFrom: string; generatedAt: string; count: number; skills: Array<{ id: string; name: string; description: string; emoji: string; categoryId: string }> }} OpenclawBundledManifest */
@@ -46,11 +48,15 @@ export function formatSkillTitle(slug) {
 
 /** @typedef {OpenClawPickSkill | UserPickSkill} SkillPickRow */
 
-/** Build merged list for chat pickers (OpenClaw bundled + saved user skills). */
-export function listSkillsForPicker() {
+/**
+ * Build merged list for chat pickers (OpenClaw bundled + saved user skills).
+ * @param {{ platform?: string; availableBins?: string[] } | null} [env] When set, omit bundled skills not usable on this machine.
+ */
+export function listSkillsForPicker(env) {
   const lib = loadSkillLibrary();
+  const bundled = env ? filterUsableBundledSkills(OPENCLAW_BUNDLED_SKILLS, env) : OPENCLAW_BUNDLED_SKILLS;
   /** @type {SkillPickRow[]} */
-  const openclaw = OPENCLAW_BUNDLED_SKILLS.map((s) => {
+  const openclaw = bundled.map((s) => {
     const label = formatSkillTitle(s.name);
     const blob = `${s.id} ${s.name} ${label} ${s.description}`.toLowerCase();
     return {
@@ -65,12 +71,13 @@ export function listSkillsForPicker() {
   });
   /** @type {SkillPickRow[]} */
   const user = lib.userSkills.map((s) => {
-    const blob = `${s.title} ${s.description ?? ""} ${s.localPath ?? ""}`.toLowerCase();
+    const label = userSkillDisplayTitle(s);
+    const blob = `${label} ${s.title} ${s.description ?? ""} ${s.localPath ?? ""}`.toLowerCase();
     return {
       kind: /** @type {const} */ ("user"),
       id: `us:${s.id}`,
       userSkillId: s.id,
-      label: s.title,
+      label,
       emoji: s.fromNl ? "✨" : "📁",
       description: s.description ?? "",
       localPath: s.localPath,

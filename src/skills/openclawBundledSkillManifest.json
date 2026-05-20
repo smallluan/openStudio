@@ -1,6 +1,6 @@
 {
   "generatedFrom": "node_modules/openclaw/skills",
-  "generatedAt": "2026-05-19T15:38:56.075Z",
+  "generatedAt": "2026-05-20T13:57:36.039Z",
   "count": 52,
   "skills": [
     {
@@ -8,364 +8,640 @@
       "name": "1password",
       "description": "Set up and use 1Password CLI for sign-in, desktop integration, and reading or injecting secrets.",
       "emoji": "🔐",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "op"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "apple-notes",
       "name": "apple-notes",
       "description": "Create, view, edit, delete, search, move, or export Apple Notes via the memo CLI on macOS.",
       "emoji": "📝",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [
+        "darwin"
+      ],
+      "requiresBins": [
+        "memo"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "apple-reminders",
       "name": "apple-reminders",
       "description": "List, add, edit, complete, or delete Apple Reminders and reminder lists via remindctl.",
       "emoji": "⏰",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [
+        "darwin"
+      ],
+      "requiresBins": [
+        "remindctl"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "bear-notes",
       "name": "bear-notes",
       "description": "Create, search, and manage Bear notes via grizzly CLI.",
       "emoji": "🐻",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [
+        "darwin"
+      ],
+      "requiresBins": [
+        "grizzly"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "blogwatcher",
       "name": "blogwatcher",
       "description": "Monitor blogs and RSS/Atom feeds for updates using the blogwatcher CLI.",
       "emoji": "📰",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "blogwatcher"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "blucli",
       "name": "blucli",
       "description": "BluOS CLI (blu) for discovery, playback, grouping, and volume.",
       "emoji": "🫐",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "blu"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "bluebubbles",
       "name": "bluebubbles",
       "description": "Send and manage iMessages via BlueBubbles, including attachments, tapbacks, edits, replies, and groups.",
       "emoji": "🫧",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": []
     },
     {
       "id": "camsnap",
       "name": "camsnap",
       "description": "Capture frames or clips from RTSP/ONVIF cameras.",
       "emoji": "📸",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "camsnap"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "clawhub",
       "name": "clawhub",
       "description": "Search, install, update, sync, or publish agent skills with the ClawHub CLI and registry.",
       "emoji": "📦",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "clawhub"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "coding-agent",
       "name": "coding-agent",
       "description": "'Delegate coding tasks to Codex, Claude Code, OpenCode, or Pi agents via immediate background processes. Use when: (1) building or creating features/apps, (2) reviewing PRs in a temp clone/worktree, (3) refactoring large codebases, (4) iterative coding that needs file exploration. NOT for: simple one-line fixes (just edit), reading code (use read tool), thread-bound ACP harness requests in chat (use sessions_spawn with runtime:\"acp\"), or any work in ~/clawd workspace (never spawn agents here). All coding-agent runs start with background:true immediately. Claude Code: use --print --permission-mode bypassPermissions (no PTY). Codex/Pi/OpenCode: pty:true required. Completion notification must use openclaw message send, not system event/heartbeat.'",
       "emoji": "🧩",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "claude"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "discord",
       "name": "discord",
       "description": "Discord ops via the message tool (channel=discord).",
       "emoji": "🎮",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": []
     },
     {
       "id": "eightctl",
       "name": "eightctl",
       "description": "Control Eight Sleep pods (status, temperature, alarms, schedules).",
       "emoji": "🛌",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "eightctl"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "gemini",
       "name": "gemini",
       "description": "Gemini CLI for one-shot Q&A, summaries, and generation.",
       "emoji": "✨",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "gemini"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "gh-issues",
       "name": "gh-issues",
       "description": "Fetch GitHub issues, delegate fixes to subagents, open PRs, watch reviews, or run /gh-issues workflows.",
       "emoji": "📦",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "curl",
+        "git",
+        "gh"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "gifgrep",
       "name": "gifgrep",
       "description": "Search GIF providers with CLI/TUI, download results, and extract stills/sheets.",
       "emoji": "🧲",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "gifgrep"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "github",
       "name": "github",
       "description": "Use gh for GitHub issues, PR status, CI/logs, comments, reviews, releases, and API queries.",
       "emoji": "🐙",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "gh"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "gog",
       "name": "gog",
       "description": "Google Workspace CLI for Gmail, Calendar, Drive, Contacts, Sheets, and Docs.",
       "emoji": "🎮",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "gog"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "goplaces",
       "name": "goplaces",
       "description": "Query Google Places for text search, place details, resolve, reviews, or scriptable JSON via goplaces.",
       "emoji": "📍",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "goplaces"
+      ],
+      "requiresEnv": [
+        "GOOGLE_PLACES_API_KEY"
+      ]
     },
     {
       "id": "healthcheck",
       "name": "healthcheck",
       "description": "Audit and harden hosts running OpenClaw for SSH, firewall, updates, exposure, cron checks, and risk posture.",
       "emoji": "📦",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": []
     },
     {
       "id": "himalaya",
       "name": "himalaya",
       "description": "Use himalaya to list, read, search, compose, reply, forward, and organize IMAP/SMTP email.",
       "emoji": "📧",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "himalaya"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "imsg",
       "name": "imsg",
       "description": "iMessage/SMS CLI for listing chats, history, and sending messages via Messages.app.",
       "emoji": "📨",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [
+        "darwin"
+      ],
+      "requiresBins": [
+        "imsg"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "mcporter",
       "name": "mcporter",
       "description": "List, configure, authenticate, call, and inspect MCP servers/tools with mcporter over HTTP or stdio.",
       "emoji": "📦",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "mcporter"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "model-usage",
       "name": "model-usage",
       "description": "Summarize CodexBar local cost logs by model for Codex or Claude, including current or full breakdowns.",
       "emoji": "📊",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [
+        "darwin"
+      ],
+      "requiresBins": [
+        "codexbar"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "nano-pdf",
       "name": "nano-pdf",
       "description": "Edit PDFs with natural-language instructions using the nano-pdf CLI.",
       "emoji": "📄",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "nano-pdf"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "node-connect",
       "name": "node-connect",
       "description": "Diagnose OpenClaw Android, iOS, or macOS node pairing, QR/setup code, route, auth, and connection failures.",
       "emoji": "📦",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": []
     },
     {
       "id": "notion",
       "name": "notion",
       "description": "Notion API for creating and managing pages, databases, and blocks.",
       "emoji": "📝",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": [
+        "NOTION_API_KEY"
+      ]
     },
     {
       "id": "obsidian",
       "name": "obsidian",
       "description": "Work with Obsidian vaults (plain Markdown notes) and automate via obsidian-cli.",
       "emoji": "💎",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "obsidian-cli"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "openai-whisper",
       "name": "openai-whisper",
       "description": "Local speech-to-text with the Whisper CLI (no API key).",
       "emoji": "🎤",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "whisper"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "openai-whisper-api",
       "name": "openai-whisper-api",
       "description": "Transcribe audio via OpenAI Audio Transcriptions API (Whisper).",
       "emoji": "🌐",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "curl"
+      ],
+      "requiresEnv": [
+        "OPENAI_API_KEY"
+      ]
     },
     {
       "id": "openhue",
       "name": "openhue",
       "description": "Control Philips Hue lights and scenes via the OpenHue CLI.",
       "emoji": "💡",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "openhue"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "oracle",
       "name": "oracle",
       "description": "Use oracle CLI to bundle prompts and files for second-model debugging, refactor, design, or review checks.",
       "emoji": "🧿",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "oracle"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "ordercli",
       "name": "ordercli",
       "description": "Foodora-only CLI for checking past orders and active order status (Deliveroo WIP).",
       "emoji": "🛵",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "ordercli"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "peekaboo",
       "name": "peekaboo",
       "description": "Capture and automate macOS UI with the Peekaboo CLI.",
       "emoji": "👀",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [
+        "darwin"
+      ],
+      "requiresBins": [
+        "peekaboo"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "sag",
       "name": "sag",
       "description": "ElevenLabs text-to-speech with mac-style say UX.",
       "emoji": "🔊",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "sag"
+      ],
+      "requiresEnv": [
+        "ELEVENLABS_API_KEY"
+      ]
     },
     {
       "id": "session-logs",
       "name": "session-logs",
       "description": "Search and analyze your own session logs (older/parent conversations) using jq.",
       "emoji": "📜",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "jq",
+        "rg"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "sherpa-onnx-tts",
       "name": "sherpa-onnx-tts",
       "description": "Local text-to-speech via sherpa-onnx (offline, no cloud)",
       "emoji": "🔉",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "requiresBins": [],
+      "requiresEnv": [
+        "SHERPA_ONNX_RUNTIME_DIR",
+        "SHERPA_ONNX_MODEL_DIR"
+      ]
     },
     {
       "id": "skill-creator",
       "name": "skill-creator",
       "description": "Create, edit, improve, tidy, review, audit, or restructure AgentSkills and SKILL.md files.",
       "emoji": "📦",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": []
     },
     {
       "id": "slack",
       "name": "slack",
       "description": "Use the Slack tool to react, pin/unpin, send, edit, delete messages, or fetch Slack member info.",
       "emoji": "💬",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": []
     },
     {
       "id": "songsee",
       "name": "songsee",
       "description": "Generate spectrograms and feature-panel visualizations from audio with the songsee CLI.",
       "emoji": "🌊",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "songsee"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "sonoscli",
       "name": "sonoscli",
       "description": "Control Sonos speakers (discover/status/play/volume/group).",
       "emoji": "🔊",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "sonos"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "spotify-player",
       "name": "spotify-player",
       "description": "Terminal Spotify playback/search via spogo (preferred) or spotify_player.",
       "emoji": "🎵",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "spogo"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "summarize",
       "name": "summarize",
       "description": "Summarize or transcribe URLs, YouTube/videos, podcasts, articles, transcripts, PDFs, and local files.",
       "emoji": "🧾",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "summarize"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "taskflow",
       "name": "taskflow",
       "description": "Coordinate multi-step detached tasks as one durable TaskFlow job with owner context, state, waits, and child tasks.",
       "emoji": "🪝",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": []
     },
     {
       "id": "taskflow-inbox-triage",
       "name": "taskflow-inbox-triage",
       "description": "Example TaskFlow pattern for inbox triage, intent routing, waiting on replies, and later summaries.",
       "emoji": "📥",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": []
     },
     {
       "id": "things-mac",
       "name": "things-mac",
       "description": "Add, update, list, search, or inspect Things 3 todos, inbox, today, projects, areas, and tags on macOS.",
       "emoji": "✅",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [
+        "darwin"
+      ],
+      "requiresBins": [
+        "things"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "tmux",
       "name": "tmux",
       "description": "Remote-control tmux sessions for interactive CLIs by sending keystrokes and scraping pane output.",
       "emoji": "🧵",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [
+        "darwin",
+        "linux"
+      ],
+      "requiresBins": [
+        "tmux"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "trello",
       "name": "trello",
       "description": "Manage Trello boards, lists, and cards via the Trello REST API.",
       "emoji": "📋",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "jq"
+      ],
+      "requiresEnv": [
+        "TRELLO_API_KEY",
+        "TRELLO_TOKEN"
+      ]
     },
     {
       "id": "video-frames",
       "name": "video-frames",
       "description": "Extract frames or short clips from videos using ffmpeg.",
       "emoji": "🎬",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "ffmpeg"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "voice-call",
       "name": "voice-call",
       "description": "Start voice calls via the OpenClaw voice-call plugin.",
       "emoji": "📞",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": []
     },
     {
       "id": "wacli",
       "name": "wacli",
       "description": "Send third-party WhatsApp messages or sync/search WhatsApp history via wacli, not normal active chats.",
       "emoji": "📱",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "wacli"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "weather",
       "name": "weather",
       "description": "Get current weather, rain, temperature, and forecasts for locations or travel planning.",
       "emoji": "☔",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "curl"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "xurl",
       "name": "xurl",
       "description": "Use xurl for authenticated X API posts, replies, search, DMs, media upload, followers, or raw v2 calls.",
       "emoji": "🐦",
-      "categoryId": "cat-openclaw"
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "xurl"
+      ],
+      "requiresEnv": []
     }
   ]
 }

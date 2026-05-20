@@ -2,8 +2,11 @@ import { useCallback, useId, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
+import { filterUsableBundledSkills } from "../skills/skillAvailability.js";
+import { pathBasename, userSkillDisplayTitle } from "../skills/skillDisplay.js";
 import { BUILTIN_CATEGORY_IDS, BUILTIN_SKILL_DEFS } from "../skills/skillsCatalog.js";
 import { OPENCLAW_BUNDLED_SKILLS, formatSkillTitle } from "../skills/skillRegistry.js";
+import { useSkillEnvironment } from "../skills/useSkillEnvironment.js";
 import { useSkillLibrary } from "../skills/useSkillLibrary.js";
 import FluidTabBar from "../ui/FluidTabBar.jsx";
 import Modal from "../ui/Modal.jsx";
@@ -40,6 +43,8 @@ export default function SkillMarketPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const { lib, addUserSkill, removeUserSkill, addUserCategory, removeUserCategory } = useSkillLibrary();
+  const skillEnv = useSkillEnvironment();
+  const canOpenFolder = Boolean(typeof window !== "undefined" && window.studioBridge?.openSkillDirectory);
   const titleId = useId();
 
   const [filterId, setFilterId] = useState(ALL_FILTER);
@@ -67,6 +72,32 @@ export default function SkillMarketPage() {
   );
 
   const openclawSkillById = useMemo(() => new Map(OPENCLAW_BUNDLED_SKILLS.map((s) => [s.id, s])), []);
+
+  const usableBuiltinDefs = useMemo(() => {
+    const usableIds = new Set(
+      filterUsableBundledSkills(OPENCLAW_BUNDLED_SKILLS, skillEnv).map((s) => s.id),
+    );
+    return BUILTIN_SKILL_DEFS.filter((def) => usableIds.has(def.id));
+  }, [skillEnv]);
+
+  const openSkillFolder = useCallback(async (payload) => {
+    const open = window.studioBridge?.openSkillDirectory;
+    if (!open) return;
+    try {
+      const res = await open(payload);
+      if (!res?.ok) {
+        const detail =
+          res?.message === "path_not_found"
+            ? t("skillsPage.openFolderNotFound")
+            : res?.message
+              ? String(res.message)
+              : "";
+        window.alert(detail ? `${t("skillsPage.openFolderFailed")}\n${detail}` : t("skillsPage.openFolderFailed"));
+      }
+    } catch {
+      window.alert(t("skillsPage.openFolderFailed"));
+    }
+  }, [t]);
 
   const categoryRows = useMemo(() => {
     const builtins = builtinCategoryList.map((id) => ({
@@ -100,7 +131,7 @@ export default function SkillMarketPage() {
   );
 
   const filteredBuiltin = useMemo(() => {
-    return BUILTIN_SKILL_DEFS.filter((def) => {
+    return usableBuiltinDefs.filter((def) => {
       if (filterId !== ALL_FILTER && def.categoryId !== filterId) return false;
       const meta = openclawSkillById.get(def.id);
       const title = meta ? formatSkillTitle(meta.name) : def.id;
@@ -108,12 +139,13 @@ export default function SkillMarketPage() {
       const desc = openclawCardDescription(def.id, manifestDesc, t);
       return matchesQuery(title, desc);
     });
-  }, [filterId, matchesQuery, openclawSkillById, t]);
+  }, [filterId, matchesQuery, openclawSkillById, t, usableBuiltinDefs]);
 
   const filteredUser = useMemo(() => {
     return lib.userSkills.filter((s) => {
       if (filterId !== ALL_FILTER && s.categoryId !== filterId) return false;
-      return matchesQuery(s.title, s.description);
+      const title = userSkillDisplayTitle(s);
+      return matchesQuery(title, s.description);
     });
   }, [filterId, lib.userSkills, matchesQuery]);
 
@@ -125,12 +157,16 @@ export default function SkillMarketPage() {
   }, []);
 
   const onConfirmUpload = useCallback(() => {
-    const title = uploadTitle.trim() || t("skillsPage.upload.defaultTitle");
+    const localPath = uploadPath.trim() || undefined;
+    const title =
+      (localPath ? pathBasename(localPath) : "") ||
+      uploadTitle.trim() ||
+      t("skillsPage.upload.defaultTitle");
     addUserSkill({
       title,
       description: uploadDesc.trim(),
       categoryId: uploadCategoryId,
-      localPath: uploadPath.trim() || undefined,
+      localPath,
       fromNl: false,
     });
     resetUploadForm();
@@ -234,9 +270,15 @@ export default function SkillMarketPage() {
                   <span className="rounded-md bg-[color-mix(in_srgb,var(--os-accent)_12%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-accent)]">
                     {t("skillsPage.badgeBuiltin")}
                   </span>
-                  <span className="truncate font-mono text-[0.62rem] text-[var(--os-text-faint)]" title={def.id}>
-                    {def.id}
-                  </span>
+                  {canOpenFolder ? (
+                    <button
+                      type="button"
+                      className="ml-auto rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] px-2 py-1 text-[0.7rem] font-medium text-[var(--os-text-muted)] transition hover:border-[var(--os-border)] hover:text-[var(--os-text)]"
+                      onClick={() => openSkillFolder({ kind: "bundled", skillId: def.id })}
+                    >
+                      {t("skillsPage.openFolder")}
+                    </button>
+                  ) : null}
                 </div>
               </SkillCardShell>
             );})}
@@ -251,14 +293,17 @@ export default function SkillMarketPage() {
             {t("skillsPage.sectionUser")}
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-            {filteredUser.map((s) => (
+            {filteredUser.map((s) => {
+              const displayTitle = userSkillDisplayTitle(s);
+              const canOpenUserFolder = canOpenFolder && Boolean(s.localPath?.trim());
+              return (
               <SkillCardShell key={s.id} className="group relative">
                 <div className="flex items-start gap-2.5">
                   <span className="text-xl leading-none" aria-hidden>
                     {s.fromNl ? "✨" : "📁"}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-[0.9rem] font-semibold text-[var(--os-text)]">{s.title}</h3>
+                    <h3 className="truncate text-[0.9rem] font-semibold text-[var(--os-text)]">{displayTitle}</h3>
                   </div>
                 </div>
                 <p
@@ -276,6 +321,15 @@ export default function SkillMarketPage() {
                   <span className="rounded-md bg-[color-mix(in_srgb,var(--os-text-muted)_10%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-text-muted)]">
                     {t("skillsPage.badgeUser")}
                   </span>
+                  {canOpenUserFolder ? (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] px-2 py-1 text-[0.7rem] font-medium text-[var(--os-text-muted)] transition hover:border-[var(--os-border)] hover:text-[var(--os-text)]"
+                      onClick={() => openSkillFolder({ kind: "user", localPath: s.localPath })}
+                    >
+                      {t("skillsPage.openFolder")}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="ml-auto rounded-lg px-2 py-1 text-[0.7rem] font-medium text-[#c45a5a] opacity-80 transition hover:opacity-100 group-hover:opacity-100"
@@ -285,7 +339,7 @@ export default function SkillMarketPage() {
                   </button>
                 </div>
               </SkillCardShell>
-            ))}
+            );})}
           </div>
           {filteredUser.length === 0 ? (
             <p className="mt-3 text-[0.82rem] text-[var(--os-text-muted)]">{t("skillsPage.emptyUser")}</p>

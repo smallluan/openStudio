@@ -2,8 +2,11 @@ import { useEffect, useId, useMemo, useState } from "react";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useStudio } from "../context/StudioContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
+import { filterUsableBundledSkills } from "../skills/skillAvailability.js";
+import { userSkillDisplayTitle } from "../skills/skillDisplay.js";
 import { BUILTIN_SKILL_DEFS } from "../skills/skillsCatalog.js";
 import { OPENCLAW_BUNDLED_SKILLS, formatSkillTitle } from "../skills/skillRegistry.js";
+import { useSkillEnvironment } from "../skills/useSkillEnvironment.js";
 import { useSkillLibrary } from "../skills/useSkillLibrary.js";
 import Modal from "../ui/Modal.jsx";
 import ModalCloseButton from "../ui/ModalCloseButton.jsx";
@@ -34,6 +37,7 @@ export default function LobsterManagementPage() {
   const delTitleId = useId();
   const { agents, addAgent, removeAgent, patchAgentMeta } = useStudio();
   const { lib } = useSkillLibrary();
+  const skillEnv = useSkillEnvironment();
 
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(/** @type {string | null} */ (null));
@@ -43,18 +47,21 @@ export default function LobsterManagementPage() {
   const openclawById = useMemo(() => new Map(OPENCLAW_BUNDLED_SKILLS.map((s) => [s.id, s])), []);
 
   const selectableSkills = useMemo(() => {
-    const builtins = BUILTIN_SKILL_DEFS.map(({ id }) => {
+    const usableIds = new Set(
+      filterUsableBundledSkills(OPENCLAW_BUNDLED_SKILLS, skillEnv).map((s) => s.id),
+    );
+    const builtins = BUILTIN_SKILL_DEFS.filter((def) => usableIds.has(def.id)).map(({ id }) => {
       const meta = openclawById.get(id);
       const title = meta ? formatSkillTitle(meta.name) : formatSkillTitle(id);
       return { id, title, source: "builtin" };
     });
     const users = lib.userSkills.map((s) => ({
       id: s.id,
-      title: s.title?.trim() || s.id,
+      title: userSkillDisplayTitle(s),
       source: "user",
     }));
     return [...builtins, ...users];
-  }, [lib.userSkills, openclawById]);
+  }, [lib.userSkills, openclawById, skillEnv]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredAgents = useMemo(() => {

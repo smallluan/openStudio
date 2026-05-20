@@ -146,6 +146,9 @@
     "noDescription": "暫無描述",
     "emptyBuiltin": "沒有符合的內建技能。",
     "emptyUser": "尚無本機技能，請點上方按鈕新增。",
+    "openFolder": "開啟資料夾",
+    "openFolderFailed": "無法開啟技能資料夾。",
+    "openFolderNotFound": "路徑不存在，請重新上傳並填寫有效的技能資料夾路徑。",
     "openclawBuiltinDescHint": "同捆說明多來自 OpenClaw 英文 SKILL.md。游標懸停在卡片說明上可檢視完整原文；可在語系檔中設定 skillsPage.openclawDesc.<技能 id> 以顯示譯文。",
     "upload": {
       "title": "上傳技能（本機路徑）",

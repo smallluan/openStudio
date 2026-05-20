@@ -146,6 +146,9 @@
     "noDescription": "暂无描述",
     "emptyBuiltin": "没有匹配的内置技能。",
     "emptyUser": "还没有本地技能，点击上方按钮添加。",
+    "openFolder": "打开文件夹",
+    "openFolderFailed": "无法打开技能文件夹。",
+    "openFolderNotFound": "路径不存在，请重新上传并填写有效的技能文件夹路径。",
     "openclawBuiltinDescHint": "同捆说明多来自 OpenClaw 英文 SKILL.md。将鼠标悬停在卡片说明上可查看完整原文。需要其它语言时，可在本语言包中为 skillsPage.openclawDesc.<技能 id> 添加译文。",
     "upload": {
       "title": "上传技能（本地路径）",

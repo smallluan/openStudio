@@ -146,6 +146,9 @@
     "noDescription": "No description",
     "emptyBuiltin": "No built-in skills match your filter.",
     "emptyUser": "No local skills yet — use the buttons above to add one.",
+    "openFolder": "Open folder",
+    "openFolderFailed": "Could not open the skill folder.",
+    "openFolderNotFound": "Path not found. Re-register the skill with a valid folder path.",
     "openclawBuiltinDescHint": "Bundled descriptions come from OpenClaw SKILL.md (often English). Hover a card description to read the full text. To localize, add strings under skillsPage.openclawDesc.<skillId> in this locale file.",
     "upload": {
       "title": "Register skill (local path)",

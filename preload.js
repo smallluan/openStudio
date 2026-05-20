@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld("studioBridge", {
   setUserConfig: (patch) => ipcRenderer.invoke("studio:setUserConfig", patch),
   getPaths: () => ipcRenderer.invoke("studio:getPaths"),
   openLogsDirectory: () => ipcRenderer.invoke("studio:openLogsDirectory"),
+  getSkillEnvironment: () => ipcRenderer.invoke("studio:getSkillEnvironment"),
+  openSkillDirectory: (payload) => ipcRenderer.invoke("studio:openSkillDirectory", payload),
   logRendererMessage: (payload) =>
     ipcRenderer.invoke("studio:logRendererMessage", payload && typeof payload === "object" ? payload : { message: String(payload) }),
   readWorkspacePreviewFile: (rawPath) => ipcRenderer.invoke("studio:readWorkspacePreviewFile", rawPath),

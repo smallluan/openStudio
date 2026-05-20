@@ -32,12 +32,33 @@ function extractName(fm) {
 function extractDescription(fm) {
   const q = /^description:\s*"((?:[^"\\]|\\.)*)"/m.exec(fm);
   if (q) return q[1].replace(/\\"/g, '"').replace(/\\n/g, "\n").trim();
-  const plain = /^description:\s*(.+)$/m.exec(fm);
-  return plain ? plain[1].trim() : "";
+  const plain = /^description:\s*(.+)$/m;
+  const plainMatch = plain.exec(fm);
+  return plainMatch ? plainMatch[1].trim() : "";
+}
+
+/** @param {string} block */
+function quotedList(block) {
+  if (!block) return [];
+  return [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+}
+
+/** @param {string} fm */
+function extractOpenclawMeta(fm) {
+  /** @type {{ os: string[]; requiresBins: string[]; requiresEnv: string[] }} */
+  const out = { os: [], requiresBins: [], requiresEnv: [] };
+  if (!/"openclaw"/.test(fm)) return out;
+  const osMatch = /"os"\s*:\s*\[([\s\S]*?)\]/m.exec(fm);
+  if (osMatch) out.os = quotedList(osMatch[1]);
+  const binsMatch = /"bins"\s*:\s*\[([\s\S]*?)\]/m.exec(fm);
+  if (binsMatch) out.requiresBins = quotedList(binsMatch[1]);
+  const envMatch = /"env"\s*:\s*\[([\s\S]*?)\]/m.exec(fm);
+  if (envMatch) out.requiresEnv = quotedList(envMatch[1]);
+  return out;
 }
 
 const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
-/** @type {Array<{ id: string; name: string; description: string; emoji: string; categoryId: string }>} */
+/** @type {Array<{ id: string; name: string; description: string; emoji: string; categoryId: string; os: string[]; requiresBins: string[]; requiresEnv: string[] }>} */
 const skills = [];
 
 for (const ent of entries) {
@@ -53,12 +74,16 @@ for (const ent of entries) {
   let description = extractDescription(fm);
   if (!description) description = "OpenClaw bundled skill.";
   const emoji = extractEmoji(fm);
+  const meta = extractOpenclawMeta(fm);
   skills.push({
     id,
     name,
     description,
     emoji,
     categoryId: "cat-openclaw",
+    os: meta.os,
+    requiresBins: meta.requiresBins,
+    requiresEnv: meta.requiresEnv,
   });
 }
 

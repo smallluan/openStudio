@@ -1,5 +1,6 @@
 import { preferLongerAssistantText } from "../chat/streamTimelineMerge.js";
 import { BUILTIN_CATEGORY_IDS } from "./skillsCatalog.js";
+import { extractSkillPathFromText, pathBasename } from "./skillDisplay.js";
 import { loadSkillLibrary, saveSkillLibrary } from "./skillsLocalStore.js";
 
 /**
@@ -120,7 +121,10 @@ export function syncSkillCreatorResultToLibrary(messages, conversationId, assist
   const dedupeKey = `${conversationId}:${user.id}`;
   if (syncAlreadyRecorded(dedupeKey)) return;
 
-  const title = extractSkillTitle(String(user.content ?? ""), content);
+  const localPath = extractSkillPathFromText(content);
+  const title = localPath
+    ? pathBasename(localPath)
+    : extractSkillTitle(String(user.content ?? ""), content);
   const description = buildDescription(content, conversationId);
   const row = {
     id:
@@ -129,6 +133,7 @@ export function syncSkillCreatorResultToLibrary(messages, conversationId, assist
     description,
     categoryId: BUILTIN_CATEGORY_IDS.GENERAL,
     fromNl: true,
+    ...(localPath ? { localPath } : {}),
     createdAt: Date.now(),
   };
   const lib = loadSkillLibrary();
