@@ -4,7 +4,6 @@ import NavChatLabIcon from "../assets/svg/NavChatLabIcon.jsx";
 import NavLobsterIcon from "../assets/svg/NavLobsterIcon.jsx";
 import NavSkillIcon from "../assets/svg/NavSkillIcon.jsx";
 import NavStudioIcon from "../assets/svg/NavStudioIcon.jsx";
-import RailSearchInput from "../components/shell/RailSearchInput.jsx";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
 import ChatHistoryList from "../components/shell/ChatHistoryList.jsx";
@@ -100,8 +99,6 @@ export default function MainLayout({ railResizeEnabled = false }) {
     [t],
   );
 
-  const [railSearchQuery, setRailSearchQuery] = useState("");
-
   const lastExpandedRef = useRef(readLastExpanded());
   const [railPx, setRailPx] = useState(readRailPx);
   const [railDragging, setRailDragging] = useState(false);
@@ -170,20 +167,12 @@ export default function MainLayout({ railResizeEnabled = false }) {
           ) : null}
 
           <div className="primary-rail__top primary-rail__top--grow">
-            <div className={cn("primary-rail__header-row", isNarrow && "primary-rail__header-row--narrow")}>
-              <RailSearchInput
-                value={railSearchQuery}
-                onChange={setRailSearchQuery}
-                narrow={isNarrow}
-              />
-            </div>
-
             <FluidNavMenu
               narrow={isNarrow}
               router
               primaryItems={primaryNavItems}
               footerItems={[]}
-              afterPrimary={<ChatHistoryList narrow={isNarrow} filterQuery={railSearchQuery} />}
+              afterPrimary={<ChatHistoryList narrow={isNarrow} />}
               className="min-h-0 flex-1 pb-1"
             />
           </div>

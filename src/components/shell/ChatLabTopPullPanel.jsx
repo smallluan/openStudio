@@ -1,6 +1,7 @@
 import { cn } from "../../ui/cn.js";
 import { useI18n } from "../../context/I18nContext.jsx";
 import NavSettingsIcon from "../../assets/svg/NavSettingsIcon.jsx";
+import SearchSparkleIcon from "../../assets/svg/SearchSparkleIcon.jsx";
 import { useNavigate } from "react-router-dom";
 
 export default function ChatLabTopPullPanel({ expanded, onToggle }) {
@@ -77,26 +78,39 @@ export default function ChatLabTopPullPanel({ expanded, onToggle }) {
         {/* 垂直线 */}
         <div className="chat-lab-top-pull__wire" />
 
-        {/* 圆形按钮 */}
-        <button
-          type="button"
-          className="chat-lab-top-pull__orb"
-          onClick={onToggle}
-          aria-label={expanded ? t("nav.closePanel") : t("nav.openPanel")}
-          aria-expanded={expanded}
-        >
-          <svg
-            className="chat-lab-top-pull__orb-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        <div className="chat-lab-top-pull__orb-stack">
+          <button
+            type="button"
+            className="chat-lab-top-pull__orb chat-lab-top-pull__orb--search"
+            title={t("nav.railSearchPlaceholder")}
+            aria-label={t("nav.railSearchPlaceholder")}
           >
-            <polyline points="6 15 12 9 18 15" />
-          </svg>
-        </button>
+            <SearchSparkleIcon className="chat-lab-top-pull__orb-icon" />
+          </button>
+
+          <div className="chat-lab-top-pull__orb-link" aria-hidden />
+
+          {/* 圆形按钮 */}
+          <button
+            type="button"
+            className="chat-lab-top-pull__orb"
+            onClick={onToggle}
+            aria-label={expanded ? t("nav.closePanel") : t("nav.openPanel")}
+            aria-expanded={expanded}
+          >
+            <svg
+              className="chat-lab-top-pull__orb-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="6 15 12 9 18 15" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );

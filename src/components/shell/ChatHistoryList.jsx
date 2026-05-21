@@ -32,6 +32,7 @@ import { useFluidPopupBlob } from "../../ui/useFluidPopupBlob.js";
 import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 import { FluidNavHighlightApi } from "./FluidNavHighlightApi.jsx";
 import { cn } from "../../ui/cn.js";
+import { useChatHistoryListMotion } from "./useChatHistoryListMotion.js";
 
 function HistorySessionSpinner({ label }) {
   return (
@@ -100,6 +101,8 @@ function TrashIcon({ className }) {
  *   rowActive: boolean;
  *   to: string;
  *   measureRef: (node: HTMLElement | null) => void;
+ *   rowRef: (node: HTMLElement | null) => void;
+ *   rowMotion: 'idle' | 'enter-push' | 'enter-push-active' | 'enter-in' | 'leave-out' | 'leave-collapse';
  *   onRenamed: () => void;
  *   onAfterDelete: () => void;
  *   isStreaming?: boolean;
@@ -112,6 +115,8 @@ function HistorySessionRow({
   rowActive,
   to,
   measureRef,
+  rowRef,
+  rowMotion,
   onRenamed,
   onAfterDelete,
   isStreaming = false,
@@ -169,7 +174,19 @@ function HistorySessionRow({
   };
 
   return (
-    <li className="chat-history-row min-w-0" aria-busy={isStreaming}>
+    <li
+      ref={rowRef}
+      className={cn(
+        "chat-history-row min-w-0",
+        rowMotion === "enter-push" && "chat-history-row--enter-push",
+        rowMotion === "enter-push-active" && "chat-history-row--enter-push-active",
+        rowMotion === "enter-in" && "chat-history-row--enter-in",
+        rowMotion === "leave-out" && "chat-history-row--leave-out",
+        rowMotion === "leave-collapse" && "chat-history-row--leave-collapse",
+      )}
+      aria-busy={isStreaming}
+    >
+      <div className="chat-history-row__motion min-w-0">
       <div
         ref={measureRef}
         className={cn(
@@ -218,6 +235,7 @@ function HistorySessionRow({
             ⋮
           </span>
         </button>
+      </div>
       </div>
       {present ? (
         <FloatingPortal>
@@ -322,6 +340,8 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     );
   }, [allSessions, filterQuery]);
 
+  const { displaySessions, getRowMotion, registerRowRef } = useChatHistoryListMotion(allSessions, filtered);
+
   const activeC = useMemo(() => {
     try {
       return new URLSearchParams(location.search).get("c");
@@ -399,7 +419,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
       el.removeEventListener("scroll", onScroll);
       ro?.disconnect();
     };
-  }, [narrow, updateRailScrollbar, listVersion, filtered.length, emptyAll, emptyFilter]);
+  }, [narrow, updateRailScrollbar, listVersion, displaySessions.length, emptyAll, emptyFilter]);
 
   const onRailThumbPointerDown = useCallback(
     (e) => {
@@ -472,7 +492,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
               <EmptyState title={t("nav.chatHistoryNoMatch")} hideDecoration className="min-h-[5rem] py-6" />
             ) : (
               <ul className="relative z-[1] m-0 flex list-none flex-col gap-0.5 p-0 px-1">
-                {filtered.map((s) => {
+                {displaySessions.map((s) => {
                   const to = `/chat?c=${encodeURIComponent(s.id)}`;
                   const rowActive =
                     (location.pathname === "/chat" || location.pathname === "/") && activeC === s.id;
@@ -486,6 +506,8 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
                       rowActive={rowActive}
                       to={to}
                       measureRef={(node) => highlight?.registerSessionAnchor(s.id, node)}
+                      rowRef={(node) => registerRowRef(s.id, node)}
+                      rowMotion={getRowMotion(s.id)}
                       onRenamed={reload}
                       onAfterDelete={reload}
                       isStreaming={streamingSessionId === s.id}

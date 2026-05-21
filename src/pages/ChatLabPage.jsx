@@ -753,8 +753,7 @@ export default function ChatLabPage() {
   const composerSkillUiLocked = gatewayStreaming;
 
   const composerPlaceholder = useMemo(() => {
-    const readyKey = messages.length === 0 ? "chatLab.heroInputPlaceholder" : "chatLab.placeholder";
-    if (!isElectron) return t(readyKey);
+    if (!isElectron) return t("chatLab.heroInputPlaceholder");
     if (!configLoaded) return t("chatLab.configLoadingPlaceholder");
     if (
       !configIssueKey &&
@@ -762,8 +761,8 @@ export default function ChatLabPage() {
     ) {
       return t("chatLab.gatewayConnectingPlaceholder");
     }
-    return t(readyKey);
-  }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, messages.length, t]);
+    return t("chatLab.heroInputPlaceholder");
+  }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
 
   const commitUserMessageEdit = useCallback(
     async (messageId, nextRaw) => {
@@ -1401,11 +1400,11 @@ export default function ChatLabPage() {
     composerResizeDragging && composerTextareaPx >= composerSnapPx && !composerLongTextMode;
 
   const composer = (
-    <div className={cn("chat-lab__composer-outer", isLanding && "chat-lab__composer-outer--landing")}>
+    <div className="chat-lab__composer-outer">
       <div
         className={cn(
           "chat-lab__shell",
-          isLanding && "chat-lab__shell--hero",
+          "chat-lab__shell--hero",
           composerDragActive && !composerInputLocked && "chat-lab__shell--drag",
           composerLongTextMode && "chat-lab__shell--long-text",
           composerResizeDragging && "chat-lab__shell--resize-drag",
@@ -1652,76 +1651,85 @@ export default function ChatLabPage() {
           expanded={topPanelExpanded}
           onToggle={() => setTopPanelExpanded(!topPanelExpanded)}
         />
-        <div
-          className={cn(
-            "chat-lab",
-            isLanding && "chat-lab--landing",
-            gatePending && "chat-lab--gate-pending",
-            isLanding && landingRevealReady && "chat-lab--gate-revealed",
-            !isLanding && "chat-lab--thread",
-          )}
-        >
-          {isLanding ? (
-            <>
-              {showPortalChrome && gatePortalTarget
-                ? createPortal(
-                    <div className="bootstrap-gate-chrome__stack">
-                      <ChatLabHero
-                        ref={portalHeroRef}
-                        className={cn(
-                          shellPhase === "loading" && "chat-lab__hero--gate-splash",
-                          shellPhase === "exiting" && "chat-lab__hero--gate-releasing",
-                        )}
-                        suppressTitleEntrance={!playHeroTitleEntrance}
-                      />
-                      <div
-                        className={cn(
-                          "chat-lab__gate-progress",
-                          progressExiting && "chat-lab__gate-progress--exit",
-                        )}
-                        aria-hidden={shellPhase === "exiting" ? true : undefined}
-                      >
-                        <div className="chat-lab__gate-progress-track">
-                          <div
-                            className="chat-lab__gate-progress-fill"
-                            style={{ width: `${Math.round(progressFrac * 100)}%` }}
-                          />
+        <div className="chat-lab__column">
+          <div
+            className={cn(
+              "chat-lab",
+              isLanding && "chat-lab--landing",
+              gatePending && "chat-lab--gate-pending",
+              isLanding && landingRevealReady && "chat-lab--gate-revealed",
+              !isLanding && "chat-lab--thread",
+            )}
+          >
+            {isLanding ? (
+              <>
+                {showPortalChrome && gatePortalTarget
+                  ? createPortal(
+                      <div className="bootstrap-gate-chrome__stack">
+                        <ChatLabHero
+                          ref={portalHeroRef}
+                          className={cn(
+                            shellPhase === "loading" && "chat-lab__hero--gate-splash",
+                            shellPhase === "exiting" && "chat-lab__hero--gate-releasing",
+                          )}
+                          suppressTitleEntrance={!playHeroTitleEntrance}
+                        />
+                        <div
+                          className={cn(
+                            "chat-lab__gate-progress",
+                            progressExiting && "chat-lab__gate-progress--exit",
+                          )}
+                          aria-hidden={shellPhase === "exiting" ? true : undefined}
+                        >
+                          <div className="chat-lab__gate-progress-track">
+                            <div
+                              className="chat-lab__gate-progress-fill"
+                              style={{ width: `${Math.round(progressFrac * 100)}%` }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    </div>,
-                    gatePortalTarget,
-                  )
-                : null}
-              <div className="chat-lab__landing-mid">
-                <ChatLabHero
-                  ref={landingHeroRef}
-                  className={cn(hideLandingHero && "chat-lab__hero--gate-measure")}
-                  suppressTitleEntrance={!playHeroTitleEntrance}
+                      </div>,
+                      gatePortalTarget,
+                    )
+                  : null}
+                <div className="chat-lab__landing-mid">
+                  <ChatLabHero
+                    ref={landingHeroRef}
+                    className={cn(hideLandingHero && "chat-lab__hero--gate-measure")}
+                    suppressTitleEntrance={!playHeroTitleEntrance}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="chat-lab__thread-stack">
+                <header className="chat-lab__conv-header">
+                  <h2 className="chat-lab__conv-title">{headerTitle || t("chatLab.chatUntitled")}</h2>
+                </header>
+                <ChatLabVirtualMessageList
+                  key={conversationId}
+                  messages={messages}
+                  messagesScrollRef={messagesScrollRef}
+                  autoScrollRef={autoScrollRef}
+                  gatewayStreaming={gatewayStreaming}
+                  streamLocked={streamLocked}
+                  onBeginUserEdit={beginComposerEdit}
+                  onQuickReply={quickReplySend}
+                  quickReplyDisabled={streamLocked || Boolean(pendingEditMessageId)}
+                  t={t}
+                  locale={locale}
+                  threadLabel={t("chatLab.title")}
                 />
               </div>
-            </>
-          ) : (
-            <div className="chat-lab__thread-stack">
-              <header className="chat-lab__conv-header">
-                <h2 className="chat-lab__conv-title">{headerTitle || t("chatLab.chatUntitled")}</h2>
-              </header>
-              <ChatLabVirtualMessageList
-                key={conversationId}
-                messages={messages}
-                messagesScrollRef={messagesScrollRef}
-                autoScrollRef={autoScrollRef}
-                gatewayStreaming={gatewayStreaming}
-                streamLocked={streamLocked}
-                onBeginUserEdit={beginComposerEdit}
-                onQuickReply={quickReplySend}
-                quickReplyDisabled={streamLocked || Boolean(pendingEditMessageId)}
-                t={t}
-                locale={locale}
-                threadLabel={t("chatLab.title")}
-              />
-            </div>
-          )}
-          <div className="chat-lab__composer-slot">{composer}</div>
+            )}
+          </div>
+          <div
+            className={cn(
+              "chat-lab__composer-slot",
+              gatePending && "chat-lab__composer-slot--gate-pending",
+            )}
+          >
+            {composer}
+          </div>
         </div>
         <ChatLabPreviewDock />
       </div>

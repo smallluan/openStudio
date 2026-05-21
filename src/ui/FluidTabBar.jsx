@@ -1,5 +1,6 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { cn } from "./cn.js";
+import { useFluidBlobState } from "./useFluidBlobState.js";
 
 /**
  * Horizontal pill tabs with the same “fluid” sliding highlight as `FluidNavMenu` (`.fluid-nav__blob`).
@@ -23,7 +24,7 @@ export default function FluidTabBar({ items, value, onChange, className, tabList
   const itemIdsKey = useMemo(() => items.map((i) => i.id).join("\0"), [items]);
 
   const measureRef = useRef(() => {});
-  const [blob, setBlob] = useState({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
+  const { blob, setBlobTarget, hideBlob } = useFluidBlobState();
 
   const setAnchor = useCallback((id, node) => {
     const m = anchorRefs.current;
@@ -40,7 +41,7 @@ export default function FluidTabBar({ items, value, onChange, className, tabList
       const id = valueRef.current;
       const el = id ? anchorRefs.current.get(id) : null;
       if (!root || !id || !el) {
-        setBlob((b) => ({ ...b, opacity: 0 }));
+        hideBlob();
         return;
       }
       const e = el.getBoundingClientRect();
@@ -49,18 +50,7 @@ export default function FluidTabBar({ items, value, onChange, className, tabList
       const top = Math.round((e.top - r.top + root.scrollTop) * 100) / 100;
       const width = Math.round(e.width * 100) / 100;
       const height = Math.round(e.height * 100) / 100;
-      setBlob((prev) => {
-        if (
-          prev.opacity === 1 &&
-          prev.left === left &&
-          prev.top === top &&
-          prev.width === width &&
-          prev.height === height
-        ) {
-          return prev;
-        }
-        return { left, top, width, height, opacity: 1 };
-      });
+      setBlobTarget({ left, top, width, height, opacity: 1 });
     };
 
     measureRef.current = measure;
@@ -79,7 +69,7 @@ export default function FluidTabBar({ items, value, onChange, className, tabList
       ro?.disconnect();
       root?.removeEventListener("scroll", onScroll);
     };
-  }, [value, itemIdsKey]);
+  }, [value, itemIdsKey, hideBlob, setBlobTarget]);
 
   return (
     <div ref={rootRef} className={cn("relative", className)}>
@@ -87,7 +77,7 @@ export default function FluidTabBar({ items, value, onChange, className, tabList
         aria-hidden
         className="fluid-nav__blob pointer-events-none absolute top-0 left-0 z-0 rounded-full"
         style={{
-          transform: `translate3d(${blob.left}px, ${blob.top}px, 0)`,
+          transform: `translate3d(${blob.left}px, ${blob.top}px, 0) scale(${blob.squishX}, ${blob.squishY})`,
           width: `${blob.width}px`,
           height: `${blob.height}px`,
           opacity: blob.opacity,

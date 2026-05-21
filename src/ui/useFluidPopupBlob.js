@@ -1,4 +1,5 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
+import { useFluidBlobState } from "./useFluidBlobState.js";
 
 /**
  * Scroll containers between `node` and `until` (exclusive until), for blob repositioning —
@@ -45,6 +46,7 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
   const rootRef = useRef(/** @type {HTMLElement | null} */ (null));
   const itemRefs = useRef(new Map());
   const blobReadyRef = useRef(false); // 记录blob是否准备好显示
+  const { blob, setBlobTarget, hideBlob } = useFluidBlobState();
 
   const setItemRef = useCallback((/** @type {string} */ key, /** @type {HTMLElement | null} */ node) => {
     const m = itemRefs.current;
@@ -52,37 +54,29 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
     else m.delete(key);
   }, []);
 
-  const [blob, setBlob] = useState(() => ({
-    left: 0,
-    top: 0,
-    width: 0,
-    height: 0,
-    opacity: 0,
-  }));
-
   const targetKey = hoverKey ?? fallbackKey;
 
   // 当open变为false时重置ready状态
   useLayoutEffect(() => {
     if (!open) {
       blobReadyRef.current = false;
-      setBlob((b) => ({ ...b, opacity: 0 }));
+      hideBlob();
     }
-  }, [open]);
+  }, [open, hideBlob]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!open || !root) {
-      setBlob((b) => ({ ...b, opacity: 0 }));
+      hideBlob();
       return;
     }
     if (targetKey == null) {
-      setBlob((b) => ({ ...b, opacity: 0 }));
+      hideBlob();
       return;
     }
     const el = itemRefs.current.get(targetKey);
     if (!el) {
-      setBlob((b) => ({ ...b, opacity: 0 }));
+      hideBlob();
       return;
     }
 
@@ -91,7 +85,7 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
       const idLive = hoverKey ?? fallbackKey;
       const rowLive = idLive != null ? itemRefs.current.get(idLive) : null;
       if (!rootLive || !rowLive) {
-        setBlob((b) => ({ ...b, opacity: 0 }));
+        hideBlob();
         return;
       }
       const r = rootLive.getBoundingClientRect();
@@ -102,19 +96,7 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
       const height = Math.round((e.height - inset * 2) * 100) / 100;
 
       const opacity = blobReadyRef.current || forceOpacity ? 1 : 0;
-
-      setBlob((prev) => {
-        if (
-          prev.opacity === opacity &&
-          prev.left === left &&
-          prev.top === top &&
-          prev.width === width &&
-          prev.height === height
-        ) {
-          return prev;
-        }
-        return { left, top, width, height, opacity };
-      });
+      setBlobTarget({ left, top, width, height, opacity });
     };
 
     measure();
@@ -144,10 +126,10 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
         sc.removeEventListener("scroll", onScroll);
       }
     };
-  }, [open, targetKey, hoverKey, fallbackKey, layoutKey, inset]);
+  }, [open, targetKey, hoverKey, fallbackKey, layoutKey, inset, hideBlob, setBlobTarget]);
 
   const blobStyle = {
-    transform: `translate3d(${blob.left}px, ${blob.top}px, 0)`,
+    transform: `translate3d(${blob.left}px, ${blob.top}px, 0) scale(${blob.squishX}, ${blob.squishY})`,
     width: `${blob.width}px`,
     height: `${blob.height}px`,
     opacity: blob.opacity,

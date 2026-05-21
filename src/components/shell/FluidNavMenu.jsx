@@ -3,6 +3,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
 import { FluidNavHighlightApi } from "./FluidNavHighlightApi.jsx";
+import { useFluidBlobState } from "../../ui/useFluidBlobState.js";
 
 /** @param {*} item */
 function isNavGroup(item) {
@@ -150,12 +151,12 @@ export default function FluidNavMenu({
     [registerSessionAnchor, attachNestedScrollRoot],
   );
 
-  const [blob, setBlob] = useState({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
+  const { blob, setBlobTarget, hideBlob } = useFluidBlobState();
 
   useLayoutEffect(() => {
     if (!fluidTargetId) {
-      setBlob((b) => ({ ...b, opacity: 0 }));
-      blobMeasureRef.current = () => setBlob((b2) => ({ ...b2, opacity: 0 }));
+      hideBlob();
+      blobMeasureRef.current = () => hideBlob();
       return;
     }
 
@@ -164,7 +165,7 @@ export default function FluidNavMenu({
       const idLive = fluidTargetIdRef.current;
       const elLive = idLive ? anchorRefs.current.get(idLive) : null;
       if (!rootLive || !idLive || !elLive) {
-        setBlob((b) => ({ ...b, opacity: 0 }));
+        hideBlob();
         return;
       }
       const e = elLive.getBoundingClientRect();
@@ -174,7 +175,7 @@ export default function FluidNavMenu({
         if (nest.contains(elLive)) {
           const nr = nest.getBoundingClientRect();
           if (!domRectsIntersect(e, nr)) {
-            setBlob((b) => ({ ...b, opacity: 0 }));
+            hideBlob();
             return;
           }
           break;
@@ -185,18 +186,7 @@ export default function FluidNavMenu({
       const top = Math.round((e.top - r.top + rootLive.scrollTop) * 100) / 100;
       const width = Math.round(e.width * 100) / 100;
       const height = Math.round(e.height * 100) / 100;
-      setBlob((prev) => {
-        if (
-          prev.opacity === 1 &&
-          prev.left === left &&
-          prev.top === top &&
-          prev.width === width &&
-          prev.height === height
-        ) {
-          return prev;
-        }
-        return { left, top, width, height, opacity: 1 };
-      });
+      setBlobTarget({ left, top, width, height, opacity: 1 });
     };
 
     blobMeasureRef.current = measure;
@@ -220,7 +210,7 @@ export default function FluidNavMenu({
       if (rootEl) rootEl.removeEventListener("scroll", measure);
       nested.forEach((s) => s.removeEventListener("scroll", onNestedScroll));
     };
-  }, [fluidTargetId, narrow, router, controlledSelectedId, location.pathname, location.search, nestedScrollGeneration]);
+  }, [fluidTargetId, narrow, router, controlledSelectedId, location.pathname, location.search, nestedScrollGeneration, hideBlob, setBlobTarget]);
 
   const footerNavPresent = Boolean(footerItems?.length > 0);
   const footerZone = footerNavPresent || footerAccessory;
@@ -292,7 +282,7 @@ export default function FluidNavMenu({
           aria-hidden
           className="fluid-nav__blob pointer-events-none absolute top-0 left-0 z-0 rounded-[11px]"
           style={{
-            transform: `translate3d(${blob.left}px, ${blob.top}px, 0)`,
+            transform: `translate3d(${blob.left}px, ${blob.top}px, 0) scale(${blob.squishX}, ${blob.squishY})`,
             width: `${blob.width}px`,
             height: `${blob.height}px`,
             opacity: blob.opacity,
