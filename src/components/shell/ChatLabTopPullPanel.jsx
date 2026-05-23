@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../../ui/cn.js";
 import { useI18n } from "../../context/I18nContext.jsx";
 import NavSettingsIcon from "../../assets/svg/NavSettingsIcon.jsx";
@@ -7,6 +8,104 @@ import { useNavigate } from "react-router-dom";
 export default function ChatLabTopPullPanel({ expanded, onToggle }) {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const searchAnchorRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const searchFieldRef = useRef(/** @type {HTMLInputElement | null} */ (null));
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+  const [searchOrigin, setSearchOrigin] = useState({ top: 0, left: 0 });
+
+  const updateSearchOrigin = useCallback(() => {
+    const node = searchAnchorRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    setSearchOrigin({
+      top: Math.round(rect.top),
+      left: Math.round(rect.left),
+    });
+  }, []);
+
+  const openSearch = useCallback(() => {
+    updateSearchOrigin();
+    setSearchExpanded(true);
+  }, [updateSearchOrigin]);
+
+  const closeSearch = useCallback(() => {
+    updateSearchOrigin();
+    setSearchExpanded(false);
+  }, [updateSearchOrigin]);
+
+  const toggleSearch = useCallback(() => {
+    if (searchExpanded) {
+      closeSearch();
+      return;
+    }
+    openSearch();
+  }, [closeSearch, openSearch, searchExpanded]);
+
+  useLayoutEffect(() => {
+    updateSearchOrigin();
+  }, [updateSearchOrigin]);
+
+  useEffect(() => {
+    const onResize = () => updateSearchOrigin();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [updateSearchOrigin]);
+
+  useEffect(() => {
+    updateSearchOrigin();
+    const t1 = window.setTimeout(updateSearchOrigin, 90);
+    const t2 = window.setTimeout(updateSearchOrigin, 190);
+    const t3 = window.setTimeout(updateSearchOrigin, 320);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  }, [expanded, updateSearchOrigin]);
+
+  useEffect(() => {
+    const onScroll = () => updateSearchOrigin();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [updateSearchOrigin]);
+
+  useEffect(() => {
+    if (!searchExpanded) return;
+    const timer = window.setTimeout(() => searchFieldRef.current?.focus(), 170);
+    return () => window.clearTimeout(timer);
+  }, [searchExpanded]);
+
+  useEffect(() => {
+    /** @param {KeyboardEvent} e */
+    const onKeyDown = (e) => {
+      const key = (e.key || "").toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && key === "f" && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        openSearch();
+        return;
+      }
+      if (key === "escape" && searchExpanded) {
+        e.preventDefault();
+        closeSearch();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [closeSearch, openSearch, searchExpanded]);
+
+  const onSearchSubmit = useCallback(
+    /** @param {import("react").FormEvent<HTMLFormElement>} e */
+    (e) => {
+      e.preventDefault();
+      window.dispatchEvent(
+        new CustomEvent("openstudio:global-search", {
+          detail: { query: searchValue.trim() },
+        }),
+      );
+    },
+    [searchValue],
+  );
 
   const entries = [
     {
@@ -79,14 +178,21 @@ export default function ChatLabTopPullPanel({ expanded, onToggle }) {
         <div className="chat-lab-top-pull__wire" />
 
         <div className="chat-lab-top-pull__orb-stack">
-          <button
-            type="button"
-            className="chat-lab-top-pull__orb chat-lab-top-pull__orb--search"
-            title={t("nav.railSearchPlaceholder")}
-            aria-label={t("nav.railSearchPlaceholder")}
-          >
-            <SearchSparkleIcon className="chat-lab-top-pull__orb-icon" />
-          </button>
+          <div
+            ref={searchAnchorRef}
+            className={cn(
+              "chat-lab-top-pull__search-anchor",
+              searchExpanded && "chat-lab-top-pull__search-anchor--expanded",
+            )}
+            aria-hidden
+          />
+          <div
+            className={cn(
+              "chat-lab-top-pull__orb-link chat-lab-top-pull__orb-link--heal",
+              !searchExpanded && "chat-lab-top-pull__orb-link--heal-cut",
+            )}
+            aria-hidden
+          />
 
           <div className="chat-lab-top-pull__orb-link" aria-hidden />
 
@@ -112,6 +218,43 @@ export default function ChatLabTopPullPanel({ expanded, onToggle }) {
           </button>
         </div>
       </div>
+
+      <form
+        className={cn(
+          "chat-lab-top-pull__search-flyout",
+          searchExpanded && "chat-lab-top-pull__search-flyout--expanded",
+        )}
+        onSubmit={onSearchSubmit}
+        style={
+          {
+            "--search-origin-top": `${searchOrigin.top}px`,
+            "--search-origin-left": `${searchOrigin.left}px`,
+          } /** @type {import("react").CSSProperties} */
+        }
+      >
+        <button
+          type="button"
+          className="chat-lab-top-pull__orb chat-lab-top-pull__orb--search"
+          title={t("nav.railSearchPlaceholder")}
+          aria-label={t("nav.railSearchPlaceholder")}
+          aria-expanded={searchExpanded}
+          onClick={toggleSearch}
+        >
+          <SearchSparkleIcon className="chat-lab-top-pull__orb-icon" />
+        </button>
+        <div className="chat-lab-top-pull__search-shell">
+          <input
+            ref={searchFieldRef}
+            type="search"
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            placeholder={t("nav.railSearchPlaceholder")}
+            className="chat-lab-top-pull__search-field"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+      </form>
     </div>
   );
 }

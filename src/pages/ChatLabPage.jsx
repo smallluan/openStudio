@@ -354,6 +354,62 @@ export default function ChatLabPage() {
   const messagesRef = useRef(messages);
   const messagesScrollRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const autoScrollRef = useRef(true);
+  const threadScrollTrackRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const threadScrollDraggingRef = useRef(false);
+  const [threadScrollRatio, setThreadScrollRatio] = useState(1);
+
+  const updateThreadScrollRatio = useCallback(() => {
+    const el = messagesScrollRef.current;
+    if (!el) {
+      setThreadScrollRatio(1);
+      return;
+    }
+    const max = el.scrollHeight - el.clientHeight;
+    if (!Number.isFinite(max) || max <= 0) {
+      setThreadScrollRatio(1);
+      return;
+    }
+    const ratio = Math.min(1, Math.max(0, el.scrollTop / max));
+    setThreadScrollRatio(ratio);
+  }, []);
+
+  const setThreadScrollByClientY = useCallback(
+    /** @param {number} clientY */
+    (clientY) => {
+      const track = threadScrollTrackRef.current;
+      const el = messagesScrollRef.current;
+      if (!track || !el) return;
+      const rect = track.getBoundingClientRect();
+      if (rect.height <= 0) return;
+      const ratio = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+      const max = el.scrollHeight - el.clientHeight;
+      if (max <= 0) {
+        setThreadScrollRatio(1);
+        return;
+      }
+      el.scrollTop = ratio * max;
+      setThreadScrollRatio(ratio);
+      autoScrollRef.current = ratio >= 0.98;
+    },
+    [],
+  );
+
+  const nudgeThreadScroll = useCallback(
+    /** @param {number} deltaPx */
+    (deltaPx) => {
+      const el = messagesScrollRef.current;
+      if (!el) return;
+      const max = el.scrollHeight - el.clientHeight;
+      if (max <= 0) {
+        setThreadScrollRatio(1);
+        return;
+      }
+      el.scrollTop = Math.max(0, Math.min(max, el.scrollTop + deltaPx));
+      updateThreadScrollRatio();
+      autoScrollRef.current = el.scrollTop >= max - 24;
+    },
+    [updateThreadScrollRatio],
+  );
 
   const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
   const gatewaySliceForConv = useGatewayStreamSlice(conversationId);
@@ -374,6 +430,93 @@ export default function ChatLabPage() {
     composerResizeDraggingRef.current = false;
     setComposerResizeStripHover(false);
   }, [conversationId]);
+
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return undefined;
+    updateThreadScrollRatio();
+    el.addEventListener("scroll", updateThreadScrollRatio, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateThreadScrollRatio) : null;
+    ro?.observe(el);
+    window.addEventListener("resize", updateThreadScrollRatio);
+    return () => {
+      el.removeEventListener("scroll", updateThreadScrollRatio);
+      ro?.disconnect();
+      window.removeEventListener("resize", updateThreadScrollRatio);
+    };
+  }, [conversationId, updateThreadScrollRatio]);
+
+  useEffect(() => {
+    const raf = window.requestAnimationFrame(updateThreadScrollRatio);
+    return () => window.cancelAnimationFrame(raf);
+  }, [messages.length, gatewayStreaming, updateThreadScrollRatio]);
+
+  const onThreadScrollTrackPointerDown = useCallback(
+    /** @param {import("react").PointerEvent<HTMLDivElement>} e */
+    (e) => {
+      if (messages.length === 0) return;
+      if (e.button !== 0) return;
+      e.preventDefault();
+      threadScrollDraggingRef.current = true;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      setThreadScrollByClientY(e.clientY);
+    },
+    [messages.length, setThreadScrollByClientY],
+  );
+
+  const onThreadScrollTrackPointerMove = useCallback(
+    /** @param {import("react").PointerEvent<HTMLDivElement>} e */
+    (e) => {
+      if (!threadScrollDraggingRef.current) return;
+      setThreadScrollByClientY(e.clientY);
+    },
+    [setThreadScrollByClientY],
+  );
+
+  const onThreadScrollTrackPointerUp = useCallback(
+    /** @param {import("react").PointerEvent<HTMLDivElement>} e */
+    (e) => {
+      if (!threadScrollDraggingRef.current) return;
+      threadScrollDraggingRef.current = false;
+      try {
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    },
+    [],
+  );
+
+  const onThreadScrollKeyDown = useCallback(
+    /** @param {import("react").KeyboardEvent<HTMLDivElement>} e */
+    (e) => {
+      if (messages.length === 0) return;
+      const el = messagesScrollRef.current;
+      if (!el) return;
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        nudgeThreadScroll(-72);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        nudgeThreadScroll(72);
+      } else if (e.key === "PageUp") {
+        e.preventDefault();
+        nudgeThreadScroll(-Math.max(160, Math.round(el.clientHeight * 0.65)));
+      } else if (e.key === "PageDown") {
+        e.preventDefault();
+        nudgeThreadScroll(Math.max(160, Math.round(el.clientHeight * 0.65)));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        el.scrollTop = 0;
+        updateThreadScrollRatio();
+      } else if (e.key === "End") {
+        e.preventDefault();
+        el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+        updateThreadScrollRatio();
+      }
+    },
+    [messages.length, nudgeThreadScroll, updateThreadScrollRatio],
+  );
 
   const composerSnapPx = useMemo(() => Math.round(composerMaxPx * 0.72), [composerMaxPx]);
 
@@ -1401,15 +1544,15 @@ export default function ChatLabPage() {
 
   const composer = (
     <div className="chat-lab__composer-outer">
-      <div
+      <div className="chat-lab__composer-row">
+        <div
         className={cn(
           "chat-lab__shell",
-          "chat-lab__shell--hero",
           composerDragActive && !composerInputLocked && "chat-lab__shell--drag",
           composerLongTextMode && "chat-lab__shell--long-text",
           composerResizeDragging && "chat-lab__shell--resize-drag",
         )}
-      >
+        >
         <div
           className={cn(
             "chat-lab__shell-resize",
@@ -1638,6 +1781,35 @@ export default function ChatLabPage() {
               </span>
             </button>
           </div>
+        </div>
+        </div>
+        <div
+          ref={threadScrollTrackRef}
+          className={cn(
+            "chat-lab__thread-scroll",
+            "chat-lab__thread-scroll--outside",
+            messages.length === 0 && "chat-lab__thread-scroll--disabled",
+          )}
+          role="slider"
+          tabIndex={0}
+          aria-label={t("chatLab.title")}
+          aria-orientation="vertical"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(threadScrollRatio * 100)}
+          style={
+            {
+              "--chat-lab-thread-scroll-ratio": String(threadScrollRatio),
+            } /** @type {import("react").CSSProperties} */
+          }
+          onPointerDown={onThreadScrollTrackPointerDown}
+          onPointerMove={onThreadScrollTrackPointerMove}
+          onPointerUp={onThreadScrollTrackPointerUp}
+          onPointerCancel={onThreadScrollTrackPointerUp}
+          onKeyDown={onThreadScrollKeyDown}
+        >
+          <span className="chat-lab__thread-scroll-axis" aria-hidden />
+          <span className="chat-lab__thread-scroll-thumb" aria-hidden />
         </div>
       </div>
     </div>
