@@ -1,0 +1,177 @@
+/**
+ * bundle-openclaw.mjs
+ *
+ * Bundles openclaw + transitive runtime dependencies into build/openclaw/
+ * for electron-builder extraResources and hybrid openclaw.asar packing.
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { patchOpenclawAsarDist } = require("./openclaw-asar-patch.cjs");
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, "..");
+const OUTPUT = path.join(ROOT, "build", "openclaw");
+const OUTPUT_NM = path.join(OUTPUT, "node_modules");
+const OPENCLAW_SRC = path.join(ROOT, "node_modules", "openclaw");
+const ROOT_NM = path.join(ROOT, "node_modules");
+
+const SKIP_PACKAGES = new Set(["typescript", "@playwright/test", "@discordjs/opus"]);
+const SKIP_SCOPES = ["@cloudflare/", "@types/"];
+const FORCE_INCLUDE_PACKAGES = ["kysely"];
+
+function normWin(p) {
+  if (process.platform !== "win32") return p;
+  if (p.startsWith("\\\\?\\")) return p;
+  return `\\\\?\\${p.replace(/\//g, "\\")}`;
+}
+
+function listSearchRoots() {
+  return [ROOT_NM, path.join(OPENCLAW_SRC, "node_modules")];
+}
+
+function resolvePackageDir(pkgName) {
+  for (const base of listSearchRoots()) {
+    const candidate = path.join(base, ...pkgName.split("/"));
+    if (fs.existsSync(path.join(candidate, "package.json"))) return candidate;
+  }
+  return null;
+}
+
+function readDepNames(pkgDir) {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8"));
+    const names = new Set();
+    for (const section of ["dependencies", "optionalDependencies"]) {
+      for (const name of Object.keys(pkg[section] ?? {})) names.add(name);
+    }
+    return [...names];
+  } catch {
+    return [];
+  }
+}
+
+function shouldSkipPackage(name) {
+  return SKIP_PACKAGES.has(name) || SKIP_SCOPES.some((s) => name.startsWith(s));
+}
+
+function collectTransitiveDeps() {
+  const collected = new Map();
+  const queue = ["openclaw", ...FORCE_INCLUDE_PACKAGES];
+
+  while (queue.length > 0) {
+    const name = queue.shift();
+    if (shouldSkipPackage(name)) continue;
+
+    const pkgDir = resolvePackageDir(name);
+    if (!pkgDir) continue;
+
+    let realPath;
+    try {
+      realPath = fs.realpathSync(pkgDir);
+    } catch {
+      continue;
+    }
+
+    if (collected.has(realPath)) continue;
+    collected.set(realPath, name);
+
+    for (const dep of readDepNames(pkgDir)) {
+      if (!collected.has(dep)) queue.push(dep);
+    }
+  }
+
+  return collected;
+}
+
+function copyOpenClawRoot() {
+  if (fs.existsSync(normWin(OUTPUT))) {
+    fs.rmSync(normWin(OUTPUT), { recursive: true, force: true });
+  }
+  fs.mkdirSync(normWin(OUTPUT), { recursive: true });
+
+  fs.cpSync(normWin(OPENCLAW_SRC), normWin(OUTPUT), {
+    recursive: true,
+    dereference: true,
+    filter: (src) => {
+      const rel = path.relative(OPENCLAW_SRC, src);
+      if (rel === "node_modules" || rel.startsWith(`node_modules${path.sep}`)) return false;
+      return true;
+    },
+  });
+}
+
+function copyFlattenedDeps(collected) {
+  fs.mkdirSync(normWin(OUTPUT_NM), { recursive: true });
+  let copied = 0;
+
+  for (const [realPath, pkgName] of collected) {
+    if (pkgName === "openclaw") continue;
+    const dest = path.join(OUTPUT_NM, pkgName);
+    fs.mkdirSync(normWin(path.dirname(dest)), { recursive: true });
+    if (fs.existsSync(normWin(dest))) {
+      fs.rmSync(normWin(dest), { recursive: true, force: true });
+    }
+    fs.cpSync(normWin(realPath), normWin(dest), { recursive: true, dereference: true });
+    copied++;
+  }
+
+  return copied;
+}
+
+async function main() {
+  console.log("[bundle-openclaw] bundling openclaw for electron-builder...");
+
+  if (!fs.existsSync(OPENCLAW_SRC)) {
+    console.error("[bundle-openclaw] node_modules/openclaw not found — run npm install first");
+    process.exit(1);
+  }
+
+  const collected = collectTransitiveDeps();
+  console.log(`[bundle-openclaw] discovered ${collected.size} packages (direct + transitive)`);
+
+  copyOpenClawRoot();
+  const copied = copyFlattenedDeps(collected);
+  console.log(`[bundle-openclaw] copied ${copied} dependency packages to build/openclaw/node_modules`);
+
+  const patchResult = patchOpenclawAsarDist(OUTPUT);
+  if (patchResult.changed) {
+    console.log(`[bundle-openclaw] patched ASAR dist chunks: ${patchResult.patchedFiles.join(", ")}`);
+  } else if (patchResult.patchedFiles.length > 0) {
+    console.log(`[bundle-openclaw] ASAR dist chunks unchanged (${patchResult.patchedFiles.join(", ")})`);
+  } else {
+    console.warn(
+      `[bundle-openclaw] no ASAR dist chunks patched (${patchResult.reason ?? "openclaw version may use different dist layout"})`,
+    );
+  }
+
+  const entryExists = fs.existsSync(path.join(OUTPUT, "openclaw.mjs"));
+  let distMainRel = "dist/index.js";
+  try {
+    const ocPkg = JSON.parse(fs.readFileSync(path.join(OUTPUT, "package.json"), "utf8"));
+    if (typeof ocPkg.main === "string" && ocPkg.main) {
+      distMainRel = ocPkg.main.replace(/^\.\//, "");
+    }
+  } catch {
+    /* fallback */
+  }
+  const distExists = fs.existsSync(path.join(OUTPUT, distMainRel));
+
+  console.log(`[bundle-openclaw] bundle complete: ${OUTPUT}`);
+  console.log(`[bundle-openclaw] openclaw.mjs: ${entryExists ? "ok" : "missing"}`);
+  console.log(`[bundle-openclaw] ${distMainRel}: ${distExists ? "ok" : "missing"}`);
+
+  if (!entryExists || !distExists) {
+    console.error("[bundle-openclaw] bundle verification failed");
+    process.exit(1);
+  }
+}
+
+main().catch((err) => {
+  console.error("[bundle-openclaw] failed:", err?.message ?? err);
+  process.exit(1);
+});

@@ -48,6 +48,7 @@ import {
   useChatLabStreaming,
   useGatewayStreamSlice,
 } from "../context/ChatLabStreamingContext.jsx";
+import { useRafThrottledValue } from "../hooks/useRafThrottle.js";
 import { createChatLabMarkdownComponents, chatMarkdownPlainText } from "../components/chat-lab/chatLabMarkdown.jsx";
 import ChatLabPreviewDock from "../components/chat-lab/ChatLabPreviewDock.jsx";
 import ChatLabTopPullPanel from "../components/shell/ChatLabTopPullPanel.jsx";
@@ -413,6 +414,8 @@ export default function ChatLabPage() {
 
   const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
   const gatewaySliceForConv = useGatewayStreamSlice(conversationId);
+  const throttledStreamContent = useRafThrottledValue(gatewaySliceForConv?.content ?? "");
+  const throttledStreamThinking = useRafThrottledValue(gatewaySliceForConv?.thinking ?? "");
   const gatewayStreaming = Boolean(gatewaySliceForConv?.active);
 
   /** Switching threads clears send guards; finalize skips terminal events when conversationId mismatch left refs stuck. */
@@ -793,8 +796,9 @@ export default function ChatLabPage() {
 
   useEffect(() => {
     if (!gatewaySliceForConv) return;
-    const { assistantMessageId, content, thinking, active, toolTrace, activityLog, assistantTimeline } =
-      gatewaySliceForConv;
+    const { assistantMessageId, active, toolTrace, activityLog, assistantTimeline } = gatewaySliceForConv;
+    const content = throttledStreamContent;
+    const thinking = throttledStreamThinking;
     setMessages((prev) => {
       const idx = prev.findIndex((m) => m.id === assistantMessageId);
       if (idx === -1) return prev;
@@ -810,7 +814,7 @@ export default function ChatLabPage() {
         return next;
       });
     });
-  }, [gatewaySliceForConv, paramC]);
+  }, [gatewaySliceForConv, paramC, throttledStreamContent, throttledStreamThinking]);
 
   const prevSliceForConvRef = useRef(/** @type {typeof gatewaySliceForConv} */ (null));
   useEffect(() => {

@@ -17,6 +17,7 @@ const { readWorkspacePreviewFile, resolveWorkspacePreviewTarget } = require("./l
 const { initStudioLogger, getStudioLog } = require("./lib/studio-logger.cjs");
 const {
   ensureLocalGatewayRunning,
+  waitForGatewayWarmupIfNeeded,
   attachGatewayQuitHandlers,
   resolveBundledOpenClawPackageMetaSync,
 } = require("./lib/openclaw-gateway-supervisor.cjs");
@@ -92,6 +93,8 @@ let userConfigStore = null;
 
 /** @type {Map<string, AbortController>} */
 const chatStreamAbortControllers = new Map();
+/** @type {Map<string, Promise<{ ok: boolean }>>} */
+const inFlightChatSends = new Map();
 
 /** Serialize `studio:bootstrapGateway` — React Strict Mode can fire the effect twice in dev. */
 let bootstrapGatewayInFlight = /** @type {Promise<{ ok: boolean; message?: string; skipped?: string }> | null} */ (null);
@@ -445,13 +448,24 @@ app.whenReady().then(async () => {
     if (typeof streamId !== "string" || !streamId.trim() || !Array.isArray(messages)) {
       throw new Error("invalid_chat_payload");
     }
-    const ac = new AbortController();
-    chatStreamAbortControllers.set(streamId, ac);
+
+    const pending = inFlightChatSends.get(streamId);
+    if (pending) {
+      getStudioLog().info("[chat.send.perf] host.dedupe.wait", { streamId });
+      return pending;
+    }
+
+    const run = (async () => {
+      const startedAt = Date.now();
+      const ac = new AbortController();
+      chatStreamAbortControllers.set(streamId, ac);
       const wc = event.sender;
       const composerSkill = payload?.composerSkill;
       try {
+        getStudioLog().info("[chat.send.perf] host.start", { streamId, conversationId });
         runOpenClawAgentSyncFromStudio("chat");
         const cfg = userConfigStore.readRaw();
+        await waitForGatewayWarmupIfNeeded(() => userConfigStore.readRaw(), { probeOpenClawGateway });
         await dispatchOpenClawGatewayStream(
           cfg,
           messages,
@@ -461,24 +475,36 @@ app.whenReady().then(async () => {
           },
           conversationId ? { conversationId, composerSkill } : { composerSkill },
         );
-    } catch (e) {
-      if (!wc.isDestroyed()) {
-        if (ac.signal.aborted || e?.name === "AbortError") {
-          wc.send(CHAT_STREAM_CHAN, { streamId, type: "aborted" });
-        } else {
-          wc.send(CHAT_STREAM_CHAN, { streamId, type: "error", message: String(e?.message ?? e) });
+      } catch (e) {
+        if (!wc.isDestroyed()) {
+          if (ac.signal.aborted || e?.name === "AbortError") {
+            wc.send(CHAT_STREAM_CHAN, { streamId, type: "aborted" });
+          } else {
+            wc.send(CHAT_STREAM_CHAN, { streamId, type: "error", message: String(e?.message ?? e) });
+          }
         }
-      }
-    } finally {
-      chatStreamAbortControllers.delete(streamId);
-      if (!wc.isDestroyed()) {
-        const sid = streamId;
-        setImmediate(() => {
-          if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId: sid, type: "done" });
+      } finally {
+        chatStreamAbortControllers.delete(streamId);
+        if (!wc.isDestroyed()) {
+          const sid = streamId;
+          setImmediate(() => {
+            if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId: sid, type: "done" });
+          });
+        }
+        getStudioLog().info("[chat.send.perf] host.done", {
+          streamId,
+          elapsedMs: Date.now() - startedAt,
         });
       }
+      return { ok: true };
+    })();
+
+    inFlightChatSends.set(streamId, run);
+    try {
+      return await run;
+    } finally {
+      inFlightChatSends.delete(streamId);
     }
-    return { ok: true };
   });
 
   ipcMain.handle("studio:abortChatStream", (_event, streamId) => {

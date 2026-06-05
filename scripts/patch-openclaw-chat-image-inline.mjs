@@ -13,7 +13,14 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
-const target = path.join(root, "node_modules", "openclaw", "dist", "chat-DNr22c3k.js");
+const openclawRoot = process.env.OPENCLAW_PATCH_ROOT
+  ? path.resolve(process.env.OPENCLAW_PATCH_ROOT)
+  : path.join(root, "node_modules", "openclaw");
+const distDir = path.join(openclawRoot, "dist");
+const chatBundle =
+  fs.existsSync(distDir) &&
+  fs.readdirSync(distDir).find((name) => name.startsWith("chat-") && name.endsWith(".js"));
+const target = chatBundle ? path.join(distDir, chatBundle) : path.join(openclawRoot, "dist", "chat-DNr22c3k.js");
 
 const PATCH_TOKEN = `|| normalizedAttachments.some((a)=>typeof a?.mimeType==="string"&&a.mimeType.startsWith("image/"))`;
 

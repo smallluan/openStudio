@@ -11,7 +11,16 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
-const target = path.join(root, "node_modules", "openclaw", "dist", "openclaw-tools-BDF6gNXk.js");
+const openclawRoot = process.env.OPENCLAW_PATCH_ROOT
+  ? path.resolve(process.env.OPENCLAW_PATCH_ROOT)
+  : path.join(root, "node_modules", "openclaw");
+const distDir = path.join(openclawRoot, "dist");
+const toolsBundle =
+  fs.existsSync(distDir) &&
+  fs.readdirSync(distDir).find((name) => name.startsWith("openclaw-tools-") && name.endsWith(".js"));
+const target = toolsBundle
+  ? path.join(distDir, toolsBundle)
+  : path.join(openclawRoot, "dist", "openclaw-tools-BDF6gNXk.js");
 
 const PATCH_TOKEN = "process.env.OPEN_STUDIO_LEAN_CHAT_TOOLS !== \"0\"";
 

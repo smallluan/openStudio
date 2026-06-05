@@ -7,6 +7,11 @@
     "dev:vite": "vite",
     "dev:gateway": "cross-env OPENCLAW_ALLOW_OLDER_BINARY_DESTRUCTIVE_ACTIONS=1 node scripts/run-openclaw-gateway.mjs",
     "pack:openclaw": "node scripts/pack-openclaw-asar.mjs",
+    "bundle:openclaw": "node scripts/bundle-openclaw.mjs",
+    "pack:memory-fs": "node scripts/pack-memory-fs.mjs",
+    "prep:win-pack": "node scripts/bundle-openclaw.mjs && node scripts/apply-openclaw-bundle-patches.mjs && node scripts/pack-memory-fs.mjs",
+    "benchmark:win-install": "node scripts/benchmark-win-install.mjs",
+    "prep:electron-dist:win": "node scripts/prepare-electron-dist.mjs",
     "dev:electron": "wait-on http://127.0.0.1:5173 && cross-env NODE_ENV=development electron .",
     "dev": "cross-env NODE_ENV=development concurrently -k -n vite,gateway,electron \"npm:dev:vite\" \"npm:dev:gateway\" \"npm:dev:electron\"",
     "build": "vite build",
@@ -28,6 +33,8 @@
     "productName": "Open Studio",
     "copyright": "Copyright © Open Studio contributors",
     "beforePack": "scripts/electron-builder-before-pack.cjs",
+    "afterPack": "scripts/after-pack.cjs",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
@@ -37,6 +44,7 @@
       "!scripts/**/*",
       "!release/**/*",
       "!tmp-pack/**/*",
+      "!build/**/*",
       "!node_modules/openclaw{,/**}",
       "!**/*.map",
       "!**/builder-debug.yml",
@@ -57,8 +65,22 @@
       "signAndEditExecutable": false,
       "extraResources": [
         {
-          "from": "tmp-pack/openclaw.asar",
-          "to": "openclaw.asar"
+          "from": "build/openclaw/",
+          "to": "openclaw/",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "lib/gateway/memory-fs/",
+          "to": "gateway/memory-fs/",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "lib/gateway/openclaw-asar-bootstrap.mjs",
+          "to": "gateway/openclaw-asar-bootstrap.mjs"
         }
       ],
       "target": [
@@ -74,17 +96,20 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "differentialPackage": false,
+      "differentialPackage": true,
       "deleteAppDataOnUninstall": false
     }
   },
   "dependencies": {
-    "concat-map": "0.0.1",
     "@electron/asar": "^4.0.1",
     "@floating-ui/react": "^0.27.19",
     "@tanstack/react-virtual": "^3.13.24",
+    "balanced-match": "^4.0.4",
+    "brace-expansion": "^5.0.5",
+    "concat-map": "0.0.1",
     "electron-log": "^5.4.4",
     "katex": "^0.16.45",
+    "kysely": "^0.29.2",
     "openclaw": "^2026.5.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -103,7 +128,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.0.0",
     "cross-env": "^7.0.3",
-    "electron": "^35.0.0",
+    "electron": "^42.3.3",
     "electron-builder": "^26.7.1",
     "tailwindcss": "^4.2.4",
     "vite": "^6.0.0",
