@@ -31,7 +31,9 @@ function normWin(p) {
 }
 
 function listSearchRoots() {
-  return [ROOT_NM, path.join(OPENCLAW_SRC, "node_modules")];
+  // Prefer OpenClaw's own dependency tree first; falling back to app root can pull
+  // incompatible majors (e.g. chalk@4 instead of chalk@5) and break runtime ESM imports.
+  return [path.join(OPENCLAW_SRC, "node_modules"), ROOT_NM];
 }
 
 function resolvePackageDir(pkgName) {

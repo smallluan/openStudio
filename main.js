@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, Tray, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { createConfigStore } = require("./lib/config-store.cjs");
@@ -101,6 +101,11 @@ let bootstrapGatewayInFlight = /** @type {Promise<{ ok: boolean; message?: strin
 
 /** Fingerprint of fields that affect on-disk OpenClaw sync; avoids rewriting every chat turn. */
 let lastOpenClawSyncFingerprint = "";
+/** @type {BrowserWindow | null} */
+let mainWindow = null;
+/** @type {Tray | null} */
+let appTray = null;
+let isQuitting = false;
 
 /** @param {unknown} cfg */
 function computeOpenClawSyncFingerprint(cfg) {
@@ -195,6 +200,12 @@ async function getOpenClawLibrarySurface() {
 }
 
 function createWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    return mainWindow;
+  }
+
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -218,9 +229,72 @@ function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, "dist", "index.html"));
   }
+
+  win.on("close", (event) => {
+    // Keep background runtime alive on Windows; expose explicit Quit in tray menu.
+    if (process.platform === "win32" && !isQuitting) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
+
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
+  });
+
+  mainWindow = win;
+  return win;
+}
+
+function getTrayIconPath() {
+  if (process.platform === "win32" && !isDev) return process.execPath;
+  return path.join(__dirname, "src", "assets", "images", "hero-avatar-light.png");
+}
+
+function createTray() {
+  if (process.platform !== "win32") return;
+  if (appTray && !appTray.isDestroyed?.()) return;
+
+  try {
+    appTray = new Tray(getTrayIconPath());
+  } catch (e) {
+    getStudioLog().warn("[tray] failed to create tray icon:", /** @type {any} */ (e)?.message ?? e);
+    return;
+  }
+
+  appTray.setToolTip("Open Studio");
+  appTray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "Open Studio",
+        click: () => {
+          createWindow();
+        },
+      },
+      {
+        label: "Quit",
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ]),
+  );
+  appTray.on("click", () => {
+    createWindow();
+  });
 }
 
 app.whenReady().then(async () => {
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return;
+  }
+
+  app.on("second-instance", () => {
+    createWindow();
+  });
+
   initStudioLogger(app, { isDev });
   attachGatewayQuitHandlers(app);
 
@@ -556,6 +630,7 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
+  createTray();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -565,7 +640,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+  if (process.platform !== "darwin" && process.platform !== "win32") {
     app.quit();
   }
 });
