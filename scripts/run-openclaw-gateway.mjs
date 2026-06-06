@@ -11,10 +11,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const { resolveOpenClawSpawnOptions } = require("../lib/openclaw-bundle-paths.cjs");
 const { ensureDevGatewayAuthToken } = require("../lib/sync-openclaw-agent-from-studio.cjs");
+const { ensureOpenClawWeixinPlugin } = require("../lib/ensure-openclaw-weixin-plugin.cjs");
 
 const tokenPrep = ensureDevGatewayAuthToken();
 if (tokenPrep.ok && tokenPrep.created) {
   console.log("[run-openclaw-gateway] persisted dev gateway auth token in ~/.openclaw-dev/openclaw.json");
+}
+
+const weixinPrep = ensureOpenClawWeixinPlugin({ projectRoot: path.join(__dirname, "..") });
+if (weixinPrep.installed) {
+  console.log("[run-openclaw-gateway] installed WeChat plugin — gateway will load it on this start");
 }
 
 const forwardArgs = process.argv.slice(2);

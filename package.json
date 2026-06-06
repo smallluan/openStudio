@@ -14,7 +14,7 @@
     "benchmark:win-install": "node scripts/benchmark-win-install.mjs",
     "prep:electron-dist:win": "node scripts/prepare-electron-dist.mjs",
     "dev:electron": "wait-on -t 180000 http://127.0.0.1:5173 tcp:127.0.0.1:19001 && cross-env NODE_ENV=development electron .",
-    "predev": "node scripts/generate-openclaw-bundled-skills.mjs",
+    "predev": "node scripts/generate-openclaw-bundled-skills.mjs && node scripts/ensure-openclaw-weixin-plugin.mjs",
     "dev": "cross-env NODE_ENV=development concurrently -k -n vite,gateway,electron \"npm:dev:vite\" \"npm:dev:gateway\" \"npm:dev:electron\"",
     "prebuild": "node scripts/generate-openclaw-bundled-skills.mjs",
     "build": "vite build",
