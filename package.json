@@ -9,6 +9,7 @@
     "pack:openclaw": "node scripts/pack-openclaw-asar.mjs",
     "bundle:openclaw": "node scripts/bundle-openclaw.mjs",
     "pack:memory-fs": "node scripts/pack-memory-fs.mjs",
+    "prepare:python-runtime:win": "node scripts/prepare-python-runtime-win.cjs",
     "prep:win-pack": "node scripts/bundle-openclaw.mjs && node scripts/apply-openclaw-bundle-patches.mjs && node scripts/pack-memory-fs.mjs",
     "benchmark:win-install": "node scripts/benchmark-win-install.mjs",
     "prep:electron-dist:win": "node scripts/prepare-electron-dist.mjs",
@@ -16,6 +17,7 @@
     "dev": "cross-env NODE_ENV=development concurrently -k -n vite,gateway,electron \"npm:dev:vite\" \"npm:dev:gateway\" \"npm:dev:electron\"",
     "build": "vite build",
     "dist:win": "vite build && node scripts/run-dist-win-electron-builder.cjs",
+    "verify:python-runtime:win": "node -e \"const fs=require('fs');const p='vendor/python-runtime-win/python.exe';if(!fs.existsSync(p)){console.error('[verify:python-runtime:win] missing '+p);process.exit(1)}console.log('[verify:python-runtime:win] ok:',p)\"",
     "start": "cross-env NODE_ENV=production electron .",
     "preview": "vite preview",
     "openclaw": "openclaw",
@@ -81,6 +83,13 @@
         {
           "from": "lib/gateway/openclaw-asar-bootstrap.mjs",
           "to": "gateway/openclaw-asar-bootstrap.mjs"
+        },
+        {
+          "from": "build/python-runtime/",
+          "to": "python-runtime/",
+          "filter": [
+            "**/*"
+          ]
         }
       ],
       "target": [

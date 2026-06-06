@@ -19,10 +19,11 @@ const OUTPUT = path.join(ROOT, "build", "openclaw");
 const OUTPUT_NM = path.join(OUTPUT, "node_modules");
 const OPENCLAW_SRC = path.join(ROOT, "node_modules", "openclaw");
 const ROOT_NM = path.join(ROOT, "node_modules");
+const PNPM_STORE = path.join(ROOT_NM, ".pnpm");
 
 const SKIP_PACKAGES = new Set(["typescript", "@playwright/test", "@discordjs/opus"]);
 const SKIP_SCOPES = ["@cloudflare/", "@types/"];
-const FORCE_INCLUDE_PACKAGES = ["kysely"];
+const FORCE_INCLUDE_PACKAGES = ["kysely", "chalk"];
 
 function normWin(p) {
   if (process.platform !== "win32") return p;
@@ -36,12 +37,56 @@ function listSearchRoots() {
   return [path.join(OPENCLAW_SRC, "node_modules"), ROOT_NM];
 }
 
+function readPackageVersionSafe(pkgDir) {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8"));
+    return String(pkg.version || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function parseMajor(version) {
+  const m = /^(\d+)/.exec(String(version || "").trim());
+  return m ? Number(m[1]) : 0;
+}
+
+function collectPnpmStoreCandidates(pkgName) {
+  if (!fs.existsSync(PNPM_STORE)) return [];
+  const parts = pkgName.split("/");
+  /** @type {string[]} */
+  const out = [];
+  let ents = [];
+  try {
+    ents = fs.readdirSync(PNPM_STORE, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const ent of ents) {
+    if (!ent.isDirectory()) continue;
+    const candidate = path.join(PNPM_STORE, ent.name, "node_modules", ...parts);
+    if (fs.existsSync(path.join(candidate, "package.json"))) out.push(candidate);
+  }
+  return out;
+}
+
 function resolvePackageDir(pkgName) {
+  /** @type {string[]} */
+  const candidates = [];
   for (const base of listSearchRoots()) {
     const candidate = path.join(base, ...pkgName.split("/"));
-    if (fs.existsSync(path.join(candidate, "package.json"))) return candidate;
+    if (fs.existsSync(path.join(candidate, "package.json"))) candidates.push(candidate);
   }
-  return null;
+  candidates.push(...collectPnpmStoreCandidates(pkgName));
+  if (candidates.length === 0) return null;
+
+  const uniq = [...new Set(candidates.map((p) => fs.realpathSync.native?.(p) || fs.realpathSync(p)))];
+  uniq.sort((a, b) => {
+    const va = readPackageVersionSafe(a);
+    const vb = readPackageVersionSafe(b);
+    return parseMajor(vb) - parseMajor(va);
+  });
+  return uniq[0] || null;
 }
 
 function readDepNames(pkgDir) {
@@ -139,6 +184,23 @@ async function main() {
   copyOpenClawRoot();
   const copied = copyFlattenedDeps(collected);
   console.log(`[bundle-openclaw] copied ${copied} dependency packages to build/openclaw/node_modules`);
+
+  const chalkPkgPath = path.join(OUTPUT_NM, "chalk", "package.json");
+  if (!fs.existsSync(chalkPkgPath)) {
+    console.error("[bundle-openclaw] missing chalk in bundled openclaw runtime");
+    process.exit(1);
+  }
+  try {
+    const chalkVer = String(JSON.parse(fs.readFileSync(chalkPkgPath, "utf8"))?.version ?? "");
+    if (parseMajor(chalkVer) < 5) {
+      console.error(`[bundle-openclaw] incompatible chalk version in bundle: ${chalkVer} (need >=5)`);
+      process.exit(1);
+    }
+    console.log(`[bundle-openclaw] chalk runtime pinned: ${chalkVer}`);
+  } catch (err) {
+    console.error("[bundle-openclaw] failed to read bundled chalk version:", err?.message ?? err);
+    process.exit(1);
+  }
 
   const patchResult = patchOpenclawAsarDist(OUTPUT);
   if (patchResult.changed) {

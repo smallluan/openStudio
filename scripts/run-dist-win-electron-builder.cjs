@@ -55,6 +55,7 @@ function openclawBundleInputsHash() {
   markers.push(readJsonTextSafe(path.join(root, "scripts", "apply-openclaw-bundle-patches.mjs")));
   markers.push(readJsonTextSafe(path.join(root, "scripts", "patch-openclaw-chat-image-inline.mjs")));
   markers.push(readJsonTextSafe(path.join(root, "scripts", "patch-openclaw-studio-lean-chat.mjs")));
+  markers.push(readJsonTextSafe(path.join(root, "node_modules", "chalk", "package.json")));
   return sha256OfStrings(markers);
 }
 
@@ -112,6 +113,17 @@ function ensureMemoryFsPacked(bundleHash) {
   );
 }
 
+function ensurePythonRuntimeReady() {
+  if (process.platform !== "win32") return;
+  const pyExe = path.join(root, "build", "python-runtime", "python.exe");
+  if (fs.existsSync(pyExe)) {
+    console.log("[dist:win] python runtime cache hit (skip prepare)");
+    return;
+  }
+  console.log("[dist:win] preparing bundled python runtime...");
+  runNodeScript("scripts/prepare-python-runtime-win.cjs");
+}
+
 function ensureElectronDistCache() {
   const cachedElectronDist = path.join(root, "build", "electron-dist", "win32-x64");
   const electronExe = path.join(cachedElectronDist, "electron.exe");
@@ -123,6 +135,7 @@ function ensureElectronDistCache() {
 
 const bundleHash = ensureOpenClawBundleUpToDate();
 ensureMemoryFsPacked(bundleHash);
+ensurePythonRuntimeReady();
 const productName = pkg.build?.productName || "Electron";
 const version = String(pkg.version ?? "0.0.0");
 const artifactTemplate =

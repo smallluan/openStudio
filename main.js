@@ -15,6 +15,7 @@ const {
 const { syncOpenClawAgentFromStudioConfig } = require("./lib/sync-openclaw-agent-from-studio.cjs");
 const { readWorkspacePreviewFile, resolveWorkspacePreviewTarget } = require("./lib/chatlab-read-workspace-preview.cjs");
 const { initStudioLogger, getStudioLog } = require("./lib/studio-logger.cjs");
+const { enableBundledPythonRuntime } = require("./lib/bundled-python-runtime.cjs");
 const {
   ensureLocalGatewayRunning,
   waitForGatewayWarmupIfNeeded,
@@ -298,6 +299,14 @@ app.whenReady().then(async () => {
   });
 
   initStudioLogger(app, { isDev });
+  try {
+    const py = enableBundledPythonRuntime({ app, log: getStudioLog() });
+    if (!py.ok) {
+      getStudioLog().warn("[startup] bundled python init failed", py);
+    }
+  } catch (e) {
+    getStudioLog().warn("[startup] bundled python init threw", String(e?.message ?? e));
+  }
   attachGatewayQuitHandlers(app);
 
   Menu.setApplicationMenu(null);
