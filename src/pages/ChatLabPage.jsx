@@ -58,7 +58,9 @@ import {
   useChatLabPreview,
 } from "../context/ChatLabPreviewContext.jsx";
 import { lastHtmlFenceAsSrcDocDocument, previewKindFromHref } from "../chat/chatLabDocumentPreview.js";
+import { collectSessionArtifacts } from "../chat/chatLabSessionArtifacts.js";
 import { pickPrimaryWorkspacePreviewCandidate } from "../chat/chatLabWorkspacePreviewCandidates.js";
+import ChatLabArtifactsBar from "../components/chat-lab/ChatLabArtifactsBar.jsx";
 import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
 import {
   ComposerSkillChip,
@@ -475,6 +477,8 @@ export default function ChatLabPage() {
     if (rec?.title) return rec.title;
     return deriveTitleFromMessages(messages, { imageFallback: t("chatLab.chatUntitledImage") });
   }, [conversationId, messages, sessionTitleBump, t]);
+
+  const sessionArtifacts = useMemo(() => collectSessionArtifacts(messages), [messages]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -1800,6 +1804,7 @@ export default function ChatLabPage() {
                 <ChatLabVirtualMessageList
                   key={conversationId}
                   messages={messages}
+                  sessionArtifacts={sessionArtifacts}
                   messagesScrollRef={messagesScrollRef}
                   autoScrollRef={autoScrollRef}
                   gatewayStreaming={gatewayStreaming}
@@ -1905,6 +1910,7 @@ function ChatStreamingIndicator({ label }) {
  */
 function GapToolActivityPanel({ segments, toolMap, activityMap, t, streaming }) {
   const [open, setOpen] = useState(() => Boolean(streaming));
+  const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
     if (streaming) setOpen(true);
     else setOpen(false);
@@ -1946,17 +1952,25 @@ function GapToolActivityPanel({ segments, toolMap, activityMap, t, streaming }) 
           if (s.kind === "tool") {
             const row = toolMap.get(s.refId);
             if (!row) return null;
-            return <ToolRow key={`gap-${idx}-${s.refId}`} row={row} t={t} />;
+            return (
+              <ToolRow
+                key={`gap-tool-${s.refId}`}
+                row={row}
+                t={t}
+                enterRegistryRef={enterRegistryRef}
+              />
+            );
           }
           const row = activityMap.get(s.refId);
           if (!row) return null;
           return (
             <ActivityRow
-              key={`gap-${idx}-${s.refId}`}
+              key={`gap-activity-${s.refId}`}
               row={row}
               t={t}
               streaming={streaming}
               isTail={Boolean(streaming) && idx === lastActivityIdx}
+              enterRegistryRef={enterRegistryRef}
             />
           );
         })}
@@ -2038,7 +2052,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
           out.push({
             kind: "toolActivityGap",
             segments: ta,
-            key: `gap-${out.length}-${ta.map((x) => x.refId).join("|")}`,
+            key: `gap-${out.length}-${ta[0]?.refId ?? "empty"}`,
           });
         }
       }
@@ -2328,12 +2342,31 @@ function activityGlyphState(row, streaming, isTailRow) {
 }
 
 /**
+ * Claim a one-time enter animation when this row instance mounts (not when parent merely sees the id).
+ * @param {string} rowId
+ * @param {import("react").MutableRefObject<Set<string>>} enterRegistryRef
+ */
+function useTraceRowEnterOnMount(rowId, enterRegistryRef) {
+  const showRef = useRef(false);
+  if (!showRef.current && enterRegistryRef) {
+    const key = String(rowId ?? "").trim();
+    if (key && !enterRegistryRef.current.has(key)) {
+      enterRegistryRef.current.add(key);
+      showRef.current = true;
+    }
+  }
+  return showRef.current;
+}
+
+/**
  * @param {{
  *   row: import("../chat/toolTraceMerge.js").ToolTraceRow;
  *   t: (key: string, vars?: Record<string, string | number>) => string;
+ *   enterRegistryRef: import("react").MutableRefObject<Set<string>>;
  * }} props
  */
-function ToolRow({ row, t }) {
+function ToolRow({ row, t, enterRegistryRef }) {
+  const showEnterAnim = useTraceRowEnterOnMount(row.id, enterRegistryRef);
   const name = row.toolName || row.label || "(tool)";
   const pres = getToolTracePresentation(row, t);
   const done = Boolean(row.done) || /^(end|complete|completed|ok)$/i.test(String(row.phase ?? "").trim());
@@ -2358,11 +2391,18 @@ function ToolRow({ row, t }) {
       expandable={hasDetail}
       defaultOpen={false}
       chevronBefore={false}
-      className="chat-lab__tool-nested"
-      triggerClassName="chat-lab__tool-nested-summary"
+      className={cn(
+        "chat-lab__tool-nested",
+        showEnterAnim && "chat-lab__trace-row-enter chat-lab__reveal-enter",
+      )}
+      triggerClassName={cn(
+        "chat-lab__tool-nested-summary",
+        showEnterAnim && "chat-lab__reveal-blur-host",
+      )}
       triggerAriaLabel={pres.aria}
       summary={
         <>
+          {showEnterAnim ? <span className="chat-lab__reveal-blur-veil" aria-hidden /> : null}
           <span className="chat-lab__tool-step-wrap" aria-hidden>
             <TraceStepGlyph state={glyphState} forToolChain />
           </span>
@@ -2421,6 +2461,7 @@ function ToolRow({ row, t }) {
  */
 function ToolChainPanel({ rows, t, streaming }) {
   const [open, setOpen] = useState(() => Boolean(streaming));
+  const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
     if (streaming) setOpen(true);
     else setOpen(false);
@@ -2436,7 +2477,7 @@ function ToolChainPanel({ rows, t, streaming }) {
     >
       <div className="chat-lab__tool-chain-body">
         {rows.map((row) => (
-          <ToolRow key={row.id} row={row} t={t} />
+          <ToolRow key={row.id} row={row} t={t} enterRegistryRef={enterRegistryRef} />
         ))}
       </div>
     </TraceDisclosure>
@@ -2449,9 +2490,11 @@ function ToolChainPanel({ rows, t, streaming }) {
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  *   streaming?: boolean;
  *   isTail?: boolean;
+ *   enterRegistryRef: import("react").MutableRefObject<Set<string>>;
  * }} props
  */
-function ActivityRow({ row, t, streaming, isTail }) {
+function ActivityRow({ row, t, streaming, isTail, enterRegistryRef }) {
+  const showEnterAnim = useTraceRowEnterOnMount(row.id, enterRegistryRef);
   const stream = truncateOneLine(String(row.stream ?? "").trim(), 64);
   const titleRaw = String(row.title ?? "").trim();
   const phase = String(row.phase ?? "").trim();
@@ -2475,11 +2518,18 @@ function ActivityRow({ row, t, streaming, isTail }) {
       expandable={hasDetail}
       defaultOpen={false}
       chevronBefore={false}
-      className="chat-lab__tool-nested chat-lab__activity-nested"
-      triggerClassName="chat-lab__tool-nested-summary"
+      className={cn(
+        "chat-lab__tool-nested chat-lab__activity-nested",
+        showEnterAnim && "chat-lab__trace-row-enter chat-lab__reveal-enter",
+      )}
+      triggerClassName={cn(
+        "chat-lab__tool-nested-summary",
+        showEnterAnim && "chat-lab__reveal-blur-host",
+      )}
       triggerAriaLabel={aria}
       summary={
         <>
+          {showEnterAnim ? <span className="chat-lab__reveal-blur-veil" aria-hidden /> : null}
           <span className="chat-lab__tool-step-wrap" aria-hidden>
             <TraceStepGlyph state={gState} />
           </span>
@@ -2518,6 +2568,7 @@ function ActivityRow({ row, t, streaming, isTail }) {
  */
 function ActivityChainPanel({ rows, t, streaming }) {
   const [open, setOpen] = useState(() => Boolean(streaming));
+  const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
     if (streaming) setOpen(true);
     else setOpen(false);
@@ -2534,11 +2585,12 @@ function ActivityChainPanel({ rows, t, streaming }) {
       <div className="chat-lab__tool-chain-body">
         {rows.map((r, idx) => (
           <ActivityRow
-            key={`${r.id}-${r.stream}-${r.seq}`}
+            key={r.id}
             row={r}
             t={t}
             streaming={streaming}
             isTail={Boolean(streaming) && idx === rows.length - 1}
+            enterRegistryRef={enterRegistryRef}
           />
         ))}
       </div>
@@ -3063,7 +3115,7 @@ const MessageBubble = memo(function MessageBubble({
   const handleUserEnterAnimEnd = useCallback(
     /** @param {import("react").AnimationEvent<HTMLDivElement>} e */
     (e) => {
-      if (e.animationName !== "chat-lab-user-msg-enter") return;
+      if (e.animationName !== "chat-lab-reveal-enter") return;
       onUserEnterAnimEnd?.(message.id);
     },
     [message.id, onUserEnterAnimEnd],
@@ -3294,7 +3346,7 @@ const MessageBubble = memo(function MessageBubble({
       className={cn(
         "chat-lab__msg",
         isUser ? "chat-lab__msg--user" : "chat-lab__msg--assistant",
-        shouldEnterAnim && "chat-lab__msg--user-enter",
+        shouldEnterAnim && "chat-lab__msg--user-enter chat-lab__reveal-enter",
       )}
       onAnimationEnd={shouldEnterAnim ? handleUserEnterAnimEnd : undefined}
     >
@@ -3307,12 +3359,14 @@ const MessageBubble = memo(function MessageBubble({
         </div>
       ) : null}
       <article
-        className={cn("chat-lab__bubble", isUser && "chat-lab__bubble--user", shouldEnterAnim && "chat-lab__bubble--user-blur")}
+        className={cn(
+          "chat-lab__bubble",
+          isUser && "chat-lab__bubble--user",
+          shouldEnterAnim && "chat-lab__reveal-blur-host",
+        )}
         data-role={message.role}
       >
-        {shouldEnterAnim ? (
-          <span className="chat-lab__bubble-user-blur-veil" aria-hidden />
-        ) : null}
+        {shouldEnterAnim ? <span className="chat-lab__reveal-blur-veil" aria-hidden /> : null}
         {!isUser && !interleavedAssistant && toolRows.length > 0 ? (
           <ToolChainPanel rows={toolRows} t={t} streaming={Boolean(message.streaming)} />
         ) : null}
@@ -3510,6 +3564,7 @@ const MessageBubble = memo(function MessageBubble({
  */
 function ChatLabVirtualMessageList({
   messages,
+  sessionArtifacts,
   messagesScrollRef,
   autoScrollRef,
   gatewayStreaming,
@@ -3761,6 +3816,9 @@ function ChatLabVirtualMessageList({
             );
           })}
         </div>
+        {sessionArtifacts?.length && !gatewayStreaming ? (
+          <ChatLabArtifactsBar artifacts={sessionArtifacts} />
+        ) : null}
       </div>
       <div
         className={cn(

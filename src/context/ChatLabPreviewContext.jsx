@@ -14,8 +14,9 @@ import {
   previewKindFromHref,
   absoluteHttpUrlMaybe,
 } from "../chat/chatLabDocumentPreview.js";
+import { artifactPayloadFromReadResult } from "../chat/chatLabArtifactFilePayload.js";
 import { useI18n } from "./I18nContext.jsx";
-import { applyWorkspacePreviewReadResult } from "../chat/chatLabApplyWorkspaceRead.js";
+import { artifactPreviewKindFromPath } from "../chat/chatLabArtifactPreviewKind.js";
 
 /**
  * @typedef {{
@@ -43,10 +44,22 @@ import { applyWorkspacePreviewReadResult } from "../chat/chatLabApplyWorkspaceRe
  * }} ChatLabPreviewPlaceholder
  *
  * @typedef {ChatLabPreviewIframe | ChatLabPreviewSrcDoc | ChatLabPreviewPlaceholder} ChatLabPreviewSession
+ *
+ * @typedef {import("../chat/chatLabSessionArtifacts.js").SessionArtifact} SessionArtifact
+ *
+ * @typedef {{
+ *   files: SessionArtifact[];
+ *   selectedPath: string | null;
+ *   viewMode: "render" | "source";
+ *   loading: boolean;
+ *   error: string | null;
+ *   payload: import("../chat/chatLabArtifactFilePayload.js").ArtifactFilePayload | null;
+ * }} ArtifactsPanelState
  */
 
 /** @type {import("react").Context<null | {
  *   session: ChatLabPreviewSession | null;
+ *   artifactsPanel: ArtifactsPanelState | null;
  *   iframeRef: import("react").RefObject<HTMLIFrameElement | null>;
  *   close: () => void;
  *   openIframe: (src: string, title: string, opts?: { externalUrl?: string | null; sandbox?: string }) => void;
@@ -55,6 +68,9 @@ import { applyWorkspacePreviewReadResult } from "../chat/chatLabApplyWorkspaceRe
  *   openPlaceholder: (title: string, body: string) => void;
  *   openFromMarkdownLink: (href: string, linkLabel: string) => boolean;
  *   openFromWorkspacePath: (inputPath: string, title?: string) => Promise<void>;
+ *   openArtifactsPanel: (files: SessionArtifact[], selectPath?: string) => void;
+ *   selectArtifact: (path: string) => void;
+ *   setArtifactViewMode: (mode: "render" | "source") => void;
  *   postToPreview: (payload: unknown, targetOrigin?: string) => void;
  *   subscribeFrameMessages: (fn: (data: unknown) => void) => () => void;
  * }>} */
@@ -68,11 +84,15 @@ export function ChatLabPreviewProvider({ children }) {
   const { t } = useI18n();
   const iframeRef = useRef(/** @type {HTMLIFrameElement | null} */ (null));
   const blobRevokeRef = useRef(/** @type {string | null} */ (null));
+  /** @type {import("react").MutableRefObject<Set<string>>} */
+  const artifactBlobUrlsRef = useRef(new Set());
+  const artifactLoadGenRef = useRef(0);
 
   /** @type {import("react").MutableRefObject<Set<(data: unknown) => void>>} */
   const subscribedRef = useRef(new Set());
 
   const [session, setSession] = useState(/** @type {ChatLabPreviewSession | null} */ (null));
+  const [artifactsPanel, setArtifactsPanel] = useState(/** @type {ArtifactsPanelState | null} */ (null));
 
   const revokeBlob = useCallback(() => {
     const u = blobRevokeRef.current;
@@ -86,10 +106,164 @@ export function ChatLabPreviewProvider({ children }) {
     blobRevokeRef.current = null;
   }, []);
 
+  const revokeArtifactBlobs = useCallback(() => {
+    for (const u of artifactBlobUrlsRef.current) {
+      try {
+        URL.revokeObjectURL(u);
+      } catch {
+        /* ignore */
+      }
+    }
+    artifactBlobUrlsRef.current.clear();
+  }, []);
+
   const close = useCallback(() => {
     revokeBlob();
+    revokeArtifactBlobs();
     setSession(null);
-  }, [revokeBlob]);
+    setArtifactsPanel(null);
+  }, [revokeArtifactBlobs, revokeBlob]);
+
+  const loadArtifactAtPath = useCallback(
+    /**
+     * @param {string} inputPath
+     * @param {SessionArtifact[]} files
+     * @param {"render"|"source"} viewMode
+     */
+    async (inputPath, files, viewMode) => {
+      const path = String(inputPath ?? "").trim();
+      const gen = ++artifactLoadGenRef.current;
+      setArtifactsPanel({
+        files,
+        selectedPath: path,
+        viewMode,
+        loading: true,
+        error: null,
+        payload: null,
+      });
+      setSession(null);
+      revokeBlob();
+
+      const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+      const read =
+        bridge && typeof bridge.readWorkspacePreviewFile === "function"
+          ? bridge.readWorkspacePreviewFile
+          : undefined;
+      const maybeOpenOffice =
+        bridge && typeof bridge.maybeOpenWorkspaceOfficeFileExternally === "function"
+          ? bridge.maybeOpenWorkspaceOfficeFileExternally
+          : undefined;
+
+      if (!read && !maybeOpenOffice) {
+        if (gen !== artifactLoadGenRef.current) return;
+        setArtifactsPanel({
+          files,
+          selectedPath: path,
+          viewMode,
+          loading: false,
+          error: "workspace_needs_app",
+          payload: null,
+        });
+        return;
+      }
+
+      if (maybeOpenOffice) {
+        try {
+          const xr = await maybeOpenOffice(path);
+          if (gen !== artifactLoadGenRef.current) return;
+          if (xr && typeof xr === "object" && xr.opened) {
+            close();
+            return;
+          }
+        } catch {
+          /* fall through to read */
+        }
+      }
+
+      if (!read) {
+        if (gen !== artifactLoadGenRef.current) return;
+        setArtifactsPanel({
+          files,
+          selectedPath: path,
+          viewMode,
+          loading: false,
+          error: "workspace_needs_app",
+          payload: null,
+        });
+        return;
+      }
+
+      let r;
+      try {
+        r = await read(path);
+      } catch (e) {
+        if (gen !== artifactLoadGenRef.current) return;
+        const msg = String(e?.message ?? e);
+        setArtifactsPanel({
+          files,
+          selectedPath: path,
+          viewMode,
+          loading: false,
+          error: /No handler registered/i.test(msg) ? "ipc_missing" : msg,
+          payload: null,
+        });
+        return;
+      }
+
+      if (gen !== artifactLoadGenRef.current) return;
+      revokeArtifactBlobs();
+      const built = artifactPayloadFromReadResult(path, r);
+      if ("error" in built) {
+        setArtifactsPanel({
+          files,
+          selectedPath: path,
+          viewMode,
+          loading: false,
+          error: built.error,
+          payload: null,
+        });
+        return;
+      }
+      if (built.blobUrl) artifactBlobUrlsRef.current.add(built.blobUrl);
+      setArtifactsPanel({
+        files,
+        selectedPath: path,
+        viewMode,
+        loading: false,
+        error: null,
+        payload: built,
+      });
+    },
+    [close, revokeArtifactBlobs, revokeBlob],
+  );
+
+  const openArtifactsPanel = useCallback(
+    /**
+     * @param {SessionArtifact[]} files
+     * @param {string} [selectPath]
+     */
+    (files, selectPath) => {
+      const list = Array.isArray(files) ? files.filter((f) => f?.path) : [];
+      if (!list.length) return;
+      const pick =
+        selectPath && list.some((f) => f.path === selectPath) ? selectPath : list[list.length - 1].path;
+      void loadArtifactAtPath(pick, list, "render");
+    },
+    [loadArtifactAtPath],
+  );
+
+  const selectArtifact = useCallback(
+    (path) => {
+      if (!artifactsPanel?.files?.length) return;
+      const viewMode = artifactsPanel.viewMode;
+      void loadArtifactAtPath(path, artifactsPanel.files, viewMode);
+    },
+    [artifactsPanel, loadArtifactAtPath],
+  );
+
+  const setArtifactViewMode = useCallback((mode) => {
+    setArtifactsPanel((prev) => (prev ? { ...prev, viewMode: mode } : prev));
+  }, []);
 
   const openIframe = useCallback(
     /**
@@ -98,6 +272,8 @@ export function ChatLabPreviewProvider({ children }) {
      * @param {{ externalUrl?: string | null; sandbox?: string }} [opts]
      */
     (src, title, opts = {}) => {
+      revokeArtifactBlobs();
+      setArtifactsPanel(null);
       revokeBlob();
       setSession({
         kind: "iframe",
@@ -108,7 +284,7 @@ export function ChatLabPreviewProvider({ children }) {
         externalUrl: opts.externalUrl ?? src,
       });
     },
-    [revokeBlob],
+    [revokeArtifactBlobs, revokeBlob],
   );
 
   const openSrcDoc = useCallback(
@@ -118,6 +294,8 @@ export function ChatLabPreviewProvider({ children }) {
      * @param {{ sandbox?: string }} [opts]
      */
     (html, title, opts = {}) => {
+      revokeArtifactBlobs();
+      setArtifactsPanel(null);
       revokeBlob();
       setSession({
         kind: "srcdoc",
@@ -127,11 +305,13 @@ export function ChatLabPreviewProvider({ children }) {
         sandbox: opts.sandbox ?? "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals",
       });
     },
-    [revokeBlob],
+    [revokeArtifactBlobs, revokeBlob],
   );
 
   const openBlob = useCallback(
     (blob, title) => {
+      revokeArtifactBlobs();
+      setArtifactsPanel(null);
       revokeBlob();
       const url = URL.createObjectURL(blob);
       blobRevokeRef.current = url;
@@ -149,11 +329,13 @@ export function ChatLabPreviewProvider({ children }) {
         externalUrl: null,
       });
     },
-    [revokeBlob],
+    [revokeArtifactBlobs, revokeBlob],
   );
 
   const openPlaceholder = useCallback(
     (title, body) => {
+      revokeArtifactBlobs();
+      setArtifactsPanel(null);
       revokeBlob();
       setSession({
         kind: "placeholder",
@@ -162,7 +344,7 @@ export function ChatLabPreviewProvider({ children }) {
         frameKey: newPreviewFrameKey(),
       });
     },
-    [revokeBlob],
+    [revokeArtifactBlobs, revokeBlob],
   );
 
   const openFromMarkdownLink = useCallback(
@@ -212,64 +394,23 @@ export function ChatLabPreviewProvider({ children }) {
      * @param {string} [title]
      */
     async (inputPath, title) => {
-      const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
-      const read =
-        bridge && typeof bridge.readWorkspacePreviewFile === "function"
-          ? bridge.readWorkspacePreviewFile
-          : undefined;
-      const maybeOpenOffice =
-        bridge && typeof bridge.maybeOpenWorkspaceOfficeFileExternally === "function"
-          ? bridge.maybeOpenWorkspaceOfficeFileExternally
-          : undefined;
-      const label = String(title ?? inputPath ?? "").trim() || String(inputPath ?? "");
-      if (!read && !maybeOpenOffice) {
-        openPlaceholder(label, t("chatLab.previewWorkspaceNeedsApp"));
-        return;
-      }
-
-      if (maybeOpenOffice) {
-        try {
-          const xr = await maybeOpenOffice(inputPath);
-          if (xr && typeof xr === "object" && xr.opened) {
-            close();
-            return;
-          }
-          if (xr && typeof xr === "object" && !xr.ok) {
-            const detail = String(xr.message ?? "").trim() || "open_failed";
-            openPlaceholder(label, t("chatLab.previewReadFailed", { detail }));
-            return;
-          }
-        } catch (e) {
-          const msg = String(e?.message ?? e);
-          if (/No handler registered/i.test(msg)) {
-            openPlaceholder(label, t("chatLab.previewIpcMissing"));
-            return;
-          }
-          openPlaceholder(label, t("chatLab.previewReadFailed", { detail: msg }));
-          return;
-        }
-      }
-
-      if (!read) {
-        openPlaceholder(label, t("chatLab.previewWorkspaceNeedsApp"));
-        return;
-      }
-
-      let r;
-      try {
-        r = await read(inputPath);
-      } catch (e) {
-        const msg = String(e?.message ?? e);
-        if (/No handler registered/i.test(msg)) {
-          openPlaceholder(label, t("chatLab.previewIpcMissing"));
-          return;
-        }
-        openPlaceholder(label, t("chatLab.previewReadFailed", { detail: msg }));
-        return;
-      }
-      applyWorkspacePreviewReadResult(r, { openSrcDoc, openBlob, openPlaceholder }, t, label);
+      const path = String(inputPath ?? "").trim();
+      const label = String(title ?? path).trim() || path;
+      openArtifactsPanel(
+        [
+          {
+            path,
+            label,
+            op: "modified",
+            messageId: "",
+            seq: 0,
+            previewKind: artifactPreviewKindFromPath(path),
+          },
+        ],
+        path,
+      );
     },
-    [close, openBlob, openPlaceholder, openSrcDoc, t],
+    [openArtifactsPanel],
   );
 
   const postToPreview = useCallback((payload, targetOrigin = "*") => {
@@ -314,6 +455,7 @@ export function ChatLabPreviewProvider({ children }) {
   const value = useMemo(
     () => ({
       session,
+      artifactsPanel,
       iframeRef,
       close,
       openIframe,
@@ -322,11 +464,15 @@ export function ChatLabPreviewProvider({ children }) {
       openPlaceholder,
       openFromMarkdownLink,
       openFromWorkspacePath,
+      openArtifactsPanel,
+      selectArtifact,
+      setArtifactViewMode,
       postToPreview,
       subscribeFrameMessages,
     }),
     [
       session,
+      artifactsPanel,
       close,
       openIframe,
       openSrcDoc,
@@ -334,6 +480,9 @@ export function ChatLabPreviewProvider({ children }) {
       openPlaceholder,
       openFromMarkdownLink,
       openFromWorkspacePath,
+      openArtifactsPanel,
+      selectArtifact,
+      setArtifactViewMode,
       postToPreview,
       subscribeFrameMessages,
     ],
