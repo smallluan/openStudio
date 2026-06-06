@@ -89,13 +89,35 @@ for (const ent of entries) {
 
 skills.sort((a, b) => a.id.localeCompare(b.id));
 
+/** @returns {string} */
+function readOpenClawPackageVersion() {
+  try {
+    const pkgPath = path.join(root, "node_modules", "openclaw", "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 const payload = {
   generatedFrom: "node_modules/openclaw/skills",
-  generatedAt: new Date().toISOString(),
+  openclawVersion: readOpenClawPackageVersion(),
   count: skills.length,
   skills,
 };
 
+const nextBody = `${JSON.stringify(payload, null, 2)}\n`;
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
-fs.writeFileSync(outFile, JSON.stringify(payload, null, 2) + "\n", "utf8");
-console.log("wrote", skills.length, "skills to", path.relative(root, outFile));
+let prevBody = "";
+try {
+  prevBody = fs.readFileSync(outFile, "utf8");
+} catch {
+  /* first run */
+}
+if (prevBody === nextBody) {
+  console.log("[generate-openclaw-bundled-skills] unchanged (%d skills)", skills.length);
+} else {
+  fs.writeFileSync(outFile, nextBody, "utf8");
+  console.log("[generate-openclaw-bundled-skills] wrote %d skills to %s", skills.length, path.relative(root, outFile));
+}

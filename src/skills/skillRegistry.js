@@ -3,7 +3,7 @@ import { filterUsableBundledSkills } from "./skillAvailability.js";
 import { userSkillDisplayTitle } from "./skillDisplay.js";
 import { loadSkillLibrary } from "./skillsLocalStore.js";
 
-/** @typedef {{ generatedFrom: string; generatedAt: string; count: number; skills: Array<{ id: string; name: string; description: string; emoji: string; categoryId: string }> }} OpenclawBundledManifest */
+/** @typedef {{ generatedFrom: string; openclawVersion: string; count: number; skills: Array<{ id: string; name: string; description: string; emoji: string; categoryId: string }> }} OpenclawBundledManifest */
 
 export const OPENCLAW_BUNDLED_SKILL_MANIFEST = openclawManifest;
 

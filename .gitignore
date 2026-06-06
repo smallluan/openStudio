@@ -13,3 +13,6 @@ Thumbs.db
 vendor/*
 !vendor/python-runtime-win/
 !vendor/python-runtime-win/**
+
+# Generated from node_modules/openclaw/skills on postinstall (see openclawBundledSkillManifest.stub.json)
+src/skills/openclawBundledSkillManifest.json

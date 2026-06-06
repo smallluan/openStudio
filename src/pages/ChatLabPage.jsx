@@ -90,6 +90,9 @@ import { CHAT_MD_REHYPE_PLUGINS } from "../chat/chatLabRehypePlugins.js";
 /** Markdown pipelines for chat bubbles (GFM + LaTeX via KaTeX). */
 const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
 
+/** Below this count, skip virtual scroll — avoids row-height drift on some Electron/GPU setups. */
+const CHAT_LAB_PLAIN_MESSAGE_MAX = 48;
+
 /** Min height of the chat composer textarea in px (~5.5rem at default root font size). */
 const CHAT_LAB_COMPOSER_TEXT_MIN_PX = 88;
 /** Hard cap for composer textarea max height before viewport ratio is applied. */
@@ -2024,7 +2027,7 @@ export default function ChatLabPage() {
                 <header className="chat-lab__conv-header">
                   <h2 className="chat-lab__conv-title">{headerTitle || t("chatLab.chatUntitled")}</h2>
                 </header>
-                <ChatLabVirtualMessageList
+                <ChatLabMessageList
                   key={conversationId}
                   messages={messages}
                   sessionArtifacts={sessionArtifacts}
@@ -2037,6 +2040,7 @@ export default function ChatLabPage() {
                   onBeginUserEdit={beginComposerEdit}
                   onQuickReply={quickReplySend}
                   quickReplyDisabled={streamLocked || Boolean(pendingEditMessageId)}
+                  remeasureKey={location.key}
                   t={t}
                   locale={locale}
                   threadLabel={t("chatLab.title")}
@@ -3722,6 +3726,128 @@ const MessageBubble = memo(function MessageBubble({
 });
 
 /**
+ * @param {{
+ *   content?: string;
+ *   thinking?: string;
+ *   streaming?: boolean;
+ *   toolTrace?: unknown[];
+ *   activityLog?: unknown[];
+ *   assistantTimeline?: unknown[];
+ * }} m
+ */
+function estimateAssistantRowHeight(m) {
+  let h = 132;
+  const contentLen = String(m?.content ?? "").length;
+  const thinkingLen = String(m?.thinking ?? "").length;
+  h += Math.min(3600, Math.ceil(contentLen / 2.6));
+  h += Math.min(720, Math.ceil(thinkingLen / 3));
+  const tools = Array.isArray(m?.toolTrace) ? m.toolTrace.length : 0;
+  const activities = Array.isArray(m?.activityLog) ? m.activityLog.length : 0;
+  const timeline = Array.isArray(m?.assistantTimeline) ? m.assistantTimeline.length : 0;
+  h += tools * 40 + activities * 32 + timeline * 28;
+  if (m?.streaming) h += 56;
+  return Math.max(228, Math.min(h, 5200));
+}
+
+/**
+ * @param {Array<{
+ *   id: string;
+ *   role: string;
+ *   content?: string;
+ *   thinking?: string;
+ *   streaming?: boolean;
+ *   toolTrace?: unknown[];
+ *   activityLog?: unknown[];
+ *   assistantTimeline?: unknown[];
+ * }>} messages
+ */
+function buildMessagesMeasureDigest(messages) {
+  return messages
+    .map((m) =>
+      [
+        m.id,
+        m.role,
+        String(m.content ?? "").length,
+        String(m.thinking ?? "").length,
+        m.streaming ? 1 : 0,
+        Array.isArray(m.toolTrace) ? m.toolTrace.length : 0,
+        Array.isArray(m.activityLog) ? m.activityLog.length : 0,
+        Array.isArray(m.assistantTimeline) ? m.assistantTimeline.length : 0,
+      ].join(":"),
+    )
+    .join("|");
+}
+
+/** @typedef {Parameters<typeof ChatLabVirtualMessageList>[0]} ChatLabMessageListProps */
+
+/**
+ * @param {ChatLabMessageListProps} props
+ */
+function ChatLabMessageList(props) {
+  if (props.messages.length <= CHAT_LAB_PLAIN_MESSAGE_MAX) {
+    return <ChatLabPlainMessageList {...props} />;
+  }
+  return <ChatLabVirtualMessageList {...props} />;
+}
+
+/**
+ * Direct flex column for short threads — no absolute virtual rows (overlap-safe).
+ * @param {ChatLabMessageListProps} props
+ */
+function ChatLabPlainMessageList({
+  messages,
+  sessionArtifacts,
+  messagesScrollRef,
+  autoScrollRef,
+  gatewayStreaming,
+  streamLocked,
+  userBubbleEnterMessageId,
+  onUserBubbleEnterAnimEnd,
+  onBeginUserEdit,
+  onQuickReply,
+  quickReplyDisabled,
+  t,
+  locale,
+  threadLabel,
+}) {
+  useLayoutEffect(() => {
+    if (!autoScrollRef.current || messages.length === 0) return;
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages, gatewayStreaming, autoScrollRef, messagesScrollRef]);
+
+  return (
+    <div
+      className="chat-lab__messages"
+      ref={messagesScrollRef}
+      role="log"
+      aria-live="polite"
+      aria-label={threadLabel}
+    >
+      {messages.map((m, index) => (
+        <MessageBubble
+          key={m.id}
+          message={m}
+          t={t}
+          locale={locale}
+          streamLocked={streamLocked}
+          animateUserEnter={m.role === "user" && m.id === userBubbleEnterMessageId}
+          onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
+          allowAssistantQuickReply={index === messages.length - 1 && m.role === "assistant"}
+          quickReplyDisabled={quickReplyDisabled}
+          onQuickReply={onQuickReply}
+          onBeginUserEdit={onBeginUserEdit}
+        />
+      ))}
+      {sessionArtifacts?.length && !gatewayStreaming ? (
+        <ChatLabArtifactsBar artifacts={sessionArtifacts} />
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * Variable-height virtual list for chat bubbles (Markdown cost scales with visible rows only).
  * @param {{
  *   messages: Array<{
@@ -3755,6 +3881,7 @@ const MessageBubble = memo(function MessageBubble({
  *   threadLabel: string;
  *   onQuickReply: (text: string) => void | Promise<void>;
  *   quickReplyDisabled: boolean;
+ *   remeasureKey?: string;
  * }} props
  */
 function ChatLabVirtualMessageList({
@@ -3769,6 +3896,7 @@ function ChatLabVirtualMessageList({
   onBeginUserEdit,
   onQuickReply,
   quickReplyDisabled,
+  remeasureKey,
   t,
   locale,
   threadLabel,
@@ -3792,12 +3920,17 @@ function ChatLabVirtualMessageList({
     const m = messagesEstRef.current[index];
     if (m?.role === "user") {
       let h = m.skillMeta ? 118 : 96;
+      const textLen = String(m.content ?? "").length;
+      h += Math.min(480, Math.ceil(textLen / 3.2));
       const n = Array.isArray(m.imageAttachments) ? m.imageAttachments.length : 0;
       if (n > 0) h += 56 + Math.min(n, 8) * 56;
       return h;
     }
-    return 228;
+    return estimateAssistantRowHeight(m);
   }, []);
+
+  const messagesMeasureDigest = useMemo(() => buildMessagesMeasureDigest(messages), [messages]);
+  const prevGatewayStreamingRef = useRef(gatewayStreaming);
 
   const getItemKey = useCallback((index) => messagesEstRef.current[index]?.id ?? index, []);
 
@@ -3962,6 +4095,47 @@ function ChatLabVirtualMessageList({
     if (messages.length === 0) return;
     vInstRef.current.measure();
   }, [messages.length, userBubbleEnterMessageId, gatewayStreaming]);
+
+  /** Content/tool growth during streaming and collapse after `streaming:false` must refresh row offsets. */
+  useLayoutEffect(() => {
+    if (messages.length === 0) return;
+    vInstRef.current.measure();
+  }, [messagesMeasureDigest]);
+
+  useLayoutEffect(() => {
+    const prev = prevGatewayStreamingRef.current;
+    prevGatewayStreamingRef.current = gatewayStreaming;
+    if (!prev || gatewayStreaming) return;
+    vInstRef.current.measure();
+    const raf = requestAnimationFrame(() => {
+      vInstRef.current.measure();
+      if (autoScrollRef.current && messages.length > 0) {
+        vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [gatewayStreaming, messages.length, autoScrollRef]);
+
+  useLayoutEffect(() => {
+    if (!remeasureKey || messages.length === 0) return;
+    vInstRef.current.measure();
+  }, [remeasureKey, messages.length]);
+
+  useEffect(() => {
+    const remeasure = () => {
+      if (messagesEstRef.current.length === 0) return;
+      vInstRef.current.measure();
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") remeasure();
+    };
+    window.addEventListener("focus", remeasure);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", remeasure);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
 
   return (
     <>
