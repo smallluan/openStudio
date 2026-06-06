@@ -54,8 +54,8 @@ import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
 const ChatLabStreamingContext = createContext(null);
 
 const PERSIST_MS = 420;
-/** Delay before treating `done` as final — some gateways flush one last delta right after signalling end */
-const STREAM_DONE_GRACE_MS = 1600;
+/** Quiet period after `{ type: "done" }` before finalizing — absorbs trailing IPC deltas (resets on each late chunk). */
+const STREAM_DONE_GRACE_MS = 450;
 
 /**
  * @param {string} conversationId
@@ -109,6 +109,8 @@ export function ChatLabStreamingProvider({ children }) {
   const persistTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
   /** Deferred finalization after a `{ type: "done" }` event — absorbs trailing deltas that arrive milliseconds late */
   const doneGraceTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+  /** Stream awaiting finalize after `done`; cleared when grace completes or stream aborts/errors. */
+  const pendingDoneFinalizeStreamIdRef = useRef(/** @type {string | null} */ (null));
   /** Active gateway stream id; keeps matching `done`/`error` after a terminal clears React slice (main always sends `done`). */
   const processingStreamIdRef = useRef(/** @type {string | null} */ (null));
 
@@ -133,6 +135,7 @@ export function ChatLabStreamingProvider({ children }) {
       clearTimeout(doneGraceTimerRef.current);
       doneGraceTimerRef.current = null;
     }
+    pendingDoneFinalizeStreamIdRef.current = null;
     processingStreamIdRef.current = args.streamId;
     const next = {
       conversationId: args.conversationId,
@@ -159,6 +162,7 @@ export function ChatLabStreamingProvider({ children }) {
       clearTimeout(doneGraceTimerRef.current);
       doneGraceTimerRef.current = null;
     }
+    pendingDoneFinalizeStreamIdRef.current = null;
     processingStreamIdRef.current = null;
     sliceRef.current = null;
     setGatewayStreamSlice(null);
@@ -245,12 +249,19 @@ export function ChatLabStreamingProvider({ children }) {
       }
     };
 
+    const rescheduleDoneIfPending = (/** @type {string} */ streamId) => {
+      if (pendingDoneFinalizeStreamIdRef.current !== streamId) return;
+      scheduleDoneFinalize(streamId);
+    };
+
     /** Keeps streaming state live until STREAM_DONE_GRACE_MS so trailing `text`/`thinking`/… can merge */
     const scheduleDoneFinalize = (/** @type {string} */ streamId) => {
+      pendingDoneFinalizeStreamIdRef.current = streamId;
       if (doneGraceTimerRef.current != null) return;
       const sid = streamId;
       doneGraceTimerRef.current = setTimeout(() => {
         doneGraceTimerRef.current = null;
+        pendingDoneFinalizeStreamIdRef.current = null;
         const cur = sliceRef.current;
         if (!cur || cur.streamId !== sid) {
           if (processingStreamIdRef.current === sid) processingStreamIdRef.current = null;
@@ -312,6 +323,7 @@ export function ChatLabStreamingProvider({ children }) {
           sliceRef.current = next;
           setGatewayStreamSlice(next);
           schedulePersist();
+          rescheduleDoneIfPending(evt.streamId);
           return;
         }
         case "tool_trace": {
@@ -324,6 +336,7 @@ export function ChatLabStreamingProvider({ children }) {
           sliceRef.current = next;
           setGatewayStreamSlice(next);
           schedulePersist();
+          rescheduleDoneIfPending(evt.streamId);
           return;
         }
         case "agent_activity": {
@@ -336,6 +349,7 @@ export function ChatLabStreamingProvider({ children }) {
           sliceRef.current = next;
           setGatewayStreamSlice(next);
           schedulePersist();
+          rescheduleDoneIfPending(evt.streamId);
           return;
         }
         case "thinking":
@@ -354,6 +368,7 @@ export function ChatLabStreamingProvider({ children }) {
             setGatewayStreamSlice(next);
           }
           schedulePersist();
+          rescheduleDoneIfPending(evt.streamId);
           return;
         case "text":
           cancelPendingDoneFinalize();
@@ -371,12 +386,14 @@ export function ChatLabStreamingProvider({ children }) {
             setGatewayStreamSlice(next);
           }
           schedulePersist();
+          rescheduleDoneIfPending(evt.streamId);
           return;
         case "meta":
         case "usage":
           return;
         case "aborted": {
           cancelPendingDoneFinalize();
+          pendingDoneFinalizeStreamIdRef.current = null;
           const sid = evt.streamId;
           const snap = snapshotSlice();
           flushPersistNow();
@@ -404,6 +421,7 @@ export function ChatLabStreamingProvider({ children }) {
         }
         case "error": {
           cancelPendingDoneFinalize();
+          pendingDoneFinalizeStreamIdRef.current = null;
           const sid = evt.streamId;
           const snap = snapshotSlice();
           const raw = String(evt.message ?? "");
@@ -454,6 +472,7 @@ export function ChatLabStreamingProvider({ children }) {
         clearTimeout(doneGraceTimerRef.current);
         doneGraceTimerRef.current = null;
       }
+      pendingDoneFinalizeStreamIdRef.current = null;
     };
   }, []);
 

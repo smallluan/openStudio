@@ -2126,6 +2126,54 @@ code {
   }
 }
 
+.chat-history-group {
+  list-style: none;
+}
+
+.chat-history-group__head {
+  width: 100%;
+  margin: 0;
+  padding: 0.2rem 0.35rem;
+  border: none;
+  border-radius: 0.42rem;
+  background: transparent;
+  color: var(--os-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.chat-history-group__head:hover {
+  background: color-mix(in srgb, var(--os-bg-hover) 82%, transparent);
+  color: var(--os-text);
+}
+
+.chat-history-group__caret {
+  width: 0.7rem;
+  text-align: center;
+  color: var(--os-text-faint);
+}
+
+.chat-history-group__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-history-group__count {
+  flex: 0 0 auto;
+  font-size: 0.65rem;
+  color: var(--os-text-faint);
+}
+
 /* Chat history list row add/remove/reorder motion */
 .chat-history-row {
   max-height: 4.25rem;
