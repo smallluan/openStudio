@@ -21,7 +21,14 @@ import {
   useState,
 } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { deleteSession, deleteSessionsByIds, loadAllSessions, renameSession } from "../../chat/chatSessionsStore.js";
+import {
+  CHAT_SESSION_CHANNEL_INTERNAL,
+  CHAT_SESSION_CHANNEL_WECHAT,
+  deleteSession,
+  deleteSessionsByIds,
+  loadAllSessions,
+  renameSession,
+} from "../../chat/chatSessionsStore.js";
 import { formatSessionRelativeTime } from "../../i18n/relativeTime.js";
 import { useChatLabStreaming } from "../../context/ChatLabStreamingContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -299,7 +306,7 @@ function HistorySessionRow({
  */
 export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   const { t } = useI18n();
-  const { streamingSessionId } = useChatLabStreaming();
+  const { isSessionStreaming } = useChatLabStreaming();
   const location = useLocation();
   const navigate = useNavigate();
   const highlight = useContext(FluidNavHighlightApi);
@@ -308,6 +315,21 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   const reload = useCallback(() => setListVersion((v) => v + 1), []);
 
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [groupCollapsed, setGroupCollapsed] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem("openstudio_chat_history_fold_v1");
+      const parsed = raw ? JSON.parse(raw) : {};
+      return {
+        [CHAT_SESSION_CHANNEL_INTERNAL]: Boolean(parsed?.[CHAT_SESSION_CHANNEL_INTERNAL]),
+        [CHAT_SESSION_CHANNEL_WECHAT]: Boolean(parsed?.[CHAT_SESSION_CHANNEL_WECHAT]),
+      };
+    } catch {
+      return {
+        [CHAT_SESSION_CHANNEL_INTERNAL]: false,
+        [CHAT_SESSION_CHANNEL_WECHAT]: false,
+      };
+    }
+  });
 
   const scrollRootRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const scrollContentRef = useRef(/** @type {HTMLDivElement | null} */ (null));
@@ -320,11 +342,17 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
       if (e.key === null || e.key === "openstudio_chat_sessions_v1") reload();
     };
     const onCustom = () => reload();
+    const onWechatInbound = () => {
+      setGroupCollapsed((prev) => ({ ...prev, [CHAT_SESSION_CHANNEL_WECHAT]: false }));
+      reload();
+    };
     window.addEventListener("storage", onStorage);
     window.addEventListener("openstudio-chat-sessions-changed", onCustom);
+    window.addEventListener("openstudio-wechat-session-inbound", onWechatInbound);
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("openstudio-chat-sessions-changed", onCustom);
+      window.removeEventListener("openstudio-wechat-session-inbound", onWechatInbound);
     };
   }, [reload]);
 
@@ -340,7 +368,23 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     );
   }, [allSessions, filterQuery]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("openstudio_chat_history_fold_v1", JSON.stringify(groupCollapsed));
+    } catch {
+      /* ignore */
+    }
+  }, [groupCollapsed]);
+
   const { displaySessions, getRowMotion, registerRowRef } = useChatHistoryListMotion(allSessions, filtered);
+  const visibleRows = useMemo(
+    () =>
+      displaySessions.filter((s) => {
+        const channel = s.channel === CHAT_SESSION_CHANNEL_WECHAT ? CHAT_SESSION_CHANNEL_WECHAT : CHAT_SESSION_CHANNEL_INTERNAL;
+        return !groupCollapsed[channel];
+      }),
+    [displaySessions, groupCollapsed],
+  );
 
   const activeC = useMemo(() => {
     try {
@@ -352,11 +396,19 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
 
   const emptyAll = allSessions.length === 0;
   const emptyFilter = !emptyAll && filtered.length === 0;
+  const groupedVisible = useMemo(() => {
+    /** @type {{ internal: typeof visibleRows; wechat: typeof visibleRows }} */
+    const groups = { internal: [], wechat: [] };
+    for (const row of visibleRows) {
+      if (row.channel === CHAT_SESSION_CHANNEL_WECHAT) groups.wechat.push(row);
+      else groups.internal.push(row);
+    }
+    return groups;
+  }, [visibleRows]);
 
   const bulkDeleteIds = useMemo(() => {
-    const skip = streamingSessionId ?? "";
-    return filtered.map((s) => s.id).filter((id) => id && id !== skip);
-  }, [filtered, streamingSessionId]);
+    return visibleRows.map((s) => s.id).filter((id) => id && !isSessionStreaming(id));
+  }, [visibleRows, isSessionStreaming]);
 
   const handleBulkConfirm = useCallback(() => {
     const n = bulkDeleteIds.length;
@@ -370,6 +422,10 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     if (bulkDeleteIds.length < 1) return;
     setBulkDialogOpen(true);
   }, [bulkDeleteIds.length]);
+
+  const toggleGroupCollapsed = useCallback((channel) => {
+    setGroupCollapsed((prev) => ({ ...prev, [channel]: !prev[channel] }));
+  }, []);
 
   useLayoutEffect(() => {
     if (narrow || !highlight) return undefined;
@@ -419,7 +475,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
       el.removeEventListener("scroll", onScroll);
       ro?.disconnect();
     };
-  }, [narrow, updateRailScrollbar, listVersion, displaySessions.length, emptyAll, emptyFilter]);
+  }, [narrow, updateRailScrollbar, listVersion, visibleRows.length, emptyAll, emptyFilter, groupCollapsed]);
 
   const onRailThumbPointerDown = useCallback(
     (e) => {
@@ -492,7 +548,60 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
               <EmptyState title={t("nav.chatHistoryNoMatch")} hideDecoration className="min-h-[5rem] py-6" />
             ) : (
               <ul className="relative z-[1] m-0 flex list-none flex-col gap-0.5 p-0 px-1">
-                {displaySessions.map((s) => {
+                <li className="chat-history-group">
+                  <button
+                    type="button"
+                    className="chat-history-group__head"
+                    onClick={() => toggleGroupCollapsed(CHAT_SESSION_CHANNEL_INTERNAL)}
+                    aria-expanded={!groupCollapsed[CHAT_SESSION_CHANNEL_INTERNAL]}
+                  >
+                    <span className="chat-history-group__caret" aria-hidden>
+                      {groupCollapsed[CHAT_SESSION_CHANNEL_INTERNAL] ? "▸" : "▾"}
+                    </span>
+                    <span className="chat-history-group__label">{t("nav.chatHistoryGroupInternal")}</span>
+                    <span className="chat-history-group__count">{groupedVisible.internal.length}</span>
+                  </button>
+                </li>
+                {!groupCollapsed[CHAT_SESSION_CHANNEL_INTERNAL]
+                  ? groupedVisible.internal.map((s) => {
+                      const to = `/chat?c=${encodeURIComponent(s.id)}`;
+                      const rowActive =
+                        (location.pathname === "/chat" || location.pathname === "/") && activeC === s.id;
+                      const displayTitle = s.title || t("nav.chatHistoryUntitled");
+                      return (
+                        <HistorySessionRow
+                          key={s.id}
+                          sessionId={s.id}
+                          displayTitle={displayTitle}
+                          updatedAt={s.updatedAt}
+                          rowActive={rowActive}
+                          to={to}
+                          measureRef={(node) => highlight?.registerSessionAnchor(s.id, node)}
+                          rowRef={(node) => registerRowRef(s.id, node)}
+                          rowMotion={getRowMotion(s.id)}
+                          onRenamed={reload}
+                          onAfterDelete={reload}
+                          isStreaming={isSessionStreaming(s.id)}
+                        />
+                      );
+                    })
+                  : null}
+                <li className="chat-history-group">
+                  <button
+                    type="button"
+                    className="chat-history-group__head"
+                    onClick={() => toggleGroupCollapsed(CHAT_SESSION_CHANNEL_WECHAT)}
+                    aria-expanded={!groupCollapsed[CHAT_SESSION_CHANNEL_WECHAT]}
+                  >
+                    <span className="chat-history-group__caret" aria-hidden>
+                      {groupCollapsed[CHAT_SESSION_CHANNEL_WECHAT] ? "▸" : "▾"}
+                    </span>
+                    <span className="chat-history-group__label">{t("nav.chatHistoryGroupWechat")}</span>
+                    <span className="chat-history-group__count">{groupedVisible.wechat.length}</span>
+                  </button>
+                </li>
+                {!groupCollapsed[CHAT_SESSION_CHANNEL_WECHAT]
+                  ? groupedVisible.wechat.map((s) => {
                   const to = `/chat?c=${encodeURIComponent(s.id)}`;
                   const rowActive =
                     (location.pathname === "/chat" || location.pathname === "/") && activeC === s.id;
@@ -510,10 +619,11 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
                       rowMotion={getRowMotion(s.id)}
                       onRenamed={reload}
                       onAfterDelete={reload}
-                      isStreaming={streamingSessionId === s.id}
+                      isStreaming={isSessionStreaming(s.id)}
                     />
                   );
-                })}
+                    })
+                  : null}
               </ul>
             )}
           </div>

@@ -7,7 +7,10 @@ import NavStudioIcon from "../assets/svg/NavStudioIcon.jsx";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
 import ChatHistoryList from "../components/shell/ChatHistoryList.jsx";
+import { useWechatAutoReplyStream } from "../chat/useWechatAutoReplyStream.js";
+import { useWechatSessionSync } from "../chat/useWechatSessionSync.js";
 import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
+import RailWechatOrb from "../components/shell/RailWechatOrb.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import ResizableEdge from "../ui/ResizableEdge.jsx";
 import { cn } from "../ui/cn.js";
@@ -104,6 +107,8 @@ export default function MainLayout({ railResizeEnabled = false }) {
   const [railDragging, setRailDragging] = useState(false);
 
   const isNarrow = railPx < RAIL_MIN;
+  useWechatSessionSync();
+  useWechatAutoReplyStream();
 
   useEffect(() => {
     try {
@@ -172,6 +177,11 @@ export default function MainLayout({ railResizeEnabled = false }) {
               router
               primaryItems={primaryNavItems}
               footerItems={[]}
+              footerAccessory={
+                <>
+                  <RailWechatOrb narrow={isNarrow} />
+                </>
+              }
               afterPrimary={<ChatHistoryList narrow={isNarrow} />}
               className="min-h-0 flex-1 pb-1"
             />

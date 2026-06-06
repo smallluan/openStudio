@@ -3,6 +3,14 @@ const path = require("path");
 const fs = require("fs");
 const { createConfigStore } = require("./lib/config-store.cjs");
 const { dispatchOpenClawGatewayStream, probeOpenClawGateway } = require("./lib/openclaw-gateway-stream.cjs");
+const {
+  probeWechatCapability,
+  startWechatQrAuth,
+  getWechatAuthStatus,
+  disconnectWechatAuth,
+  pullWechatInbound,
+  sendWechatOutbound,
+} = require("./lib/openclaw-gateway-wechat.cjs");
 const { resolveGateway } = require("./lib/openclaw-gateway-ws.cjs");
 const { generateConversationTitle } = require("./lib/llm-chat-title.cjs");
 const {
@@ -43,6 +51,7 @@ if (process.platform === "win32") {
 
 const CHAT_STREAM_CHAN = "studio:chatStream";
 const BOOTSTRAP_PROGRESS_CHAN = "studio:bootstrapProgress";
+const WECHAT_STATUS_CHAN = "studio:wechatStatus";
 /** Overall budget for first-run gateway hydration (`tools.effective` can match first-chat prep cost). */
 const BOOTSTRAP_BUDGET_MS = 900_000;
 /** Background `#studio:` session prewarm (sequential RPCs; can be long with many threads). */
@@ -96,6 +105,155 @@ let userConfigStore = null;
 const chatStreamAbortControllers = new Map();
 /** @type {Map<string, Promise<{ ok: boolean }>>} */
 const inFlightChatSends = new Map();
+/** @type {Map<string, Promise<{ ok: boolean }>>} */
+const inFlightWechatSends = new Map();
+/** @type {Set<string>} */
+const wechatInboundSeen = new Set();
+/** @type {Map<string, string>} */
+const wechatPeerConversationMap = new Map();
+/** Recent Studio→WeChat outbound echoes to ignore when polling getUpdates. */
+/** @type {Map<string, Array<{ text: string; ts: number; messageId?: string }>>} */
+const wechatRecentOutbound = new Map();
+let wechatPollTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
+
+/**
+ * @param {string} peerId
+ * @param {string} text
+ * @param {string} [messageId]
+ */
+function trackWechatOutboundEcho(peerId, text, messageId) {
+  const pid = String(peerId ?? "").trim();
+  const body = String(text ?? "").trim();
+  if (!pid || !body) return;
+  const list = wechatRecentOutbound.get(pid) ?? [];
+  list.push({ text: body, ts: Date.now(), messageId: messageId ? String(messageId).trim() : undefined });
+  wechatRecentOutbound.set(pid, list.slice(-24));
+}
+
+/**
+ * @param {string} peerId
+ * @param {string} text
+ * @param {string} messageId
+ */
+function isWechatOutboundEcho(peerId, text, messageId) {
+  const list = wechatRecentOutbound.get(peerId);
+  if (!list?.length) return false;
+  const now = Date.now();
+  const body = String(text ?? "").trim();
+  const mid = String(messageId ?? "").trim();
+  for (const row of list) {
+    if (now - row.ts > 120_000) continue;
+    if (mid && row.messageId && mid === row.messageId) return true;
+    if (row.text === body) return true;
+  }
+  return false;
+}
+
+function pruneBoundedSet(set, max = 3000) {
+  while (set.size > max) {
+    const [first] = set;
+    if (!first) break;
+    set.delete(first);
+  }
+}
+
+function toWechatConversationId(peerId) {
+  const safe = String(peerId ?? "").trim().replace(/[^a-zA-Z0-9:_-]/g, "_").slice(0, 96);
+  return safe ? `wechat:${safe}` : `wechat:unknown`;
+}
+
+/**
+ * @param {import("electron").WebContents} wc
+ * @param {Record<string, unknown>} payload
+ */
+function emitWechatStatus(wc, payload) {
+  if (!wc || wc.isDestroyed()) return;
+  wc.send(WECHAT_STATUS_CHAN, payload);
+}
+
+/**
+ * @param {unknown} cfg
+ */
+function isWechatChannelEnabled(cfg) {
+  void cfg;
+  return true;
+}
+
+/**
+ * @param {unknown} cfg
+ * @param {AbortSignal} signal
+ */
+async function acquireWechatGatewaySession(cfg, signal) {
+  const resolved = resolveGateway(cfg);
+  return acquireGatewaySession(resolved, signal);
+}
+
+/**
+ * @param {import("electron").WebContents} wc
+ * @param {unknown | (() => unknown)} getCfg
+ */
+function ensureWechatPoller(wc, getCfg) {
+  const readCfg = () => (typeof getCfg === "function" ? getCfg() : getCfg);
+  if (!isWechatChannelEnabled(readCfg())) return;
+  if (wechatPollTimer) return;
+  wechatPollTimer = setInterval(async () => {
+    if (!wc || wc.isDestroyed()) return;
+    const cfg = readCfg();
+    try {
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 12_000);
+      try {
+        const client = await acquireWechatGatewaySession(cfg, ac.signal);
+        const status = await getWechatAuthStatus(client, cfg);
+        emitWechatStatus(wc, {
+          type: "auth_status",
+          source: "poll",
+          ...status,
+        });
+        if (!status.connected) return;
+        const pull = await pullWechatInbound(client, { limit: 8 }, cfg);
+        const rows = Array.isArray(pull.messages) ? pull.messages : [];
+        for (const msg of rows) {
+          const messageId = String(msg?.messageId ?? "").trim();
+          const peerId = String(msg?.peerId ?? "").trim();
+          const text = String(msg?.text ?? "").trim();
+          if (!messageId || !peerId || !text) continue;
+          if (wechatInboundSeen.has(messageId)) continue;
+          if (isWechatOutboundEcho(peerId, text, messageId)) {
+            wechatInboundSeen.add(messageId);
+            pruneBoundedSet(wechatInboundSeen);
+            continue;
+          }
+          wechatInboundSeen.add(messageId);
+          pruneBoundedSet(wechatInboundSeen);
+          const conversationId = wechatPeerConversationMap.get(peerId) || toWechatConversationId(peerId);
+          wechatPeerConversationMap.set(peerId, conversationId);
+          emitWechatStatus(wc, {
+            type: "inbound",
+            channel: "wechat",
+            conversationId,
+            peerId,
+            messageId,
+            text,
+            ts: typeof msg.ts === "number" ? msg.ts : Date.now(),
+          });
+        }
+      } finally {
+        clearTimeout(tid);
+      }
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      getStudioLog().warn("[wechat] poll failed:", msg);
+      emitWechatStatus(wc, { type: "poll_error", message: msg });
+    }
+  }, 3_500);
+}
+
+function stopWechatPoller() {
+  if (!wechatPollTimer) return;
+  clearInterval(wechatPollTimer);
+  wechatPollTimer = null;
+}
 
 /** Serialize `studio:bootstrapGateway` — React Strict Mode can fire the effect twice in dev. */
 let bootstrapGatewayInFlight = /** @type {Promise<{ ok: boolean; message?: string; skipped?: string }> | null} */ (null);
@@ -125,7 +283,7 @@ function computeOpenClawSyncFingerprint(cfg) {
 }
 
 /**
- * @param {"startup" | "bootstrap" | "settings" | "probe" | "chat" | "warm"} reason
+ * @param {"startup" | "bootstrap" | "settings" | "probe" | "chat" | "warm" | "wechat"} reason
  */
 function runOpenClawAgentSyncFromStudio(reason) {
   if (!userConfigStore) return;
@@ -136,7 +294,8 @@ function runOpenClawAgentSyncFromStudio(reason) {
     reason === "probe" ||
     reason === "settings" ||
     reason === "bootstrap" ||
-    reason === "warm";
+    reason === "warm" ||
+    reason === "wechat";
   if (skipReasons && fp === lastOpenClawSyncFingerprint) {
     if (isDev) console.log(`[openclaw-sync:${reason}] skipped (config unchanged)`);
     return;
@@ -245,6 +404,14 @@ function createWindow() {
     if (mainWindow === win) mainWindow = null;
   });
 
+  win.webContents.on("did-finish-load", () => {
+    try {
+      if (userConfigStore) ensureWechatPoller(win.webContents, () => userConfigStore.readRaw());
+    } catch {
+      /* ignore */
+    }
+  });
+
   mainWindow = win;
   return win;
 }
@@ -348,6 +515,13 @@ app.whenReady().then(async () => {
     if (patchTouchesGatewayWorkspace(patch) && fpAfter !== fpBefore) {
       studioInvalidateGatewaySession();
     }
+    if (Object.prototype.hasOwnProperty.call(patch ?? {}, "openclaw")) {
+      const wechatEnabledPatch = patch?.openclaw && Object.prototype.hasOwnProperty.call(patch.openclaw, "wechatEnabled");
+      if (wechatEnabledPatch) {
+        const enabled = Boolean(patch.openclaw.wechatEnabled);
+        if (!enabled) stopWechatPoller();
+      }
+    }
     return sanitized;
   });
 
@@ -424,7 +598,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("studio:probeGateway", async () => {
     try {
-      runOpenClawAgentSyncFromStudio("probe");
+      runOpenClawAgentSyncFromStudio("wechat");
       const cfg = userConfigStore.readRaw();
       await probeOpenClawGateway(cfg);
       getStudioLog().info("[gateway] probe ok");
@@ -433,6 +607,100 @@ app.whenReady().then(async () => {
       const msg = String(e?.message ?? e);
       getStudioLog().warn("[gateway] probe failed:", msg);
       return { ok: false, message: msg };
+    }
+  });
+
+  ipcMain.handle("studio:wechatCapability", async (event) => {
+    try {
+      runOpenClawAgentSyncFromStudio("wechat");
+      const cfg = userConfigStore.readRaw();
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 12_000);
+      try {
+        const client = await acquireWechatGatewaySession(cfg, ac.signal);
+        const cap = await probeWechatCapability(client);
+        ensureWechatPoller(event.sender, () => userConfigStore.readRaw());
+        return { ok: true, enabled: true, ...cap };
+      } finally {
+        clearTimeout(tid);
+      }
+    } catch (err) {
+      return { ok: false, message: String(err?.message ?? err) };
+    }
+  });
+
+  ipcMain.handle("studio:wechatAuthStart", async (event) => {
+    try {
+      runOpenClawAgentSyncFromStudio("wechat");
+      const cfg = userConfigStore.readRaw();
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 20_000);
+      try {
+        const client = await acquireWechatGatewaySession(cfg, ac.signal);
+        const status = await startWechatQrAuth(client, cfg);
+        ensureWechatPoller(event.sender, () => userConfigStore.readRaw());
+        emitWechatStatus(event.sender, { type: "auth_started", ...status });
+        return status;
+      } finally {
+        clearTimeout(tid);
+      }
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      if (msg === "wechat_plugin_not_loaded") {
+        return { ok: false, message: "wechat_plugin_not_loaded: gateway未加载微信插件，请在OpenClaw插件配置中启用wechat后重启。" };
+      }
+      return { ok: false, message: msg };
+    }
+  });
+
+  ipcMain.handle("studio:wechatAuthStatus", async (event) => {
+    try {
+      runOpenClawAgentSyncFromStudio("wechat");
+      const cfg = userConfigStore.readRaw();
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 12_000);
+      try {
+        const client = await acquireWechatGatewaySession(cfg, ac.signal);
+        const status = await getWechatAuthStatus(client, cfg);
+        ensureWechatPoller(event.sender, () => userConfigStore.readRaw());
+        emitWechatStatus(event.sender, { type: "auth_status", source: "manual", ...status });
+        return {
+          ok: true,
+          enabled: true,
+          ...status,
+          qrText: String(status.qrText ?? status.raw?.qrText ?? status.raw?.qr ?? status.raw?.qrcode ?? ""),
+          qrImageDataUrl: String(
+            status.qrImageDataUrl ?? status.raw?.qrImageDataUrl ?? status.raw?.qrDataUrl ?? "",
+          ),
+        };
+      } finally {
+        clearTimeout(tid);
+      }
+    } catch (err) {
+      const msg = String(err?.message ?? err);
+      if (msg === "wechat_plugin_not_loaded") {
+        return { ok: false, message: "wechat_plugin_not_loaded: gateway未加载微信插件，请在OpenClaw插件配置中启用wechat后重启。" };
+      }
+      return { ok: false, message: msg };
+    }
+  });
+
+  ipcMain.handle("studio:wechatAuthDisconnect", async (event) => {
+    try {
+      runOpenClawAgentSyncFromStudio("probe");
+      const cfg = userConfigStore.readRaw();
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 12_000);
+      try {
+        const client = await acquireWechatGatewaySession(cfg, ac.signal);
+        const res = await disconnectWechatAuth(client, cfg);
+        emitWechatStatus(event.sender, { type: "auth_disconnected", ...res });
+        return { ok: true, ...res };
+      } finally {
+        clearTimeout(tid);
+      }
+    } catch (err) {
+      return { ok: false, message: String(err?.message ?? err) };
     }
   });
 
@@ -530,6 +798,8 @@ app.whenReady().then(async () => {
     const messages = payload?.messages;
     const conversationId =
       typeof payload?.conversationId === "string" ? payload.conversationId.trim() : "";
+    const channel = payload?.channel === "wechat" ? "wechat" : "internal";
+    const wechatPeerId = typeof payload?.wechatPeerId === "string" ? payload.wechatPeerId.trim() : "";
     if (typeof streamId !== "string" || !streamId.trim() || !Array.isArray(messages)) {
       throw new Error("invalid_chat_payload");
     }
@@ -558,8 +828,13 @@ app.whenReady().then(async () => {
           (evt) => {
             if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
           },
-          conversationId ? { conversationId, composerSkill } : { composerSkill },
+          conversationId
+            ? { conversationId, composerSkill, channel, wechatPeerId }
+            : { composerSkill, channel, wechatPeerId },
         );
+        if (channel === "wechat" && wechatPeerId && conversationId) {
+          wechatPeerConversationMap.set(wechatPeerId, conversationId);
+        }
       } catch (e) {
         if (!wc.isDestroyed()) {
           if (ac.signal.aborted || e?.name === "AbortError") {
@@ -596,6 +871,60 @@ app.whenReady().then(async () => {
     if (typeof streamId !== "string" || !chatStreamAbortControllers.has(streamId)) return { ok: false };
     chatStreamAbortControllers.get(streamId)?.abort();
     return { ok: true };
+  });
+
+  ipcMain.handle("studio:wechatSendMessage", async (event, payload) => {
+    try {
+      runOpenClawAgentSyncFromStudio("chat");
+      const cfg = userConfigStore.readRaw();
+      const peerId = String(payload?.peerId ?? "").trim();
+      const text = String(payload?.text ?? "").trim();
+      const conversationId = String(payload?.conversationId ?? "").trim();
+      const localMessageId = String(payload?.localMessageId ?? "").trim();
+      const requestId = String(payload?.requestId ?? `${conversationId}:${peerId}:${text.slice(0, 16)}`).trim();
+      if (!peerId || !text) return { ok: false, message: "wechat_invalid_outbound" };
+      const inFlight = inFlightWechatSends.get(requestId);
+      if (inFlight) return inFlight;
+      const run = (async () => {
+        const ac = new AbortController();
+        const tid = setTimeout(() => ac.abort(), 20_000);
+        try {
+          const client = await acquireWechatGatewaySession(cfg, ac.signal);
+          const sent = await sendWechatOutbound(
+            client,
+            {
+              peerId,
+              text,
+              conversationId,
+              idempotencyKey: requestId,
+            },
+            cfg,
+          );
+          emitWechatStatus(event.sender, {
+            type: "outbound_sent",
+            channel: "wechat",
+            conversationId,
+            peerId,
+            messageId: sent.messageId,
+            localMessageId: localMessageId || undefined,
+          });
+          trackWechatOutboundEcho(peerId, text, sent.messageId);
+          if (sent.messageId) {
+            wechatInboundSeen.add(String(sent.messageId));
+            pruneBoundedSet(wechatInboundSeen);
+          }
+          return { ok: true, ...sent };
+        } finally {
+          clearTimeout(tid);
+        }
+      })().finally(() => {
+        inFlightWechatSends.delete(requestId);
+      });
+      inFlightWechatSends.set(requestId, run);
+      return await run;
+    } catch (err) {
+      return { ok: false, message: String(err?.message ?? err) };
+    }
   });
 
   ipcMain.handle("studio:generateChatTitle", async (_event, payload) => {

@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("openclawBridge", {
 });
 
 const CHAT_STREAM_CHAN = "studio:chatStream";
+const WECHAT_STATUS_CHAN = "studio:wechatStatus";
 
 contextBridge.exposeInMainWorld("studioBridge", {
   getUserConfig: () => ipcRenderer.invoke("studio:getUserConfig"),
@@ -34,6 +35,11 @@ contextBridge.exposeInMainWorld("studioBridge", {
   warmGatewayChatPrep: () => ipcRenderer.invoke("studio:warmGatewayChatPrep"),
   prewarmStudioGatewaySessions: (payload) => ipcRenderer.invoke("studio:prewarmStudioGatewaySessions", payload),
   bootstrapGateway: () => ipcRenderer.invoke("studio:bootstrapGateway"),
+  wechatCapability: () => ipcRenderer.invoke("studio:wechatCapability"),
+  wechatAuthStart: () => ipcRenderer.invoke("studio:wechatAuthStart"),
+  wechatAuthStatus: () => ipcRenderer.invoke("studio:wechatAuthStatus"),
+  wechatAuthDisconnect: () => ipcRenderer.invoke("studio:wechatAuthDisconnect"),
+  wechatSendMessage: (payload) => ipcRenderer.invoke("studio:wechatSendMessage", payload),
   startChatStream: (payload) => ipcRenderer.invoke("studio:startChatStream", payload),
   abortChatStream: (streamId) => ipcRenderer.invoke("studio:abortChatStream", streamId),
   generateChatTitle: (payload) => ipcRenderer.invoke("studio:generateChatTitle", payload),
@@ -46,5 +52,10 @@ contextBridge.exposeInMainWorld("studioBridge", {
     const wrapped = (_e, data) => listener(data);
     ipcRenderer.on("studio:bootstrapProgress", wrapped);
     return () => ipcRenderer.removeListener("studio:bootstrapProgress", wrapped);
+  },
+  onWechatStatus: (listener) => {
+    const wrapped = (_e, data) => listener(data);
+    ipcRenderer.on(WECHAT_STATUS_CHAN, wrapped);
+    return () => ipcRenderer.removeListener(WECHAT_STATUS_CHAN, wrapped);
   },
 });

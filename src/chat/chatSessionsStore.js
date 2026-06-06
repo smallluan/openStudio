@@ -2,6 +2,8 @@
 
 const STORAGE_KEY = "openstudio_chat_sessions_v1";
 const MAX_SESSIONS = 50;
+export const CHAT_SESSION_CHANNEL_INTERNAL = "internal";
+export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
 
 /**
  * @typedef {import("./toolTraceMerge.js").ToolTraceRow} ToolTraceRow
@@ -45,8 +47,18 @@ const MAX_SESSIONS = 50;
  * @property {string} title
  * @property {boolean} [titleIsCustom]
  * @property {number} updatedAt
+ * @property {'internal' | 'wechat'} [channel]
+ * @property {string} [channelPeerId]
  * @property {PersistedChatMessage[]} messages
  */
+
+/**
+ * @param {unknown} raw
+ * @returns {'internal' | 'wechat'}
+ */
+function normalizeSessionChannel(raw) {
+  return raw === CHAT_SESSION_CHANNEL_WECHAT ? CHAT_SESSION_CHANNEL_WECHAT : CHAT_SESSION_CHANNEL_INTERNAL;
+}
 
 /** Parsed sessions mirrored from localStorage; refreshed whenever `writeAll` runs. */
 /** @type {ChatSessionRecord[] | null} */
@@ -77,6 +89,8 @@ function parseSessionsFromStorage() {
         title: typeof r.title === "string" ? r.title : "",
         titleIsCustom: Boolean(r.titleIsCustom),
         updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : 0,
+        channel: normalizeSessionChannel(r.channel),
+        channelPeerId: typeof r.channelPeerId === "string" ? r.channelPeerId.trim().slice(0, 180) : "",
         messages: sanitizeMessages(r.messages),
       }));
   } catch {
@@ -274,8 +288,9 @@ function writeAll(rows) {
  * @param {string} id
  * @param {string} title
  * @param {PersistedChatMessage[]} messages
+ * @param {{ channel?: 'internal' | 'wechat'; channelPeerId?: string }} [opts]
  */
-export function upsertSession(id, title, messages) {
+export function upsertSession(id, title, messages, opts = {}) {
   if (!id) return;
   const existing = loadAllSessions();
   const prev = existing.find((s) => s.id === id);
@@ -285,11 +300,20 @@ export function upsertSession(id, title, messages) {
     titleIsCustom && prev?.title ? prev.title : String(title ?? "").slice(0, 200);
   const contentChanged = !prev || !persistedMessagesEqual(prev.messages, messages);
   const updatedAt = contentChanged ? Date.now() : prev.updatedAt;
+  const nextChannel = normalizeSessionChannel(opts.channel ?? prev?.channel);
+  const nextPeer =
+    typeof opts.channelPeerId === "string"
+      ? opts.channelPeerId.trim().slice(0, 180)
+      : typeof prev?.channelPeerId === "string"
+        ? prev.channelPeerId
+        : "";
   all.push({
     id,
     title: resolvedTitle,
     titleIsCustom,
     updatedAt,
+    channel: nextChannel,
+    channelPeerId: nextPeer,
     messages,
   });
   writeAll(all);

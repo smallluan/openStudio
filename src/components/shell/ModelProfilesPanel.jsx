@@ -42,6 +42,15 @@ export default function ModelProfilesPanel() {
     apiKey,
     setApiKey,
     hasKey,
+    gateway,
+    setGateway,
+    gatewayToken,
+    setGatewayToken,
+    hasGatewayToken,
+    chatLabLeanPlugins,
+    setChatLabLeanPlugins,
+    sessionKey,
+    setSessionKey,
     providerOptionsWithUnset,
     patchSelected,
     addProfile,
@@ -249,6 +258,48 @@ export default function ModelProfilesPanel() {
             spellCheck={false}
           />
         </label>
+        <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+          <span className="font-medium">{t("userConfig.gatewayUrl")}</span>
+          <TextField
+            value={gateway}
+            onChange={(e) => setGateway(e.target.value)}
+            placeholder="http://127.0.0.1:19001"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+          <span className="font-medium">
+            {t("userConfig.gatewayToken")}
+            {hasGatewayToken ? ` ${t("userConfig.gatewayTokenSavedSuffix")}` : ""}
+          </span>
+          <TextField
+            type="password"
+            value={gatewayToken}
+            onChange={(e) => setGatewayToken(e.target.value)}
+            placeholder={t("userConfig.gatewayTokenPlaceholder")}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+          <span className="font-medium">{t("userConfig.sessionKey")}</span>
+          <TextField
+            value={sessionKey}
+            onChange={(e) => setSessionKey(e.target.value)}
+            placeholder={t("userConfig.sessionKeyPlaceholder")}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <div className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_85%,transparent)] px-2 py-1">
+          <Switch
+            id="chatlab-lean-plugins"
+            label={t("userConfig.chatLabLeanPlugins")}
+            checked={chatLabLeanPlugins}
+            onCheckedChange={(v) => setChatLabLeanPlugins(v)}
+          />
+        </div>
       </div>
     );
   }

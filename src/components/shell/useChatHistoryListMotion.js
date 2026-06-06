@@ -186,20 +186,27 @@ export function useChatHistoryListMotion(allSessions, filteredSessions) {
     }
 
     if (addedInView.length > 0) {
-      patchMotion(addedInView, "enter-push");
-      requestAnimationFrame(() => {
+      const wechatAdded = addedInView.filter((id) => id.startsWith("wechat:"));
+      const regularAdded = addedInView.filter((id) => !id.startsWith("wechat:"));
+      if (regularAdded.length > 0) {
+        patchMotion(regularAdded, "enter-push");
         requestAnimationFrame(() => {
-          setMotionById((m) => {
-            const n = new Map(m);
-            for (const id of addedInView) {
-              if (n.get(id) === "enter-push") n.set(id, "enter-push-active");
-            }
-            return n;
+          requestAnimationFrame(() => {
+            setMotionById((m) => {
+              const n = new Map(m);
+              for (const id of regularAdded) {
+                if (n.get(id) === "enter-push") n.set(id, "enter-push-active");
+              }
+              return n;
+            });
           });
         });
-      });
-      for (const id of addedInView) {
-        schedule(() => startEnterSlide([id]), CHAT_HISTORY_ROW_PUSH_MS);
+        for (const id of regularAdded) {
+          schedule(() => startEnterSlide([id]), CHAT_HISTORY_ROW_PUSH_MS);
+        }
+      }
+      if (wechatAdded.length > 0) {
+        startEnterSlide(wechatAdded);
       }
     } else if (promotedInView.length > 0) {
       startEnterSlide(promotedInView);

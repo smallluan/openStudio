@@ -38,6 +38,9 @@ importers:
       openclaw:
         specifier: ^2026.5.2
         version: 2026.6.1
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       react:
         specifier: ^19.0.0
         version: 19.2.7
