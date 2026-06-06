@@ -12,35 +12,11 @@ import {
 } from "@floating-ui/react";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
+import WechatIcon from "../../assets/svg/WechatIcon.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { cn } from "../../ui/cn.js";
 import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
-
-function WechatGlyph({ className }) {
-  return (
-    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9.4 5.2c-3.7 0-6.7 2.6-6.7 5.8 0 1.8.94 3.36 2.45 4.43L4.2 18.8l3.6-1.8c.5.08 1.03.13 1.6.13 3.7 0 6.7-2.6 6.7-5.8 0-3.2-3-6.1-6.7-6.1Z"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        fill="currentColor"
-        fillOpacity="0.12"
-      />
-      <path
-        d="M15.2 9.4c3.35 0 6.1 2.3 6.1 5.2 0 2.9-2.75 5.2-6.1 5.2-.44 0-.9-.05-1.33-.14L10.9 21l.77-2.3c-1.08-.9-1.72-2.1-1.72-3.4 0-3.02 2.62-5.3 5.26-5.3Z"
-        stroke="currentColor"
-        strokeWidth="1.1"
-        fill="currentColor"
-        fillOpacity="0.18"
-      />
-      <circle cx="7.35" cy="11.1" r="0.85" fill="currentColor" />
-      <circle cx="11.25" cy="11.1" r="0.85" fill="currentColor" />
-      <circle cx="13.95" cy="14.6" r="0.75" fill="currentColor" />
-      <circle cx="17.35" cy="14.6" r="0.75" fill="currentColor" />
-    </svg>
-  );
-}
 
 export default function RailWechatOrb({ narrow = false }) {
   const { t } = useI18n();
@@ -243,7 +219,7 @@ export default function RailWechatOrb({ narrow = false }) {
       >
         <span className="rail-wechat-orb__liquid-inner relative flex size-[1.68rem] items-center justify-center">
           <span className="rail-wechat-orb__liquid-blob" aria-hidden />
-          <WechatGlyph className="relative z-[1] opacity-[0.94]" />
+          <WechatIcon className="relative z-[1] opacity-[0.94]" />
         </span>
       </button>
       {present ? (

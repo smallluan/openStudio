@@ -61,6 +61,11 @@ export function newGatewayConversationId() {
   return `gwx_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`;
 }
 
+/** Independent WeChat channel sidebar session (`wechat:thread:<uuid>`). */
+export function newWechatChannelSessionId() {
+  return `wechat:thread:${newGatewayConversationId()}`;
+}
+
 /**
  * @param {unknown} raw
  * @returns {'internal' | 'wechat'}

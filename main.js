@@ -22,6 +22,12 @@ const {
   prewarmStudioGatewaySessions,
 } = require("./lib/openclaw-gateway-session.cjs");
 const { syncOpenClawAgentFromStudioConfig } = require("./lib/sync-openclaw-agent-from-studio.cjs");
+const {
+  isWechatNewChatCommand,
+  toWechatConversationId,
+  newWechatChannelSessionId,
+  WECHAT_NEW_CHAT_ACK_TEXT,
+} = require("./lib/wechat-session-commands.cjs");
 const { readWorkspacePreviewFile, resolveWorkspacePreviewTarget } = require("./lib/chatlab-read-workspace-preview.cjs");
 const { initStudioLogger, getStudioLog } = require("./lib/studio-logger.cjs");
 const { enableBundledPythonRuntime } = require("./lib/bundled-python-runtime.cjs");
@@ -115,6 +121,9 @@ const inFlightWechatSends = new Map();
 const wechatInboundSeen = new Set();
 /** @type {Map<string, string>} */
 const wechatPeerConversationMap = new Map();
+/** Peers waiting for the next inbound to open a fresh `wechat:thread:*` row. */
+/** @type {Set<string>} */
+const wechatPeerPendingNewChat = new Set();
 /** Recent Studio→WeChat outbound echoes to ignore when polling getUpdates. */
 /** @type {Map<string, Array<{ text: string; ts: number; messageId?: string }>>} */
 const wechatRecentOutbound = new Map();
@@ -159,11 +168,6 @@ function pruneBoundedSet(set, max = 3000) {
     if (!first) break;
     set.delete(first);
   }
-}
-
-function toWechatConversationId(peerId) {
-  const safe = String(peerId ?? "").trim().replace(/[^a-zA-Z0-9:_-]/g, "_").slice(0, 96);
-  return safe ? `wechat:${safe}` : `wechat:unknown`;
 }
 
 /**
@@ -230,7 +234,32 @@ function ensureWechatPoller(wc, getCfg) {
           }
           wechatInboundSeen.add(messageId);
           pruneBoundedSet(wechatInboundSeen);
-          const conversationId = wechatPeerConversationMap.get(peerId) || toWechatConversationId(peerId);
+          if (isWechatNewChatCommand(text)) {
+            wechatPeerPendingNewChat.add(peerId);
+            try {
+              const sent = await sendWechatOutbound(
+                client,
+                {
+                  peerId,
+                  text: WECHAT_NEW_CHAT_ACK_TEXT,
+                  idempotencyKey: `new-chat-ack:${messageId}`,
+                },
+                cfg,
+              );
+              trackWechatOutboundEcho(peerId, WECHAT_NEW_CHAT_ACK_TEXT, sent.messageId);
+              if (sent.messageId) {
+                wechatInboundSeen.add(String(sent.messageId));
+                pruneBoundedSet(wechatInboundSeen);
+              }
+            } catch (err) {
+              getStudioLog().warn("[wechat] new_chat ack failed:", String(err?.message ?? err));
+            }
+            continue;
+          }
+          const startedNewThread = wechatPeerPendingNewChat.delete(peerId);
+          const conversationId = startedNewThread
+            ? newWechatChannelSessionId()
+            : wechatPeerConversationMap.get(peerId) || toWechatConversationId(peerId);
           wechatPeerConversationMap.set(peerId, conversationId);
           emitWechatStatus(wc, {
             type: "inbound",
@@ -240,6 +269,7 @@ function ensureWechatPoller(wc, getCfg) {
             messageId,
             text,
             ts: typeof msg.ts === "number" ? msg.ts : Date.now(),
+            ...(startedNewThread ? { startedNewThread: true } : {}),
           });
         }
       } finally {

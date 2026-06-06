@@ -20,6 +20,7 @@ import { useI18n } from "../context/I18nContext.jsx";
 
 import { startWechatTypingPulse } from "./wechatStreamTyping.js";
 import { isWechatPendingAssistantId } from "./useWechatSessionSync.js";
+import { isWechatNewChatCommand } from "./wechatSessionCommands.js";
 
 
 
@@ -240,6 +241,11 @@ export function useWechatAutoReplyStream() {
 
         return;
 
+      }
+
+      if (isWechatNewChatCommand(userRow.content)) {
+        inFlightInboundRef.current.delete(messageId);
+        return;
       }
 
 
