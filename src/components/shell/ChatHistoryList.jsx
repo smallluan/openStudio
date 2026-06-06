@@ -306,7 +306,7 @@ function HistorySessionRow({
  */
 export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   const { t } = useI18n();
-  const { streamingSessionId } = useChatLabStreaming();
+  const { streamingSessionId, wechatReplyingSessionId } = useChatLabStreaming();
   const location = useLocation();
   const navigate = useNavigate();
   const highlight = useContext(FluidNavHighlightApi);
@@ -420,9 +420,9 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   }, [visibleRows]);
 
   const bulkDeleteIds = useMemo(() => {
-    const skip = streamingSessionId ?? "";
-    return visibleRows.map((s) => s.id).filter((id) => id && id !== skip);
-  }, [visibleRows, streamingSessionId]);
+    const skip = new Set([streamingSessionId, wechatReplyingSessionId].filter(Boolean));
+    return visibleRows.map((s) => s.id).filter((id) => id && !skip.has(id));
+  }, [visibleRows, streamingSessionId, wechatReplyingSessionId]);
 
   const handleBulkConfirm = useCallback(() => {
     const n = bulkDeleteIds.length;
@@ -458,7 +458,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
         rowMotion={getRowMotion(s.id)}
         onRenamed={reload}
         onAfterDelete={reload}
-        isStreaming={streamingSessionId === s.id}
+        isStreaming={streamingSessionId === s.id || wechatReplyingSessionId === s.id}
       />
     );
   };

@@ -49,8 +49,17 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {number} updatedAt
  * @property {'internal' | 'wechat'} [channel]
  * @property {string} [channelPeerId]
+ * @property {string} [gatewayConversationId] UUID gateway thread for WeChat auto-reply (UI id stays `wechat:<peer>`)
  * @property {PersistedChatMessage[]} messages
  */
+
+/** @returns {string} */
+export function newGatewayConversationId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `gwx_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`;
+}
 
 /**
  * @param {unknown} raw
@@ -91,6 +100,8 @@ function parseSessionsFromStorage() {
         updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : 0,
         channel: normalizeSessionChannel(r.channel),
         channelPeerId: typeof r.channelPeerId === "string" ? r.channelPeerId.trim().slice(0, 180) : "",
+        gatewayConversationId:
+          typeof r.gatewayConversationId === "string" ? r.gatewayConversationId.trim().slice(0, 96) : "",
         messages: sanitizeMessages(r.messages),
       }));
   } catch {
@@ -288,7 +299,7 @@ function writeAll(rows) {
  * @param {string} id
  * @param {string} title
  * @param {PersistedChatMessage[]} messages
- * @param {{ channel?: 'internal' | 'wechat'; channelPeerId?: string }} [opts]
+ * @param {{ channel?: 'internal' | 'wechat'; channelPeerId?: string; gatewayConversationId?: string }} [opts]
  */
 export function upsertSession(id, title, messages, opts = {}) {
   if (!id) return;
@@ -307,6 +318,12 @@ export function upsertSession(id, title, messages, opts = {}) {
       : typeof prev?.channelPeerId === "string"
         ? prev.channelPeerId
         : "";
+  const nextGatewayConversationId =
+    typeof opts.gatewayConversationId === "string" && opts.gatewayConversationId.trim()
+      ? opts.gatewayConversationId.trim().slice(0, 96)
+      : typeof prev?.gatewayConversationId === "string"
+        ? prev.gatewayConversationId
+        : "";
   all.push({
     id,
     title: resolvedTitle,
@@ -314,9 +331,31 @@ export function upsertSession(id, title, messages, opts = {}) {
     updatedAt,
     channel: nextChannel,
     channelPeerId: nextPeer,
+    ...(nextGatewayConversationId ? { gatewayConversationId: nextGatewayConversationId } : {}),
     messages,
   });
   writeAll(all);
+}
+
+/**
+ * WeChat UI threads use `wechat:<peer>`; gateway uses a plain UUID studio suffix (same as Chat Lab).
+ * @param {string} sessionId
+ * @returns {string}
+ */
+export function ensureWechatGatewayConversationId(sessionId) {
+  const sid = String(sessionId ?? "").trim();
+  if (!sid) return "";
+  const rec = getSession(sid);
+  if (!rec || rec.channel !== CHAT_SESSION_CHANNEL_WECHAT) return "";
+  const existing = String(rec.gatewayConversationId ?? "").trim();
+  if (existing) return existing;
+  const gatewayConversationId = newGatewayConversationId();
+  upsertSession(sid, rec.title || "…", rec.messages, {
+    channel: CHAT_SESSION_CHANNEL_WECHAT,
+    channelPeerId: rec.channelPeerId,
+    gatewayConversationId,
+  });
+  return gatewayConversationId;
 }
 
 /**

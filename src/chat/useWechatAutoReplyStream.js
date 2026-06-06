@@ -6,6 +6,8 @@ import {
 
   deriveTitleFromMessages,
 
+  ensureWechatGatewayConversationId,
+
   getSession,
 
   upsertSession,
@@ -16,6 +18,7 @@ import { useChatLabStreaming } from "../context/ChatLabStreamingContext.jsx";
 
 import { useI18n } from "../context/I18nContext.jsx";
 
+import { startWechatTypingPulse } from "./wechatStreamTyping.js";
 import { isWechatPendingAssistantId } from "./useWechatSessionSync.js";
 
 
@@ -140,12 +143,11 @@ function finalizeWechatAssistantInStore(conversationId, assistantMessageId, extr
 
   const title = deriveTitleFromMessages(persistable);
 
+  const gatewayConversationId = String(rec.gatewayConversationId ?? "").trim();
   upsertSession(conversationId, title || "…", persistable, {
-
     channel: CHAT_SESSION_CHANNEL_WECHAT,
-
     channelPeerId: peerId,
-
+    ...(gatewayConversationId ? { gatewayConversationId } : {}),
   });
 
 }
@@ -302,13 +304,17 @@ export function useWechatAutoReplyStream() {
 
 
 
+      const gatewayConversationId = ensureWechatGatewayConversationId(conversationId);
+      if (!gatewayConversationId) {
+        inFlightInboundRef.current.delete(messageId);
+        return;
+      }
+
       const streamId = newStreamId();
 
       beginGatewayStream({ conversationId, streamId, assistantMessageId: assistantId });
 
       setWechatReplyingSessionId(conversationId);
-
-
 
       const historyForRequest = toGatewayHistoryRows(historyRows);
 
@@ -322,6 +328,8 @@ export function useWechatAutoReplyStream() {
 
 
 
+      const stopTyping = startWechatTypingPulse(peerId);
+
       try {
 
         await bridge.startChatStream({
@@ -330,9 +338,9 @@ export function useWechatAutoReplyStream() {
 
           conversationId,
 
-          messages: outgoing,
+          gatewayConversationId,
 
-          channel: CHAT_SESSION_CHANNEL_WECHAT,
+          messages: outgoing,
 
           wechatPeerId: peerId,
 
@@ -355,6 +363,8 @@ export function useWechatAutoReplyStream() {
         }
 
       } finally {
+
+        stopTyping();
 
         inFlightInboundRef.current.delete(messageId);
 

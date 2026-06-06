@@ -33,12 +33,15 @@ import {
 import { preferLongerAssistantText, reconcileTimelineWithCanonicalText } from "../chat/streamTimelineMerge.js";
 import { normalizeLatexMathDelimitersForRemark } from "../chat/normalizeLatexMathDelimitersForRemark.js";
 import {
+  CHAT_SESSION_CHANNEL_WECHAT,
   deriveTitleFromMessages,
   getSession,
   loadAllSessions,
   renameSession,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
+import { startWechatTypingPulse } from "../chat/wechatStreamTyping.js";
+import { isWechatPendingAssistantId } from "../chat/useWechatSessionSync.js";
 import ChatLabHero from "../components/chat-lab/ChatLabHero.jsx";
 import { useBootstrapHeroRelease } from "../components/chat-lab/useBootstrapHeroRelease.js";
 import { useBootstrapGate } from "../context/BootstrapGateContext.jsx";
@@ -166,6 +169,126 @@ function withBackfilledCreatedAt(rows, sessionUpdatedAt) {
     if (typeof row.createdAt === "number" && Number.isFinite(row.createdAt)) return row;
     return { ...row, createdAt: base - (n - 1 - i) * step };
   });
+}
+
+/**
+ * @param {import("../chat/chatSessionsStore.js").PersistedChatMessage} m
+ * @param {{ streaming?: boolean }} [opts]
+ */
+function mapSessionMessageRow(m, opts = {}) {
+  const streaming = Boolean(opts.streaming);
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    ...(m.thinking ? { thinking: m.thinking } : {}),
+    ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
+    ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+    ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
+      ? { assistantTimeline: m.assistantTimeline }
+      : {}),
+    ...(typeof m.createdAt === "number" && Number.isFinite(m.createdAt) ? { createdAt: m.createdAt } : {}),
+    ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
+    ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
+      ? { imageAttachments: m.imageAttachments }
+      : {}),
+    streaming,
+  };
+}
+
+/**
+ * @param {import("../chat/chatSessionsStore.js").ChatSessionRecord} rec
+ * @param {{
+ *   active?: boolean;
+ *   conversationId?: string;
+ *   assistantMessageId?: string;
+ *   content?: string;
+ *   thinking?: string;
+ *   toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
+ *   activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[];
+ *   assistantTimeline?: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[];
+ * } | null | undefined} gatewaySlice
+ */
+/** @param {string} assistantMessageId */
+function wechatAssistantSourceKey(assistantMessageId) {
+  const id = String(assistantMessageId ?? "");
+  if (id.startsWith("wechat-replying-")) return id.slice("wechat-replying-".length);
+  if (id.startsWith("wechat-assistant-")) return id.slice("wechat-assistant-".length);
+  return "";
+}
+
+function dedupeWechatAssistantStoreRows(messages) {
+  const finals = new Set(
+    messages
+      .filter((m) => m.role === "assistant" && String(m.id ?? "").startsWith("wechat-assistant-"))
+      .map((m) => wechatAssistantSourceKey(m.id))
+      .filter(Boolean),
+  );
+  return messages.filter((m) => {
+    if (!isWechatPendingAssistantId(m.id)) return true;
+    const src = wechatAssistantSourceKey(m.id);
+    return !src || !finals.has(src);
+  });
+}
+
+function mapSessionRecordToUiMessages(rec, gatewaySlice) {
+  let activeAssistantId =
+    gatewaySlice?.active && gatewaySlice.conversationId === rec.id
+      ? String(gatewaySlice.assistantMessageId ?? "").trim()
+      : "";
+  /** @type {typeof rec.messages} */
+  let storeRows = Array.isArray(rec.messages) ? rec.messages : [];
+  if (rec.channel === CHAT_SESSION_CHANNEL_WECHAT) {
+    storeRows = dedupeWechatAssistantStoreRows(storeRows);
+    if (activeAssistantId && isWechatPendingAssistantId(activeAssistantId)) {
+      const src = wechatAssistantSourceKey(activeAssistantId);
+      const finalId = src ? `wechat-assistant-${src}` : "";
+      if (finalId && storeRows.some((m) => m.id === finalId)) {
+        activeAssistantId = finalId;
+      }
+    }
+  }
+  if (activeAssistantId && !storeRows.some((m) => m.id === activeAssistantId)) {
+    storeRows = [
+      ...storeRows,
+      {
+        id: activeAssistantId,
+        role: /** @type {const} */ ("assistant"),
+        content: "",
+        createdAt: Date.now(),
+      },
+    ];
+  }
+  let rows = storeRows.map((m) =>
+    mapSessionMessageRow(m, { streaming: Boolean(activeAssistantId && m.id === activeAssistantId) }),
+  );
+  if (activeAssistantId && gatewaySlice) {
+    rows = rows.map((m) => {
+      if (m.id !== activeAssistantId) return m;
+      return {
+        ...m,
+        streaming: true,
+        content: gatewaySlice.content ?? m.content,
+        ...(gatewaySlice.thinking || m.thinking
+          ? { thinking: gatewaySlice.thinking ?? m.thinking }
+          : {}),
+        ...(gatewaySlice.toolTrace?.length ? { toolTrace: gatewaySlice.toolTrace } : {}),
+        ...(gatewaySlice.activityLog?.length ? { activityLog: gatewaySlice.activityLog } : {}),
+        ...(gatewaySlice.assistantTimeline?.length
+          ? { assistantTimeline: gatewaySlice.assistantTimeline }
+          : {}),
+      };
+    });
+  }
+  return withBackfilledCreatedAt(rows, rec.updatedAt);
+}
+
+/** @param {string} conversationId @returns {() => void} */
+function maybeStartWechatTypingPulse(conversationId) {
+  const rec = getSession(conversationId);
+  const peerId =
+    rec?.channel === CHAT_SESSION_CHANNEL_WECHAT ? String(rec.channelPeerId ?? "").trim() : "";
+  return peerId ? startWechatTypingPulse(peerId) : () => {};
 }
 
 /**
@@ -380,6 +503,8 @@ export default function ChatLabPage() {
 
   const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
   const gatewaySliceForConv = useGatewayStreamSlice(conversationId);
+  const gatewaySliceRef = useRef(gatewaySliceForConv);
+  gatewaySliceRef.current = gatewaySliceForConv;
   const throttledStreamContent = useRafThrottledValue(gatewaySliceForConv?.content ?? "");
   const throttledStreamThinking = useRafThrottledValue(gatewaySliceForConv?.thinking ?? "");
   const gatewayStreaming = Boolean(gatewaySliceForConv?.active);
@@ -501,24 +626,7 @@ export default function ChatLabPage() {
 
     const rec = getSession(paramC);
     if (rec) {
-      const mapped = rec.messages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        ...(m.thinking ? { thinking: m.thinking } : {}),
-        ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
-        ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
-        ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
-          ? { assistantTimeline: m.assistantTimeline }
-          : {}),
-        ...(typeof m.createdAt === "number" && Number.isFinite(m.createdAt) ? { createdAt: m.createdAt } : {}),
-        ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
-        ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
-          ? { imageAttachments: m.imageAttachments }
-          : {}),
-        streaming: false,
-      }));
-      setMessages(withBackfilledCreatedAt(mapped, rec.updatedAt));
+      setMessages(mapSessionRecordToUiMessages(rec, null));
       setChatApiBlocked(false);
       return;
     }
@@ -529,6 +637,65 @@ export default function ChatLabPage() {
   useEffect(() => {
     autoScrollRef.current = true;
   }, [paramC]);
+
+  /** WeChat inbound / store updates: keep the open thread aligned with sidebar persistence (avoids race with auto-reply). */
+  useEffect(() => {
+    if (!paramC) return undefined;
+
+    const mergeWechatThreadFromStore = () => {
+      const rec = getSession(paramC);
+      if (!rec || rec.channel !== CHAT_SESSION_CHANNEL_WECHAT) return;
+      const liveSlice = gatewaySliceRef.current;
+      if (liveSlice?.active && liveSlice.conversationId === paramC) {
+        return;
+      }
+      let slice = liveSlice?.conversationId === paramC ? liveSlice : null;
+      if (
+        slice?.active &&
+        isWechatPendingAssistantId(slice.assistantMessageId) &&
+        Array.isArray(rec.messages)
+      ) {
+        const src = wechatAssistantSourceKey(slice.assistantMessageId);
+        const finalId = src ? `wechat-assistant-${src}` : "";
+        if (finalId && rec.messages.some((m) => m.id === finalId)) {
+          slice = null;
+        }
+      }
+      setMessages(mapSessionRecordToUiMessages(rec, slice));
+    };
+
+    /** @param {Event} ev */
+    const onWechatInbound = (ev) => {
+      const cid = String(/** @type {CustomEvent} */ (ev).detail?.conversationId ?? "").trim();
+      if (cid && cid === paramC) mergeWechatThreadFromStore();
+    };
+
+    window.addEventListener("openstudio-chat-sessions-changed", mergeWechatThreadFromStore);
+    window.addEventListener("openstudio-wechat-session-inbound", onWechatInbound);
+    return () => {
+      window.removeEventListener("openstudio-chat-sessions-changed", mergeWechatThreadFromStore);
+      window.removeEventListener("openstudio-wechat-session-inbound", onWechatInbound);
+    };
+  }, [paramC]);
+
+  /** Gateway stream may start before the pending WeChat assistant row is in React state. */
+  useEffect(() => {
+    if (!paramC || !gatewaySliceForConv?.active) return;
+    if (gatewaySliceForConv.conversationId !== paramC) return;
+    const assistantMessageId = gatewaySliceForConv.assistantMessageId;
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === assistantMessageId)) return prev;
+      const rec = getSession(paramC);
+      if (!rec) return prev;
+      return mapSessionRecordToUiMessages(rec, gatewaySliceForConv);
+    });
+  }, [
+    gatewaySliceForConv,
+    gatewaySliceForConv?.active,
+    gatewaySliceForConv?.assistantMessageId,
+    gatewaySliceForConv?.conversationId,
+    paramC,
+  ]);
 
   /** Deep-link from Skills: open chat with OpenClaw skill slug pre-selected (e.g. skill-creator). */
   useEffect(() => {
@@ -559,10 +726,16 @@ export default function ChatLabPage() {
   useEffect(() => {
     if (!conversationId) return;
     if (messages.length === 0) return;
+    if (gatewayStreaming) return;
 
     const h = window.setTimeout(() => {
       const toSave = messages
-        .filter((m) => (m.role === "user" || m.role === "assistant") && !m.error)
+        .filter(
+          (m) =>
+            (m.role === "user" || m.role === "assistant") &&
+            !m.error &&
+            !isWechatPendingAssistantId(m.id),
+        )
         .map((m) => ({
           id: m.id,
           role: m.role,
@@ -585,7 +758,7 @@ export default function ChatLabPage() {
     }, 380);
 
     return () => window.clearTimeout(h);
-  }, [messages, conversationId, t]);
+  }, [messages, conversationId, gatewayStreaming, t]);
 
   const reloadConfig = useCallback(async () => {
     if (!bridge?.getUserConfig) {
@@ -733,10 +906,16 @@ export default function ChatLabPage() {
     const content = throttledStreamContent;
     const thinking = throttledStreamThinking;
     setMessages((prev) => {
-      const idx = prev.findIndex((m) => m.id === assistantMessageId);
+      let idx = prev.findIndex((m) => m.id === assistantMessageId);
+      let rowId = assistantMessageId;
+      if (idx === -1 && isWechatPendingAssistantId(assistantMessageId)) {
+        const finalId = assistantMessageId.replace(/^wechat-replying-/, "wechat-assistant-");
+        idx = prev.findIndex((m) => m.id === finalId);
+        if (idx !== -1) rowId = finalId;
+      }
       if (idx === -1) return prev;
       return prev.map((m) => {
-        if (m.id !== assistantMessageId) return m;
+        if (m.id !== rowId) return m;
         const next = { ...m, content, thinking, streaming: active };
         if (toolTrace && toolTrace.length > 0) next.toolTrace = toolTrace;
         if (activityLog && activityLog.length > 0) next.activityLog = activityLog;
@@ -762,14 +941,36 @@ export default function ChatLabPage() {
     }
   }, [conversationId, gatewaySliceForConv]);
 
-  const finalizeAssistantById = useCallback((assistantId, extra) => {
-    if (!assistantId) return;
-    activeAssistantIdRef.current = null;
-    activeStreamIdRef.current = null;
-    setMessages((prev) =>
-      prev.map((m) => (m.id === assistantId ? mergeTerminalAssistantPayload(m, extra ?? {}) : m)),
-    );
-  }, []);
+  const finalizeAssistantById = useCallback(
+    (assistantId, extra) => {
+      if (!assistantId) return;
+      activeAssistantIdRef.current = null;
+      activeStreamIdRef.current = null;
+      const finalId = isWechatPendingAssistantId(assistantId)
+        ? assistantId.replace(/^wechat-replying-/, "wechat-assistant-")
+        : assistantId;
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === assistantId || m.id === finalId);
+        if (idx !== -1) {
+          return prev.map((m) => {
+            if (m.id !== assistantId && m.id !== finalId) return m;
+            const merged = mergeTerminalAssistantPayload(m, extra ?? {});
+            if (finalId !== assistantId) merged.id = finalId;
+            return merged;
+          });
+        }
+        const rec = conversationId ? getSession(conversationId) : null;
+        if (!rec) return prev;
+        return mapSessionRecordToUiMessages(rec, null).map((m) => {
+          if (m.id !== assistantId && m.id !== finalId) return m;
+          const merged = mergeTerminalAssistantPayload(m, extra ?? {});
+          if (finalId !== assistantId) merged.id = finalId;
+          return merged;
+        });
+      });
+    },
+    [conversationId],
+  );
 
   useEffect(() => {
     /** @param {Event} e */
@@ -777,6 +978,29 @@ export default function ChatLabPage() {
       const ce = /** @type {CustomEvent} */ (e);
       const d = ce.detail;
       if (!d || d.conversationId !== conversationId) return;
+      const sessionRec = getSession(conversationId);
+      if (sessionRec?.channel === CHAT_SESSION_CHANNEL_WECHAT) {
+        if (d.kind === "done" || d.kind === "aborted" || d.kind === "error") {
+          const slice =
+            gatewaySliceRef.current?.conversationId === conversationId
+              ? gatewaySliceRef.current
+              : null;
+          let effectiveSlice = slice;
+          if (
+            slice?.active &&
+            isWechatPendingAssistantId(d.assistantMessageId) &&
+            Array.isArray(sessionRec.messages)
+          ) {
+            const src = wechatAssistantSourceKey(d.assistantMessageId);
+            const finalId = src ? `wechat-assistant-${src}` : "";
+            if (finalId && sessionRec.messages.some((m) => m.id === finalId)) {
+              effectiveSlice = null;
+            }
+          }
+          setMessages(mapSessionRecordToUiMessages(sessionRec, effectiveSlice));
+        }
+        return;
+      }
       if (d.kind === "error") {
         const raw = String(d.message ?? "");
         const msg = formatStreamError(raw, t);
@@ -977,6 +1201,7 @@ export default function ChatLabPage() {
         });
       }
 
+      const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
       try {
         await bridge.startChatStream({ streamId, conversationId, messages: outgoing, composerSkill });
       } catch (err) {
@@ -993,6 +1218,8 @@ export default function ChatLabPage() {
           setChatApiBlocked(true);
           setProbeRestartKey((k) => k + 1);
         }
+      } finally {
+        stopWechatTyping();
       }
       return true;
     },
@@ -1137,6 +1364,7 @@ export default function ChatLabPage() {
         });
       }
 
+      const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
       try {
         await bridge.startChatStream({ streamId, conversationId, messages: outgoing, composerSkill });
       } catch (err) {
@@ -1153,6 +1381,8 @@ export default function ChatLabPage() {
           setChatApiBlocked(true);
           setProbeRestartKey((k) => k + 1);
         }
+      } finally {
+        stopWechatTyping();
       }
     },
     [
@@ -3130,11 +3360,7 @@ const MessageBubble = memo(function MessageBubble({
     !interleavedAssistant;
 
   const interleavedTailBusy =
-    interleavedAssistant &&
-    Boolean(message.streaming) &&
-    !message.error &&
-    !String(message.content ?? "").trim() &&
-    !String(message.thinking ?? "").trim();
+    interleavedAssistant && Boolean(message.streaming) && !message.error;
 
   const previewApi = useContext(ChatLabPreviewContext);
 

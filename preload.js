@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld("studioBridge", {
   wechatAuthStatus: () => ipcRenderer.invoke("studio:wechatAuthStatus"),
   wechatAuthDisconnect: () => ipcRenderer.invoke("studio:wechatAuthDisconnect"),
   wechatSendMessage: (payload) => ipcRenderer.invoke("studio:wechatSendMessage", payload),
+  wechatSendTyping: (payload) => ipcRenderer.invoke("studio:wechatSendTyping", payload),
   startChatStream: (payload) => ipcRenderer.invoke("studio:startChatStream", payload),
   abortChatStream: (streamId) => ipcRenderer.invoke("studio:abortChatStream", streamId),
   generateChatTitle: (payload) => ipcRenderer.invoke("studio:generateChatTitle", payload),

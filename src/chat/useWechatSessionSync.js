@@ -4,6 +4,7 @@ import {
   CHAT_SESSION_CHANNEL_WECHAT,
   deriveTitleFromMessages,
   getSession,
+  newGatewayConversationId,
   upsertSession,
 } from "./chatSessionsStore.js";
 import { useChatLabStreaming } from "../context/ChatLabStreamingContext.jsx";
@@ -50,9 +51,12 @@ export function useWechatSessionSync() {
         const title = deriveTitleFromMessages(persistable, {
           imageFallback: t("chatLab.chatUntitledImage"),
         });
+        const gatewayConversationId =
+          String(existing?.gatewayConversationId ?? "").trim() || newGatewayConversationId();
         upsertSession(cid, title || "…", persistable, {
           channel: CHAT_SESSION_CHANNEL_WECHAT,
           channelPeerId: peerId,
+          gatewayConversationId,
         });
         setWechatReplyingSessionId(cid);
         try {

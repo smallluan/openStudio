@@ -10,6 +10,7 @@ const {
   disconnectWechatAuth,
   pullWechatInbound,
   sendWechatOutbound,
+  sendWechatTyping,
 } = require("./lib/openclaw-gateway-wechat.cjs");
 const { resolveGateway } = require("./lib/openclaw-gateway-ws.cjs");
 const { generateConversationTitle } = require("./lib/llm-chat-title.cjs");
@@ -105,6 +106,9 @@ let userConfigStore = null;
 const chatStreamAbortControllers = new Map();
 /** @type {Map<string, Promise<{ ok: boolean }>>} */
 const inFlightChatSends = new Map();
+/** UI conversation id → active stream id (abort stale WeChat / edit resends). */
+/** @type {Map<string, string>} */
+const chatStreamByConversationId = new Map();
 /** @type {Map<string, Promise<{ ok: boolean }>>} */
 const inFlightWechatSends = new Map();
 /** @type {Set<string>} */
@@ -798,6 +802,10 @@ app.whenReady().then(async () => {
     const messages = payload?.messages;
     const conversationId =
       typeof payload?.conversationId === "string" ? payload.conversationId.trim() : "";
+    const gatewayConversationId =
+      typeof payload?.gatewayConversationId === "string" && payload.gatewayConversationId.trim()
+        ? payload.gatewayConversationId.trim()
+        : conversationId;
     const channel = payload?.channel === "wechat" ? "wechat" : "internal";
     const wechatPeerId = typeof payload?.wechatPeerId === "string" ? payload.wechatPeerId.trim() : "";
     if (typeof streamId !== "string" || !streamId.trim() || !Array.isArray(messages)) {
@@ -818,7 +826,19 @@ app.whenReady().then(async () => {
       const composerSkill = payload?.composerSkill;
       let terminalSent = false;
       try {
-        getStudioLog().info("[chat.send.perf] host.start", { streamId, conversationId });
+        if (conversationId) {
+          const prevStreamId = chatStreamByConversationId.get(conversationId);
+          if (prevStreamId && prevStreamId !== streamId) {
+            chatStreamAbortControllers.get(prevStreamId)?.abort();
+          }
+          chatStreamByConversationId.set(conversationId, streamId);
+        }
+        getStudioLog().info("[chat.send.perf] host.start", {
+          streamId,
+          conversationId,
+          gatewayConversationId:
+            gatewayConversationId !== conversationId ? gatewayConversationId : undefined,
+        });
         runOpenClawAgentSyncFromStudio("chat");
         const cfg = userConfigStore.readRaw();
         await waitForGatewayWarmupIfNeeded(() => userConfigStore.readRaw(), { probeOpenClawGateway });
@@ -829,8 +849,14 @@ app.whenReady().then(async () => {
           (evt) => {
             if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
           },
-          conversationId
-            ? { conversationId, composerSkill, channel, wechatPeerId }
+          gatewayConversationId
+            ? {
+                conversationId: gatewayConversationId,
+                uiConversationId: conversationId,
+                composerSkill,
+                channel,
+                wechatPeerId,
+              }
             : { composerSkill, channel, wechatPeerId },
         );
         if (channel === "wechat" && wechatPeerId && conversationId) {
@@ -848,6 +874,9 @@ app.whenReady().then(async () => {
         }
       } finally {
         chatStreamAbortControllers.delete(streamId);
+        if (conversationId && chatStreamByConversationId.get(conversationId) === streamId) {
+          chatStreamByConversationId.delete(conversationId);
+        }
         if (!terminalSent && !wc.isDestroyed()) {
           const sid = streamId;
           setImmediate(() => {
@@ -874,6 +903,26 @@ app.whenReady().then(async () => {
     if (typeof streamId !== "string" || !chatStreamAbortControllers.has(streamId)) return { ok: false };
     chatStreamAbortControllers.get(streamId)?.abort();
     return { ok: true };
+  });
+
+  ipcMain.handle("studio:wechatSendTyping", async (_event, payload) => {
+    try {
+      const cfg = userConfigStore.readRaw();
+      const peerId = String(payload?.peerId ?? "").trim();
+      const status = payload?.status === 2 ? 2 : 1;
+      if (!peerId) return { ok: false, message: "wechat_invalid_typing_peer" };
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 10_000);
+      try {
+        const client = await acquireWechatGatewaySession(cfg, ac.signal);
+        const res = await sendWechatTyping(client, { peerId, status }, cfg);
+        return { ok: Boolean(res?.ok), ...res };
+      } finally {
+        clearTimeout(tid);
+      }
+    } catch (err) {
+      return { ok: false, message: String(err?.message ?? err) };
+    }
   });
 
   ipcMain.handle("studio:wechatSendMessage", async (event, payload) => {

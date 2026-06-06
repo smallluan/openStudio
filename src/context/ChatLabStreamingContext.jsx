@@ -29,6 +29,7 @@ import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
 
 /** @typedef {{
  *   streamingSessionId: string | null;
+ *   wechatReplyingSessionId: string | null;
  *   gatewayStreamSlice: GatewayStreamSlice | null;
  *   beginGatewayStream: (args: {
  *     conversationId: string;
@@ -36,6 +37,8 @@ import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
  *     assistantMessageId: string;
  *   }) => void;
  *   resetGatewayStream: (streamId: string) => void;
+ *   setWechatReplyingSessionId: (conversationId: string) => void;
+ *   clearWechatReplyingSessionId: (conversationId: string) => void;
  * }} ChatLabStreamingApi */
 
 /** @typedef {{
@@ -103,6 +106,7 @@ function persistAssistantMerge(
 
 export function ChatLabStreamingProvider({ children }) {
   const [streamingSessionId, setStreamingSessionIdState] = useState(/** @type {string | null} */ (null));
+  const [wechatReplyingSessionId, setWechatReplyingSessionIdState] = useState(/** @type {string | null} */ (null));
   const [gatewayStreamSlice, setGatewayStreamSlice] = useState(/** @type {GatewayStreamSlice | null} */ (null));
 
   const sliceRef = useRef(/** @type {GatewayStreamSlice | null} */ (null));
@@ -137,6 +141,9 @@ export function ChatLabStreamingProvider({ children }) {
     }
     pendingDoneFinalizeStreamIdRef.current = null;
     processingStreamIdRef.current = args.streamId;
+    setWechatReplyingSessionIdState((cur) =>
+      cur === args.conversationId ? null : cur,
+    );
     const next = {
       conversationId: args.conversationId,
       streamId: args.streamId,
@@ -476,12 +483,21 @@ export function ChatLabStreamingProvider({ children }) {
     };
   }, []);
 
-  const setWechatReplyingSessionId = useCallback(() => {}, []);
-  const clearWechatReplyingSessionId = useCallback(() => {}, []);
+  const setWechatReplyingSessionId = useCallback((conversationId) => {
+    const cid = String(conversationId ?? "").trim();
+    if (!cid) return;
+    setWechatReplyingSessionIdState(cid);
+  }, []);
+
+  const clearWechatReplyingSessionId = useCallback((conversationId) => {
+    const cid = String(conversationId ?? "").trim();
+    setWechatReplyingSessionIdState((cur) => (cur === cid ? null : cur));
+  }, []);
 
   const value = useMemo(
     () => ({
       streamingSessionId,
+      wechatReplyingSessionId,
       gatewayStreamSlice,
       beginGatewayStream,
       resetGatewayStream,
@@ -490,6 +506,7 @@ export function ChatLabStreamingProvider({ children }) {
     }),
     [
       streamingSessionId,
+      wechatReplyingSessionId,
       gatewayStreamSlice,
       beginGatewayStream,
       resetGatewayStream,
@@ -507,6 +524,7 @@ export function useChatLabStreaming() {
   if (!ctx) {
     return {
       streamingSessionId: null,
+      wechatReplyingSessionId: null,
       gatewayStreamSlice: null,
       beginGatewayStream: () => {},
       resetGatewayStream: () => {},
