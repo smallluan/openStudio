@@ -3290,6 +3290,19 @@ code {
   opacity: 0.72;
 }
 
+.chat-lab__pill-model {
+  min-width: 11rem;
+}
+
+.chat-lab__pill-model > button {
+  min-width: 11rem;
+  border-radius: 999px;
+  height: 2rem;
+  padding-inline: 0.62rem;
+  border: 1px solid color-mix(in srgb, var(--os-border) 65%, transparent);
+  background: var(--os-bg-elevated);
+}
+
 .chat-lab__pill-ico {
   font-size: 0.7rem;
   opacity: 0.85;

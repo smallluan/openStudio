@@ -114,6 +114,7 @@ function computeOpenClawSyncFingerprint(cfg) {
     return JSON.stringify({
       openclaw: /** @type {any} */ (cfg).openclaw,
       modelProfiles: /** @type {any} */ (cfg).modelProfiles,
+      enabledModelProfileIds: /** @type {any} */ (cfg).enabledModelProfileIds,
       activeModelProfileId: /** @type {any} */ (cfg).activeModelProfileId,
       credentials: /** @type {any} */ (cfg).credentials,
     });
@@ -176,6 +177,7 @@ function patchTouchesGatewayWorkspace(patch) {
   return (
     "openclaw" in p ||
     "modelProfiles" in p ||
+    "enabledModelProfileIds" in p ||
     "activeModelProfileId" in p ||
     "credentials" in p
   );

@@ -282,7 +282,7 @@ export default function FluidNavMenu({
           aria-hidden
           className="fluid-nav__blob pointer-events-none absolute top-0 left-0 z-0 rounded-[11px]"
           style={{
-            transform: `translate3d(${blob.left}px, ${blob.top}px, 0) scale(${blob.squishX}, ${blob.squishY})`,
+            transform: `translate3d(${blob.left}px, ${blob.top}px, 0)`,
             width: `${blob.width}px`,
             height: `${blob.height}px`,
             opacity: blob.opacity,

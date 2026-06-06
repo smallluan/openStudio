@@ -1,7 +1,7 @@
 {
   "generatedFrom": "node_modules/openclaw/skills",
-  "generatedAt": "2026-06-05T08:04:31.635Z",
-  "count": 52,
+  "generatedAt": "2026-06-06T02:53:27.288Z",
+  "count": 57,
   "skills": [
     {
       "id": "1password",
@@ -82,16 +82,6 @@
       "requiresEnv": []
     },
     {
-      "id": "bluebubbles",
-      "name": "bluebubbles",
-      "description": "Send and manage iMessages via BlueBubbles, including attachments, tapbacks, edits, replies, and groups.",
-      "emoji": "🫧",
-      "categoryId": "cat-openclaw",
-      "os": [],
-      "requiresBins": [],
-      "requiresEnv": []
-    },
-    {
       "id": "camsnap",
       "name": "camsnap",
       "description": "Capture frames or clips from RTSP/ONVIF cameras.",
@@ -101,6 +91,16 @@
       "requiresBins": [
         "camsnap"
       ],
+      "requiresEnv": []
+    },
+    {
+      "id": "canvas",
+      "name": "canvas",
+      "description": "Present HTML on connected OpenClaw node canvases, navigate/eval/snapshot, and debug canvas host URLs.",
+      "emoji": "🖼️",
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
       "requiresEnv": []
     },
     {
@@ -118,7 +118,7 @@
     {
       "id": "coding-agent",
       "name": "coding-agent",
-      "description": "'Delegate coding tasks to Codex, Claude Code, OpenCode, or Pi agents via immediate background processes. Use when: (1) building or creating features/apps, (2) reviewing PRs in a temp clone/worktree, (3) refactoring large codebases, (4) iterative coding that needs file exploration. NOT for: simple one-line fixes (just edit), reading code (use read tool), thread-bound ACP harness requests in chat (use sessions_spawn with runtime:\"acp\"), or any work in ~/clawd workspace (never spawn agents here). All coding-agent runs start with background:true immediately. Claude Code: use --print --permission-mode bypassPermissions (no PTY). Codex/Pi/OpenCode: pty:true required. Completion notification must use openclaw message send, not system event/heartbeat.'",
+      "description": "Delegate coding work to Codex, Claude Code, or OpenCode as background workers; not simple edits or read-only code lookup.",
       "emoji": "🧩",
       "categoryId": "cat-openclaw",
       "os": [],
@@ -128,9 +128,19 @@
       "requiresEnv": []
     },
     {
+      "id": "diagram-maker",
+      "name": "diagram-maker",
+      "description": "Create SVG/HTML or Excalidraw diagrams for concepts, architecture, flows, and whiteboards.",
+      "emoji": "🧭",
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
+      "requiresEnv": []
+    },
+    {
       "id": "discord",
       "name": "discord",
-      "description": "Discord ops via the message tool (channel=discord).",
+      "description": "Discord message-tool ops: send/read/edit/delete, react, poll, pin, thread, search, presence, media/components.",
       "emoji": "🎮",
       "categoryId": "cat-openclaw",
       "os": [],
@@ -152,7 +162,7 @@
     {
       "id": "gemini",
       "name": "gemini",
-      "description": "Gemini CLI for one-shot Q&A, summaries, and generation.",
+      "description": "Gemini CLI one-shot prompts, summaries, generation, skills, hooks, MCP, or Gemma routing.",
       "emoji": "✨",
       "categoryId": "cat-openclaw",
       "os": [],
@@ -164,12 +174,11 @@
     {
       "id": "gh-issues",
       "name": "gh-issues",
-      "description": "Fetch GitHub issues, delegate fixes to subagents, open PRs, watch reviews, or run /gh-issues workflows.",
+      "description": "Fetch GitHub issues, select candidates, spawn background fix agents, open PRs, and optionally process PR review comments.",
       "emoji": "📦",
       "categoryId": "cat-openclaw",
       "os": [],
       "requiresBins": [
-        "curl",
         "git",
         "gh"
       ],
@@ -190,7 +199,7 @@
     {
       "id": "github",
       "name": "github",
-      "description": "Use gh for GitHub issues, PR status, CI/logs, comments, reviews, releases, and API queries.",
+      "description": "GitHub CLI for issues, PRs, CI/check logs, comments, reviews, releases, repos, and gh api queries.",
       "emoji": "🐙",
       "categoryId": "cat-openclaw",
       "os": [],
@@ -228,7 +237,7 @@
     {
       "id": "healthcheck",
       "name": "healthcheck",
-      "description": "Audit and harden hosts running OpenClaw for SSH, firewall, updates, exposure, cron checks, and risk posture.",
+      "description": "Audit/harden OpenClaw hosts: SSH, firewall, updates, exposure, backups, disk encryption, gateway security.",
       "emoji": "📦",
       "categoryId": "cat-openclaw",
       "os": [],
@@ -238,7 +247,7 @@
     {
       "id": "himalaya",
       "name": "himalaya",
-      "description": "Use himalaya to list, read, search, compose, reply, forward, and organize IMAP/SMTP email.",
+      "description": "Himalaya CLI for IMAP/SMTP mail: list, read, search, compose, reply, forward, copy, move, delete.",
       "emoji": "📧",
       "categoryId": "cat-openclaw",
       "os": [],
@@ -270,6 +279,18 @@
       "os": [],
       "requiresBins": [
         "mcporter"
+      ],
+      "requiresEnv": []
+    },
+    {
+      "id": "meme-maker",
+      "name": "meme-maker",
+      "description": "Search meme templates, suggest formats, and generate local or hosted image memes.",
+      "emoji": "🖼️",
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "node"
       ],
       "requiresEnv": []
     },
@@ -310,26 +331,38 @@
       "requiresEnv": []
     },
     {
+      "id": "node-inspect-debugger",
+      "name": "node-inspect-debugger",
+      "description": "Debug Node.js with node inspect, --inspect, breakpoints, CDP, heap, and CPU profiles.",
+      "emoji": "🪲",
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "node"
+      ],
+      "requiresEnv": []
+    },
+    {
       "id": "notion",
       "name": "notion",
-      "description": "Notion API for creating and managing pages, databases, and blocks.",
+      "description": "Notion CLI/API for pages, Markdown content, data sources, files, comments, search, Workers, and raw API calls.",
       "emoji": "📝",
       "categoryId": "cat-openclaw",
       "os": [],
-      "requiresBins": [],
-      "requiresEnv": [
-        "NOTION_API_KEY"
-      ]
+      "requiresBins": [
+        "ntn"
+      ],
+      "requiresEnv": []
     },
     {
       "id": "obsidian",
       "name": "obsidian",
-      "description": "Work with Obsidian vaults (plain Markdown notes) and automate via obsidian-cli.",
+      "description": "Work with Obsidian vaults using the official obsidian CLI: read/search/create/edit notes, tasks, links, properties, plugins.",
       "emoji": "💎",
       "categoryId": "cat-openclaw",
       "os": [],
       "requiresBins": [
-        "obsidian-cli"
+        "obsidian"
       ],
       "requiresEnv": []
     },
@@ -348,12 +381,13 @@
     {
       "id": "openai-whisper-api",
       "name": "openai-whisper-api",
-      "description": "Transcribe audio via OpenAI Audio Transcriptions API (Whisper).",
+      "description": "OpenAI Audio Transcriptions API via curl; gpt-4o-transcribe, mini, diarize, or whisper-1.",
       "emoji": "🌐",
       "categoryId": "cat-openclaw",
       "os": [],
       "requiresBins": [
-        "curl"
+        "curl",
+        "node"
       ],
       "requiresEnv": [
         "OPENAI_API_KEY"
@@ -374,7 +408,7 @@
     {
       "id": "oracle",
       "name": "oracle",
-      "description": "Use oracle CLI to bundle prompts and files for second-model debugging, refactor, design, or review checks.",
+      "description": "Oracle CLI second-model review/debug/refactor/design with selected files, dry-run token checks, API or browser engine.",
       "emoji": "🧿",
       "categoryId": "cat-openclaw",
       "os": [],
@@ -406,6 +440,18 @@
       ],
       "requiresBins": [
         "peekaboo"
+      ],
+      "requiresEnv": []
+    },
+    {
+      "id": "python-debugpy",
+      "name": "python-debugpy",
+      "description": "Debug Python with pdb, breakpoint(), post-mortem inspection, and debugpy remote attach.",
+      "emoji": "📦",
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [
+        "python3"
       ],
       "requiresEnv": []
     },
@@ -456,7 +502,7 @@
     {
       "id": "skill-creator",
       "name": "skill-creator",
-      "description": "Create, edit, improve, tidy, review, audit, or restructure AgentSkills and SKILL.md files.",
+      "description": "Create, edit, audit, tidy, validate, or restructure AgentSkills and SKILL.md files.",
       "emoji": "📦",
       "categoryId": "cat-openclaw",
       "os": [],
@@ -466,7 +512,7 @@
     {
       "id": "slack",
       "name": "slack",
-      "description": "Use the Slack tool to react, pin/unpin, send, edit, delete messages, or fetch Slack member info.",
+      "description": "Slack tool actions: send/read/edit/delete messages, react, pin/unpin, list pins/reactions/emoji, member info.",
       "emoji": "💬",
       "categoryId": "cat-openclaw",
       "os": [],
@@ -495,6 +541,16 @@
       "requiresBins": [
         "sonos"
       ],
+      "requiresEnv": []
+    },
+    {
+      "id": "spike",
+      "name": "spike",
+      "description": "Run throwaway prototypes to validate feasibility, compare approaches, and report a verdict.",
+      "emoji": "🧪",
+      "categoryId": "cat-openclaw",
+      "os": [],
+      "requiresBins": [],
       "requiresEnv": []
     },
     {
@@ -558,7 +614,7 @@
     {
       "id": "tmux",
       "name": "tmux",
-      "description": "Remote-control tmux sessions for interactive CLIs by sending keystrokes and scraping pane output.",
+      "description": "Control tmux sessions/panes for interactive CLIs: list, capture output, send keys, paste text, monitor prompts.",
       "emoji": "🧵",
       "categoryId": "cat-openclaw",
       "os": [
@@ -622,7 +678,7 @@
     {
       "id": "weather",
       "name": "weather",
-      "description": "Get current weather, rain, temperature, and forecasts for locations or travel planning.",
+      "description": "Current weather and forecasts with wttr.in via curl for locations, rain, temperature, travel planning.",
       "emoji": "☔",
       "categoryId": "cat-openclaw",
       "os": [],
@@ -634,7 +690,7 @@
     {
       "id": "xurl",
       "name": "xurl",
-      "description": "Use xurl for authenticated X API posts, replies, search, DMs, media upload, followers, or raw v2 calls.",
+      "description": "xurl CLI for authenticated X posts, replies, reads/search, DMs, media upload, followers, auth status, or raw v2 API calls.",
       "emoji": "🐦",
       "categoryId": "cat-openclaw",
       "os": [],

@@ -86,6 +86,7 @@ import {
   syncSkillCreatorResultToLibrary,
 } from "../skills/skillCreatorChatSync.js";
 import { cn } from "../ui/cn.js";
+import Select from "../ui/Select.jsx";
 import { CHAT_MD_REHYPE_PLUGINS } from "../chat/chatLabRehypePlugins.js";
 
 /** Markdown pipelines for chat bubbles (GFM + LaTeX via KaTeX). */
@@ -180,7 +181,27 @@ function deriveConfigIssueKey(cfg) {
   if (!cfg) return "chatLab.gatewayUrlMissing";
   const url = String(cfg.openclaw?.gatewayBaseUrl ?? "").trim();
   if (!url) return "chatLab.gatewayUrlMissing";
+  const profiles = Array.isArray(cfg.modelProfiles) ? cfg.modelProfiles : [];
+  const activeId = typeof cfg.activeModelProfileId === "string" ? cfg.activeModelProfileId.trim() : "";
+  const enabledIds = Array.isArray(cfg.enabledModelProfileIds)
+    ? cfg.enabledModelProfileIds.map((id) => (typeof id === "string" ? id.trim() : "")).filter(Boolean)
+    : (activeId ? [activeId] : []);
+  const enabled = enabledIds
+    .map((id) => profiles.find((p) => p && p.id === id))
+    .filter(Boolean);
+  if (enabled.length === 0) return "chatLab.modelNeedConfig";
+  const selected = activeId ? enabled.find((p) => p.id === activeId) : enabled[0];
+  const provider = String(selected?.provider ?? "").trim();
+  const modelId = String(selected?.modelId ?? "").trim();
+  if (!provider) return "chatLab.providerMissing";
+  if (!modelId) return "chatLab.modelIdMissing";
   return null;
+}
+
+/** @param {(key: string, vars?: Record<string, string | number>) => string} t */
+function providerLabelFromId(t, providerId) {
+  if (!providerId) return "";
+  return t(`userConfig.providerOptions.${providerId}`);
 }
 
 /**
@@ -347,6 +368,7 @@ export default function ChatLabPage() {
   /** When true, chat returned HTTP 404 — keep composer locked until a full probe succeeds again. */
   const [chatApiBlocked, setChatApiBlocked] = useState(false);
   const [probeRestartKey, setProbeRestartKey] = useState(0);
+  const [toolbarModelId, setToolbarModelId] = useState("");
 
   /** The id of the assistant bubble currently being filled (if any). */
   const activeAssistantIdRef = useRef(/** @type {string | null} */ (null));
@@ -726,6 +748,18 @@ export default function ChatLabPage() {
   }, [reloadConfig]);
 
   useEffect(() => {
+    const onFocus = () => {
+      void reloadConfig();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [reloadConfig]);
+
+  useEffect(() => {
+    void reloadConfig();
+  }, [location.key, reloadConfig]);
+
+  useEffect(() => {
     if (typeof document === "undefined") return undefined;
     const onVis = () => {
       if (document.visibilityState === "visible") reloadConfig();
@@ -735,6 +769,46 @@ export default function ChatLabPage() {
   }, [reloadConfig]);
 
   const configIssueKey = useMemo(() => deriveConfigIssueKey(config), [config]);
+  const enabledModelOptions = useMemo(() => {
+    const profiles = Array.isArray(config?.modelProfiles) ? config.modelProfiles : [];
+    const activeId = typeof config?.activeModelProfileId === "string" ? config.activeModelProfileId.trim() : "";
+    const enabledIds = Array.isArray(config?.enabledModelProfileIds)
+      ? config.enabledModelProfileIds.map((id) => (typeof id === "string" ? id.trim() : "")).filter(Boolean)
+      : (activeId ? [activeId] : []);
+    return enabledIds
+      .map((id) => profiles.find((p) => p && p.id === id))
+      .filter(Boolean)
+      .map((p) => {
+        const provider = providerLabelFromId(t, String(p.provider ?? ""));
+        const modelId = String(p.modelId ?? "").trim();
+        const labelCore = modelId || t("chatLab.modelNeedConfig");
+        const label = provider ? `${provider} · ${labelCore}` : labelCore;
+        return { value: p.id, label };
+      });
+  }, [config?.enabledModelProfileIds, config?.modelProfiles, t]);
+
+  useEffect(() => {
+    const activeId = typeof config?.activeModelProfileId === "string" ? config.activeModelProfileId.trim() : "";
+    const next = enabledModelOptions.some((o) => o.value === activeId)
+      ? activeId
+      : (enabledModelOptions[0]?.value ?? "");
+    setToolbarModelId(next);
+  }, [config?.activeModelProfileId, enabledModelOptions]);
+
+  const applyToolbarModelId = useCallback(
+    async (pid) => {
+      const nextId = String(pid ?? "").trim();
+      if (!nextId || !bridge?.setUserConfig) return;
+      if (!enabledModelOptions.some((o) => o.value === nextId)) return;
+      try {
+        const c = await bridge.setUserConfig({ activeModelProfileId: nextId });
+        setConfig(c ?? null);
+      } catch {
+        /* ignore */
+      }
+    },
+    [bridge, enabledModelOptions],
+  );
 
   useEffect(() => {
     if (!isElectron || !bridge?.warmGatewayChatPrep) return;
@@ -1730,13 +1804,22 @@ export default function ChatLabPage() {
         />
         <div className="chat-lab__shell-toolbar">
           <div className="chat-lab__shell-toolbar-start">
-            <button type="button" className="chat-lab__pill-btn" disabled title={t("chatLab.toolbarAutoHint")}>
-              <span className="chat-lab__pill-ico" aria-hidden>
-                ⦿
-              </span>
-              {t("chatLab.toolbarAuto")}
-              <ToolbarChevron />
-            </button>
+            <Select
+              id="chat-toolbar-model"
+              ariaLabel={t("chatLab.toolbarAuto")}
+              value={enabledModelOptions.length > 0 ? toolbarModelId : "__model_not_configured__"}
+              onChange={(v) => {
+                if (enabledModelOptions.length === 0) return;
+                setToolbarModelId(String(v));
+                void applyToolbarModelId(String(v));
+              }}
+              options={
+                enabledModelOptions.length > 0
+                  ? enabledModelOptions
+                  : [{ value: "__model_not_configured__", label: t("chatLab.modelNeedConfig") }]
+              }
+              className="chat-lab__pill-model min-w-[11rem]"
+            />
             <ComposerSkillToolbarPicker
               skills={skillPickList}
               selected={composerSkillRow}
@@ -1939,21 +2022,6 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
   }, [messages, preview, t]);
 
   return null;
-}
-
-function ToolbarChevron() {
-  return (
-    <svg
-      className="chat-lab__pill-chevron"
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      aria-hidden
-    >
-      <path d="M3 4.5 6 7.5l3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 /** Pause bars — shown on the red “stop stream” control (icon only; label via aria on the button). */

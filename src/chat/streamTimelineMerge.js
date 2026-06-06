@@ -64,6 +64,17 @@ function normalizeCompactText(s) {
 }
 
 /**
+ * Lifecycle terminal activities should render as the final timeline marker even when
+ * a late text delta arrives right after `lifecycle:end`.
+ * @param {AssistantTimelineSegment | undefined} seg
+ */
+function isTerminalLifecycleActivitySegment(seg) {
+  if (!seg || seg.kind !== "activity") return false;
+  const ref = String(seg.refId ?? "");
+  return /^lifecycle:[^:]*:(end|error|failed|cancelled|canceled|complete|completed|ok)$/i.test(ref);
+}
+
+/**
  * Merge streamed assistant prose into an accumulated body.
  * Appends true deltas only; treats duplicate / full snapshots as replace, never `a + b` dup.
  * @param {string | undefined} body
@@ -322,12 +333,16 @@ export function mergeTimelineContentSync(prev, content, thinking) {
 export function mergeTimelineTextDelta(prev, delta) {
   if (typeof delta !== "string" || !delta) return Array.isArray(prev) ? prev : [];
   const list = Array.isArray(prev) ? [...prev] : [];
-  const last = list[list.length - 1];
-  if (last?.kind === "text") {
-    list[list.length - 1] = { kind: "text", body: mergeAssistantTextChunk(last.body, delta) };
+  let insertIdx = list.length;
+  while (insertIdx > 0 && isTerminalLifecycleActivitySegment(list[insertIdx - 1])) {
+    insertIdx--;
+  }
+  const prevAtInsert = list[insertIdx - 1];
+  if (prevAtInsert?.kind === "text") {
+    list[insertIdx - 1] = { kind: "text", body: mergeAssistantTextChunk(prevAtInsert.body, delta) };
     return trimTimeline(list);
   }
-  list.push({ kind: "text", body: delta });
+  list.splice(insertIdx, 0, { kind: "text", body: delta });
   return trimTimeline(list);
 }
 

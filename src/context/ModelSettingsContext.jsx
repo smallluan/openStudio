@@ -33,6 +33,7 @@ export function ModelSettingsProvider({ children }) {
   const [profiles, setProfiles] = useState(/** @type {ModelProfileDraft[]} */ ([]));
   const [selectedId, setSelectedId] = useState("");
   const [activeId, setActiveId] = useState("");
+  const [enabledIds, setEnabledIds] = useState(/** @type {string[]} */ ([]));
   const [apiKey, setApiKey] = useState("");
   const [gateway, setGateway] = useState("http://127.0.0.1:18789");
   const [gatewayToken, setGatewayToken] = useState("");
@@ -85,10 +86,23 @@ export function ModelSettingsProvider({ children }) {
             baseUrl: typeof row.baseUrl === "string" ? row.baseUrl : "",
           }));
           let nextActive = typeof c.activeModelProfileId === "string" ? c.activeModelProfileId.trim() : "";
-          const matched = loaded.find((x) => x.id === nextActive);
-          const pick = matched ?? loaded[0] ?? null;
+          const enabledFromConfig = Array.isArray(c.enabledModelProfileIds)
+            ? c.enabledModelProfileIds
+                .map((x) => (typeof x === "string" ? x.trim() : ""))
+                .filter((id, i, arr) => id && arr.indexOf(id) === i && loaded.some((p) => p.id === id))
+            : [];
+          const enabled = enabledFromConfig.length > 0
+            ? enabledFromConfig
+            : (nextActive && loaded.some((x) => x.id === nextActive)
+                ? [nextActive]
+                : (loaded[0]?.id ? [loaded[0].id] : []));
+          const matched = enabled.length > 0 && enabled.includes(nextActive)
+            ? loaded.find((x) => x.id === nextActive)
+            : null;
+          const pick = matched ?? (enabled.length > 0 ? loaded.find((x) => x.id === enabled[0]) : null);
 
           setProfiles(loaded);
+          setEnabledIds(enabled);
           setActiveId(pick?.id ?? "");
           setSelectedId(pick?.id ?? "");
           setGateway(c.openclaw?.gatewayBaseUrl ?? "http://127.0.0.1:18789");
@@ -116,7 +130,10 @@ export function ModelSettingsProvider({ children }) {
     const wasEmpty = profiles.length === 0;
     setProfiles((prev) => [...prev, { id, label: "", provider: "", modelId: "", baseUrl: "" }]);
     setSelectedId(id);
-    if (wasEmpty) setActiveId(id);
+    if (wasEmpty) {
+      setEnabledIds([id]);
+      setActiveId(id);
+    }
     setFeedback(null);
   }, [profiles.length]);
 
@@ -125,8 +142,16 @@ export function ModelSettingsProvider({ children }) {
     (pid) => {
       const next = profiles.filter((p) => p.id !== pid);
       setProfiles(next);
+      setEnabledIds((ids) => {
+        const keep = ids.filter((id) => id !== pid && next.some((p) => p.id === id));
+        setActiveId((a) => {
+          if (a === pid) return keep[0] ?? "";
+          if (a && keep.includes(a)) return a;
+          return keep[0] ?? "";
+        });
+        return keep;
+      });
       setSelectedId((s) => (s === pid ? next[0]?.id ?? "" : s));
-      setActiveId((a) => (a === pid ? next[0]?.id ?? "" : a));
       setFeedback(null);
     },
     [profiles],
@@ -135,23 +160,45 @@ export function ModelSettingsProvider({ children }) {
   const toggleActiveSwitch = useCallback(
     /** @param {string} pid @param {boolean} on */
     (pid, on) => {
-      if (on) setActiveId(pid);
-      else if (activeId === pid) setActiveId("");
+      setEnabledIds((ids) => {
+        const has = ids.includes(pid);
+        let next = ids;
+        if (on && !has) next = [...ids, pid];
+        if (!on && has) next = ids.filter((id) => id !== pid);
+        if (!on && activeId === pid) {
+          setActiveId(next[0] ?? "");
+        } else if (on && !activeId) {
+          setActiveId(pid);
+        }
+        return next;
+      });
       setFeedback(null);
     },
     [activeId],
   );
 
+  const setDefaultProfile = useCallback(
+    /** @param {string} pid */
+    (pid) => {
+      if (!pid) return;
+      setEnabledIds((ids) => (ids.includes(pid) ? ids : [...ids, pid]));
+      setActiveId(pid);
+      setFeedback(null);
+    },
+    [],
+  );
+
   const validateForSave = useCallback(() => {
     if (profiles.length === 0) return null;
+    if (enabledIds.length === 0) return { kind: "err", text: t("userConfig.validationNeedEnabled") };
     const ap = profiles.find((p) => p.id === activeId);
-    if (!ap) return { kind: "err", text: t("userConfig.validationPickActive") };
+    if (!ap || !enabledIds.includes(ap.id)) return { kind: "err", text: t("userConfig.validationPickActive") };
     if (!MODEL_PROVIDER_IDS.includes(/** @type {*} */ (ap.provider))) {
       return { kind: "err", text: t("userConfig.validationPickProvider") };
     }
     if (!String(ap.modelId ?? "").trim()) return { kind: "err", text: t("userConfig.validationNeedModelId") };
     return null;
-  }, [activeId, profiles, t]);
+  }, [activeId, enabledIds, profiles, t]);
 
   const save = useCallback(async () => {
     setFeedback(null);
@@ -162,8 +209,8 @@ export function ModelSettingsProvider({ children }) {
     }
 
     const sendProfiles = [...profiles];
-    let sendActive = activeId;
-    if (sendProfiles.length === 1) sendActive = sendProfiles[0].id;
+    const sendEnabled = enabledIds.filter((id) => sendProfiles.some((p) => p.id === id));
+    let sendActive = sendEnabled.includes(activeId) ? activeId : (sendEnabled[0] ?? "");
 
     try {
       /** @type {{ gatewayBaseUrl: string; gatewayToken?: string; chatLabLeanPlugins?: boolean; sessionKey: string }} */
@@ -182,9 +229,14 @@ export function ModelSettingsProvider({ children }) {
           modelId: modelId.trim(),
           baseUrl: (provider === "openai-compatible" || provider === "deepseek") ? baseUrl.trim() : "",
         })),
-        activeModelProfileId: sendProfiles.length === 0 ? "" : sendActive || "",
+        enabledModelProfileIds: sendEnabled,
+        activeModelProfileId: sendEnabled.length === 0 ? "" : sendActive || "",
         openclaw: openclawPatch,
       };
+      if (sendProfiles.length > 0 && sendEnabled.length === 0) {
+        setFeedback({ kind: "err", text: t("userConfig.validationNeedEnabled") });
+        return;
+      }
 
       if (apiKey.trim() !== "") {
         patch.credentials = { providerApiKey: apiKey.trim() };
@@ -205,11 +257,19 @@ export function ModelSettingsProvider({ children }) {
         modelId: typeof row.modelId === "string" ? row.modelId : "",
         baseUrl: typeof row.baseUrl === "string" ? row.baseUrl : "",
       }));
+      const nextEnabled = Array.isArray(c?.enabledModelProfileIds)
+        ? c.enabledModelProfileIds
+            .map((x) => (typeof x === "string" ? x.trim() : ""))
+            .filter((id, i, arr) => id && arr.indexOf(id) === i && nextProfiles.some((p) => p.id === id))
+        : (nextProfiles[0]?.id ? [nextProfiles[0].id] : []);
 
       const ra = typeof c?.activeModelProfileId === "string" ? c.activeModelProfileId.trim() : "";
-      const pick = nextProfiles.find((x) => x.id === ra) ?? nextProfiles[0];
+      const pick = ra && nextEnabled.includes(ra)
+        ? nextProfiles.find((x) => x.id === ra)
+        : (nextEnabled.length > 0 ? nextProfiles.find((x) => x.id === nextEnabled[0]) : null);
 
       setProfiles(nextProfiles);
+      setEnabledIds(nextEnabled);
       setActiveId(pick?.id ?? "");
       setSelectedId((prev) => (nextProfiles.some((x) => x.id === prev) ? prev : (pick?.id ?? "")));
 
@@ -227,7 +287,7 @@ export function ModelSettingsProvider({ children }) {
     } catch (e) {
       setFeedback({ kind: "err", text: t("userConfig.saveFailed", { message: String(e?.message ?? e) }) });
     }
-  }, [activeId, apiKey, chatLabLeanPlugins, gateway, gatewayToken, profiles, sessionKey, t, validateForSave]);
+  }, [activeId, apiKey, chatLabLeanPlugins, enabledIds, gateway, gatewayToken, profiles, sessionKey, t, validateForSave]);
 
   const clearFeedback = useCallback(() => setFeedback(null), []);
 
@@ -238,6 +298,8 @@ export function ModelSettingsProvider({ children }) {
       selectedId,
       setSelectedId,
       activeId,
+      enabledIds,
+      setDefaultProfile,
       selectedProfile,
       apiKey,
       setApiKey,
@@ -266,6 +328,7 @@ export function ModelSettingsProvider({ children }) {
       apiKey,
       chatLabLeanPlugins,
       clearFeedback,
+      enabledIds,
       feedback,
       gateway,
       gatewayToken,
@@ -278,6 +341,7 @@ export function ModelSettingsProvider({ children }) {
       save,
       selectedId,
       selectedProfile,
+      setDefaultProfile,
       sessionKey,
       setSelectedId,
       toggleActiveSwitch,

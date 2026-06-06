@@ -36,6 +36,8 @@ export default function ModelProfilesPanel() {
     selectedId,
     setSelectedId,
     activeId,
+    enabledIds,
+    setDefaultProfile,
     selectedProfile,
     apiKey,
     setApiKey,
@@ -101,11 +103,25 @@ export default function ModelProfilesPanel() {
               <div className="-my-px" onMouseDown={(e) => e.preventDefault()}>
                 <Switch
                   compact
-                  label={t("userConfig.useProviderAria")}
-                  checked={activeId === p.id}
+                  label={t("userConfig.enabledAria")}
+                  checked={enabledIds.includes(p.id)}
                   onCheckedChange={(v) => toggleActiveSwitch(p.id, v)}
                 />
               </div>
+              <button
+                type="button"
+                className={cn(
+                  "min-w-[3.25rem] rounded-md border border-[var(--os-border)] px-1.5 py-0.5 text-[0.62rem] font-semibold",
+                  activeId === p.id
+                    ? "border-[color-mix(in_srgb,var(--os-accent)_40%,var(--os-border))] bg-[color-mix(in_srgb,var(--os-accent-muted)_26%,transparent)] text-[var(--os-accent)]"
+                    : "text-[var(--os-text-faint)] hover:text-[var(--os-text)]",
+                )}
+                onClick={() => setDefaultProfile(p.id)}
+                title={t("userConfig.defaultModel")}
+                aria-label={t("userConfig.defaultModel")}
+              >
+                {activeId === p.id ? t("userConfig.defaultOn") : t("userConfig.defaultSet")}
+              </button>
               <button
                 type="button"
                 className={cn(
