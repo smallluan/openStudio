@@ -1,341 +1,238 @@
+import { useCallback, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import EmptyState from "../../ui/EmptyState.jsx";
-import Select from "../../ui/Select.jsx";
 import Switch from "../../ui/Switch.jsx";
-import TextField from "../../ui/TextField.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
-import { modelProfileSummaryLine, useModelSettings } from "../../context/ModelSettingsContext.jsx";
+import {
+  emptyModelProfileDraft,
+  isModelProfilePersistable,
+  modelProfileSummaryLine,
+  useModelSettings,
+} from "../../context/ModelSettingsContext.jsx";
 import { cn } from "../../ui/cn.js";
-import ModelSettingsFooter from "./ModelSettingsFooter.jsx";
+import ModelProfileEditorDialog from "./ModelProfileEditorDialog.jsx";
+import ModelProfileEditorForm from "./ModelProfileEditorForm.jsx";
 
-function IconTrashSmall({ className }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      className={cn("shrink-0 text-current", className)}
-      aria-hidden
-    >
-      <path
-        d="M6 6.5v5M10 6.5v5M2.5 4h11M13 4l-.652 9.13a1 1 0 01-.992.87H4.644a1 1 0 01-.992-.87L3 4m2.75 0V3a2 2 0 012-2h2.5a2 2 0 012 2v1"
-        stroke="currentColor"
-        strokeWidth="1.22"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
+/**
+ * @typedef {{
+ *   mode: "add" | "edit";
+ *   draft: import("../../context/ModelSettingsContext.jsx").ModelProfileDraft;
+ *   apiKey: string;
+ * }} EditorSession
+ */
 
 export default function ModelProfilesPanel() {
   const { t } = useI18n();
   const {
-    MODEL_PROVIDER_IDS,
     profiles,
-    selectedId,
-    setSelectedId,
-    activeId,
     enabledIds,
-    setDefaultProfile,
-    selectedProfile,
-    apiKey,
-    setApiKey,
     hasKey,
-    gateway,
-    setGateway,
-    gatewayToken,
-    setGatewayToken,
-    hasGatewayToken,
-    chatLabLeanPlugins,
-    setChatLabLeanPlugins,
-    sessionKey,
-    setSessionKey,
-    providerOptionsWithUnset,
-    patchSelected,
-    addProfile,
+    feedback,
+    upsertProfile,
     removeProfile,
-    toggleActiveSwitch,
+    toggleEnabled,
     clearFeedback,
   } = useModelSettings();
 
-  /** @returns {import("react").ReactElement} */
-  function profilesListInner() {
-    if (profiles.length === 0) {
-      return (
-        <EmptyState
-          hideDecoration
-          title={t("userConfig.emptyStateNoProfiles")}
-          action={
-            <button type="button" className="btn-primary px-4 py-2 text-[0.8125rem]" onClick={addProfile}>
-              {t("userConfig.addProfile")}
-            </button>
-          }
-        />
-      );
+  const [editor, setEditor] = useState(/** @type {EditorSession | null} */ (null));
+  const [editorError, setEditorError] = useState(/** @type {string | null} */ (null));
+  const [saving, setSaving] = useState(false);
+
+  const openAdd = useCallback(() => {
+    clearFeedback();
+    setEditorError(null);
+    setEditor({ mode: "add", draft: emptyModelProfileDraft(), apiKey: "" });
+  }, [clearFeedback]);
+
+  const openEdit = useCallback(
+    /** @param {string} id */
+    (id) => {
+      const p = profiles.find((row) => row.id === id);
+      if (!p) return;
+      clearFeedback();
+      setEditorError(null);
+      setEditor({
+        mode: "edit",
+        draft: { ...p },
+        apiKey: "",
+      });
+    },
+    [clearFeedback, profiles],
+  );
+
+  const closeEditor = useCallback(() => {
+    if (saving) return;
+    setEditor(null);
+    setEditorError(null);
+  }, [saving]);
+
+  const patchDraft = useCallback(
+    /** @param {Partial<import("../../context/ModelSettingsContext.jsx").ModelProfileDraft>} patch */
+    (patch) => {
+      setEditor((cur) => (cur ? { ...cur, draft: { ...cur.draft, ...patch } } : cur));
+      setEditorError(null);
+    },
+    [],
+  );
+
+  const validateDraft = useCallback(
+    /** @param {import("../../context/ModelSettingsContext.jsx").ModelProfileDraft} draft */
+    (draft) => {
+      if (!draft.provider) return t("userConfig.validationPickProvider");
+      if (!String(draft.modelId ?? "").trim()) return t("userConfig.validationNeedModelId");
+      if (!isModelProfilePersistable(draft)) return t("userConfig.validationPickProvider");
+      return null;
+    },
+    [t],
+  );
+
+  const handleConfirm = useCallback(async () => {
+    if (!editor || saving) return;
+    const err = validateDraft(editor.draft);
+    if (err) {
+      setEditorError(err);
+      return;
     }
-
-    return (
-      <div className="flex flex-col gap-1.5">
-        {profiles.map((p) => (
-          <div
-            key={p.id}
-            className={cn(
-              "flex min-w-0 gap-1.5 rounded-lg border px-2 py-1.5 transition-[border-color,box-shadow]",
-              selectedId === p.id ?
-                "border-[color-mix(in_srgb,var(--os-accent)_55%,var(--os-border))] bg-[color-mix(in_srgb,var(--os-accent-muted)_18%,transparent)]"
-              : "border-[var(--os-border)] bg-[var(--os-bg-elevated)]",
-              activeId === p.id ?
-                "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--os-accent)_32%,transparent)]"
-              : null,
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedId(p.id);
-                clearFeedback();
-              }}
-              className={cn(
-                "min-w-0 flex-1 truncate rounded-md border-none bg-transparent py-1 pl-1.5 pr-1 text-left text-[0.8125rem] font-medium outline-none transition-colors hover:bg-[color-mix(in_srgb,var(--os-bg-hover)_80%,transparent)]",
-                "focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
-              )}
-            >
-              <span className="block truncate">{p.label.trim() ? p.label.trim() : modelProfileSummaryLine(p, t)}</span>
-              {p.label.trim() ?
-                <span className="mt-0.5 block truncate text-[0.6875rem] font-normal text-[var(--os-text-faint)]">
-                  {modelProfileSummaryLine(p, t)}
-                </span>
-              : null}
-            </button>
-            <div className="flex shrink-0 flex-col items-center justify-center gap-0.5 border-l border-[color-mix(in_srgb,var(--os-border)_85%,transparent)] pl-1.5">
-              <div className="-my-px" onMouseDown={(e) => e.preventDefault()}>
-                <Switch
-                  compact
-                  label={t("userConfig.enabledAria")}
-                  checked={enabledIds.includes(p.id)}
-                  onCheckedChange={(v) => toggleActiveSwitch(p.id, v)}
-                />
-              </div>
-              <button
-                type="button"
-                className={cn(
-                  "min-w-[3.25rem] rounded-md border border-[var(--os-border)] px-1.5 py-0.5 text-[0.62rem] font-semibold",
-                  activeId === p.id
-                    ? "border-[color-mix(in_srgb,var(--os-accent)_40%,var(--os-border))] bg-[color-mix(in_srgb,var(--os-accent-muted)_26%,transparent)] text-[var(--os-accent)]"
-                    : "text-[var(--os-text-faint)] hover:text-[var(--os-text)]",
-                )}
-                onClick={() => setDefaultProfile(p.id)}
-                title={t("userConfig.defaultModel")}
-                aria-label={t("userConfig.defaultModel")}
-              >
-                {activeId === p.id ? t("userConfig.defaultOn") : t("userConfig.defaultSet")}
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  "flex size-7 items-center justify-center rounded-md border-none bg-transparent text-[var(--os-text-muted)] outline-none transition-colors",
-                  "hover:bg-[var(--os-bg-hover)] hover:text-[var(--os-accent)]",
-                  "focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
-                )}
-                aria-label={t("userConfig.removeProfile")}
-                title={t("userConfig.removeProfile")}
-                onClick={() => removeProfile(p.id)}
-              >
-                <IconTrashSmall />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  /** @returns {import("react").ReactNode} */
-  function editorBody() {
-    if (!selectedProfile || profiles.length === 0) {
-      const noSelectionOnly = profiles.length > 0;
-      return (
-        <EmptyState
-          illustration={
-            noSelectionOnly ?
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 4v4m0 8v4M4 12h4m12 0h-4" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" />
-              </svg>
-            : undefined
-          }
-          hideDecoration={!noSelectionOnly}
-          title={
-            profiles.length === 0 ? t("userConfig.emptyStateNoProfiles") : t("userConfig.emptyStateNoSelection")
-          }
-        />
-      );
+    setSaving(true);
+    setEditorError(null);
+    try {
+      await upsertProfile(editor.draft, { apiKey: editor.apiKey });
+      setEditor(null);
+    } catch (e) {
+      setEditorError(t("userConfig.saveFailed", { message: String(e?.message ?? e) }));
+    } finally {
+      setSaving(false);
     }
+  }, [editor, saving, t, upsertProfile, validateDraft]);
 
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2 border-b border-[color-mix(in_srgb,var(--os-border)_70%,transparent)] pb-2.5">
-          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-[var(--os-text-faint)]">
-            {t("userConfig.profileDetailHeading")}
-          </span>
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border-none bg-transparent px-2 py-1 text-[0.75rem] font-medium text-[var(--os-text-muted)] outline-none",
-              "hover:bg-[var(--os-bg-hover)] hover:text-[var(--os-accent)] focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
-            )}
-            onClick={() => removeProfile(selectedProfile.id)}
-          >
-            <IconTrashSmall />
-            {t("userConfig.removeProfile")}
-          </button>
-        </div>
+  const handleDelete = useCallback(
+    /** @param {string} id */
+    (id) => {
+      void removeProfile(id);
+      if (editor?.draft.id === id) closeEditor();
+    },
+    [closeEditor, editor, removeProfile],
+  );
 
-        <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-          <span className="font-medium">{t("userConfig.profileLabel")}</span>
-          <TextField
-            value={selectedProfile.label ?? ""}
-            onChange={(e) => patchSelected({ label: e.target.value })}
-            placeholder={t("userConfig.profileLabelPlaceholder")}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-
-        <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-          <span className="font-medium">{t("userConfig.provider")}</span>
-          <Select
-            id={`model-provider-${selectedProfile.id}`}
-            ariaLabel={t("userConfig.providerAria")}
-            value={selectedProfile.provider}
-            onChange={(v) =>
-              MODEL_PROVIDER_IDS.includes(/** @type {*} */ (v)) ?
-                patchSelected({
-                  provider: /** @type {(typeof MODEL_PROVIDER_IDS)[number]} */ (v),
-                })
-              : patchSelected({ provider: "" })
-            }
-            options={providerOptionsWithUnset}
-            className="min-w-0 self-start"
-          />
-        </div>
-
-        <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-          <span className="font-medium">{t("userConfig.modelId")}</span>
-          <TextField
-            value={selectedProfile.modelId ?? ""}
-            onChange={(e) => patchSelected({ modelId: e.target.value })}
-            placeholder={t("userConfig.modelIdPlaceholder")}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-
-        {selectedProfile.provider === "openai-compatible" || selectedProfile.provider === "deepseek" ?
-          <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-            <span className="font-medium">{t("userConfig.baseUrl")}</span>
-            <TextField
-              value={selectedProfile.baseUrl ?? ""}
-              onChange={(e) => patchSelected({ baseUrl: e.target.value })}
-              placeholder={t("userConfig.baseUrlPlaceholder")}
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </label>
-        : null}
-
-        <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-          <span className="font-medium">
-            {t("userConfig.apiKey")}
-            {hasKey ? ` ${t("userConfig.apiKeySavedSuffix")}` : ""}
-          </span>
-          <TextField
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={t("userConfig.apiKeyPlaceholder")}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-          <span className="font-medium">{t("userConfig.gatewayUrl")}</span>
-          <TextField
-            value={gateway}
-            onChange={(e) => setGateway(e.target.value)}
-            placeholder="http://127.0.0.1:19001"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-          <span className="font-medium">
-            {t("userConfig.gatewayToken")}
-            {hasGatewayToken ? ` ${t("userConfig.gatewayTokenSavedSuffix")}` : ""}
-          </span>
-          <TextField
-            type="password"
-            value={gatewayToken}
-            onChange={(e) => setGatewayToken(e.target.value)}
-            placeholder={t("userConfig.gatewayTokenPlaceholder")}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-          <span className="font-medium">{t("userConfig.sessionKey")}</span>
-          <TextField
-            value={sessionKey}
-            onChange={(e) => setSessionKey(e.target.value)}
-            placeholder={t("userConfig.sessionKeyPlaceholder")}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <div className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_85%,transparent)] px-2 py-1">
-          <Switch
-            id="chatlab-lean-plugins"
-            label={t("userConfig.chatLabLeanPlugins")}
-            checked={chatLabLeanPlugins}
-            onCheckedChange={(v) => setChatLabLeanPlugins(v)}
-          />
-        </div>
-      </div>
-    );
-  }
+  const editorTitle =
+    editor?.mode === "add" ? t("userConfig.addProfile") : t("userConfig.profileDetailHeading");
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-[min(100%,52rem)] flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--os-border)] bg-[color-mix(in_srgb,var(--os-bg-panel)_92%,transparent)]">
-        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col divide-y divide-[var(--os-border)] overflow-hidden lg:flex-row lg:divide-x lg:divide-y-0">
-          <aside className="flex max-h-[38vh] min-h-[10.5rem] min-w-0 shrink-0 flex-col gap-2 px-3 py-3 lg:max-h-none lg:h-auto lg:w-[13.25rem] lg:max-w-[36vw]">
-            <span className="shrink-0 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-[var(--os-text-faint)]">
-              {t("userConfig.providersColumnTitle")}
-            </span>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5">{profilesListInner()}</div>
-            {profiles.length > 0 ?
-              <button
-                type="button"
-                onClick={addProfile}
-                className={cn(
-                  "flex shrink-0 items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--os-border-strong)] bg-transparent py-2 text-[0.8125rem] font-medium text-[var(--os-text-muted)]",
-                  "transition-[color,background,border-color] hover:border-[color-mix(in_srgb,var(--os-accent)_35%,var(--os-border-strong))] hover:bg-[var(--os-bg-hover)] hover:text-[var(--os-text)]",
-                )}
-              >
-                <span aria-hidden className="text-[1rem] leading-none opacity-70">
-                  +
-                </span>
-                {t("userConfig.addProfile")}
-              </button>
-            : null}
-          </aside>
-          <div className="flex min-h-[12rem] min-w-0 flex-1 flex-col px-3 py-3">
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5">{editorBody()}</div>
-          </div>
-        </div>
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-[min(100%,32rem)] flex-1 flex-col">
+      <div className="model-profiles-panel__head mb-1 flex shrink-0 items-center justify-between gap-3 pb-2">
+        <span className="text-[0.8125rem] font-medium text-[var(--os-text)]">
+          {t("userConfig.providersColumnTitle")}
+        </span>
+        <button
+          type="button"
+          onClick={openAdd}
+          className="border-none bg-transparent p-0 text-[0.75rem] font-medium text-[var(--os-text-muted)] underline-offset-2 hover:text-[var(--os-text)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]"
+        >
+          + {t("userConfig.addProfile")}
+        </button>
       </div>
 
-      <ModelSettingsFooter />
+      {feedback && !editor ?
+        <p role="alert" className="mb-2 text-[0.72rem] leading-snug text-[var(--os-accent)]">
+          {feedback.text}
+        </p>
+      : null}
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {profiles.length === 0 ?
+          <EmptyState
+            hideDecoration
+            title={t("userConfig.emptyStateNoProfiles")}
+            action={
+              <button
+                type="button"
+                className="text-[0.8125rem] font-medium text-[var(--os-accent)] underline-offset-2 hover:underline"
+                onClick={openAdd}
+              >
+                {t("userConfig.addProfile")}
+              </button>
+            }
+          />
+        : <ul className="m-0 list-none p-0">
+            {profiles.map((p) => {
+              const isEnabled = enabledIds.includes(p.id);
+              return (
+                <li key={p.id} className="model-profiles-panel__row group flex items-center gap-2 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[0.8125rem] text-[var(--os-text)]">
+                      {p.label.trim() ? p.label.trim() : modelProfileSummaryLine(p, t)}
+                    </div>
+                    {p.label.trim() ?
+                      <div className="truncate text-[0.6875rem] text-[var(--os-text-faint)]">
+                        {modelProfileSummaryLine(p, t)}
+                      </div>
+                    : null}
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex size-7 items-center justify-center border-none bg-transparent text-[var(--os-text-muted)] outline-none",
+                        "hover:text-[var(--os-text)] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
+                      )}
+                      aria-label={t("userConfig.profileDetailHeading")}
+                      title={t("userConfig.profileDetailHeading")}
+                      onClick={() => openEdit(p.id)}
+                    >
+                      <Pencil size={14} strokeWidth={1.6} aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex size-7 items-center justify-center border-none bg-transparent text-[var(--os-text-muted)] outline-none",
+                        "hover:text-[var(--os-accent)] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
+                      )}
+                      aria-label={t("userConfig.removeProfile")}
+                      title={t("userConfig.removeProfile")}
+                      onClick={() => handleDelete(p.id)}
+                    >
+                      <Trash2 size={14} strokeWidth={1.6} aria-hidden />
+                    </button>
+                  </div>
+
+                  <div className="shrink-0" onMouseDown={(e) => e.preventDefault()}>
+                    <Switch
+                      compact
+                      label={t("userConfig.enabledAria")}
+                      checked={isEnabled}
+                      onCheckedChange={(v) => void toggleEnabled(p.id, v)}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        }
+      </div>
+
+      <ModelProfileEditorDialog
+        open={Boolean(editor)}
+        title={editorTitle}
+        error={editorError}
+        confirmDisabled={saving}
+        onCancel={closeEditor}
+        onConfirm={() => void handleConfirm()}
+      >
+        {editor ?
+          <ModelProfileEditorForm
+            profile={editor.draft}
+            mode={editor.mode}
+            hasKey={Boolean(editor.draft.hasApiKey)}
+            apiKey={editor.apiKey}
+            onChange={patchDraft}
+            onApiKeyChange={(key) => {
+              setEditor((cur) => (cur ? { ...cur, apiKey: key } : cur));
+              setEditorError(null);
+            }}
+          />
+        : null}
+      </ModelProfileEditorDialog>
     </div>
   );
 }

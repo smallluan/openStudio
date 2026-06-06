@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet } from "react-router-dom";
-import NavChatLabIcon from "../assets/svg/NavChatLabIcon.jsx";
-import NavLobsterIcon from "../assets/svg/NavLobsterIcon.jsx";
-import NavSkillIcon from "../assets/svg/NavSkillIcon.jsx";
-import NavStudioIcon from "../assets/svg/NavStudioIcon.jsx";
+import { LayoutDashboard, MessageSquarePlus, Shell, Sparkles } from "lucide-react";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
 import ChatHistoryList from "../components/shell/ChatHistoryList.jsx";
 import { useWechatAutoReplyStream } from "../chat/useWechatAutoReplyStream.js";
 import { useWechatSessionSync } from "../chat/useWechatSessionSync.js";
 import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
-import RailWechatOrb from "../components/shell/RailWechatOrb.jsx";
+import RailSettingsLink from "../components/shell/RailSettingsLink.jsx";
+import NavIcon from "../ui/NavIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import ResizableEdge from "../ui/ResizableEdge.jsx";
 import { cn } from "../ui/cn.js";
@@ -74,7 +72,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
         to: "/chat",
         end: true,
         label: t("nav.newChat"),
-        icon: <NavChatLabIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
+        icon: <NavIcon icon={MessageSquarePlus} />,
         isActive: (loc) =>
           (loc.pathname === "/chat" || loc.pathname === "/") &&
           !new URLSearchParams(loc.search).get("c"),
@@ -84,19 +82,19 @@ export default function MainLayout({ railResizeEnabled = false }) {
         to: "/studio",
         end: true,
         label: t("nav.studio"),
-        icon: <NavStudioIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
+        icon: <NavIcon icon={LayoutDashboard} />,
       },
       {
         id: "lobster",
         to: "/lobster",
         label: t("nav.lobster"),
-        icon: <NavLobsterIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
+        icon: <NavIcon icon={Shell} />,
       },
       {
         id: "skills",
         to: "/skills",
         label: t("nav.skills"),
-        icon: <NavSkillIcon className="fluid-nav__glyph h-[22px] w-[22px]" />,
+        icon: <NavIcon icon={Sparkles} />,
       },
     ],
     [t],
@@ -177,11 +175,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
               router
               primaryItems={primaryNavItems}
               footerItems={[]}
-              footerAccessory={
-                <>
-                  <RailWechatOrb narrow={isNarrow} />
-                </>
-              }
+              footerAccessory={<RailSettingsLink narrow={isNarrow} />}
               afterPrimary={<ChatHistoryList narrow={isNarrow} />}
               className="min-h-0 flex-1 pb-1"
             />

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import LogoMarkIcon from "../../assets/svg/LogoMarkIcon.jsx";
+import heroAvatarLight from "../../assets/images/hero-avatar-light.png";
+import heroAvatarDark from "../../assets/images/hero-avatar-dark.png";
 import { useI18n } from "../../context/I18nContext.jsx";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import { cn } from "../../ui/cn.js";
 
 function WinIconMinimize({ className }) {
@@ -38,6 +40,7 @@ function WinIconClose({ className }) {
 
 export default function TitleBar() {
   const { t } = useI18n();
+  const { theme } = useTheme();
   const shell = typeof window !== "undefined" ? window.electronShell : null;
   const [maximized, setMaximized] = useState(false);
 
@@ -65,7 +68,12 @@ export default function TitleBar() {
         className="os-titlebar__brand flex shrink-0 items-center gap-2.5 px-3 py-1"
         style={{ WebkitAppRegion: "drag" }}
       >
-        <LogoMarkIcon className="h-7 w-7 shrink-0 text-[var(--os-accent)]" />
+        <img
+          className="h-7 w-7 shrink-0 rounded-full object-cover"
+          src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
+          alt=""
+          aria-hidden
+        />
         <span className="whitespace-nowrap text-[0.8125rem] font-semibold tracking-tight">{t("titlebar.appName")}</span>
       </div>
 

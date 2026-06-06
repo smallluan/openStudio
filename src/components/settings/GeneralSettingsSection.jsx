@@ -1,12 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
-import { SettingsCell, SettingsCellRow } from "./SettingsCells.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { useTheme } from "../../context/ThemeContext.jsx";
 import { isLocaleId } from "../../i18n/messages.js";
 import Select from "../../ui/Select.jsx";
 import Switch from "../../ui/Switch.jsx";
+import { cn } from "../../ui/cn.js";
 
-/** Appearance + language + ChatLab title automation (used by modal settings + rail popover). */
+/**
+ * @param {{ title: string; children: import("react").ReactNode; last?: boolean }} props
+ */
+function GeneralSettingRow({ title, children, last = false }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-4 px-4 py-3.5 sm:px-5 sm:py-4",
+        !last && "border-b border-[color-mix(in_srgb,var(--os-border)_72%,transparent)]",
+      )}
+    >
+      <span className="min-w-0 shrink-0 text-[0.9375rem] font-semibold tracking-tight text-[var(--os-text)]">
+        {title}
+      </span>
+      <div className="flex min-w-0 shrink-0 items-center justify-end">{children}</div>
+    </div>
+  );
+}
+
+/** Appearance + language + ChatLab title automation. */
 export default function GeneralSettingsSection() {
   const { theme, setTheme } = useTheme();
   const { t, locale, setLocale } = useI18n();
@@ -64,62 +83,40 @@ export default function GeneralSettingsSection() {
   );
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-4 rounded-xl border border-[var(--os-border)] bg-[var(--os-bg-subtle)] px-4 py-3">
-        <div
-          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-[var(--os-border)] bg-[var(--os-bg-elevated)] text-2xl"
-          aria-hidden
-        >
-          🐾
-        </div>
-        <div className="min-w-0">
-          <div className="text-[0.75rem] text-[var(--os-text-muted)]">{t("settings.avatar")}</div>
-          <div className="truncate text-[0.9rem] font-medium">{t("settings.localAccount")}</div>
-        </div>
-      </div>
-
-      <SettingsCellRow>
-        <SettingsCell label={t("settings.appearance")}>
+    <div className="general-settings mx-auto w-full max-w-md">
+      <div className="overflow-hidden rounded-2xl border border-[color-mix(in_srgb,var(--os-border)_88%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-elevated)_96%,var(--os-bg-subtle))] shadow-[0_1px_0_rgba(255,255,255,0.45)_inset,0_8px_28px_rgba(15,23,42,0.04)]">
+        <GeneralSettingRow title={t("settings.appearance")}>
           <Select
-            id="rail-theme-appearance"
+            id="settings-appearance"
             ariaLabel={t("settings.appearanceAria")}
             value={theme}
             onChange={(v) => setTheme(v)}
             options={themeOptions}
+            className="min-w-[8.5rem]"
           />
-        </SettingsCell>
-        <SettingsCell label={t("settings.language")}>
+        </GeneralSettingRow>
+
+        <GeneralSettingRow title={t("settings.languageShort")}>
           <Select
-            id="rail-app-language"
+            id="settings-language"
             ariaLabel={t("settings.languageAria")}
             value={locale}
             onChange={(v) => isLocaleId(v) && setLocale(v)}
             options={languageOptions}
+            className="min-w-[8.5rem]"
           />
-        </SettingsCell>
-      </SettingsCellRow>
+        </GeneralSettingRow>
 
-      <div className="rounded-xl border border-[var(--os-border)] px-3">
-        <Switch
-          id="rail-sw-auto-chat-title"
-          label={t("settings.autoSummarizeTitle")}
-          checked={chatLabAutoTitle}
-          onCheckedChange={(v) => void persistChatLabAutoTitle(v)}
-        />
+        <GeneralSettingRow title={t("settings.autoSummarize")} last>
+          <Switch
+            compact
+            id="settings-auto-summarize"
+            label={t("settings.autoSummarizeTitle")}
+            checked={chatLabAutoTitle}
+            onCheckedChange={(v) => void persistChatLabAutoTitle(v)}
+          />
+        </GeneralSettingRow>
       </div>
-
-      {bridge?.openLogsDirectory ? (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            className="rounded-full border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--os-text)] transition hover:bg-[var(--os-bg-subtle)]"
-            aria-label={t("settings.openLogsAria")}
-            onClick={() => void bridge.openLogsDirectory?.()}
-          >
-            {t("settings.openLogsFolder")}
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

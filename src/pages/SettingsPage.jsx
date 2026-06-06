@@ -1,5 +1,7 @@
+import { Cpu, Radio, Settings } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
+import ChannelSettingsSection from "../components/settings/ChannelSettingsSection.jsx";
 import GeneralSettingsSection from "../components/settings/GeneralSettingsSection.jsx";
 import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
 import ModelProfilesPanel from "../components/shell/ModelProfilesPanel.jsx";
@@ -7,7 +9,14 @@ import { SETTINGS_SECTION_IDS } from "../components/settings/settingsSectionIds.
 import { ModelSettingsProvider } from "../context/ModelSettingsContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import ModalCloseButton from "../ui/ModalCloseButton.jsx";
+import NavIcon from "../ui/NavIcon.jsx";
 import { cn } from "../ui/cn.js";
+
+const SETTINGS_SECTION_ICONS = {
+  general: Settings,
+  channels: Radio,
+  model: Cpu,
+};
 
 export default function SettingsPage() {
   const { onClose } = useOutletContext() ?? {};
@@ -15,7 +24,15 @@ export default function SettingsPage() {
   const [section, setSection] = useState(/** @type {(typeof SETTINGS_SECTION_IDS)[number]} */ ("general"));
 
   const settingsNavItems = useMemo(
-    () => SETTINGS_SECTION_IDS.map((id) => ({ id, label: t(`settings.sections.${id}`) })),
+    () =>
+      SETTINGS_SECTION_IDS.map((id) => {
+        const Icon = SETTINGS_SECTION_ICONS[id] ?? Settings;
+        return {
+          id,
+          label: t(`settings.sections.${id}`),
+          icon: <NavIcon icon={Icon} />,
+        };
+      }),
     [t],
   );
 
@@ -60,8 +77,14 @@ export default function SettingsPage() {
             )}
           >
             {section === "general" ? (
-              <div className="mx-auto flex max-w-xl flex-col gap-6">
+              <div className="mx-auto flex w-full max-w-lg flex-col px-1 py-2 sm:px-2">
                 <GeneralSettingsSection />
+              </div>
+            ) : null}
+
+            {section === "channels" ? (
+              <div className="mx-auto flex w-full max-w-lg flex-col px-1 py-2 sm:px-2">
+                <ChannelSettingsSection />
               </div>
             ) : null}
 
