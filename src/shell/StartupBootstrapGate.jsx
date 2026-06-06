@@ -9,6 +9,7 @@ const PROGRESS_EXIT_MS = 400;
 const BACKDROP_FADE_MS = 1000;
 const SETTLING_MS = 120;
 const BOOT_RETRY_MS = 4000;
+const BOOT_RETRY_FAST_MS = 1200;
 
 const GATE_READY_PHASES = new Set(["gateway_ready", "complete", "skipped_no_gateway"]);
 
@@ -127,9 +128,12 @@ export default function StartupBootstrapGate({ children }) {
         if (!result?.ok) {
           const failureMsg = result?.message ? String(result.message) : "bootstrap failed";
           bridge.logRendererMessage?.({ level: "error", message: `bootstrap_gate: ${failureMsg}` });
+          const retryMs = /gateway_unreachable|ECONNREFUSED/i.test(failureMsg)
+            ? BOOT_RETRY_FAST_MS
+            : BOOT_RETRY_MS;
           retryTimer = window.setTimeout(() => {
             if (!cancelled) setBootPass((n) => n + 1);
-          }, BOOT_RETRY_MS);
+          }, retryMs);
           return;
         }
 
