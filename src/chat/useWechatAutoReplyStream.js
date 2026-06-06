@@ -253,6 +253,7 @@ export function useWechatAutoReplyStream() {
           m.createdAt > userRow.createdAt,
       );
       if (hasTerminalAssistant) {
+        clearWechatReplyingSessionId(conversationId);
         inFlightInboundRef.current.delete(messageId);
         return;
       }
@@ -268,8 +269,6 @@ export function useWechatAutoReplyStream() {
       const persistable = [
 
         ...historyRows,
-
-        userRow,
 
         {
 

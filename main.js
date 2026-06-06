@@ -816,6 +816,7 @@ app.whenReady().then(async () => {
       chatStreamAbortControllers.set(streamId, ac);
       const wc = event.sender;
       const composerSkill = payload?.composerSkill;
+      let terminalSent = false;
       try {
         getStudioLog().info("[chat.send.perf] host.start", { streamId, conversationId });
         runOpenClawAgentSyncFromStudio("chat");
@@ -839,13 +840,15 @@ app.whenReady().then(async () => {
         if (!wc.isDestroyed()) {
           if (ac.signal.aborted || e?.name === "AbortError") {
             wc.send(CHAT_STREAM_CHAN, { streamId, type: "aborted" });
+            terminalSent = true;
           } else {
             wc.send(CHAT_STREAM_CHAN, { streamId, type: "error", message: String(e?.message ?? e) });
+            terminalSent = true;
           }
         }
       } finally {
         chatStreamAbortControllers.delete(streamId);
-        if (!wc.isDestroyed()) {
+        if (!terminalSent && !wc.isDestroyed()) {
           const sid = streamId;
           setImmediate(() => {
             if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId: sid, type: "done" });

@@ -17,6 +17,9 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import {
+  CONTEXT_WINDOW_APPROX_TOKENS,
+  approxTokensFromChars,
+  estimateThreadCharBudget,
   gatewayUserMessageBody,
   openClawAttachmentsFromComposer,
   MAX_CHAT_COMPOSER_IMAGES,
@@ -30,15 +33,12 @@ import {
 import { preferLongerAssistantText, reconcileTimelineWithCanonicalText } from "../chat/streamTimelineMerge.js";
 import { normalizeLatexMathDelimitersForRemark } from "../chat/normalizeLatexMathDelimitersForRemark.js";
 import {
-  CHAT_SESSION_CHANNEL_INTERNAL,
-  CHAT_SESSION_CHANNEL_WECHAT,
   deriveTitleFromMessages,
   getSession,
   loadAllSessions,
   renameSession,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
-import { isWechatPendingAssistantId } from "../chat/useWechatSessionSync.js";
 import ChatLabHero from "../components/chat-lab/ChatLabHero.jsx";
 import { useBootstrapHeroRelease } from "../components/chat-lab/useBootstrapHeroRelease.js";
 import { useBootstrapGate } from "../context/BootstrapGateContext.jsx";
@@ -67,11 +67,7 @@ import {
   isSlashOnlyComposerDraft,
   stripSlashPickerPrefix,
 } from "../components/chat-lab/ChatLabComposerSkills.jsx";
-import { ChatStreamSparklerTail } from "../components/chat-lab/ChatStreamSparklerTail.jsx";
-import {
-  getAssistantStreamTailPlacement,
-  mergeMarkdownComponentsWithStreamTail,
-} from "../chat/assistantMarkdownStreamTail.jsx";
+import { ChatLabContextMeter } from "../components/chat-lab/ChatLabContextMeter.jsx";
 import {
   listSkillsForPicker,
   pickRowFromSkillMeta,
@@ -169,33 +165,6 @@ function withBackfilledCreatedAt(rows, sessionUpdatedAt) {
     if (typeof row.createdAt === "number" && Number.isFinite(row.createdAt)) return row;
     return { ...row, createdAt: base - (n - 1 - i) * step };
   });
-}
-
-/**
- * @param {import("../chat/chatSessionsStore.js").ChatSessionRecord | null | undefined} rec
- */
-function mapSessionRecordToChatMessages(rec) {
-  if (!rec) return [];
-  return withBackfilledCreatedAt(
-    rec.messages.map((m) => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      ...(m.thinking ? { thinking: m.thinking } : {}),
-      ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
-      ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
-      ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
-        ? { assistantTimeline: m.assistantTimeline }
-        : {}),
-      ...(typeof m.createdAt === "number" && Number.isFinite(m.createdAt) ? { createdAt: m.createdAt } : {}),
-      ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
-      ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
-        ? { imageAttachments: m.imageAttachments }
-        : {}),
-      streaming: false,
-    })),
-    rec.updatedAt,
-  );
 }
 
 /**
@@ -350,6 +319,10 @@ export default function ChatLabPage() {
     /** @type {Array<{id: string; role: "user" | "assistant"; content: string; thinking?: string; streaming?: boolean; error?: string; toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[]; activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[]; assistantTimeline?: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[]; createdAt?: number}>} */
     ([]),
   );
+  /** Only the freshly sent user bubble plays the enter animation. */
+  const [userBubbleEnterMessageId, setUserBubbleEnterMessageId] = useState(
+    /** @type {string | null} */ (null),
+  );
   const [input, setInput] = useState("");
   /** Pending image files in the composer (drag / paste); sent as user message attachments. */
   const [composerAttachments, setComposerAttachments] = useState(
@@ -395,99 +368,81 @@ export default function ChatLabPage() {
   const [chatApiBlocked, setChatApiBlocked] = useState(false);
   const [probeRestartKey, setProbeRestartKey] = useState(0);
   const [toolbarModelId, setToolbarModelId] = useState("");
-  const [wechatAuth, setWechatAuth] = useState(
-    /** @type {{enabled: boolean; available: boolean; connected: boolean; status: string; accountName: string; accountId: string; qrText: string; qrImageDataUrl: string; lastError: string}} */ ({
-      enabled: false,
-      available: false,
-      connected: false,
-      status: "disabled",
-      accountName: "",
-      accountId: "",
-      qrText: "",
-      qrImageDataUrl: "",
-      lastError: "",
-    }),
-  );
-  const [sessionChannel, setSessionChannel] = useState(/** @type {"internal"|"wechat"} */ (CHAT_SESSION_CHANNEL_INTERNAL));
-  const [wechatPeerIdForConversation, setWechatPeerIdForConversation] = useState("");
 
   /** The id of the assistant bubble currently being filled (if any). */
   const activeAssistantIdRef = useRef(/** @type {string | null} */ (null));
-  /** Per-conversation stream ids for abort/stop (supports concurrent threads). */
-  const activeStreamIdsRef = useRef(/** @type {Map<string, string>} */ (new Map()));
-  /** Assistant terminal messages already mirrored to WeChat outbound. */
+  /** The streamId tracked by main process for abort. */
+  const activeStreamIdRef = useRef(/** @type {string | null} */ (null));
   const messagesRef = useRef(messages);
-  /** @type {import("react").MutableRefObject<Record<string, { id: string; role: "assistant"; content: string; streaming: boolean; createdAt?: number } | undefined>>} */
-  const wechatPendingReplyRef = useRef({});
   const messagesScrollRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const autoScrollRef = useRef(true);
+  const threadScrollTrackRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const threadScrollDraggingRef = useRef(false);
+  const [threadScrollRatio, setThreadScrollRatio] = useState(1);
 
-  const { beginGatewayStream, resetGatewayStream, isSessionStreaming } = useChatLabStreaming();
+  const updateThreadScrollRatio = useCallback(() => {
+    const el = messagesScrollRef.current;
+    if (!el) {
+      setThreadScrollRatio(1);
+      return;
+    }
+    const max = el.scrollHeight - el.clientHeight;
+    if (!Number.isFinite(max) || max <= 0) {
+      setThreadScrollRatio(1);
+      return;
+    }
+    const ratio = Math.min(1, Math.max(0, el.scrollTop / max));
+    setThreadScrollRatio(ratio);
+  }, []);
+
+  const setThreadScrollByClientY = useCallback(
+    /** @param {number} clientY */
+    (clientY) => {
+      const track = threadScrollTrackRef.current;
+      const el = messagesScrollRef.current;
+      if (!track || !el) return;
+      const rect = track.getBoundingClientRect();
+      if (rect.height <= 0) return;
+      const ratio = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+      const max = el.scrollHeight - el.clientHeight;
+      if (max <= 0) {
+        setThreadScrollRatio(1);
+        return;
+      }
+      el.scrollTop = ratio * max;
+      setThreadScrollRatio(ratio);
+      autoScrollRef.current = ratio >= 0.98;
+    },
+    [],
+  );
+
+  const nudgeThreadScroll = useCallback(
+    /** @param {number} deltaPx */
+    (deltaPx) => {
+      const el = messagesScrollRef.current;
+      if (!el) return;
+      const max = el.scrollHeight - el.clientHeight;
+      if (max <= 0) {
+        setThreadScrollRatio(1);
+        return;
+      }
+      el.scrollTop = Math.max(0, Math.min(max, el.scrollTop + deltaPx));
+      updateThreadScrollRatio();
+      autoScrollRef.current = el.scrollTop >= max - 24;
+    },
+    [updateThreadScrollRatio],
+  );
+
+  const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
   const gatewaySliceForConv = useGatewayStreamSlice(conversationId);
   const throttledStreamContent = useRafThrottledValue(gatewaySliceForConv?.content ?? "");
   const throttledStreamThinking = useRafThrottledValue(gatewaySliceForConv?.thinking ?? "");
   const gatewayStreaming = Boolean(gatewaySliceForConv?.active);
 
-  /** Load sidebar session into the message list (WeChat pending bubble injected when streaming). */
-  const applySessionRecordToMessages = useCallback(
-    (sessionId) => {
-      const cid = String(sessionId ?? "").trim();
-      if (!cid) return;
-      const rec = getSession(cid);
-      if (!rec) return;
-      let rows = mapSessionRecordToChatMessages(rec).filter((m) => !isWechatPendingAssistantId(m.id));
-      let pending = wechatPendingReplyRef.current[cid];
-      if (gatewaySliceForConv?.active && gatewaySliceForConv.conversationId === cid) {
-        pending = {
-          id: gatewaySliceForConv.assistantMessageId,
-          role: /** @type {const} */ ("assistant"),
-          content: gatewaySliceForConv.content ?? "",
-          thinking: gatewaySliceForConv.thinking ?? "",
-          streaming: true,
-          createdAt: Date.now(),
-        };
-        wechatPendingReplyRef.current[cid] = pending;
-      } else if (!pending && isSessionStreaming(cid) && rec.channel === CHAT_SESSION_CHANNEL_WECHAT) {
-        const lastUser = [...rows].reverse().find((m) => m.role === "user");
-        if (lastUser) {
-          const hasTerminalAssistant = rows.some(
-            (m) =>
-              m.role === "assistant" &&
-              !isWechatPendingAssistantId(m.id) &&
-              (typeof m.createdAt !== "number" || typeof lastUser.createdAt !== "number"
-                ? true
-                : m.createdAt >= lastUser.createdAt),
-          );
-          if (!hasTerminalAssistant) {
-            pending = {
-              id: `wechat-replying-${lastUser.id}`,
-              role: /** @type {const} */ ("assistant"),
-              content: "",
-              streaming: true,
-              createdAt: (typeof lastUser.createdAt === "number" ? lastUser.createdAt : Date.now()) + 1,
-            };
-            wechatPendingReplyRef.current[cid] = pending;
-          }
-        }
-      }
-      if (pending && !rows.some((m) => m.id === pending.id)) {
-        rows = [...rows, pending];
-      }
-      if (cid === paramC) {
-        setMessages(rows);
-        const channel =
-          rec.channel === CHAT_SESSION_CHANNEL_WECHAT ? CHAT_SESSION_CHANNEL_WECHAT : CHAT_SESSION_CHANNEL_INTERNAL;
-        setSessionChannel(channel);
-        setWechatPeerIdForConversation(String(rec.channelPeerId ?? ""));
-        setChatApiBlocked(false);
-      }
-    },
-    [gatewaySliceForConv, isSessionStreaming, paramC],
-  );
-
-  /** Switching threads clears local send guards for the visible thread only. */
+  /** Switching threads clears send guards; finalize skips terminal events when conversationId mismatch left refs stuck. */
   useEffect(() => {
     activeAssistantIdRef.current = null;
+    activeStreamIdRef.current = null;
     setPendingEditMessageId(null);
     setComposerSkillRow(null);
     setComposerAttachments([]);
@@ -499,6 +454,93 @@ export default function ChatLabPage() {
     composerResizeDraggingRef.current = false;
     setComposerResizeStripHover(false);
   }, [conversationId]);
+
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return undefined;
+    updateThreadScrollRatio();
+    el.addEventListener("scroll", updateThreadScrollRatio, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateThreadScrollRatio) : null;
+    ro?.observe(el);
+    window.addEventListener("resize", updateThreadScrollRatio);
+    return () => {
+      el.removeEventListener("scroll", updateThreadScrollRatio);
+      ro?.disconnect();
+      window.removeEventListener("resize", updateThreadScrollRatio);
+    };
+  }, [conversationId, updateThreadScrollRatio]);
+
+  useEffect(() => {
+    const raf = window.requestAnimationFrame(updateThreadScrollRatio);
+    return () => window.cancelAnimationFrame(raf);
+  }, [messages.length, gatewayStreaming, updateThreadScrollRatio]);
+
+  const onThreadScrollTrackPointerDown = useCallback(
+    /** @param {import("react").PointerEvent<HTMLDivElement>} e */
+    (e) => {
+      if (messages.length === 0) return;
+      if (e.button !== 0) return;
+      e.preventDefault();
+      threadScrollDraggingRef.current = true;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      setThreadScrollByClientY(e.clientY);
+    },
+    [messages.length, setThreadScrollByClientY],
+  );
+
+  const onThreadScrollTrackPointerMove = useCallback(
+    /** @param {import("react").PointerEvent<HTMLDivElement>} e */
+    (e) => {
+      if (!threadScrollDraggingRef.current) return;
+      setThreadScrollByClientY(e.clientY);
+    },
+    [setThreadScrollByClientY],
+  );
+
+  const onThreadScrollTrackPointerUp = useCallback(
+    /** @param {import("react").PointerEvent<HTMLDivElement>} e */
+    (e) => {
+      if (!threadScrollDraggingRef.current) return;
+      threadScrollDraggingRef.current = false;
+      try {
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    },
+    [],
+  );
+
+  const onThreadScrollKeyDown = useCallback(
+    /** @param {import("react").KeyboardEvent<HTMLDivElement>} e */
+    (e) => {
+      if (messages.length === 0) return;
+      const el = messagesScrollRef.current;
+      if (!el) return;
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        nudgeThreadScroll(-72);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        nudgeThreadScroll(72);
+      } else if (e.key === "PageUp") {
+        e.preventDefault();
+        nudgeThreadScroll(-Math.max(160, Math.round(el.clientHeight * 0.65)));
+      } else if (e.key === "PageDown") {
+        e.preventDefault();
+        nudgeThreadScroll(Math.max(160, Math.round(el.clientHeight * 0.65)));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        el.scrollTop = 0;
+        updateThreadScrollRatio();
+      } else if (e.key === "End") {
+        e.preventDefault();
+        el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+        updateThreadScrollRatio();
+      }
+    },
+    [messages.length, nudgeThreadScroll, updateThreadScrollRatio],
+  );
 
   const composerSnapPx = useMemo(() => Math.round(composerMaxPx * 0.72), [composerMaxPx]);
 
@@ -581,118 +623,6 @@ export default function ChatLabPage() {
     messagesRef.current = messages;
   }, [messages]);
 
-  useEffect(() => {
-    if (!bridge?.wechatAuthStatus) return undefined;
-    let alive = true;
-    const syncWechat = async () => {
-      try {
-        const st = await bridge.wechatAuthStatus();
-        if (!alive) return;
-        if (st?.ok) {
-          setWechatAuth((prev) => ({
-            ...prev,
-            enabled: st.enabled !== false,
-            available: true,
-            connected: Boolean(st.connected),
-            status: String(st.status ?? "unknown"),
-            accountName: String(st.accountName ?? ""),
-            accountId: String(st.accountId ?? ""),
-            lastError: "",
-          }));
-        } else {
-          const msg = String(st?.message ?? "");
-          if (/No handler registered/i.test(msg)) {
-            setWechatAuth((prev) => ({
-              ...prev,
-              enabled: false,
-              available: false,
-              connected: false,
-              status: "missing_handler",
-              lastError: t("chatLab.wechatNeedRestartMain"),
-            }));
-            return;
-          }
-        }
-      } catch (err) {
-        if (!alive) return;
-        const msg = String(err?.message ?? err);
-        if (/No handler registered/i.test(msg)) {
-          setWechatAuth((prev) => ({
-            ...prev,
-            enabled: false,
-            available: false,
-            connected: false,
-            status: "missing_handler",
-            lastError: t("chatLab.wechatNeedRestartMain"),
-          }));
-          return;
-        }
-        setWechatAuth((prev) => ({ ...prev, status: "error", lastError: msg }));
-      }
-    };
-    void syncWechat();
-    const off = bridge.onWechatStatus?.((evt) => {
-      if (!evt || typeof evt !== "object") return;
-      const type = String(evt.type ?? "");
-      if (type === "auth_started") {
-        setWechatAuth((prev) => ({
-          ...prev,
-          enabled: true,
-          status: String(evt.status ?? "pending"),
-          qrText: String(evt.qrText ?? ""),
-          qrImageDataUrl: String(evt.qrImageDataUrl ?? ""),
-          lastError: "",
-        }));
-        return;
-      }
-      if (type === "auth_status") {
-        setWechatAuth((prev) => ({
-          ...prev,
-          enabled: true,
-          connected: Boolean(evt.connected),
-          status: String(evt.status ?? "unknown"),
-          accountId: String(evt.accountId ?? ""),
-          accountName: String(evt.accountName ?? ""),
-          lastError: "",
-        }));
-        return;
-      }
-      if (type === "auth_disconnected") {
-        setWechatAuth((prev) => ({
-          ...prev,
-          connected: false,
-          status: "disconnected",
-          accountId: "",
-          accountName: "",
-          qrText: "",
-          qrImageDataUrl: "",
-        }));
-        return;
-      }
-      if (type === "poll_error") {
-        setWechatAuth((prev) => ({ ...prev, lastError: String(evt.message ?? "wechat_poll_error") }));
-        return;
-      }
-      if (type === "outbound_sent") {
-        const localMessageId = String(evt.localMessageId ?? "").trim();
-        const sentMessageId = String(evt.messageId ?? "").trim();
-        if (localMessageId && sentMessageId && localMessageId !== sentMessageId) {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === localMessageId ? { ...m, id: sentMessageId } : m)),
-          );
-        }
-      }
-    });
-    return () => {
-      alive = false;
-      try {
-        off?.();
-      } catch {
-        /* ignore */
-      }
-    };
-  }, [bridge, conversationId, setSearchParams, t]);
-
   const prevParamCRef = useRef(/** @type {string | null} */ (null));
 
   useEffect(() => {
@@ -703,43 +633,38 @@ export default function ChatLabPage() {
       if (prev != null) {
         setMessages([]);
         setChatApiBlocked(false);
-        setSessionChannel(CHAT_SESSION_CHANNEL_INTERNAL);
-        setWechatPeerIdForConversation("");
       } else if (messagesRef.current.length === 0) {
         setChatApiBlocked(false);
-        setSessionChannel(CHAT_SESSION_CHANNEL_INTERNAL);
-        setWechatPeerIdForConversation("");
       }
       return;
     }
 
     const rec = getSession(paramC);
     if (rec) {
-      applySessionRecordToMessages(paramC);
+      const mapped = rec.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        ...(m.thinking ? { thinking: m.thinking } : {}),
+        ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
+        ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+        ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
+          ? { assistantTimeline: m.assistantTimeline }
+          : {}),
+        ...(typeof m.createdAt === "number" && Number.isFinite(m.createdAt) ? { createdAt: m.createdAt } : {}),
+        ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
+        ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
+          ? { imageAttachments: m.imageAttachments }
+          : {}),
+        streaming: false,
+      }));
+      setMessages(withBackfilledCreatedAt(mapped, rec.updatedAt));
+      setChatApiBlocked(false);
       return;
     }
     if (messagesRef.current.length > 0) return;
-    setSessionChannel(CHAT_SESSION_CHANNEL_INTERNAL);
-    setWechatPeerIdForConversation("");
     navigate("/chat", { replace: true });
-  }, [applySessionRecordToMessages, navigate, paramC]);
-
-  useEffect(() => {
-    /** @param {Event} ev */
-    const onWechatInbound = (ev) => {
-      const cid = String(/** @type {CustomEvent} */ (ev).detail?.conversationId ?? "").trim();
-      if (cid) applySessionRecordToMessages(cid);
-    };
-    const onSessionsChanged = () => {
-      if (paramC) applySessionRecordToMessages(paramC);
-    };
-    window.addEventListener("openstudio-wechat-session-inbound", onWechatInbound);
-    window.addEventListener("openstudio-chat-sessions-changed", onSessionsChanged);
-    return () => {
-      window.removeEventListener("openstudio-wechat-session-inbound", onWechatInbound);
-      window.removeEventListener("openstudio-chat-sessions-changed", onSessionsChanged);
-    };
-  }, [applySessionRecordToMessages, paramC]);
+  }, [navigate, paramC]);
 
   useEffect(() => {
     autoScrollRef.current = true;
@@ -777,12 +702,7 @@ export default function ChatLabPage() {
 
     const h = window.setTimeout(() => {
       const toSave = messages
-        .filter(
-          (m) =>
-            (m.role === "user" || m.role === "assistant") &&
-            !m.error &&
-            !isWechatPendingAssistantId(m.id),
-        )
+        .filter((m) => (m.role === "user" || m.role === "assistant") && !m.error)
         .map((m) => ({
           id: m.id,
           role: m.role,
@@ -801,14 +721,11 @@ export default function ChatLabPage() {
         }));
       if (toSave.length === 0) return;
       const title = deriveTitleFromMessages(messages, { imageFallback: t("chatLab.chatUntitledImage") });
-      upsertSession(conversationId, title || "…", toSave, {
-        channel: sessionChannel,
-        channelPeerId: wechatPeerIdForConversation,
-      });
+      upsertSession(conversationId, title || "…", toSave);
     }, 380);
 
     return () => window.clearTimeout(h);
-  }, [messages, conversationId, t, sessionChannel, wechatPeerIdForConversation]);
+  }, [messages, conversationId, t]);
 
   const reloadConfig = useCallback(async () => {
     if (!bridge?.getUserConfig) {
@@ -977,20 +894,22 @@ export default function ChatLabPage() {
     const prev = prevSliceForConvRef.current;
     prevSliceForConvRef.current = gatewaySliceForConv;
     if (prev && !gatewaySliceForConv && prev.conversationId === conversationId) {
-      delete wechatPendingReplyRef.current[conversationId];
-      applySessionRecordToMessages(conversationId);
+      setMessages((pm) =>
+        pm.some((m) => m.streaming)
+          ? pm.map((m) => (m.streaming ? { ...m, streaming: false } : m))
+          : pm,
+      );
     }
-  }, [applySessionRecordToMessages, conversationId, gatewaySliceForConv]);
+  }, [conversationId, gatewaySliceForConv]);
 
   const finalizeAssistantById = useCallback((assistantId, extra) => {
     if (!assistantId) return;
     activeAssistantIdRef.current = null;
-    activeStreamIdsRef.current.delete(conversationId);
-    delete wechatPendingReplyRef.current[conversationId];
+    activeStreamIdRef.current = null;
     setMessages((prev) =>
       prev.map((m) => (m.id === assistantId ? mergeTerminalAssistantPayload(m, extra ?? {}) : m)),
     );
-  }, [conversationId]);
+  }, []);
 
   useEffect(() => {
     /** @param {Event} e */
@@ -1027,13 +946,12 @@ export default function ChatLabPage() {
         if (d.kind === "done") {
           const merged = messagesWithTerminalAssistantPayload(messagesRef.current, d.assistantMessageId, extra);
           syncSkillCreatorResultToLibrary(merged, conversationId, d.assistantMessageId);
-          window.setTimeout(() => applySessionRecordToMessages(conversationId), 180);
         }
       }
     };
     window.addEventListener("openstudio-gateway-chat-terminal", fn);
     return () => window.removeEventListener("openstudio-gateway-chat-terminal", fn);
-  }, [applySessionRecordToMessages, conversationId, finalizeAssistantById, t]);
+  }, [conversationId, finalizeAssistantById, t]);
 
   const canSend =
     !gatewayStreaming &&
@@ -1043,27 +961,13 @@ export default function ChatLabPage() {
     configLoaded &&
     !configIssueKey &&
     gatewayPhase === "online" &&
-    !chatApiBlocked &&
-    !(
-      sessionChannel === CHAT_SESSION_CHANNEL_WECHAT &&
-      (!wechatAuth.enabled ||
-        !wechatAuth.available ||
-        !wechatAuth.connected ||
-        !wechatPeerIdForConversation.trim())
-    );
+    !chatApiBlocked;
 
   const composerInputLocked =
     !isElectron ||
     gatewayStreaming ||
     !configLoaded ||
-    (!configIssueKey &&
-      (gatewayPhase !== "online" ||
-        chatApiBlocked ||
-        (sessionChannel === CHAT_SESSION_CHANNEL_WECHAT &&
-          (!wechatAuth.enabled ||
-            !wechatAuth.available ||
-            !wechatAuth.connected ||
-            !wechatPeerIdForConversation.trim()))));
+    (!configIssueKey && (gatewayPhase !== "online" || chatApiBlocked));
 
   /** Skill UI is local; keep it usable while waiting on gateway (matches `/` picker). Only lock while a reply streams. */
   const composerSkillUiLocked = gatewayStreaming;
@@ -1073,19 +977,12 @@ export default function ChatLabPage() {
     if (!configLoaded) return t("chatLab.configLoadingPlaceholder");
     if (
       !configIssueKey &&
-      (gatewayPhase === "checking" ||
-        gatewayPhase === "offline" ||
-        chatApiBlocked ||
-        (sessionChannel === CHAT_SESSION_CHANNEL_WECHAT &&
-          (!wechatAuth.enabled ||
-            !wechatAuth.available ||
-            !wechatAuth.connected ||
-            !wechatPeerIdForConversation.trim())))
+      (gatewayPhase === "checking" || gatewayPhase === "offline" || chatApiBlocked)
     ) {
       return t("chatLab.gatewayConnectingPlaceholder");
     }
     return t("chatLab.heroInputPlaceholder");
-  }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t, sessionChannel, wechatAuth.enabled, wechatAuth.available, wechatAuth.connected, wechatPeerIdForConversation]);
+  }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
 
   const commitUserMessageEdit = useCallback(
     async (messageId, nextRaw) => {
@@ -1094,21 +991,12 @@ export default function ChatLabPage() {
       if (!isElectron || !bridge?.startChatStream) return false;
       if (configIssueKey) return false;
       if (gatewayPhase !== "online" || chatApiBlocked) return false;
-      if (
-        sessionChannel === CHAT_SESSION_CHANNEL_WECHAT &&
-        (!wechatAuth.enabled ||
-          !wechatAuth.available ||
-          !wechatAuth.connected ||
-          !wechatPeerIdForConversation.trim())
-      ) {
-        return false;
-      }
 
       const prev = messagesRef.current;
       const idx = prev.findIndex((m) => m.id === messageId && m.role === "user");
       if (idx === -1) return false;
 
-      const sidAbort = activeStreamIdsRef.current.get(conversationId);
+      const sidAbort = activeStreamIdRef.current;
       if (sidAbort) {
         if (bridge?.abortChatStream) {
           try {
@@ -1119,7 +1007,7 @@ export default function ChatLabPage() {
         }
         resetGatewayStream(sidAbort);
       }
-      activeStreamIdsRef.current.delete(conversationId);
+      activeStreamIdRef.current = null;
       activeAssistantIdRef.current = null;
 
       const preservedCreated = prev[idx].createdAt;
@@ -1192,10 +1080,7 @@ export default function ChatLabPage() {
         })),
         { imageFallback: t("chatLab.chatUntitledImage") },
       );
-      upsertSession(conversationId, provisionalTitle || "…", persistableNext, {
-        channel: sessionChannel,
-        channelPeerId: wechatPeerIdForConversation,
-      });
+      upsertSession(conversationId, provisionalTitle || "…", persistableNext);
 
       const streamId = newId();
       beginGatewayStream({
@@ -1209,7 +1094,7 @@ export default function ChatLabPage() {
       setComposerAttachments([]);
       autoScrollRef.current = true;
 
-      activeStreamIdsRef.current.set(conversationId, streamId);
+      activeStreamIdRef.current = streamId;
       activeAssistantIdRef.current = assistantMsg.id;
 
       const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
@@ -1233,14 +1118,7 @@ export default function ChatLabPage() {
       }
 
       try {
-        await bridge.startChatStream({
-          streamId,
-          conversationId,
-          messages: outgoing,
-          composerSkill,
-          channel: sessionChannel,
-          wechatPeerId: wechatPeerIdForConversation || undefined,
-        });
+        await bridge.startChatStream({ streamId, conversationId, messages: outgoing, composerSkill });
       } catch (err) {
         resetGatewayStream(streamId);
         try {
@@ -1271,11 +1149,6 @@ export default function ChatLabPage() {
       gatewayPhase,
       isElectron,
       paramC,
-      sessionChannel,
-      wechatAuth.available,
-      wechatAuth.connected,
-      wechatAuth.enabled,
-      wechatPeerIdForConversation,
       resetGatewayStream,
       setSearchParams,
       t,
@@ -1367,10 +1240,7 @@ export default function ChatLabPage() {
         })),
         { imageFallback: t("chatLab.chatUntitledImage") },
       );
-      upsertSession(conversationId, provisionalTitle || "…", persistableNext, {
-        channel: sessionChannel,
-        channelPeerId: wechatPeerIdForConversation,
-      });
+      upsertSession(conversationId, provisionalTitle || "…", persistableNext);
 
       const streamId = newId();
       beginGatewayStream({
@@ -1380,11 +1250,12 @@ export default function ChatLabPage() {
       });
 
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setUserBubbleEnterMessageId(userMsg.id);
       onCommitted?.();
 
       autoScrollRef.current = true;
 
-      activeStreamIdsRef.current.set(conversationId, streamId);
+      activeStreamIdRef.current = streamId;
       activeAssistantIdRef.current = assistantMsg.id;
 
       const tailUserRows = buildGatewayPayloadRows([userMsg], { includeImageAttachments: true });
@@ -1407,14 +1278,7 @@ export default function ChatLabPage() {
       }
 
       try {
-        await bridge.startChatStream({
-          streamId,
-          conversationId,
-          messages: outgoing,
-          composerSkill,
-          channel: sessionChannel,
-          wechatPeerId: wechatPeerIdForConversation || undefined,
-        });
+        await bridge.startChatStream({ streamId, conversationId, messages: outgoing, composerSkill });
       } catch (err) {
         resetGatewayStream(streamId);
         try {
@@ -1448,7 +1312,6 @@ export default function ChatLabPage() {
   );
 
   const send = useCallback(async () => {
-    if (sessionChannel === CHAT_SESSION_CHANNEL_WECHAT && !wechatPeerIdForConversation.trim()) return;
     if (activeAssistantIdRef.current) return;
     if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
     if (gatewayStreaming) return;
@@ -1494,26 +1357,6 @@ export default function ChatLabPage() {
         setComposerAttachments([]);
       },
     });
-    if (sessionChannel === CHAT_SESSION_CHANNEL_WECHAT && wechatPeerIdForConversation.trim() && bridge?.wechatSendMessage) {
-      const reqId = `wechat-user:${conversationId}:${Date.now()}`;
-      const localMessageId = `wechat-local-user:${reqId}`;
-      setMessages((prev) => {
-        const hit = prev.find((m) => m.role === "user" && m.content === trimmed);
-        if (!hit) return prev;
-        return prev.map((m) => (m.id === hit.id ? { ...m, id: localMessageId } : m));
-      });
-      try {
-        await bridge.wechatSendMessage({
-          requestId: reqId,
-          conversationId,
-          peerId: wechatPeerIdForConversation.trim(),
-          text: trimmed,
-          localMessageId,
-        });
-      } catch {
-        /* keep UI flow alive even if outbound mirror fails */
-      }
-    }
   }, [
     bridge,
     chatApiBlocked,
@@ -1525,9 +1368,6 @@ export default function ChatLabPage() {
     gatewayStreaming,
     input,
     isElectron,
-    conversationId,
-    sessionChannel,
-    wechatPeerIdForConversation,
     submitNewUserTurn,
   ]);
 
@@ -1542,15 +1382,6 @@ export default function ChatLabPage() {
       if (!isElectron || !bridge?.startChatStream) return;
       if (configIssueKey) return;
       if (gatewayPhase !== "online" || chatApiBlocked) return;
-      if (
-        sessionChannel === CHAT_SESSION_CHANNEL_WECHAT &&
-        (!wechatAuth.enabled ||
-          !wechatAuth.available ||
-          !wechatAuth.connected ||
-          !wechatPeerIdForConversation.trim())
-      ) {
-        return;
-      }
 
       await submitNewUserTurn({
         trimmed,
@@ -1566,22 +1397,17 @@ export default function ChatLabPage() {
       gatewayPhase,
       gatewayStreaming,
       isElectron,
-      sessionChannel,
       submitNewUserTurn,
-      wechatAuth.available,
-      wechatAuth.connected,
-      wechatAuth.enabled,
-      wechatPeerIdForConversation,
     ],
   );
 
   const stop = useCallback(() => {
-    const sid = activeStreamIdsRef.current.get(conversationId);
+    const sid = activeStreamIdRef.current;
     if (!sid || !bridge?.abortChatStream) return;
     void bridge.abortChatStream(sid).catch(() => {
       /* ignore — the stream will emit `aborted` or `done` itself */
     });
-  }, [bridge, conversationId]);
+  }, [bridge]);
 
   const exitComposerLongTextMode = useCallback(() => {
     setComposerLongTextMode(false);
@@ -1729,6 +1555,29 @@ export default function ChatLabPage() {
     return () => window.clearTimeout(h);
   }, [composerAttachErrKey]);
 
+  const composerDataChars = useMemo(
+    () => composerAttachments.reduce((sum, a) => sum + a.dataUrl.length, 0),
+    [composerAttachments],
+  );
+
+  const contextUsageApprox = useMemo(() => {
+    const chars = estimateThreadCharBudget(messages, {
+      systemPromptLen: t("chatLab.systemPrompt").length,
+      inputLen: input.length + composerDataChars,
+    });
+    const tokens = approxTokensFromChars(chars);
+    const frac = tokens / CONTEXT_WINDOW_APPROX_TOKENS;
+    return { chars, tokens, frac };
+  }, [composerDataChars, input.length, messages, t]);
+
+  const contextMeterLines = useMemo(() => {
+    const pct = Math.round(Math.min(100, Math.max(0, contextUsageApprox.frac * 100)));
+    const windowK = Math.round(CONTEXT_WINDOW_APPROX_TOKENS / 1000);
+    const line1 = t("chatLab.contextMeterLine1", { pct });
+    const line2 = t("chatLab.contextMeterLine2", { n: contextUsageApprox.tokens, windowK });
+    return { line1, line2, pct, ariaSummary: `${line1}，${line2}` };
+  }, [contextUsageApprox.frac, contextUsageApprox.tokens, t]);
+
   const addComposerImageFiles = useCallback(
     /** @param {FileList | File[] | null | undefined} fileList */
     async (fileList) => {
@@ -1757,6 +1606,10 @@ export default function ChatLabPage() {
     },
     [composerInputLocked],
   );
+
+  const clearUserBubbleEnterAnim = useCallback((messageId) => {
+    setUserBubbleEnterMessageId((cur) => (cur === messageId ? null : cur));
+  }, []);
 
   const beginComposerEdit = useCallback((messageId, payload) => {
     setPendingEditMessageId(messageId);
@@ -1996,6 +1849,11 @@ export default function ChatLabPage() {
             ) : null}
           </div>
           <div className="chat-lab__shell-toolbar-end">
+            <ChatLabContextMeter
+              ratio={Math.min(1, contextUsageApprox.frac)}
+              ariaSummary={contextMeterLines.ariaSummary}
+              percentText={`${contextMeterLines.pct}%`}
+            />
             <button
               type="button"
               className={cn(
@@ -2015,6 +1873,34 @@ export default function ChatLabPage() {
             </button>
           </div>
         </div>
+        </div>
+        <div
+          ref={threadScrollTrackRef}
+          className={cn(
+            "chat-lab__thread-scroll",
+            "chat-lab__thread-scroll--outside",
+            messages.length === 0 && "chat-lab__thread-scroll--disabled",
+          )}
+          role="slider"
+          tabIndex={0}
+          aria-label={t("chatLab.title")}
+          aria-orientation="vertical"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(threadScrollRatio * 100)}
+          style={
+            {
+              "--chat-lab-thread-scroll-ratio": String(threadScrollRatio),
+            } /** @type {import("react").CSSProperties} */
+          }
+          onPointerDown={onThreadScrollTrackPointerDown}
+          onPointerMove={onThreadScrollTrackPointerMove}
+          onPointerUp={onThreadScrollTrackPointerUp}
+          onPointerCancel={onThreadScrollTrackPointerUp}
+          onKeyDown={onThreadScrollKeyDown}
+        >
+          <span className="chat-lab__thread-scroll-axis" aria-hidden />
+          <span className="chat-lab__thread-scroll-thumb" aria-hidden />
         </div>
       </div>
     </div>
@@ -2089,6 +1975,8 @@ export default function ChatLabPage() {
                   autoScrollRef={autoScrollRef}
                   gatewayStreaming={gatewayStreaming}
                   streamLocked={streamLocked}
+                  userBubbleEnterMessageId={userBubbleEnterMessageId}
+                  onUserBubbleEnterAnimEnd={clearUserBubbleEnterAnim}
                   onBeginUserEdit={beginComposerEdit}
                   onQuickReply={quickReplySend}
                   quickReplyDisabled={streamLocked || Boolean(pendingEditMessageId)}
@@ -2272,7 +2160,6 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
   tailBusy,
   tailBusyLabel,
 }) {
-  const streamTailOrdinalRef = useRef({ p: 0, h: {} });
   const toolMap = useMemo(() => new Map(toolRows.map((r) => [r.id, r])), [toolRows]);
   const activityMap = useMemo(() => new Map(activityRows.map((r) => [r.id, r])), [activityRows]);
 
@@ -2359,43 +2246,21 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
     return last;
   }, [renderParts]);
 
-  const lastTextPartIdx = useMemo(() => {
-    let last = -1;
-    renderParts.forEach((p, idx) => {
-      if (p.kind === "text" && String(p.body ?? "").trim()) last = idx;
-    });
-    return last;
-  }, [renderParts]);
-
   return (
     <div className="chat-lab__assistant-timeline">
       {renderParts.map((p, ri) => {
         if (p.kind === "text") {
           if (!String(p.body ?? "").trim()) return null;
           const src = normalizeLatexMathDelimitersForRemark(p.body);
-          const showStreamTailHere = ri === lastTextPartIdx;
-          const placement = showStreamTailHere ? getAssistantStreamTailPlacement(src) : null;
-          const mdForBlock =
-            showStreamTailHere && placement
-              ? mergeMarkdownComponentsWithStreamTail(
-                  mdComponents,
-                  placement,
-                  streamTailOrdinalRef,
-                  ChatStreamSparklerTail,
-                  streaming,
-                )
-              : mdComponents;
-          streamTailOrdinalRef.current = { p: 0, h: {} };
           return (
             <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--text chat-lab__md">
               <ReactMarkdown
                 remarkPlugins={CHAT_MD_REMARK_PLUGINS}
                 rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
-                components={mdForBlock}
+                components={mdComponents}
               >
                 {src}
               </ReactMarkdown>
-              {showStreamTailHere && !placement ? <ChatStreamSparklerTail active={streaming} /> : null}
             </div>
           );
         }
@@ -3341,6 +3206,8 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
  *   allowAssistantQuickReply: boolean;
  *   quickReplyDisabled: boolean;
  *   onQuickReply?: (text: string) => void | Promise<void>;
+ *   animateUserEnter?: boolean;
+ *   onUserEnterAnimEnd?: (messageId: string) => void;
  *   onBeginUserEdit: (
  *     messageId: string,
  *     payload: {
@@ -3355,12 +3222,23 @@ const MessageBubble = memo(function MessageBubble({
   t,
   locale,
   streamLocked,
+  animateUserEnter = false,
+  onUserEnterAnimEnd,
   allowAssistantQuickReply,
   quickReplyDisabled,
   onQuickReply,
   onBeginUserEdit,
 }) {
   const isUser = message.role === "user";
+  const shouldEnterAnim = isUser && animateUserEnter;
+  const handleUserEnterAnimEnd = useCallback(
+    /** @param {import("react").AnimationEvent<HTMLDivElement>} e */
+    (e) => {
+      if (e.animationName !== "chat-lab-user-msg-enter") return;
+      onUserEnterAnimEnd?.(message.id);
+    },
+    [message.id, onUserEnterAnimEnd],
+  );
   const timeline = Array.isArray(message.assistantTimeline) ? message.assistantTimeline : [];
   const interleavedAssistant = timeline.length > 0;
   const showTyping =
@@ -3439,22 +3317,6 @@ const MessageBubble = memo(function MessageBubble({
     () => normalizeLatexMathDelimitersForRemark(String(message.content ?? "")),
     [message.content],
   );
-
-  const streamTailOrdinalRef = useRef({ p: 0, h: {} });
-  const assistantStreamPlacement = useMemo(
-    () => getAssistantStreamTailPlacement(assistantMdSource),
-    [assistantMdSource],
-  );
-  const assistantMdComponents = useMemo(() => {
-    if (!assistantStreamPlacement) return mdComponents;
-    return mergeMarkdownComponentsWithStreamTail(
-      mdComponents,
-      assistantStreamPlacement,
-      streamTailOrdinalRef,
-      ChatStreamSparklerTail,
-      Boolean(message.streaming),
-    );
-  }, [assistantStreamPlacement, mdComponents, message.streaming]);
 
   const timeLabel =
     typeof message.createdAt === "number" ? formatMessageTimestamp(message.createdAt, locale) : "";
@@ -3598,16 +3460,14 @@ const MessageBubble = memo(function MessageBubble({
       />
     ) : null;
 
-  if (!isUser && message.content) {
-    streamTailOrdinalRef.current = { p: 0, h: {} };
-  }
-
   return (
     <div
       className={cn(
         "chat-lab__msg",
         isUser ? "chat-lab__msg--user" : "chat-lab__msg--assistant",
+        shouldEnterAnim && "chat-lab__msg--user-enter",
       )}
+      onAnimationEnd={shouldEnterAnim ? handleUserEnterAnimEnd : undefined}
     >
       {isUser && message.skillMeta ? (
         <div className="chat-lab__msg-skill-pill" title={`${message.skillMeta.emoji} ${message.skillMeta.label}`}>
@@ -3618,9 +3478,12 @@ const MessageBubble = memo(function MessageBubble({
         </div>
       ) : null}
       <article
-        className={cn("chat-lab__bubble", isUser && "chat-lab__bubble--user")}
+        className={cn("chat-lab__bubble", isUser && "chat-lab__bubble--user", shouldEnterAnim && "chat-lab__bubble--user-blur")}
         data-role={message.role}
       >
+        {shouldEnterAnim ? (
+          <span className="chat-lab__bubble-user-blur-veil" aria-hidden />
+        ) : null}
         {!isUser && !interleavedAssistant && toolRows.length > 0 ? (
           <ToolChainPanel rows={toolRows} t={t} streaming={Boolean(message.streaming)} />
         ) : null}
@@ -3674,18 +3537,13 @@ const MessageBubble = memo(function MessageBubble({
         ) : (
           <div className="chat-lab__md">
             {message.content ? (
-              <>
-                <ReactMarkdown
-                  remarkPlugins={CHAT_MD_REMARK_PLUGINS}
-                  rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
-                  components={assistantMdComponents}
-                >
-                  {assistantMdSource}
-                </ReactMarkdown>
-                {!assistantStreamPlacement ? (
-                  <ChatStreamSparklerTail active={Boolean(message.streaming)} />
-                ) : null}
-              </>
+              <ReactMarkdown
+                remarkPlugins={CHAT_MD_REMARK_PLUGINS}
+                rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
+                components={mdComponents}
+              >
+                {assistantMdSource}
+              </ReactMarkdown>
             ) : showTyping ? (
               <ChatStreamingIndicator label={t("chatLab.streaming")} />
             ) : !message.thinking &&
@@ -3805,6 +3663,8 @@ const MessageBubble = memo(function MessageBubble({
  *   autoScrollRef: import("react").MutableRefObject<boolean>;
  *   gatewayStreaming: boolean;
  *   streamLocked: boolean;
+ *   userBubbleEnterMessageId: string | null;
+ *   onUserBubbleEnterAnimEnd: (messageId: string) => void;
  *   onBeginUserEdit: (
  *     messageId: string,
  *     payload: {
@@ -3825,6 +3685,8 @@ function ChatLabVirtualMessageList({
   autoScrollRef,
   gatewayStreaming,
   streamLocked,
+  userBubbleEnterMessageId,
+  onUserBubbleEnterAnimEnd,
   onBeginUserEdit,
   onQuickReply,
   quickReplyDisabled,
@@ -3834,18 +3696,6 @@ function ChatLabVirtualMessageList({
 }) {
   const messagesEstRef = useRef(messages);
   messagesEstRef.current = messages;
-  const scrollFadeTimerRef = useRef(/** @type {number | null} */ (null));
-  const scrollbarDraggingRef = useRef(false);
-  const [scrollbarVisible, setScrollbarVisible] = useState(false);
-  const [scrollbarMetrics, setScrollbarMetrics] = useState(
-    /** @type {{ canScroll: boolean; top: number; height: number; thumbHeight: number; thumbTop: number }} */ ({
-      canScroll: false,
-      top: 0,
-      height: 0,
-      thumbHeight: 0,
-      thumbTop: 0,
-    }),
-  );
 
   const estimateSize = useCallback((index) => {
     const m = messagesEstRef.current[index];
@@ -3873,139 +3723,12 @@ function ChatLabVirtualMessageList({
   const vInstRef = useRef(rowVirtualizer);
   vInstRef.current = rowVirtualizer;
 
-  const syncScrollbarMetrics = useCallback(() => {
-    const el = messagesScrollRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const trackHeight = Math.max(0, Math.round(rect.height));
-    const scrollRange = el.scrollHeight - el.clientHeight;
-    const canScroll = Number.isFinite(scrollRange) && scrollRange > 1;
-    if (!canScroll || trackHeight <= 0) {
-      setScrollbarMetrics((prev) => {
-        if (!prev.canScroll && prev.top === Math.round(rect.top) && prev.height === trackHeight) return prev;
-        return {
-          canScroll: false,
-          top: Math.round(rect.top),
-          height: trackHeight,
-          thumbHeight: 0,
-          thumbTop: 0,
-        };
-      });
-      return;
-    }
-    const ratio = Math.min(1, Math.max(0, el.scrollTop / scrollRange));
-    const thumbMin = 36;
-    const thumbHeight = Math.min(trackHeight, Math.max(thumbMin, Math.round((el.clientHeight / el.scrollHeight) * trackHeight)));
-    const thumbTravel = Math.max(1, trackHeight - thumbHeight);
-    const thumbTop = Math.round(ratio * thumbTravel);
-    setScrollbarMetrics((prev) => {
-      const nextTop = Math.round(rect.top);
-      if (
-        prev.canScroll === true &&
-        prev.top === nextTop &&
-        prev.height === trackHeight &&
-        prev.thumbHeight === thumbHeight &&
-        prev.thumbTop === thumbTop
-      ) {
-        return prev;
-      }
-      return {
-        canScroll: true,
-        top: nextTop,
-        height: trackHeight,
-        thumbHeight,
-        thumbTop,
-      };
-    });
-  }, [messagesScrollRef]);
-
-  const scheduleScrollbarHide = useCallback((delayMs = 1400) => {
-    if (scrollFadeTimerRef.current != null) window.clearTimeout(scrollFadeTimerRef.current);
-    scrollFadeTimerRef.current = window.setTimeout(() => {
-      if (scrollbarDraggingRef.current) return;
-      setScrollbarVisible(false);
-      scrollFadeTimerRef.current = null;
-    }, delayMs);
-  }, []);
-
   const handleScroll = useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     autoScrollRef.current = distFromBottom < 80;
-    syncScrollbarMetrics();
-    setScrollbarVisible(true);
-    scheduleScrollbarHide();
-  }, [messagesScrollRef, autoScrollRef, scheduleScrollbarHide, syncScrollbarMetrics]);
-
-  useEffect(
-    () => () => {
-      if (scrollFadeTimerRef.current != null) window.clearTimeout(scrollFadeTimerRef.current);
-    },
-    [],
-  );
-
-  const onScrollbarPointerEnter = useCallback(() => {
-    setScrollbarVisible(true);
-    if (scrollFadeTimerRef.current != null) {
-      window.clearTimeout(scrollFadeTimerRef.current);
-      scrollFadeTimerRef.current = null;
-    }
-  }, []);
-
-  const onScrollbarPointerLeave = useCallback(() => {
-    if (scrollbarDraggingRef.current) return;
-    scheduleScrollbarHide();
-  }, [scheduleScrollbarHide]);
-
-  const onScrollbarThumbPointerDown = useCallback(
-    /** @param {import("react").PointerEvent<HTMLSpanElement>} e */
-    (e) => {
-      if (e.button !== 0) return;
-      const el = messagesScrollRef.current;
-      if (!el || !scrollbarMetrics.canScroll) return;
-      const scrollRange = el.scrollHeight - el.clientHeight;
-      const thumbTravel = Math.max(1, scrollbarMetrics.height - scrollbarMetrics.thumbHeight);
-      if (scrollRange <= 0 || thumbTravel <= 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      scrollbarDraggingRef.current = true;
-      setScrollbarVisible(true);
-      if (scrollFadeTimerRef.current != null) {
-        window.clearTimeout(scrollFadeTimerRef.current);
-        scrollFadeTimerRef.current = null;
-      }
-      const startY = e.clientY;
-      const startTop = scrollbarMetrics.thumbTop;
-      const onMove = (ev) => {
-        const dy = ev.clientY - startY;
-        const nextTop = Math.max(0, Math.min(thumbTravel, startTop + dy));
-        el.scrollTop = (nextTop / thumbTravel) * scrollRange;
-      };
-      const onUp = () => {
-        scrollbarDraggingRef.current = false;
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        scheduleScrollbarHide();
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-    },
-    [messagesScrollRef, scheduleScrollbarHide, scrollbarMetrics],
-  );
-
-  useLayoutEffect(() => {
-    const scrollEl = messagesScrollRef.current;
-    if (!scrollEl) return undefined;
-    syncScrollbarMetrics();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncScrollbarMetrics) : null;
-    ro?.observe(scrollEl);
-    window.addEventListener("resize", syncScrollbarMetrics);
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener("resize", syncScrollbarMetrics);
-    };
-  }, [messagesScrollRef, syncScrollbarMetrics]);
+  }, [messagesScrollRef, autoScrollRef]);
 
   /** Pin-to-bottom only when the transcript or stream phase changes — not on row height remeasure (e.g. tool panels). */
   useLayoutEffect(() => {
@@ -4014,80 +3737,58 @@ function ChatLabVirtualMessageList({
   }, [messages, gatewayStreaming, autoScrollRef]);
 
   return (
-    <>
+    <div
+      className="chat-lab__messages chat-lab__messages--virtual"
+      ref={messagesScrollRef}
+      onScroll={handleScroll}
+      role="log"
+      aria-live="polite"
+      aria-label={threadLabel}
+    >
       <div
-        className="chat-lab__messages chat-lab__messages--virtual"
-        ref={messagesScrollRef}
-        onScroll={handleScroll}
-        role="log"
-        aria-live="polite"
-        aria-label={threadLabel}
-      >
-        <div
-          className="chat-lab__messages-vtrack"
-          style={{
-            height: virtualTotal,
-            position: "relative",
-            flexShrink: 0,
-          }}
-        >
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const m = messages[virtualRow.index];
-            return (
-              <div
-                key={virtualRow.key}
-                data-index={virtualRow.index}
-                ref={rowVirtualizer.measureElement}
-                className="chat-lab__msg-vrow"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${virtualRow.start}px)`,
-                  ...(virtualRow.index < messages.length - 1 ? { paddingBottom: "0.85rem" } : {}),
-                }}
-              >
-                <MessageBubble
-                  message={m}
-                  t={t}
-                  locale={locale}
-                  streamLocked={streamLocked}
-                  allowAssistantQuickReply={
-                    virtualRow.index === messages.length - 1 && m.role === "assistant"
-                  }
-                  quickReplyDisabled={quickReplyDisabled}
-                  onQuickReply={onQuickReply}
-                  onBeginUserEdit={onBeginUserEdit}
-                />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <div
-        className={cn(
-          "chat-lab__viewport-scrollbar",
-          scrollbarVisible && scrollbarMetrics.canScroll && "chat-lab__viewport-scrollbar--show",
-          scrollbarMetrics.canScroll && "chat-lab__viewport-scrollbar--interactive",
-        )}
+        className="chat-lab__messages-vtrack"
         style={{
-          top: `${scrollbarMetrics.top}px`,
-          height: `${scrollbarMetrics.height}px`,
+          height: virtualTotal,
+          width: "100%",
+          position: "relative",
+          flexShrink: 0,
         }}
-        onPointerEnter={onScrollbarPointerEnter}
-        onPointerLeave={onScrollbarPointerLeave}
-        aria-hidden
       >
-        <span
-          className="chat-lab__viewport-scrollbar-thumb"
-          style={{
-            height: `${scrollbarMetrics.thumbHeight}px`,
-            transform: `translateY(${scrollbarMetrics.thumbTop}px)`,
-          }}
-          onPointerDown={onScrollbarThumbPointerDown}
-        />
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const m = messages[virtualRow.index];
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={rowVirtualizer.measureElement}
+              className="chat-lab__msg-vrow"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualRow.start}px)`,
+                ...(virtualRow.index < messages.length - 1 ? { paddingBottom: "0.85rem" } : {}),
+              }}
+            >
+              <MessageBubble
+                message={m}
+                t={t}
+                locale={locale}
+                streamLocked={streamLocked}
+                animateUserEnter={m.role === "user" && m.id === userBubbleEnterMessageId}
+                onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
+                allowAssistantQuickReply={
+                  virtualRow.index === messages.length - 1 && m.role === "assistant"
+                }
+                quickReplyDisabled={quickReplyDisabled}
+                onQuickReply={onQuickReply}
+                onBeginUserEdit={onBeginUserEdit}
+              />
+            </div>
+          );
+        })}
       </div>
-    </>
+    </div>
   );
 }
