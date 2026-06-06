@@ -1,4 +1,9 @@
 node_modules/
+
+# pnpm-lock.yaml is the repo lockfile; npm/yarn installs should not add competing locks
+package-lock.json
+yarn.lock
+
 tmp-pack/
 build/
 dist/
