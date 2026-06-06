@@ -3361,7 +3361,9 @@ code {
   --chat-lab-reveal-ease: cubic-bezier(0.33, 1, 0.68, 1);
   transform-origin: var(--chat-lab-reveal-origin, 50% 50%);
   will-change: transform, opacity;
-  animation: chat-lab-reveal-enter var(--chat-lab-reveal-duration) var(--chat-lab-reveal-ease) both;
+  /* forwards only — `both` pins opacity:0 before the animation runs; virtualized rows
+     that remount during streaming can miss animationend and stay invisible until remount. */
+  animation: chat-lab-reveal-enter var(--chat-lab-reveal-duration) var(--chat-lab-reveal-ease) forwards;
 }
 
 .chat-lab__msg--user-enter {
@@ -5301,6 +5303,13 @@ code {
   .chat-lab__reveal-enter,
   .chat-lab__reveal-blur-host > :not(.chat-lab__reveal-blur-veil),
   .chat-lab__reveal-blur-veil {
-    animation: none;
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  .chat-lab__reveal-blur-veil {
+    display: none !important;
   }
 }

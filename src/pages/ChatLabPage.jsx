@@ -3343,6 +3343,14 @@ const MessageBubble = memo(function MessageBubble({
     },
     [message.id, onUserEnterAnimEnd],
   );
+
+  useEffect(() => {
+    if (!shouldEnterAnim) return undefined;
+    const timer = window.setTimeout(() => {
+      onUserEnterAnimEnd?.(message.id);
+    }, 560);
+    return () => window.clearTimeout(timer);
+  }, [shouldEnterAnim, message.id, onUserEnterAnimEnd]);
   const timeline = Array.isArray(message.assistantTimeline) ? message.assistantTimeline : [];
   const interleavedAssistant = timeline.length > 0;
   const showTyping =
@@ -3948,6 +3956,12 @@ function ChatLabVirtualMessageList({
     if (!autoScrollRef.current || messages.length === 0) return;
     vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
   }, [messages, gatewayStreaming, autoScrollRef]);
+
+  /** User-bubble enter anim + streaming row growth need a remeasure or the first turn can clip. */
+  useLayoutEffect(() => {
+    if (messages.length === 0) return;
+    vInstRef.current.measure();
+  }, [messages.length, userBubbleEnterMessageId, gatewayStreaming]);
 
   return (
     <>
