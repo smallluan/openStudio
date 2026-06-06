@@ -124,6 +124,19 @@ function isFileMutatingTool(toolName) {
   );
 }
 
+/** Read / view tools that return a concrete workspace path (not session prose). */
+function isFileReadTool(toolName) {
+  const n = String(toolName).toLowerCase();
+  if (isFileMutatingTool(toolName)) return false;
+  return (
+    /\bread|file\s*system|filesystem|disk/i.test(n) ||
+    n.includes("read_file") ||
+    n.includes("readfile") ||
+    n.endsWith("_read") ||
+    n.includes("fetch_file")
+  );
+}
+
 /** @param {string} p */
 function filenameHint(p) {
   const s = p.replace(/\\/g, "/");
@@ -162,31 +175,15 @@ function looksLikeIntermediateScript(path) {
   return false;
 }
 
-/**
- * @param {string} path
- * @param {string} [content] assistant markdown around this path
- */
-function pathPriorityBonus(path, content) {
+/** @param {string} path */
+function pathPriorityBonus(path) {
   let bonus = 0;
   const ext = extOfFilename(path);
   if (DELIVERABLE_EXT.has(ext)) bonus += 4000;
   else if (TOOLING_EXT.has(ext)) bonus -= 2500;
   else bonus += 800;
-
   if (looksLikeIntermediateScript(path)) bonus -= 3500;
-
-  if (content) {
-    const norm = path.replace(/\\/g, "/");
-    const base = filenameHint(path);
-    const inBt =
-      content.includes(`\`${path}\``) ||
-      content.includes(`\`${norm}\``) ||
-      content.includes(`\`${base}\``);
-    if (inBt) bonus += 2500;
-    if (/最终|产物|生成|输出|结果|在这里|请看|👉|deliverable|output file|generated/i.test(content)) {
-      if (content.includes(base) || content.includes(norm) || content.includes(path)) bonus += 1200;
-    }
-  }
+  if (/^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("/")) bonus += 1500;
   return bonus;
 }
 
@@ -204,18 +201,31 @@ function filterIntermediateWhenDeliverablesExist(ranked) {
  * Same basename (e.g. relative vs absolute path) → keep highest-priority entry.
  * @param {Array<SessionArtifact & { priority: number }>} ranked priority-desc
  */
+function pathSpecificityScore(artifactPath) {
+  const p = String(artifactPath ?? "");
+  let score = p.length;
+  if (/^[a-zA-Z]:[\\/]/.test(p) || p.startsWith("/")) score += 10_000;
+  return score;
+}
+
 function dedupeArtifactsByLabel(ranked) {
-  /** @type {Set<string>} */
-  const seen = new Set();
-  /** @type {typeof ranked} */
-  const out = [];
+  /** @type {Map<string, (typeof ranked)[0]>} */
+  const byLabel = new Map();
   for (const a of ranked) {
     const key = filenameHint(a.path).toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(a);
+    const prev = byLabel.get(key);
+    if (!prev) {
+      byLabel.set(key, a);
+      continue;
+    }
+    const pick =
+      a.priority > prev.priority ||
+      (a.priority === prev.priority && pathSpecificityScore(a.path) > pathSpecificityScore(prev.path))
+        ? a
+        : prev;
+    byLabel.set(key, pick);
   }
-  return out;
+  return [...byLabel.values()].sort((a, b) => b.priority - a.priority || a.order - b.order);
 }
 
 /**
@@ -249,30 +259,21 @@ function upsertArtifact(byPath, p, meta) {
 export function collectSessionArtifacts(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return [];
 
-  const lastAssistantIdx = (() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m?.role === "assistant" && !m.streaming && !m.error) return i;
-    }
-    return -1;
-  })();
-
   /** @type {Map<string, SessionArtifact & { order: number; priority: number }>} keyed by normalizeArtifactPath().key */
   const byPath = new Map();
   let order = 0;
 
-  for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
-    const message = messages[msgIdx];
+  for (const message of messages) {
     if (!message || message.role !== "assistant" || message.streaming || message.error) continue;
     const messageId = String(message.id ?? "");
-    const content = String(message.content ?? "");
-    const isLastAssistant = msgIdx === lastAssistantIdx;
     const toolRows = Array.isArray(message.toolTrace) ? message.toolTrace : [];
 
     for (const row of toolRows) {
       const toolName = String(row.toolName ?? "");
-      if (!isFileMutatingTool(toolName)) continue;
-      const op = artifactOpFromTool(toolName);
+      const isWrite = isFileMutatingTool(toolName);
+      const isRead = isFileReadTool(toolName);
+      if (!isWrite && !isRead) continue;
+      const op = isRead ? "modified" : artifactOpFromTool(toolName);
       const seq = typeof row.seq === "number" ? row.seq : order;
       const args =
         row.args && typeof row.args === "object"
@@ -287,38 +288,24 @@ export function collectSessionArtifacts(messages) {
           messageId,
           seq,
           order,
-          priority: 6000 + pathPriorityBonus(fromArg, content),
+          priority: (isWrite ? 6000 : 5200) + pathPriorityBonus(fromArg),
         });
       }
 
-      for (const field of ["result", "partialResult", "summary", "label"]) {
-        const txt = typeof row[field] === "string" ? row[field] : "";
-        for (const p of scrapePathsFromText(txt)) {
-          order += 1;
-          upsertArtifact(byPath, p, {
-            op,
-            messageId,
-            seq,
-            order,
-            priority: 2000 + pathPriorityBonus(p),
-          });
+      if (isWrite) {
+        for (const field of ["result", "partialResult", "summary", "label"]) {
+          const txt = typeof row[field] === "string" ? row[field] : "";
+          for (const p of scrapePathsFromText(txt)) {
+            order += 1;
+            upsertArtifact(byPath, p, {
+              op,
+              messageId,
+              seq,
+              order,
+              priority: 2000 + pathPriorityBonus(p),
+            });
+          }
         }
-      }
-    }
-
-    if (content.trim()) {
-      const prosePaths = scrapePathsFromText(content);
-      for (const p of prosePaths) {
-        order += 1;
-        let prosePriority = isLastAssistant ? 8000 : 3500;
-        prosePriority += pathPriorityBonus(p, content);
-        upsertArtifact(byPath, p, {
-          op: "created",
-          messageId,
-          seq: order,
-          order,
-          priority: prosePriority,
-        });
       }
     }
   }

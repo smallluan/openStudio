@@ -3922,49 +3922,6 @@ code {
   border-color: color-mix(in srgb, var(--os-accent) 24%, var(--border));
 }
 
-.chat-lab__msg-workspace-preview {
-  margin-top: 0.42rem;
-  padding: 0 0.06rem;
-}
-
-.chat-lab__workspace-preview-btn {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.5rem;
-  max-width: 100%;
-  padding: 0.38rem 0.72rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--os-accent) 38%, var(--os-border));
-  background: color-mix(in srgb, var(--os-accent) 10%, var(--os-bg-elevated));
-  color: var(--os-text, var(--text));
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: left;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.chat-lab__workspace-preview-btn:hover {
-  background: color-mix(in srgb, var(--os-accent) 18%, var(--os-bg-elevated));
-  border-color: color-mix(in srgb, var(--os-accent) 55%, var(--os-border));
-}
-
-.chat-lab__workspace-preview-btn__label {
-  flex-shrink: 0;
-}
-
-.chat-lab__workspace-preview-btn__file {
-  font-weight: 500;
-  font-size: 0.74rem;
-  max-width: min(20rem, 100%);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .chat-lab__msg-footer {
   display: flex;
   align-items: center;

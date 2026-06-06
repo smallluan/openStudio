@@ -1,7 +1,6 @@
 import { useMemo } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import "../../chat/chatLabPrismSetup.js";
+import ChatLabMarkdownBody from "./ChatLabMarkdownBody.jsx";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light.js";
 import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light.js";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js";
@@ -12,12 +11,9 @@ import {
   svgToHtmlDocument,
   wrapLooseHtmlFragmentForSrcDoc,
 } from "../../chat/chatLabDocumentPreview.js";
-import { CHAT_MD_REHYPE_PLUGINS } from "../../chat/chatLabRehypePlugins.js";
 import { useTheme } from "../../context/ThemeContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
-
-const CHAT_MD_REMARK_PLUGINS = [remarkGfm];
 
 /**
  * @param {{
@@ -150,11 +146,7 @@ export default function ChatLabArtifactPreviewPane({
             )}
           </div>
         ) : previewKind === "markdown" ? (
-          <div className="chat-lab-artifact-preview__md chat-lab__md px-3 py-2">
-            <ReactMarkdown remarkPlugins={CHAT_MD_REMARK_PLUGINS} rehypePlugins={CHAT_MD_REHYPE_PLUGINS}>
-              {sourceText}
-            </ReactMarkdown>
-          </div>
+          <ChatLabMarkdownBody source={sourceText} className="chat-lab-artifact-preview__md px-3 py-2" />
         ) : previewKind === "html" ? (
           <iframe
             ref={iframeRef}

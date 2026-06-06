@@ -225,9 +225,13 @@ export function ChatLabPreviewProvider({ children }) {
         return;
       }
       if (built.blobUrl) artifactBlobUrlsRef.current.add(built.blobUrl);
+      const resolvedPath = String(built.path ?? path).trim() || path;
+      const filesWithResolved = files.map((f) =>
+        f.path === path ? { ...f, path: resolvedPath, label: f.label || resolvedPath.split(/[/\\]/).pop() || f.label } : f,
+      );
       setArtifactsPanel({
-        files,
-        selectedPath: path,
+        files: filesWithResolved,
+        selectedPath: resolvedPath,
         viewMode,
         loading: false,
         error: null,

@@ -59,7 +59,6 @@ import {
 } from "../context/ChatLabPreviewContext.jsx";
 import { lastHtmlFenceAsSrcDocDocument, previewKindFromHref } from "../chat/chatLabDocumentPreview.js";
 import { collectSessionArtifacts } from "../chat/chatLabSessionArtifacts.js";
-import { pickPrimaryWorkspacePreviewCandidate } from "../chat/chatLabWorkspacePreviewCandidates.js";
 import ChatLabArtifactsBar from "../components/chat-lab/ChatLabArtifactsBar.jsx";
 import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
 import {
@@ -3139,22 +3138,6 @@ const MessageBubble = memo(function MessageBubble({
 
   const previewApi = useContext(ChatLabPreviewContext);
 
-  const workspacePreviewTarget = useMemo(() => {
-    if (isUser || message.streaming || message.error) return null;
-    if (lastHtmlFenceAsSrcDocDocument(String(message.content ?? ""))) return null;
-    return pickPrimaryWorkspacePreviewCandidate(message);
-  }, [isUser, message]);
-
-  const workspaceOpensWithSystemApp = useMemo(() => {
-    const p = String(workspacePreviewTarget?.path ?? "").trim();
-    return /\.(?:pptx|ppt|xlsx|xls)$/i.test(p);
-  }, [workspacePreviewTarget?.path]);
-
-  const handleWorkspacePreviewClick = useCallback(() => {
-    if (!previewApi?.openFromWorkspacePath || !workspacePreviewTarget) return;
-    void previewApi.openFromWorkspacePath(workspacePreviewTarget.path, workspacePreviewTarget.label);
-  }, [previewApi, workspacePreviewTarget]);
-
   const mdComponents = useMemo(
     () => ({
       ...createChatLabMarkdownComponents(t),
@@ -3443,22 +3426,6 @@ const MessageBubble = memo(function MessageBubble({
           </div>
         )}
       </article>
-      {!isUser && !message.streaming && !message.error && workspacePreviewTarget ? (
-        <div className="chat-lab__msg-workspace-preview">
-          <button
-            type="button"
-            className="chat-lab__workspace-preview-btn"
-            onClick={handleWorkspacePreviewClick}
-          >
-            <span className="chat-lab__workspace-preview-btn__label">
-              {t(workspaceOpensWithSystemApp ? "chatLab.previewClickToOpenLocally" : "chatLab.previewClickToPreview")}
-            </span>
-            <span className="chat-lab__workspace-preview-btn__file muted" title={workspacePreviewTarget.path}>
-              {workspacePreviewTarget.label}
-            </span>
-          </button>
-        </div>
-      ) : null}
       {isUser || !message.streaming ? (
         <div
           className={cn(
