@@ -10,6 +10,12 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const { resolveOpenClawSpawnOptions } = require("../lib/openclaw-bundle-paths.cjs");
+const { ensureDevGatewayAuthToken } = require("../lib/sync-openclaw-agent-from-studio.cjs");
+
+const tokenPrep = ensureDevGatewayAuthToken();
+if (tokenPrep.ok && tokenPrep.created) {
+  console.log("[run-openclaw-gateway] persisted dev gateway auth token in ~/.openclaw-dev/openclaw.json");
+}
 
 const forwardArgs = process.argv.slice(2);
 if (forwardArgs.length === 0) {
