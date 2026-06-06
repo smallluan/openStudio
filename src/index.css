@@ -3183,56 +3183,6 @@ code {
   transition: height 0.18s ease, padding-top 0.18s ease;
 }
 
-.chat-lab__thread-scroll {
-  position: relative;
-  flex: 0 0 22px;
-  width: 22px;
-  align-self: stretch;
-  border: 1px solid color-mix(in srgb, var(--os-border) 62%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--os-bg-subtle) 90%, transparent);
-  cursor: ns-resize;
-  user-select: none;
-  touch-action: none;
-  outline: none;
-}
-
-.chat-lab__thread-scroll--outside {
-  margin-block: 0.16rem;
-}
-
-.chat-lab__thread-scroll:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--os-accent) 45%, transparent);
-}
-
-.chat-lab__thread-scroll--disabled {
-  opacity: 0.42;
-}
-
-.chat-lab__thread-scroll-axis {
-  position: absolute;
-  left: 50%;
-  top: 6px;
-  bottom: 6px;
-  width: 1.5px;
-  border-radius: 999px;
-  transform: translateX(-50%);
-  background: color-mix(in srgb, var(--os-border) 88%, transparent);
-}
-
-.chat-lab__thread-scroll-thumb {
-  position: absolute;
-  left: 50%;
-  top: calc(var(--chat-lab-thread-scroll-ratio, 1) * (100% - 16px) + 8px);
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--os-border) 72%, transparent);
-  background: var(--os-bg-panel);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
-  transform: translate(-50%, -50%);
-}
-
 .chat-lab__shell-textarea:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -3584,6 +3534,44 @@ code {
   width: 100%;
 }
 
+.chat-lab__messages::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-lab__viewport-scrollbar {
+  position: fixed;
+  right: 4px;
+  width: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 40;
+}
+
+.chat-lab__viewport-scrollbar--show {
+  opacity: 1;
+}
+
+.chat-lab__viewport-scrollbar--interactive {
+  pointer-events: auto;
+}
+
+.chat-lab__viewport-scrollbar-thumb {
+  display: block;
+  width: 6px;
+  margin-left: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--os-scrollbar-thumb) 64%, transparent);
+  transition: background 0.2s ease, transform 0.05s linear, width 0.12s ease, margin-left 0.12s ease;
+  cursor: ns-resize;
+}
+
+.chat-lab__viewport-scrollbar--show:hover .chat-lab__viewport-scrollbar-thumb {
+  background: color-mix(in srgb, var(--os-scrollbar-thumb) 78%, transparent);
+  width: 8px;
+  margin-left: 1px;
+}
+
 /**
  * Virtual rows wrap each bubble; parent must be flex column so `.chat-lab__msg--user`
  * `align-self: flex-end` works (same as when bubbles were direct flex children of `.chat-lab__messages`).
@@ -3591,10 +3579,6 @@ code {
 .chat-lab__msg-vrow {
   display: flex;
   flex-direction: column;
-}
-
-.chat-lab__messages::-webkit-scrollbar {
-  display: none;
 }
 
 .chat-lab__empty {

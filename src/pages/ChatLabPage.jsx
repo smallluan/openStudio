@@ -376,62 +376,6 @@ export default function ChatLabPage() {
   const messagesRef = useRef(messages);
   const messagesScrollRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const autoScrollRef = useRef(true);
-  const threadScrollTrackRef = useRef(/** @type {HTMLDivElement | null} */ (null));
-  const threadScrollDraggingRef = useRef(false);
-  const [threadScrollRatio, setThreadScrollRatio] = useState(1);
-
-  const updateThreadScrollRatio = useCallback(() => {
-    const el = messagesScrollRef.current;
-    if (!el) {
-      setThreadScrollRatio(1);
-      return;
-    }
-    const max = el.scrollHeight - el.clientHeight;
-    if (!Number.isFinite(max) || max <= 0) {
-      setThreadScrollRatio(1);
-      return;
-    }
-    const ratio = Math.min(1, Math.max(0, el.scrollTop / max));
-    setThreadScrollRatio(ratio);
-  }, []);
-
-  const setThreadScrollByClientY = useCallback(
-    /** @param {number} clientY */
-    (clientY) => {
-      const track = threadScrollTrackRef.current;
-      const el = messagesScrollRef.current;
-      if (!track || !el) return;
-      const rect = track.getBoundingClientRect();
-      if (rect.height <= 0) return;
-      const ratio = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
-      const max = el.scrollHeight - el.clientHeight;
-      if (max <= 0) {
-        setThreadScrollRatio(1);
-        return;
-      }
-      el.scrollTop = ratio * max;
-      setThreadScrollRatio(ratio);
-      autoScrollRef.current = ratio >= 0.98;
-    },
-    [],
-  );
-
-  const nudgeThreadScroll = useCallback(
-    /** @param {number} deltaPx */
-    (deltaPx) => {
-      const el = messagesScrollRef.current;
-      if (!el) return;
-      const max = el.scrollHeight - el.clientHeight;
-      if (max <= 0) {
-        setThreadScrollRatio(1);
-        return;
-      }
-      el.scrollTop = Math.max(0, Math.min(max, el.scrollTop + deltaPx));
-      updateThreadScrollRatio();
-      autoScrollRef.current = el.scrollTop >= max - 24;
-    },
-    [updateThreadScrollRatio],
-  );
 
   const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
   const gatewaySliceForConv = useGatewayStreamSlice(conversationId);
@@ -454,93 +398,6 @@ export default function ChatLabPage() {
     composerResizeDraggingRef.current = false;
     setComposerResizeStripHover(false);
   }, [conversationId]);
-
-  useEffect(() => {
-    const el = messagesScrollRef.current;
-    if (!el) return undefined;
-    updateThreadScrollRatio();
-    el.addEventListener("scroll", updateThreadScrollRatio, { passive: true });
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateThreadScrollRatio) : null;
-    ro?.observe(el);
-    window.addEventListener("resize", updateThreadScrollRatio);
-    return () => {
-      el.removeEventListener("scroll", updateThreadScrollRatio);
-      ro?.disconnect();
-      window.removeEventListener("resize", updateThreadScrollRatio);
-    };
-  }, [conversationId, updateThreadScrollRatio]);
-
-  useEffect(() => {
-    const raf = window.requestAnimationFrame(updateThreadScrollRatio);
-    return () => window.cancelAnimationFrame(raf);
-  }, [messages.length, gatewayStreaming, updateThreadScrollRatio]);
-
-  const onThreadScrollTrackPointerDown = useCallback(
-    /** @param {import("react").PointerEvent<HTMLDivElement>} e */
-    (e) => {
-      if (messages.length === 0) return;
-      if (e.button !== 0) return;
-      e.preventDefault();
-      threadScrollDraggingRef.current = true;
-      e.currentTarget.setPointerCapture?.(e.pointerId);
-      setThreadScrollByClientY(e.clientY);
-    },
-    [messages.length, setThreadScrollByClientY],
-  );
-
-  const onThreadScrollTrackPointerMove = useCallback(
-    /** @param {import("react").PointerEvent<HTMLDivElement>} e */
-    (e) => {
-      if (!threadScrollDraggingRef.current) return;
-      setThreadScrollByClientY(e.clientY);
-    },
-    [setThreadScrollByClientY],
-  );
-
-  const onThreadScrollTrackPointerUp = useCallback(
-    /** @param {import("react").PointerEvent<HTMLDivElement>} e */
-    (e) => {
-      if (!threadScrollDraggingRef.current) return;
-      threadScrollDraggingRef.current = false;
-      try {
-        e.currentTarget.releasePointerCapture?.(e.pointerId);
-      } catch {
-        /* ignore */
-      }
-    },
-    [],
-  );
-
-  const onThreadScrollKeyDown = useCallback(
-    /** @param {import("react").KeyboardEvent<HTMLDivElement>} e */
-    (e) => {
-      if (messages.length === 0) return;
-      const el = messagesScrollRef.current;
-      if (!el) return;
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        nudgeThreadScroll(-72);
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        nudgeThreadScroll(72);
-      } else if (e.key === "PageUp") {
-        e.preventDefault();
-        nudgeThreadScroll(-Math.max(160, Math.round(el.clientHeight * 0.65)));
-      } else if (e.key === "PageDown") {
-        e.preventDefault();
-        nudgeThreadScroll(Math.max(160, Math.round(el.clientHeight * 0.65)));
-      } else if (e.key === "Home") {
-        e.preventDefault();
-        el.scrollTop = 0;
-        updateThreadScrollRatio();
-      } else if (e.key === "End") {
-        e.preventDefault();
-        el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
-        updateThreadScrollRatio();
-      }
-    },
-    [messages.length, nudgeThreadScroll, updateThreadScrollRatio],
-  );
 
   const composerSnapPx = useMemo(() => Math.round(composerMaxPx * 0.72), [composerMaxPx]);
 
@@ -1873,34 +1730,6 @@ export default function ChatLabPage() {
             </button>
           </div>
         </div>
-        </div>
-        <div
-          ref={threadScrollTrackRef}
-          className={cn(
-            "chat-lab__thread-scroll",
-            "chat-lab__thread-scroll--outside",
-            messages.length === 0 && "chat-lab__thread-scroll--disabled",
-          )}
-          role="slider"
-          tabIndex={0}
-          aria-label={t("chatLab.title")}
-          aria-orientation="vertical"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(threadScrollRatio * 100)}
-          style={
-            {
-              "--chat-lab-thread-scroll-ratio": String(threadScrollRatio),
-            } /** @type {import("react").CSSProperties} */
-          }
-          onPointerDown={onThreadScrollTrackPointerDown}
-          onPointerMove={onThreadScrollTrackPointerMove}
-          onPointerUp={onThreadScrollTrackPointerUp}
-          onPointerCancel={onThreadScrollTrackPointerUp}
-          onKeyDown={onThreadScrollKeyDown}
-        >
-          <span className="chat-lab__thread-scroll-axis" aria-hidden />
-          <span className="chat-lab__thread-scroll-thumb" aria-hidden />
         </div>
       </div>
     </div>
@@ -3696,6 +3525,18 @@ function ChatLabVirtualMessageList({
 }) {
   const messagesEstRef = useRef(messages);
   messagesEstRef.current = messages;
+  const scrollFadeTimerRef = useRef(/** @type {number | null} */ (null));
+  const scrollbarDraggingRef = useRef(false);
+  const [scrollbarVisible, setScrollbarVisible] = useState(false);
+  const [scrollbarMetrics, setScrollbarMetrics] = useState(
+    /** @type {{ canScroll: boolean; top: number; height: number; thumbHeight: number; thumbTop: number }} */ ({
+      canScroll: false,
+      top: 0,
+      height: 0,
+      thumbHeight: 0,
+      thumbTop: 0,
+    }),
+  );
 
   const estimateSize = useCallback((index) => {
     const m = messagesEstRef.current[index];
@@ -3723,12 +3564,142 @@ function ChatLabVirtualMessageList({
   const vInstRef = useRef(rowVirtualizer);
   vInstRef.current = rowVirtualizer;
 
+  const syncScrollbarMetrics = useCallback(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const trackHeight = Math.max(0, Math.round(rect.height));
+    const scrollRange = el.scrollHeight - el.clientHeight;
+    const canScroll = Number.isFinite(scrollRange) && scrollRange > 1;
+    if (!canScroll || trackHeight <= 0) {
+      setScrollbarMetrics((prev) => {
+        if (!prev.canScroll && prev.top === Math.round(rect.top) && prev.height === trackHeight) return prev;
+        return {
+          canScroll: false,
+          top: Math.round(rect.top),
+          height: trackHeight,
+          thumbHeight: 0,
+          thumbTop: 0,
+        };
+      });
+      return;
+    }
+    const ratio = Math.min(1, Math.max(0, el.scrollTop / scrollRange));
+    const thumbMin = 36;
+    const thumbHeight = Math.min(
+      trackHeight,
+      Math.max(thumbMin, Math.round((el.clientHeight / el.scrollHeight) * trackHeight)),
+    );
+    const thumbTravel = Math.max(1, trackHeight - thumbHeight);
+    const thumbTop = Math.round(ratio * thumbTravel);
+    setScrollbarMetrics((prev) => {
+      const nextTop = Math.round(rect.top);
+      if (
+        prev.canScroll === true &&
+        prev.top === nextTop &&
+        prev.height === trackHeight &&
+        prev.thumbHeight === thumbHeight &&
+        prev.thumbTop === thumbTop
+      ) {
+        return prev;
+      }
+      return {
+        canScroll: true,
+        top: nextTop,
+        height: trackHeight,
+        thumbHeight,
+        thumbTop,
+      };
+    });
+  }, [messagesScrollRef]);
+
+  const scheduleScrollbarHide = useCallback((delayMs = 1400) => {
+    if (scrollFadeTimerRef.current != null) window.clearTimeout(scrollFadeTimerRef.current);
+    scrollFadeTimerRef.current = window.setTimeout(() => {
+      if (scrollbarDraggingRef.current) return;
+      setScrollbarVisible(false);
+      scrollFadeTimerRef.current = null;
+    }, delayMs);
+  }, []);
+
   const handleScroll = useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     autoScrollRef.current = distFromBottom < 80;
-  }, [messagesScrollRef, autoScrollRef]);
+    syncScrollbarMetrics();
+    setScrollbarVisible(true);
+    scheduleScrollbarHide();
+  }, [messagesScrollRef, autoScrollRef, scheduleScrollbarHide, syncScrollbarMetrics]);
+
+  useEffect(
+    () => () => {
+      if (scrollFadeTimerRef.current != null) window.clearTimeout(scrollFadeTimerRef.current);
+    },
+    [],
+  );
+
+  const onScrollbarPointerEnter = useCallback(() => {
+    setScrollbarVisible(true);
+    if (scrollFadeTimerRef.current != null) {
+      window.clearTimeout(scrollFadeTimerRef.current);
+      scrollFadeTimerRef.current = null;
+    }
+  }, []);
+
+  const onScrollbarPointerLeave = useCallback(() => {
+    if (scrollbarDraggingRef.current) return;
+    scheduleScrollbarHide();
+  }, [scheduleScrollbarHide]);
+
+  const onScrollbarThumbPointerDown = useCallback(
+    /** @param {import("react").PointerEvent<HTMLSpanElement>} e */
+    (e) => {
+      if (e.button !== 0) return;
+      const el = messagesScrollRef.current;
+      if (!el || !scrollbarMetrics.canScroll) return;
+      const scrollRange = el.scrollHeight - el.clientHeight;
+      const thumbTravel = Math.max(1, scrollbarMetrics.height - scrollbarMetrics.thumbHeight);
+      if (scrollRange <= 0 || thumbTravel <= 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      scrollbarDraggingRef.current = true;
+      setScrollbarVisible(true);
+      if (scrollFadeTimerRef.current != null) {
+        window.clearTimeout(scrollFadeTimerRef.current);
+        scrollFadeTimerRef.current = null;
+      }
+      const startY = e.clientY;
+      const startTop = scrollbarMetrics.thumbTop;
+      const onMove = (ev) => {
+        const dy = ev.clientY - startY;
+        const nextTop = Math.max(0, Math.min(thumbTravel, startTop + dy));
+        el.scrollTop = (nextTop / thumbTravel) * scrollRange;
+      };
+      const onUp = () => {
+        scrollbarDraggingRef.current = false;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        scheduleScrollbarHide();
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [messagesScrollRef, scheduleScrollbarHide, scrollbarMetrics],
+  );
+
+  useLayoutEffect(() => {
+    const scrollEl = messagesScrollRef.current;
+    if (!scrollEl) return undefined;
+    syncScrollbarMetrics();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncScrollbarMetrics) : null;
+    ro?.observe(scrollEl);
+    window.addEventListener("resize", syncScrollbarMetrics);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", syncScrollbarMetrics);
+    };
+  }, [messagesScrollRef, syncScrollbarMetrics]);
 
   /** Pin-to-bottom only when the transcript or stream phase changes — not on row height remeasure (e.g. tool panels). */
   useLayoutEffect(() => {
@@ -3737,58 +3708,83 @@ function ChatLabVirtualMessageList({
   }, [messages, gatewayStreaming, autoScrollRef]);
 
   return (
-    <div
-      className="chat-lab__messages chat-lab__messages--virtual"
-      ref={messagesScrollRef}
-      onScroll={handleScroll}
-      role="log"
-      aria-live="polite"
-      aria-label={threadLabel}
-    >
+    <>
       <div
-        className="chat-lab__messages-vtrack"
-        style={{
-          height: virtualTotal,
-          width: "100%",
-          position: "relative",
-          flexShrink: 0,
-        }}
+        className="chat-lab__messages chat-lab__messages--virtual"
+        ref={messagesScrollRef}
+        onScroll={handleScroll}
+        role="log"
+        aria-live="polite"
+        aria-label={threadLabel}
       >
-        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-          const m = messages[virtualRow.index];
-          return (
-            <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              ref={rowVirtualizer.measureElement}
-              className="chat-lab__msg-vrow"
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${virtualRow.start}px)`,
-                ...(virtualRow.index < messages.length - 1 ? { paddingBottom: "0.85rem" } : {}),
-              }}
-            >
-              <MessageBubble
-                message={m}
-                t={t}
-                locale={locale}
-                streamLocked={streamLocked}
-                animateUserEnter={m.role === "user" && m.id === userBubbleEnterMessageId}
-                onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
-                allowAssistantQuickReply={
-                  virtualRow.index === messages.length - 1 && m.role === "assistant"
-                }
-                quickReplyDisabled={quickReplyDisabled}
-                onQuickReply={onQuickReply}
-                onBeginUserEdit={onBeginUserEdit}
-              />
-            </div>
-          );
-        })}
+        <div
+          className="chat-lab__messages-vtrack"
+          style={{
+            height: virtualTotal,
+            width: "100%",
+            position: "relative",
+            flexShrink: 0,
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const m = messages[virtualRow.index];
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                ref={rowVirtualizer.measureElement}
+                className="chat-lab__msg-vrow"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualRow.start}px)`,
+                  ...(virtualRow.index < messages.length - 1 ? { paddingBottom: "0.85rem" } : {}),
+                }}
+              >
+                <MessageBubble
+                  message={m}
+                  t={t}
+                  locale={locale}
+                  streamLocked={streamLocked}
+                  animateUserEnter={m.role === "user" && m.id === userBubbleEnterMessageId}
+                  onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
+                  allowAssistantQuickReply={
+                    virtualRow.index === messages.length - 1 && m.role === "assistant"
+                  }
+                  quickReplyDisabled={quickReplyDisabled}
+                  onQuickReply={onQuickReply}
+                  onBeginUserEdit={onBeginUserEdit}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+      <div
+        className={cn(
+          "chat-lab__viewport-scrollbar",
+          scrollbarVisible && scrollbarMetrics.canScroll && "chat-lab__viewport-scrollbar--show",
+          scrollbarMetrics.canScroll && "chat-lab__viewport-scrollbar--interactive",
+        )}
+        style={{
+          top: `${scrollbarMetrics.top}px`,
+          height: `${scrollbarMetrics.height}px`,
+        }}
+        onPointerEnter={onScrollbarPointerEnter}
+        onPointerLeave={onScrollbarPointerLeave}
+        aria-hidden
+      >
+        <span
+          className="chat-lab__viewport-scrollbar-thumb"
+          style={{
+            height: `${scrollbarMetrics.thumbHeight}px`,
+            transform: `translateY(${scrollbarMetrics.thumbTop}px)`,
+          }}
+          onPointerDown={onScrollbarThumbPointerDown}
+        />
+      </div>
+    </>
   );
 }
