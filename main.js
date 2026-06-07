@@ -21,6 +21,7 @@ const {
   acquireGatewaySession,
   hydrateGatewayChatPrep,
   prewarmStudioGatewaySessions,
+  prewarmGatewaySessionKeys,
 } = require("./lib/openclaw-gateway-session.cjs");
 const {
   syncOpenClawAgentFromStudioConfig,
@@ -829,6 +830,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("studio:prewarmStudioGatewaySessions", async (_event, payload) => {
     const raw = Array.isArray(payload?.conversationIds) ? payload.conversationIds : [];
+    const agentKeysRaw = Array.isArray(payload?.agentSessionKeys) ? payload.agentSessionKeys : [];
     const max = Math.min(Math.max(Number(payload?.max) || 12, 1), 24);
     /** @type {string[]} */
     const ids = [];
@@ -841,7 +843,18 @@ app.whenReady().then(async () => {
       ids.push(t);
       if (ids.length >= max) break;
     }
-    if (ids.length === 0) return { ok: true, skipped: "empty" };
+    /** @type {string[]} */
+    const agentSessionKeys = [];
+    const seenKeys = new Set();
+    for (const x of agentKeysRaw) {
+      if (typeof x !== "string" || !x.trim()) continue;
+      const t = x.trim();
+      if (seenKeys.has(t)) continue;
+      seenKeys.add(t);
+      agentSessionKeys.push(t);
+      if (agentSessionKeys.length >= 32) break;
+    }
+    if (ids.length === 0 && agentSessionKeys.length === 0) return { ok: true, skipped: "empty" };
     if (!userConfigStore) return { ok: false, message: "config_unready" };
     try {
       const cfg = userConfigStore.readRaw();
@@ -851,8 +864,14 @@ app.whenReady().then(async () => {
       const timer = setTimeout(() => ac.abort(), STUDIO_PREWARM_BUDGET_MS);
       try {
         const urgentFirst = Boolean(payload?.urgentFirst);
-        await prewarmStudioGatewaySessions(cfg, ids, ac.signal, { urgentFirst });
-        return { ok: true, warmed: ids.length };
+        const urgent = Boolean(payload?.urgent);
+        if (ids.length) {
+          await prewarmStudioGatewaySessions(cfg, ids, ac.signal, { urgentFirst });
+        }
+        if (agentSessionKeys.length) {
+          await prewarmGatewaySessionKeys(cfg, agentSessionKeys, ac.signal, { urgent: urgent || urgentFirst });
+        }
+        return { ok: true, warmed: ids.length, agentSessions: agentSessionKeys.length };
       } finally {
         clearTimeout(timer);
       }
@@ -989,6 +1008,18 @@ app.whenReady().then(async () => {
           gatewayAgentId || (agentSessionKey ? parseAgentIdFromSessionKey(agentSessionKey) : "");
         const bootstrapFromDisk = routedAgentId ? readAgentBootstrapForChat(routedAgentId, cfg) : "";
         const outboundMessages = withAgentSoulSystem(messages, bootstrapFromDisk);
+        const contextEmbedMode =
+          typeof payload?.contextEmbedMode === "string" ? payload.contextEmbedMode.trim() : "full";
+        const threadSummaryPrefix =
+          typeof payload?.threadSummaryPrefix === "string" ? payload.threadSummaryPrefix : "";
+        const streamOptsBase = {
+          composerSkill,
+          channel,
+          wechatPeerId,
+          contextEmbedMode,
+          ...(threadSummaryPrefix ? { threadSummaryPrefix } : {}),
+          ...(agentSessionKey ? { agentSessionKey } : {}),
+        };
         await dispatchOpenClawGatewayStream(
           cfg,
           outboundMessages,
@@ -1000,17 +1031,9 @@ app.whenReady().then(async () => {
             ? {
                 conversationId: gatewayConversationId,
                 uiConversationId: conversationId,
-                composerSkill,
-                channel,
-                wechatPeerId,
-                ...(agentSessionKey ? { agentSessionKey } : {}),
+                ...streamOptsBase,
               }
-            : {
-                composerSkill,
-                channel,
-                wechatPeerId,
-                ...(agentSessionKey ? { agentSessionKey } : {}),
-              },
+            : streamOptsBase,
         );
         if (channel === "wechat" && wechatPeerId && conversationId) {
           wechatPeerConversationMap.set(wechatPeerId, conversationId);

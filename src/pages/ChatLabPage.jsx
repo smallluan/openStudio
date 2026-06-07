@@ -39,6 +39,13 @@ import {
 import { preferLongerAssistantText, reconcileTimelineWithCanonicalText } from "../chat/streamTimelineMerge.js";
 import { normalizeLatexMathDelimitersForRemark } from "../chat/normalizeLatexMathDelimitersForRemark.js";
 import {
+  agentSessionKeysForConversation,
+  buildGatewayPayloadRows,
+  recordAgentGatewaySync,
+  resetThreadGatewaySync,
+  resolveAgentGatewayContext,
+} from "../chat/gatewayContext.js";
+import {
   CHAT_SESSION_CHANNEL_WECHAT,
   deriveTitleFromMessages,
   getSession,
@@ -251,63 +258,6 @@ function toPersistedChatMessage(m) {
       ? { orchestrationRunId: m.orchestrationRunId }
       : {}),
   };
-}
-
-/**
- * History rows posted to OpenClaw (system + tail user line are appended by the caller).
- * Put OpenClaw `attachments` only when `includeImageAttachments` is true (latest user turn);
- * earlier turns use short "[N images attached]" text so we do not resend base64 every request.
- * @param {Array<{role: string; content?: string; thinking?: string; error?: string; imageAttachments?: unknown; fileRefs?: unknown; agentId?: string}>} msgs
- * @param {{ includeImageAttachments?: boolean; agentById?: Map<string, import("../studio/agents.js").LobsterAgent> }} [opts]
- */
-function buildGatewayPayloadRows(msgs, opts = {}) {
-  const includeImageAttachments = opts.includeImageAttachments === true;
-  const agentById = opts.agentById;
-  const targetAgentId = typeof opts.targetAgentId === "string" ? opts.targetAgentId : "";
-  const mainAgentStudioId = typeof opts.mainAgentStudioId === "string" ? opts.mainAgentStudioId : "";
-  return msgs
-    .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
-    .map((m) => {
-      if (m.messageKind === "orchestration_internal") {
-        return null;
-      }
-      if (m.messageKind === "orchestration_plan") {
-        return { role: "assistant", content: `[调度 · 计划]: ${String(m.content ?? "").slice(0, 400)}` };
-      }
-      if (m.messageKind === "orchestration_event") {
-        return { role: "assistant", content: `[调度]: ${String(m.content ?? "")}` };
-      }
-      if (m.role !== "assistant") {
-        const row = {
-          role: m.role,
-          content: gatewayUserMessageBodyWithRefs(m.content, m.imageAttachments, m.fileRefs),
-        };
-        if (includeImageAttachments) {
-          const att = openClawAttachmentsFromComposer(m.imageAttachments);
-          if (att) Object.assign(row, { attachments: att });
-        }
-        return row;
-      }
-      const c = String(m.content ?? "").trim();
-      const th = String(m.thinking ?? "").trim();
-      let body = c || th || "";
-      const agentId =
-        typeof m.agentId === "string" && m.agentId
-          ? m.agentId
-          : m.role === "assistant" && mainAgentStudioId
-            ? mainAgentStudioId
-            : "";
-      if (body && agentId && agentById?.has(agentId)) {
-        const agent = agentById.get(agentId);
-        const label = agentDisplayLabel(agent);
-        body =
-          targetAgentId && agentId !== targetAgentId
-            ? `[群聊 · ${label}]: ${body}`
-            : `[${label}]: ${body}`;
-      }
-      return { role: m.role, content: body };
-    })
-    .filter(Boolean);
 }
 
 /**
@@ -925,8 +875,19 @@ export default function ChatLabPage() {
       setParticipantIds(ids.filter((id) => id !== mainAgent?.id));
       const sid = paramC || conversationId;
       if (sid) updateSessionParticipants(sid, next);
+      if (isElectron && bridge?.prewarmStudioGatewaySessions && sid) {
+        const participantAgents = next
+          .map((id) => agentById.get(id))
+          .filter(Boolean);
+        const agentSessionKeys = agentSessionKeysForConversation(sid, participantAgents);
+        if (agentSessionKeys.length) {
+          void bridge
+            .prewarmStudioGatewaySessions({ agentSessionKeys, urgent: true })
+            .catch(() => {});
+        }
+      }
     },
-    [conversationId, mainAgent, paramC],
+    [agentById, bridge, conversationId, isElectron, mainAgent, paramC],
   );
 
   /** WeChat inbound / store updates: keep the open thread aligned with sidebar persistence (avoids race with auto-reply). */
@@ -1279,7 +1240,6 @@ export default function ChatLabPage() {
     abortAllActiveStreams,
     activeStreamIdsRef,
     assistantStreamIdsRef,
-    buildGatewayPayloadRows,
     t,
   });
 
@@ -1497,12 +1457,26 @@ export default function ChatLabPage() {
         if (d.kind === "done") {
           const merged = messagesWithTerminalAssistantPayload(messagesRef.current, d.assistantMessageId, extra);
           syncSkillCreatorResultToLibrary(merged, conversationId, d.assistantMessageId);
+          const agentId = merged.find((m) => m.id === d.assistantMessageId)?.agentId;
+          if (conversationId && typeof agentId === "string" && agentId) {
+            const ctx = resolveAgentGatewayContext({
+              conversationId,
+              agentId,
+              historyMessages: merged,
+              mode: "thread",
+              agentById,
+              mainAgentStudioId: mainAgent?.id,
+            });
+            if (ctx.syncThroughMessageId) {
+              recordAgentGatewaySync(conversationId, agentId, ctx.syncThroughMessageId, merged);
+            }
+          }
         }
       }
     };
     window.addEventListener("openstudio-gateway-chat-terminal", fn);
     return () => window.removeEventListener("openstudio-gateway-chat-terminal", fn);
-  }, [conversationId, finalizeAssistantById, t]);
+  }, [agentById, conversationId, finalizeAssistantById, mainAgent?.id, t]);
 
   const canSend =
     !gatewayStreaming &&
@@ -1551,6 +1525,7 @@ export default function ChatLabPage() {
       if (gatewayPhase !== "online" || chatApiBlocked) return false;
 
       await abortAllActiveStreams();
+      resetThreadGatewaySync(conversationId);
 
       const preservedCreated = prev[idx].createdAt;
       const skillSnap = skillMetaFromPickRow(composerSkillRow);
@@ -1570,9 +1545,20 @@ export default function ChatLabPage() {
       else delete editedUser.fileRefs;
       const base = [...prev.slice(0, idx), editedUser];
 
-      const priorRows = buildGatewayPayloadRows(base.slice(0, -1));
       const tailUserRows = buildGatewayPayloadRows([editedUser], { includeImageAttachments: true });
       const lastUserGatewayRow = tailUserRows[tailUserRows.length - 1];
+      const editCtx =
+        mainAgent ?
+          resolveAgentGatewayContext({
+            conversationId,
+            agentId: mainAgent.id,
+            historyMessages: base.slice(0, -1),
+            mode: "thread",
+            agentById,
+            mainAgentStudioId: mainAgent.id,
+          })
+        : { priorRows: buildGatewayPayloadRows(base.slice(0, -1), { agentById }), contextEmbedMode: "full", syncThroughMessageId: null };
+      const priorRows = editCtx.priorRows;
 
       if (!paramC) {
         setSearchParams({ c: conversationId }, { replace: true });
@@ -1639,11 +1625,7 @@ export default function ChatLabPage() {
         : { role: "system", content: t("chatLab.systemPrompt") };
       const outgoing = [
         ...(sysRow ? [sysRow] : []),
-        ...buildGatewayPayloadRows(base.slice(0, -1), {
-          agentById,
-          targetAgentId: mainAgent?.id,
-          mainAgentStudioId: mainAgent?.id,
-        }),
+        ...priorRows,
         ...tailUserRows,
       ];
       const composerSkill = skillPickRowToPayload(composerSkillRow);
@@ -1671,6 +1653,8 @@ export default function ChatLabPage() {
           conversationId,
           messages: outgoing,
           composerSkill,
+          contextEmbedMode: editCtx.contextEmbedMode,
+          ...(editCtx.threadSummaryPrefix ? { threadSummaryPrefix: editCtx.threadSummaryPrefix } : {}),
           ...(mainAgent
             ? {
                 agentSessionKey: sessionKeyForAgent(mainAgent),
@@ -1827,13 +1811,24 @@ export default function ChatLabPage() {
           agentId: target.id,
         };
         const sysRow = systemMessageForAgent(target, t("chatLab.systemPrompt"), { groupAgents });
-        const priorOnly = buildGatewayPayloadRows(historyBeforeUser, {
+        const ctx = resolveAgentGatewayContext({
+          conversationId,
+          agentId: target.id,
+          historyMessages: historyBeforeUser,
+          mode: "thread",
           agentById,
-          targetAgentId: target.id,
           mainAgentStudioId: mainAgent?.id,
         });
-        const outgoing = [...(sysRow ? [sysRow] : []), ...priorOnly, ...tailUserRows];
-        return { target, assistantMsg, streamId: newId(), outgoing };
+        const outgoing = [...(sysRow ? [sysRow] : []), ...ctx.priorRows, ...tailUserRows];
+        return {
+          target,
+          assistantMsg,
+          streamId: newId(),
+          outgoing,
+          contextEmbedMode: ctx.contextEmbedMode,
+          threadSummaryPrefix: ctx.threadSummaryPrefix,
+          syncThroughMessageId: ctx.syncThroughMessageId,
+        };
       });
 
       const persistableNext = [
@@ -1897,6 +1892,8 @@ export default function ChatLabPage() {
                 agentSessionKey: sessionKeyForAgent(job.target),
                 gatewayAgentId: job.target.gatewayAgentId,
                 concurrent: parallelReply,
+                contextEmbedMode: job.contextEmbedMode,
+                ...(job.threadSummaryPrefix ? { threadSummaryPrefix: job.threadSummaryPrefix } : {}),
               });
             } catch (err) {
               resetGatewayStream(job.streamId);

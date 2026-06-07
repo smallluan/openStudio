@@ -62,6 +62,20 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  */
 
 /**
+ * Per-agent gateway sync cursor — tracks what history was already delivered to that agent's session.
+ * @typedef {object} AgentGatewaySyncState
+ * @property {string} lastMessageId
+ */
+
+/**
+ * Shared thread context for multi-agent gateway turns (summary + per-agent sync cursors).
+ * @typedef {object} ThreadContextState
+ * @property {string} [summary] Collapsed summary of older turns
+ * @property {string} [summaryThroughMessageId]
+ * @property {Record<string, AgentGatewaySyncState>} [agentSync]
+ */
+
+/**
  * @typedef {object} ChatSessionRecord
  * @property {string} id
  * @property {string} title
@@ -71,6 +85,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string} [channelPeerId]
  * @property {string} [gatewayConversationId] UUID gateway thread for WeChat auto-reply (UI id stays `wechat:<peer>`)
  * @property {string[]} [participantIds] Studio agent ids in this thread (group chat)
+ * @property {ThreadContextState} [threadContext]
  * @property {import("../studio/orchestration.js").OrchestrationRun} [orchestration]
  * @property {boolean} [orchestrationMode]
  * @property {PersistedChatMessage[]} messages
@@ -131,6 +146,7 @@ function parseSessionsFromStorage() {
         gatewayConversationId:
           typeof r.gatewayConversationId === "string" ? r.gatewayConversationId.trim().slice(0, 96) : "",
         participantIds: sanitizeParticipantIds(r.participantIds),
+        threadContext: sanitizeThreadContext(r.threadContext),
         orchestration: r.orchestration ? normalizeOrchestrationRun(r.orchestration) ?? undefined : undefined,
         orchestrationMode: Boolean(r.orchestrationMode),
         messages: sanitizeMessages(r.messages),
@@ -138,6 +154,34 @@ function parseSessionsFromStorage() {
   } catch {
     return [];
   }
+}
+
+/** @param {unknown} raw @returns {ThreadContextState | undefined} */
+function sanitizeThreadContext(raw) {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = /** @type {Record<string, unknown>} */ (raw);
+  /** @type {ThreadContextState} */
+  const out = {};
+  if (typeof r.summary === "string" && r.summary.trim()) {
+    out.summary = r.summary.trim().slice(0, 4000);
+  }
+  if (typeof r.summaryThroughMessageId === "string" && r.summaryThroughMessageId.trim()) {
+    out.summaryThroughMessageId = r.summaryThroughMessageId.trim().slice(0, 96);
+  }
+  if (r.agentSync && typeof r.agentSync === "object" && !Array.isArray(r.agentSync)) {
+    /** @type {Record<string, AgentGatewaySyncState>} */
+    const agentSync = {};
+    for (const [agentId, state] of Object.entries(/** @type {Record<string, unknown>} */ (r.agentSync))) {
+      if (!agentId || typeof state !== "object" || !state) continue;
+      const lastMessageId = typeof /** @type {{ lastMessageId?: unknown }} */ (state).lastMessageId === "string"
+        ? /** @type {{ lastMessageId?: unknown }} */ (state).lastMessageId.trim().slice(0, 96)
+        : "";
+      if (!lastMessageId) continue;
+      agentSync[agentId.slice(0, 96)] = { lastMessageId };
+    }
+    if (Object.keys(agentSync).length) out.agentSync = agentSync;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** @param {unknown} raw @returns {string[]} */
@@ -399,7 +443,7 @@ function writeAll(rows) {
  * @param {string} id
  * @param {string} title
  * @param {PersistedChatMessage[]} messages
- * @param {{ channel?: 'internal' | 'wechat'; channelPeerId?: string; gatewayConversationId?: string; participantIds?: string[]; orchestration?: import("../studio/orchestration.js").OrchestrationRun | null; orchestrationMode?: boolean }} [opts]
+ * @param {{ channel?: 'internal' | 'wechat'; channelPeerId?: string; gatewayConversationId?: string; participantIds?: string[]; threadContext?: ThreadContextState | null; orchestration?: import("../studio/orchestration.js").OrchestrationRun | null; orchestrationMode?: boolean }} [opts]
  */
 export function upsertSession(id, title, messages, opts = {}) {
   if (!id) return;
@@ -436,6 +480,10 @@ export function upsertSession(id, title, messages, opts = {}) {
       : prev?.orchestration;
   const nextOrchestrationMode =
     opts.orchestrationMode !== undefined ? Boolean(opts.orchestrationMode) : Boolean(prev?.orchestrationMode);
+  const nextThreadContext =
+    opts.threadContext !== undefined
+      ? sanitizeThreadContext(opts.threadContext)
+      : sanitizeThreadContext(prev?.threadContext);
   all.push({
     id,
     title: resolvedTitle,
@@ -445,6 +493,7 @@ export function upsertSession(id, title, messages, opts = {}) {
     channelPeerId: nextPeer,
     ...(nextGatewayConversationId ? { gatewayConversationId: nextGatewayConversationId } : {}),
     ...(nextParticipants.length ? { participantIds: nextParticipants } : {}),
+    ...(nextThreadContext ? { threadContext: nextThreadContext } : {}),
     ...(nextOrchestration ? { orchestration: nextOrchestration } : {}),
     ...(nextOrchestrationMode ? { orchestrationMode: true } : {}),
     messages,
@@ -553,6 +602,26 @@ export function updateSessionParticipants(id, participantIds) {
     channelPeerId: rec.channelPeerId,
     gatewayConversationId: rec.gatewayConversationId,
     participantIds,
+    threadContext: rec.threadContext,
+  });
+}
+
+/**
+ * @param {string} id
+ * @param {ThreadContextState} threadContext
+ */
+export function updateSessionThreadContext(id, threadContext) {
+  if (!id) return;
+  const rec = getSession(id);
+  if (!rec) return;
+  upsertSession(id, rec.title, rec.messages, {
+    channel: rec.channel,
+    channelPeerId: rec.channelPeerId,
+    gatewayConversationId: rec.gatewayConversationId,
+    participantIds: rec.participantIds,
+    threadContext,
+    orchestration: rec.orchestration,
+    orchestrationMode: rec.orchestrationMode,
   });
 }
 
