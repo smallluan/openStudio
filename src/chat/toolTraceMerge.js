@@ -25,6 +25,10 @@ export const MAX_ACTIVITY_LOG = 120;
  *   title?: string;
  *   text?: string;
  *   seq: number;
+ *   toolTrace?: ToolTraceRow[];
+ *   nestedActivity?: ActivityRow[];
+ *   workerStreaming?: boolean;
+ *   assistantTimeline?: import("./streamTimelineMerge.js").AssistantTimelineSegment[];
  * }} ActivityRow */
 
 const DONE_PHASES = new Set(["end", "error", "failed", "cancelled", "canceled", "complete", "completed", "ok"]);

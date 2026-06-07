@@ -806,7 +806,11 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     const rowChannel =
       s.channel === CHAT_SESSION_CHANNEL_WECHAT ? CHAT_SESSION_CHANNEL_WECHAT : CHAT_SESSION_CHANNEL_INTERNAL;
     const inDeleteMode = deleteModeChannel === rowChannel;
-    const isStreaming = streamingSessionId === s.id || wechatReplyingSessionId === s.id;
+    const orchStatus = s.orchestration?.status;
+    const orchestrationActive =
+      orchStatus === "planning" || orchStatus === "revising" || orchStatus === "running";
+    const isStreaming =
+      streamingSessionId === s.id || wechatReplyingSessionId === s.id || orchestrationActive;
     return (
       <HistorySessionRow
         key={s.id}

@@ -139,6 +139,9 @@
     "soulPlaceholder": "Tone, boundaries, speaking style…",
     "soulHint": "How this agent talks — voice and personality. Saved to SOUL.md.",
     "fieldGatewayId": "Gateway agent ID",
+    "fieldOrchestrationRole": "Orchestration role",
+    "fieldOrchestrationDomain": "Domain / specialty",
+    "orchestrationDomainPlaceholder": "e.g. payments, auth, mobile UI",
     "gatewayIdHint": "Session key: {{session}}",
     "provisionPending": "Provisioning workspace and gateway config…",
     "provisionDone": "Agent created and gateway synced. Ready for chat in a few seconds.",
@@ -508,5 +511,106 @@
     "break": "Break",
     "entertainment": "Fun",
     "offline": "Offline"
+  },
+  "orchestration": {
+    "modeToggle": "Multi-agent orchestration",
+    "modeToggleHint": "Main agent coordinates PMs, developers, and reviewers with plan approval",
+    "awaitingPlanComposerHint": "Review the development plan in the composer — accept, adjust, or reject before sending a new message.",
+    "timeline": {
+      "title": "Multi-agent orchestration",
+      "leadOrchestrating": "{{agent}} is orchestrating",
+      "starting": "Starting orchestration…",
+      "stepInProgress": "In progress — expand when done for details",
+      "noDetail": "No details yet",
+      "planning": "Research & planning",
+      "planningPending": "Product managers researching…",
+      "pmResearch": "{{agent}} research",
+      "approval": "Plan approval",
+      "rollup": "Final report",
+      "completed": "Orchestration complete",
+      "noOutputYet": "No output yet",
+      "taskState": {
+        "done": "Done",
+        "active": "In progress",
+        "blocked": "Blocked",
+        "waiting": "Waiting on deps",
+        "queued": "Queued"
+      }
+    },
+    "roles": {
+      "main": "Lead",
+      "pm": "Product manager",
+      "fe": "Frontend",
+      "be": "Backend",
+      "reviewer": "Code reviewer",
+      "none": "Unassigned"
+    },
+    "runStatus": {
+      "planning": "Planning",
+      "awaiting_approval": "Awaiting your approval",
+      "revising": "Revising plan",
+      "running": "In progress",
+      "paused": "Paused",
+      "completed": "Completed",
+      "failed": "Stopped / failed"
+    },
+    "panel": {
+      "aria": "Orchestration progress",
+      "title": "Progress",
+      "resume": "Resume",
+      "empty": "—",
+      "col": {
+        "todo": "To do",
+        "doing": "In progress",
+        "done": "Done"
+      }
+    },
+    "planProgress": {
+      "hint": "View development plan and progress",
+      "awaitingHint": "Plan ready — accept, adjust, or reject",
+      "awaitingShort": "Review",
+      "planningHint": "Research and plan generation in progress…",
+      "statusHint": {
+        "planning": "PM research and plan synthesis in progress. The review dialog will open when ready.",
+        "revising": "Revising the plan from your feedback…",
+        "running": "Execution in progress — open here to track phase status.",
+        "paused": "Orchestration paused — review the plan here and resume when ready."
+      }
+    },
+    "planCard": {
+      "badge": "Plan",
+      "title": "Development plan",
+      "feasibility": "Feasibility",
+      "depends": "{{n}} deps",
+      "approve": "Accept plan",
+      "reject": "Reject",
+      "revise": "Adjust",
+      "revisePlaceholder": "Describe what to change in the plan…",
+      "reviseSubmit": "Submit adjustments",
+      "reviseCancel": "Cancel"
+    },
+    "events": {
+      "noPmAgents": "No product manager agent found. Set at least one agent's **orchestration role** to Product manager on the Agents page, then try again. The lead agent will not stand in as PM.",
+      "analyzing": "Lead agent is analyzing the request and deciding how to proceed…",
+      "pmSkipped": "PM research was recommended but no PM is in this session — lead agent will plan directly.",
+      "started": "Orchestration started — lead agent is coordinating the team.",
+      "pmDispatch": "Dispatching {{count}} product manager(s) for research.",
+      "pmAgentStart": "Dispatched research to product manager **{{agent}}**",
+      "pmAgentEmpty": "Product manager **{{agent}}** returned no research (continuing with available context).",
+      "synthesizingPlan": "Lead agent is synthesizing the development plan…",
+      "awaitingApproval": "Plan ready — please review and accept, adjust, or reject.",
+      "planApproved": "Plan accepted — starting development phase.",
+      "planRejected": "Plan rejected — orchestration stopped.",
+      "planRevising": "Revising plan based on your feedback.",
+      "taskStart": "Assigned **{{title}}** to {{agent}}.",
+      "taskDone": "Completed **{{title}}**.",
+      "reviewPassed": "Code review passed for **{{title}}**.",
+      "reviewRework": "Review requested changes on **{{title}}** — sent back to {{agent}}.",
+      "reviewBlocked": "Code review blocked **{{title}}** after max retries.",
+      "rollup": "Lead agent compiling final report.",
+      "completed": "Orchestration completed.",
+      "failed": "Orchestration failed: {{message}}",
+      "resumed": "Orchestration resumed."
+    }
   }
 }

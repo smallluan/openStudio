@@ -31,6 +31,24 @@ function mentionMatchTokens(agent, mainFallback) {
  */
 
 /**
+ * Agents eligible for @mention in the current session (main + participant bar only).
+ * @param {import("./agents.js").LobsterAgent[]} agents
+ * @param {{ mainAgent?: import("./agents.js").LobsterAgent | null; participantIds?: string[] }} opts
+ * @returns {import("./agents.js").LobsterAgent[]}
+ */
+export function mentionEligibleAgents(agents, opts = {}) {
+  const mainAgent = opts.mainAgent ?? null;
+  const participantIds = opts.participantIds ?? [];
+  const ids = new Set();
+  if (mainAgent?.id) ids.add(mainAgent.id);
+  for (const id of participantIds) {
+    if (id) ids.add(id);
+  }
+  if (!ids.size) return [];
+  return agents.filter((a) => ids.has(a.id));
+}
+
+/**
  * @param {import("./agents.js").LobsterAgent[]} agents
  * @param {{ mainAgent?: import("./agents.js").LobsterAgent | null; participantIds?: string[] }} opts
  * @returns {import("./agents.js").LobsterAgent[]}
@@ -70,7 +88,8 @@ export function parseAgentMentions(text, agents, opts = {}) {
     typeof opts.everyoneLabel === "string" && opts.everyoneLabel.trim()
       ? opts.everyoneLabel.trim()
       : "所有人";
-  if (!raw.includes("@") || !agents.length) {
+  const eligible = mentionEligibleAgents(agents, opts);
+  if (!raw.includes("@") || !eligible.length) {
     return { cleanText: raw, mentionIds: [] };
   }
 
@@ -83,7 +102,7 @@ export function parseAgentMentions(text, agents, opts = {}) {
   const everyoneRe = new RegExp(`@${escapedEveryone}(?=\\s|$|[.,!?;:，。！？；：])`, "gu");
   if (everyoneRe.test(cleanText)) {
     cleanText = cleanText.replace(everyoneRe, "").replace(/\s{2,}/g, " ").trim();
-    for (const agent of mentionEveryoneAgents(agents, opts)) {
+    for (const agent of mentionEveryoneAgents(eligible, opts)) {
       if (!seen.has(agent.id)) {
         seen.add(agent.id);
         mentionIds.push(agent.id);
@@ -91,7 +110,7 @@ export function parseAgentMentions(text, agents, opts = {}) {
     }
   }
 
-  const sorted = [...agents].sort((a, b) => {
+  const sorted = [...eligible].sort((a, b) => {
     const la = agentMentionLabel(a, mainFallback).length;
     const lb = agentMentionLabel(b, mainFallback).length;
     return lb - la;
@@ -120,8 +139,9 @@ export function parseAgentMentions(text, agents, opts = {}) {
  * @param {import("./agents.js").LobsterAgent[]} agents
  * @returns {{ query: string; start: number } | null}
  */
-export function activeMentionQuery(draft, caret, agents) {
-  if (!agents.length) return null;
+export function activeMentionQuery(draft, caret, agents, opts = {}) {
+  const eligible = mentionEligibleAgents(agents, opts);
+  if (!eligible.length) return null;
   const text = String(draft ?? "");
   const pos = Math.max(0, Math.min(caret, text.length));
   const before = text.slice(0, pos);

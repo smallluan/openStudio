@@ -1,4 +1,5 @@
 import { AgentMode } from "./modes.js";
+import { normalizeOrchestrationRole } from "./orchestrationRoles.js";
 import { getZoneById, pickZoneIdForMode } from "./zones.js";
 
 /**
@@ -21,6 +22,8 @@ import { getZoneById, pickZoneIdForMode } from "./zones.js";
  * @property {string} zoneId
  * @property {number} agentSlot
  * @property {LobsterOpenclawBinding} [openclaw]
+ * @property {import("./orchestrationRoles.js").OrchestrationRoleValue} [orchestrationRole]
+ * @property {string} [orchestrationDomain]
  */
 
 const MODE_SET = new Set(Object.values(AgentMode));
@@ -114,7 +117,7 @@ export function groupAgentsInSession({ agents, mainAgent, participantIds }) {
  * OpenClaw loads IDENTITY.md (who) and SOUL.md (how) separately — keep both in the system row.
  * @param {LobsterAgent} agent
  * @param {string} [fallbackSystemPrompt]
- * @param {{ groupAgents?: LobsterAgent[] }} [opts]
+ * @param {{ groupAgents?: LobsterAgent[]; orchestrationTeamRoster?: string }} [opts]
  * @returns {{ role: "system"; content: string } | null}
  */
 export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
@@ -132,6 +135,9 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
           "When the user asks about them, answer from that chat history first — do not search memory to learn who they are.",
         ].join("\n")
       : "";
+  const orchBlock = opts.orchestrationTeamRoster?.trim()
+    ? ["", "## Orchestration team", opts.orchestrationTeamRoster.trim()].join("\n")
+    : "";
   const identityLock = [
     "",
     "## Session rules",
@@ -143,16 +149,16 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
   if (soul) {
     return {
       role: "system",
-      content: `${identity}${groupBlock}${identityLock}\n\n# SOUL.md\n\n${soul}`,
+      content: `${identity}${groupBlock}${orchBlock}${identityLock}\n\n# SOUL.md\n\n${soul}`,
     };
   }
   if (agent.isMain && fallbackSystemPrompt?.trim()) {
     return {
       role: "system",
-      content: `${identity}${groupBlock}${identityLock}\n\n${fallbackSystemPrompt.trim()}`,
+      content: `${identity}${groupBlock}${orchBlock}${identityLock}\n\n${fallbackSystemPrompt.trim()}`,
     };
   }
-  return { role: "system", content: `${identity}${groupBlock}${identityLock}` };
+  return { role: "system", content: `${identity}${groupBlock}${orchBlock}${identityLock}` };
 }
 
 /**
@@ -199,6 +205,8 @@ export function normalizeLobsterAgent(raw) {
     zoneId: typeof r.zoneId === "string" && r.zoneId ? r.zoneId : undefined,
     agentSlot: Number.isFinite(r.agentSlot) ? Math.floor(Number(r.agentSlot)) : undefined,
     openclaw: sessionKey != null && sessionKey !== "" ? { sessionKey } : {},
+    orchestrationRole: normalizeOrchestrationRole(r.orchestrationRole),
+    orchestrationDomain: typeof r.orchestrationDomain === "string" ? r.orchestrationDomain.trim().slice(0, 120) : "",
   });
 }
 
@@ -224,6 +232,9 @@ function agentDefaults(o) {
     zoneId,
     agentSlot: o.agentSlot ?? 0,
     openclaw,
+    orchestrationRole: normalizeOrchestrationRole(o.orchestrationRole),
+    orchestrationDomain:
+      typeof o.orchestrationDomain === "string" ? o.orchestrationDomain.trim().slice(0, 120) : "",
   };
 }
 

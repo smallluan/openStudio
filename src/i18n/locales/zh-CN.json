@@ -139,6 +139,9 @@
     "soulPlaceholder": "描述语气、边界、说话风格…",
     "soulHint": "定义「我怎么说话」——语气与人格。保存后写入 SOUL.md。",
     "fieldGatewayId": "网关 Agent ID",
+    "fieldOrchestrationRole": "调度角色",
+    "fieldOrchestrationDomain": "职责域 / 专长",
+    "orchestrationDomainPlaceholder": "如：支付、登录、移动端 UI",
     "gatewayIdHint": "会话键：{{session}}",
     "provisionPending": "正在初始化工作区与网关配置…",
     "provisionDone": "已创建智能体并同步网关，稍等几秒即可在聊天中使用。",
@@ -509,5 +512,106 @@
     "break": "休息",
     "entertainment": "娱乐",
     "offline": "离线"
+  },
+  "orchestration": {
+    "modeToggle": "多智能体调度",
+    "modeToggleHint": "主智能体协调产品经理、开发与 Review，先出计划待你确认",
+    "awaitingPlanComposerHint": "请先在输入区确认开发计划（接受、微调或拒绝），再发送新消息。",
+    "timeline": {
+      "title": "多智能体调度",
+      "leadOrchestrating": "{{agent}} 正在调度",
+      "starting": "正在启动调度…",
+      "stepInProgress": "进行中，完成后可展开查看详情",
+      "noDetail": "暂无详情",
+      "planning": "调研与计划",
+      "planningPending": "产品经理调研进行中…",
+      "pmResearch": "{{agent}} 调研",
+      "approval": "计划确认",
+      "rollup": "汇总报告",
+      "completed": "调度完成",
+      "noOutputYet": "暂无输出",
+      "taskState": {
+        "done": "已完成",
+        "active": "进行中",
+        "blocked": "已阻塞",
+        "waiting": "等待依赖",
+        "queued": "排队中"
+      }
+    },
+    "roles": {
+      "main": "主智能体",
+      "pm": "产品经理",
+      "fe": "前端",
+      "be": "后端",
+      "reviewer": "代码 Review",
+      "none": "未分配"
+    },
+    "runStatus": {
+      "planning": "制定计划中",
+      "awaiting_approval": "待你确认计划",
+      "revising": "微调计划中",
+      "running": "执行中",
+      "paused": "已暂停",
+      "completed": "已完成",
+      "failed": "已停止 / 失败"
+    },
+    "panel": {
+      "aria": "调度进度",
+      "title": "进度看板",
+      "resume": "继续",
+      "empty": "—",
+      "col": {
+        "todo": "未开始",
+        "doing": "进行中",
+        "done": "已完成"
+      }
+    },
+    "planProgress": {
+      "hint": "查看开发计划与进度",
+      "awaitingHint": "计划已生成，请接受、微调或拒绝",
+      "awaitingShort": "待确认",
+      "planningHint": "正在调研并生成开发计划，请稍候…",
+      "statusHint": {
+        "planning": "产品经理调研与计划生成进行中，完成后会自动弹出确认。",
+        "revising": "正在根据你的反馈微调计划…",
+        "running": "计划执行中，可在此查看各阶段进度。",
+        "paused": "调度已暂停，可在此查看计划并恢复执行。"
+      }
+    },
+    "planCard": {
+      "badge": "计划",
+      "title": "开发计划",
+      "feasibility": "可行性",
+      "depends": "{{n}} 项依赖",
+      "approve": "接受计划",
+      "reject": "拒绝",
+      "revise": "微调",
+      "revisePlaceholder": "说明需要调整的内容…",
+      "reviseSubmit": "提交微调",
+      "reviseCancel": "取消"
+    },
+    "events": {
+      "noPmAgents": "未找到产品经理智能体。请在「智能体」页将至少一个 agent 的**调度角色**设为「产品经理」后重试。主智能体不会代替 PM 调研。",
+      "analyzing": "主智能体正在分析需求并决定调度方式…",
+      "pmSkipped": "需要产品经理调研，但会话中暂无 PM — 主智能体将直接制定计划。",
+      "started": "调度已启动 — 主智能体正在协调团队。",
+      "pmDispatch": "已分发给 {{count}} 位产品经理调研。",
+      "pmAgentStart": "已将调研任务分发给产品经理 **{{agent}}**",
+      "pmAgentEmpty": "产品经理 **{{agent}}** 未返回调研内容（将用已有上下文继续）。",
+      "synthesizingPlan": "主智能体正在汇总开发计划…",
+      "awaitingApproval": "计划已生成 — 请接受、微调或拒绝。",
+      "planApproved": "计划已接受 — 进入开发阶段。",
+      "planRejected": "计划已拒绝 — 调度已停止。",
+      "planRevising": "正在根据你的反馈微调计划。",
+      "taskStart": "已将 **{{title}}** 分配给 {{agent}}。",
+      "taskDone": "已完成 **{{title}}**。",
+      "reviewPassed": "**{{title}}** 代码 Review 通过。",
+      "reviewRework": "**{{title}}** Review 有问题 — 已打回给 {{agent}} 修改。",
+      "reviewBlocked": "**{{title}}** Review 多次未通过，已阻塞。",
+      "rollup": "主智能体正在汇总汇报。",
+      "completed": "调度流程已完成。",
+      "failed": "调度失败：{{message}}",
+      "resumed": "调度已继续。"
+    }
   }
 }

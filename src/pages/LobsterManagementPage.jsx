@@ -3,6 +3,7 @@ import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useStudio } from "../context/StudioContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { agentAvatarGlyph, agentDisplayLabel, buildIdentityMd } from "../studio/agents.js";
+import { OrchestrationRole, orchestrationRoleLabel } from "../studio/orchestrationRoles.js";
 import { filterUsableBundledSkills } from "../skills/skillAvailability.js";
 import { userSkillDisplayTitle } from "../skills/skillDisplay.js";
 import { BUILTIN_SKILL_DEFS } from "../skills/skillsCatalog.js";
@@ -12,6 +13,7 @@ import { useSkillLibrary } from "../skills/useSkillLibrary.js";
 import Modal from "../ui/Modal.jsx";
 import ModalCloseButton from "../ui/ModalCloseButton.jsx";
 import TextField from "../ui/TextField.jsx";
+import Select from "../ui/Select.jsx";
 import { cn } from "../ui/cn.js";
 
 /** @param {{ className?: string; selected?: boolean; onClick?: () => void; children: React.ReactNode }} props */
@@ -365,6 +367,45 @@ export default function LobsterManagementPage() {
                   />
                   <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("lobsterPage.identityHint")}</span>
                 </label>
+
+                {!selected.isMain ? (
+                  <>
+                    <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                      {t("lobsterPage.fieldOrchestrationRole")}
+                      <Select
+                        value={selected.orchestrationRole || OrchestrationRole.NONE}
+                        onChange={(role) =>
+                          patchAgentMeta(selected.id, {
+                            orchestrationRole: /** @type {import("../studio/orchestrationRoles.js").OrchestrationRoleValue} */ (
+                              role
+                            ),
+                          })
+                        }
+                        options={[
+                          OrchestrationRole.NONE,
+                          OrchestrationRole.PM,
+                          OrchestrationRole.FE,
+                          OrchestrationRole.BE,
+                          OrchestrationRole.REVIEWER,
+                        ].map((role) => ({
+                          value: role,
+                          label: orchestrationRoleLabel(role, t),
+                        }))}
+                        className="w-full min-w-0"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                      {t("lobsterPage.fieldOrchestrationDomain")}
+                      <TextField
+                        value={selected.orchestrationDomain || ""}
+                        onChange={(e) =>
+                          patchAgentMeta(selected.id, { orchestrationDomain: e.target.value })
+                        }
+                        placeholder={t("lobsterPage.orchestrationDomainPlaceholder")}
+                      />
+                    </label>
+                  </>
+                ) : null}
 
                 <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
                   {t("lobsterPage.fieldDescription")}

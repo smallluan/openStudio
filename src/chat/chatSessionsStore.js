@@ -1,5 +1,7 @@
 /** Local persistence for chat conversations (sidebar history). */
 
+import { normalizeOrchestrationPlan, normalizeOrchestrationRun } from "../studio/orchestration.js";
+
 const STORAGE_KEY = "openstudio_chat_sessions_v1";
 const MAX_SESSIONS = 50;
 export const CHAT_SESSION_CHANNEL_INTERNAL = "internal";
@@ -50,6 +52,13 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {PersistedFileRef[]} [fileRefs]
  * @property {string} [agentId] Studio agent id (assistant bubbles)
  * @property {string[]} [mentions] Studio agent ids @-mentioned on user turns
+ * @property {'orchestration_event' | 'orchestration_plan' | 'orchestration_internal'} [messageKind]
+ * @property {import("../studio/orchestration.js").OrchestrationPlan} [orchestrationPlan]
+ * @property {string} [orchestrationPhase]
+ * @property {string} [orchestrationTaskId]
+ * @property {string} [orchestrationEventKey]
+ * @property {string} [orchestrationWorkerId]
+ * @property {string} [orchestrationRunId]
  */
 
 /**
@@ -62,6 +71,8 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string} [channelPeerId]
  * @property {string} [gatewayConversationId] UUID gateway thread for WeChat auto-reply (UI id stays `wechat:<peer>`)
  * @property {string[]} [participantIds] Studio agent ids in this thread (group chat)
+ * @property {import("../studio/orchestration.js").OrchestrationRun} [orchestration]
+ * @property {boolean} [orchestrationMode]
  * @property {PersistedChatMessage[]} messages
  */
 
@@ -120,6 +131,8 @@ function parseSessionsFromStorage() {
         gatewayConversationId:
           typeof r.gatewayConversationId === "string" ? r.gatewayConversationId.trim().slice(0, 96) : "",
         participantIds: sanitizeParticipantIds(r.participantIds),
+        orchestration: r.orchestration ? normalizeOrchestrationRun(r.orchestration) ?? undefined : undefined,
+        orchestrationMode: Boolean(r.orchestrationMode),
         messages: sanitizeMessages(r.messages),
       }));
   } catch {
@@ -338,6 +351,29 @@ function sanitizeMessages(raw) {
       const ms = sanitizeParticipantIds(m.mentions);
       if (ms.length) row.mentions = ms;
     }
+    const mk = m.messageKind;
+    if (mk === "orchestration_event" || mk === "orchestration_plan" || mk === "orchestration_internal") {
+      row.messageKind = mk;
+    }
+    if (m.orchestrationPlan && typeof m.orchestrationPlan === "object") {
+      const plan = normalizeOrchestrationPlan(m.orchestrationPlan);
+      if (plan) row.orchestrationPlan = plan;
+    }
+    if (typeof m.orchestrationPhase === "string" && m.orchestrationPhase.trim()) {
+      row.orchestrationPhase = m.orchestrationPhase.trim().slice(0, 32);
+    }
+    if (typeof m.orchestrationTaskId === "string" && m.orchestrationTaskId.trim()) {
+      row.orchestrationTaskId = m.orchestrationTaskId.trim().slice(0, 96);
+    }
+    if (typeof m.orchestrationEventKey === "string" && m.orchestrationEventKey.trim()) {
+      row.orchestrationEventKey = m.orchestrationEventKey.trim().slice(0, 48);
+    }
+    if (typeof m.orchestrationWorkerId === "string" && m.orchestrationWorkerId.trim()) {
+      row.orchestrationWorkerId = m.orchestrationWorkerId.trim().slice(0, 96);
+    }
+    if (typeof m.orchestrationRunId === "string" && m.orchestrationRunId.trim()) {
+      row.orchestrationRunId = m.orchestrationRunId.trim().slice(0, 96);
+    }
     out.push(row);
   }
   return out;
@@ -363,7 +399,7 @@ function writeAll(rows) {
  * @param {string} id
  * @param {string} title
  * @param {PersistedChatMessage[]} messages
- * @param {{ channel?: 'internal' | 'wechat'; channelPeerId?: string; gatewayConversationId?: string; participantIds?: string[] }} [opts]
+ * @param {{ channel?: 'internal' | 'wechat'; channelPeerId?: string; gatewayConversationId?: string; participantIds?: string[]; orchestration?: import("../studio/orchestration.js").OrchestrationRun | null; orchestrationMode?: boolean }} [opts]
  */
 export function upsertSession(id, title, messages, opts = {}) {
   if (!id) return;
@@ -392,6 +428,14 @@ export function upsertSession(id, title, messages, opts = {}) {
     opts.participantIds !== undefined
       ? sanitizeParticipantIds(opts.participantIds)
       : sanitizeParticipantIds(prev?.participantIds);
+  const nextOrchestration =
+    opts.orchestration !== undefined
+      ? opts.orchestration
+        ? normalizeOrchestrationRun(opts.orchestration) ?? undefined
+        : undefined
+      : prev?.orchestration;
+  const nextOrchestrationMode =
+    opts.orchestrationMode !== undefined ? Boolean(opts.orchestrationMode) : Boolean(prev?.orchestrationMode);
   all.push({
     id,
     title: resolvedTitle,
@@ -401,9 +445,45 @@ export function upsertSession(id, title, messages, opts = {}) {
     channelPeerId: nextPeer,
     ...(nextGatewayConversationId ? { gatewayConversationId: nextGatewayConversationId } : {}),
     ...(nextParticipants.length ? { participantIds: nextParticipants } : {}),
+    ...(nextOrchestration ? { orchestration: nextOrchestration } : {}),
+    ...(nextOrchestrationMode ? { orchestrationMode: true } : {}),
     messages,
   });
   writeAll(all);
+}
+
+/**
+ * @param {string} conversationId
+ * @param {import("../studio/orchestration.js").OrchestrationRun | null} orchestration
+ */
+export function updateSessionOrchestration(conversationId, orchestration) {
+  const rec = getSession(conversationId);
+  if (!rec) return;
+  upsertSession(conversationId, rec.title || "…", rec.messages, {
+    channel: rec.channel,
+    channelPeerId: rec.channelPeerId,
+    gatewayConversationId: rec.gatewayConversationId,
+    participantIds: rec.participantIds,
+    orchestration: orchestration ?? null,
+    orchestrationMode: rec.orchestrationMode,
+  });
+}
+
+/**
+ * @param {string} conversationId
+ * @param {boolean} enabled
+ */
+export function setSessionOrchestrationMode(conversationId, enabled) {
+  const rec = getSession(conversationId);
+  if (!rec) return;
+  upsertSession(conversationId, rec.title || "…", rec.messages, {
+    channel: rec.channel,
+    channelPeerId: rec.channelPeerId,
+    gatewayConversationId: rec.gatewayConversationId,
+    participantIds: rec.participantIds,
+    orchestration: rec.orchestration,
+    orchestrationMode: enabled,
+  });
 }
 
 /**
