@@ -10,6 +10,7 @@ const {
   disconnectWechatAuth,
   pullWechatInbound,
   sendWechatOutbound,
+  sendWechatMedia,
   sendWechatTyping,
 } = require("./lib/openclaw-gateway-wechat.cjs");
 const { resolveGateway } = require("./lib/openclaw-gateway-ws.cjs");
@@ -1002,6 +1003,81 @@ app.whenReady().then(async () => {
             localMessageId: localMessageId || undefined,
           });
           trackWechatOutboundEcho(peerId, text, sent.messageId);
+          if (sent.messageId) {
+            wechatInboundSeen.add(String(sent.messageId));
+            pruneBoundedSet(wechatInboundSeen);
+          }
+          return { ok: true, ...sent };
+        } finally {
+          clearTimeout(tid);
+        }
+      })().finally(() => {
+        inFlightWechatSends.delete(requestId);
+      });
+      inFlightWechatSends.set(requestId, run);
+      return await run;
+    } catch (err) {
+      return { ok: false, message: String(err?.message ?? err) };
+    }
+  });
+
+  ipcMain.handle("studio:resolveWechatMediaPath", (_event, rawPath) => {
+    if (!userConfigStore) return { ok: false, message: "config_unready" };
+    const cfg = userConfigStore.readRaw();
+    const resolved = resolveWorkspacePreviewTarget(cfg, rawPath);
+    if (!resolved.ok) return resolved;
+    return { ok: true, filePath: resolved.filePath, ext: resolved.ext, mime: resolved.mime };
+  });
+
+  ipcMain.handle("studio:wechatSendMedia", async (event, payload) => {
+    try {
+      runOpenClawAgentSyncFromStudio("chat");
+      const cfg = userConfigStore.readRaw();
+      const peerId = String(payload?.peerId ?? "").trim();
+      const rawMediaPath = String(payload?.mediaPath ?? "").trim();
+      const text = String(payload?.text ?? "").trim();
+      const conversationId = String(payload?.conversationId ?? "").trim();
+      const localMessageId = String(payload?.localMessageId ?? "").trim();
+      const requestId = String(
+        payload?.requestId ?? `${conversationId}:${peerId}:media:${rawMediaPath.slice(-48)}`,
+      ).trim();
+      if (!peerId || !rawMediaPath) return { ok: false, message: "wechat_invalid_media_outbound" };
+
+      /** @type {string} */
+      let mediaPath = rawMediaPath;
+      if (!/^https?:\/\//i.test(rawMediaPath)) {
+        const resolved = resolveWorkspacePreviewTarget(cfg, rawMediaPath);
+        if (!resolved.ok) return { ok: false, message: resolved.message ?? "resolve_failed" };
+        mediaPath = resolved.filePath;
+      }
+
+      const inFlight = inFlightWechatSends.get(requestId);
+      if (inFlight) return inFlight;
+      const run = (async () => {
+        const ac = new AbortController();
+        const tid = setTimeout(() => ac.abort(), 120_000);
+        try {
+          const client = await acquireWechatGatewaySession(cfg, ac.signal);
+          const sent = await sendWechatMedia(
+            client,
+            {
+              peerId,
+              mediaPath,
+              text,
+              conversationId,
+              idempotencyKey: requestId,
+            },
+            cfg,
+          );
+          emitWechatStatus(event.sender, {
+            type: "outbound_sent",
+            channel: "wechat",
+            conversationId,
+            peerId,
+            messageId: sent.messageId,
+            localMessageId: localMessageId || undefined,
+            mediaPath,
+          });
           if (sent.messageId) {
             wechatInboundSeen.add(String(sent.messageId));
             pruneBoundedSet(wechatInboundSeen);

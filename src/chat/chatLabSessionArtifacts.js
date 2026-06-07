@@ -76,7 +76,7 @@ function pickArgString(args, keys) {
  * @param {string} text
  * @returns {string[]}
  */
-function scrapePathsFromText(text) {
+export function scrapeArtifactPathsFromText(text) {
   if (!text || typeof text !== "string") return [];
   /** @type {Set<string>} */
   const found = new Set();
@@ -103,7 +103,7 @@ function scrapePathsFromText(text) {
 /** @param {string} p */
 function isArtifactPath(p) {
   if (hasPreviewableFileExtension(p)) return true;
-  return /\.(md|markdown|txt|text|js|mjs|cjs|ts|tsx|jsx|json|css|py|rb|go|rs|java|kt|cs|cpp|c|h|sql|sh|yaml|yml|xml|vue|svelte|png|jpg|jpeg|gif|webp|log)$/i.test(
+  return /\.(md|markdown|txt|text|js|mjs|cjs|ts|tsx|jsx|json|css|py|rb|go|rs|java|kt|cs|cpp|c|h|sql|sh|yaml|yml|xml|vue|svelte|png|jpg|jpeg|gif|webp|pdf|log)$/i.test(
     String(p ?? "").trim(),
   );
 }
@@ -119,7 +119,7 @@ function artifactOpFromTool(toolName) {
 /** @param {string} toolName */
 function isFileMutatingTool(toolName) {
   const n = String(toolName).toLowerCase();
-  return /write|save|apply_patch|edit|patch|create|output|export|dump|str_replace|replace|update|modify|rename|move/i.test(
+  return /write|save|apply_patch|edit|patch|create|output|export|dump|str_replace|replace|update|modify|rename|move|copy|duplicate|screenshot|capture|snapshot/i.test(
     n,
   );
 }
@@ -252,6 +252,16 @@ function upsertArtifact(byPath, p, meta) {
 }
 
 /**
+ * Collect workspace file artifacts from a single assistant message.
+ * @param {{ id?: string; role?: string; content?: string; streaming?: boolean; error?: string; toolTrace?: unknown[]; activityLog?: unknown[] }} message
+ * @returns {SessionArtifact[]}
+ */
+export function collectMessageArtifacts(message) {
+  if (!message || message.role !== "assistant" || message.streaming || message.error) return [];
+  return collectSessionArtifacts([message]);
+}
+
+/**
  * Collect workspace file artifacts from an entire conversation.
  * @param {Array<{ id: string; role: string; content?: string; streaming?: boolean; error?: string; toolTrace?: unknown[]; activityLog?: unknown[] }>} messages
  * @returns {SessionArtifact[]}
@@ -295,7 +305,7 @@ export function collectSessionArtifacts(messages) {
       if (isWrite) {
         for (const field of ["result", "partialResult", "summary", "label"]) {
           const txt = typeof row[field] === "string" ? row[field] : "";
-          for (const p of scrapePathsFromText(txt)) {
+          for (const p of scrapeArtifactPathsFromText(txt)) {
             order += 1;
             upsertArtifact(byPath, p, {
               op,

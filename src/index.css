@@ -4366,6 +4366,56 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   display: inline-flex;
   align-items: center;
   gap: 0;
+  min-width: 0;
+}
+
+.chat-lab__msg-actions--with-files {
+  gap: 0.2rem 0.35rem;
+}
+
+.chat-lab__msg-file-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  max-width: min(100%, 14rem);
+  min-height: 1.56rem;
+  padding: 0.12rem 0.42rem;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--os-text-muted) 18%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--os-bg-panel) 72%, transparent);
+  color: var(--os-text);
+  font-size: 0.68rem;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.chat-lab__msg-file-ref:hover {
+  border-color: color-mix(in srgb, var(--os-accent) 34%, var(--border));
+  background: color-mix(in srgb, var(--os-accent-muted) 42%, var(--os-bg-panel));
+  color: var(--os-text);
+}
+
+.chat-lab__msg-file-ref-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-lab__msg-file-ref-emoji {
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+:root[data-theme="dark"] .chat-lab__msg-file-ref {
+  background: color-mix(in srgb, var(--os-bg-panel) 88%, transparent);
+  border-color: color-mix(in srgb, var(--os-text-muted) 24%, transparent);
 }
 
 .chat-lab__msg-time {

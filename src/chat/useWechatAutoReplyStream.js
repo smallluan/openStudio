@@ -21,6 +21,8 @@ import { useI18n } from "../context/I18nContext.jsx";
 import { startWechatTypingPulse } from "./wechatStreamTyping.js";
 import { isWechatPendingAssistantId } from "./useWechatSessionSync.js";
 import { isWechatNewChatCommand } from "./wechatSessionCommands.js";
+import { pickWechatOutboundMedia, filterExistingWechatMedia, composeWechatReplyText, wechatMediaToFileRefs } from "./wechatOutboundMedia.js";
+import { wechatGatewayAssistantContent } from "./wechatGatewayHistory.js";
 
 
 
@@ -56,7 +58,7 @@ function toGatewayHistoryRows(messages) {
 
       }
 
-      const content = String(m.content ?? "").trim();
+      const content = wechatGatewayAssistantContent(m);
 
       const thinking = String(m.thinking ?? "").trim();
 
@@ -86,8 +88,6 @@ function finalizeWechatAssistantInStore(conversationId, assistantMessageId, extr
 
   const peerId = String(rec.channelPeerId ?? "").trim();
 
-  const prior = Array.isArray(rec.messages) ? rec.messages : [];
-
   const content = String(extra.content ?? "").trim();
 
   const thinking = String(extra.thinking ?? "").trim();
@@ -100,45 +100,59 @@ function finalizeWechatAssistantInStore(conversationId, assistantMessageId, extr
 
     : assistantMessageId;
 
-  const ts = Date.now();
+  const prior = Array.isArray(rec.messages) ? rec.messages : [];
+
+  const existingFinal = prior.find((m) => m.id === finalId);
+
+  const existingPending = prior.find((m) => m.id === assistantMessageId);
+
+  const ts =
+
+    typeof existingFinal?.createdAt === "number"
+
+      ? existingFinal.createdAt
+
+      : typeof existingPending?.createdAt === "number"
+
+        ? existingPending.createdAt
+
+        : Date.now();
+
+  const nextRow = {
+
+    id: finalId,
+
+    role: /** @type {const} */ ("assistant"),
+
+    content: error ? "" : content,
+
+    ...(thinking ? { thinking } : {}),
+
+    ...(Array.isArray(extra.toolTrace) && extra.toolTrace.length ? { toolTrace: extra.toolTrace } : {}),
+
+    ...(Array.isArray(extra.activityLog) && extra.activityLog.length ? { activityLog: extra.activityLog } : {}),
+
+    ...(Array.isArray(extra.assistantTimeline) && extra.assistantTimeline.length
+
+      ? { assistantTimeline: extra.assistantTimeline }
+
+      : {}),
+
+    ...(Array.isArray(extra.fileRefs) && extra.fileRefs.length ? { fileRefs: extra.fileRefs } : {}),
+
+    createdAt: ts,
+
+  };
+
+  const freshRec = getSession(conversationId);
+
+  const freshPrior = Array.isArray(freshRec?.messages) ? freshRec.messages : prior;
 
   const persistable = [
 
-    ...prior.filter(
+    ...freshPrior.filter((m) => m.id !== assistantMessageId && m.id !== finalId),
 
-      (m) =>
-
-        m.id !== assistantMessageId &&
-
-        m.id !== finalId &&
-
-        !isWechatPendingAssistantId(m.id),
-
-    ),
-
-    {
-
-      id: finalId,
-
-      role: /** @type {const} */ ("assistant"),
-
-      content: error ? "" : content,
-
-      ...(thinking ? { thinking } : {}),
-
-      ...(Array.isArray(extra.toolTrace) && extra.toolTrace.length ? { toolTrace: extra.toolTrace } : {}),
-
-      ...(Array.isArray(extra.activityLog) && extra.activityLog.length ? { activityLog: extra.activityLog } : {}),
-
-      ...(Array.isArray(extra.assistantTimeline) && extra.assistantTimeline.length
-
-        ? { assistantTimeline: extra.assistantTimeline }
-
-        : {}),
-
-      createdAt: ts,
-
-    },
+    nextRow,
 
   ];
 
@@ -272,7 +286,7 @@ export function useWechatAutoReplyStream() {
 
         (typeof userRow.createdAt === "number" ? userRow.createdAt : Date.now()) + 1;
 
-      const historyRows = prior.filter((m) => m.id !== assistantId && !isWechatPendingAssistantId(m.id));
+      const historyRows = prior.filter((m) => m.id !== assistantId);
 
       const persistable = [
 
@@ -326,7 +340,7 @@ export function useWechatAutoReplyStream() {
 
       const outgoing = [
 
-        { role: "system", content: t("chatLab.systemPrompt") },
+        { role: "system", content: `${t("chatLab.systemPrompt")}\n\n${t("chatLab.wechatSystemPrompt")}` },
 
         ...historyForRequest,
 
@@ -347,6 +361,8 @@ export function useWechatAutoReplyStream() {
           gatewayConversationId,
 
           messages: outgoing,
+
+          channel: "wechat",
 
           wechatPeerId: peerId,
 
@@ -422,53 +438,92 @@ export function useWechatAutoReplyStream() {
 
         clearWechatReplyingSessionId(conversationId);
 
-        finalizeWechatAssistantInStore(conversationId, assistantMessageId, {
-
+        const replyText = String(d.content ?? "").trim();
+        const terminalExtra = {
           content: d.content,
-
           thinking: d.thinking,
-
           toolTrace: d.toolTrace,
-
           activityLog: d.activityLog,
-
           assistantTimeline: d.assistantTimeline,
+        };
 
-        });
+        finalizeWechatAssistantInStore(conversationId, assistantMessageId, terminalExtra);
 
-        if (!peerId || !bridge.wechatSendMessage) return;
+        if (!peerId) return;
 
         if (sentWechatAssistantIdsRef.current.has(assistantMessageId)) return;
 
-        const replyText = String(d.content ?? "").trim();
-
-        if (!replyText) return;
+        const mediaItems = pickWechatOutboundMedia({
+          id: assistantMessageId,
+          role: "assistant",
+          content: replyText,
+          toolTrace: Array.isArray(d.toolTrace) ? d.toolTrace : [],
+        });
 
         sentWechatAssistantIdsRef.current.add(assistantMessageId);
 
-        const requestId = `wechat-assistant:${conversationId}:${assistantMessageId}`;
+        void (async () => {
+          const mediaToSend = await filterExistingWechatMedia(bridge, mediaItems);
+          const textToSend = composeWechatReplyText(replyText, mediaToSend);
+          const fileRefs = wechatMediaToFileRefs(mediaToSend);
 
-        void bridge
+          if (textToSend !== replyText || fileRefs.length > 0) {
+            finalizeWechatAssistantInStore(conversationId, assistantMessageId, {
+              ...terminalExtra,
+              content: textToSend || replyText,
+              ...(fileRefs.length ? { fileRefs } : {}),
+            });
+          }
 
-          .wechatSendMessage({
+          if (mediaToSend.length && bridge.wechatSendMedia) {
+            for (const item of mediaToSend) {
+              const requestId = `wechat-media:${conversationId}:${assistantMessageId}:${item.path}`;
+              try {
+                const res = await bridge.wechatSendMedia({
+                  requestId,
+                  conversationId,
+                  peerId,
+                  mediaPath: item.path,
+                  localMessageId: `wechat-local-media:${assistantMessageId}:${item.label}`,
+                });
+                if (res && res.ok === false) {
+                  bridge.logRendererMessage?.({
+                    level: "warn",
+                    message: `[wechat] media send failed (${item.path}): ${String(res.message ?? "unknown")}`,
+                  });
+                }
+              } catch (err) {
+                bridge.logRendererMessage?.({
+                  level: "warn",
+                  message: `[wechat] media send failed (${item.path}): ${String(err?.message ?? err)}`,
+                });
+              }
+            }
+          } else if (mediaItems.length) {
+            bridge.logRendererMessage?.({
+              level: "warn",
+              message: `[wechat] media paths found but none exist on disk: ${mediaItems.map((x) => x.path).join("; ")}`,
+            });
+          }
 
-            requestId,
-
-            conversationId,
-
-            peerId,
-
-            text: replyText,
-
-            localMessageId: `wechat-local-assistant:${assistantMessageId}`,
-
-          })
-
-          .catch(() => {
-
-            /* non-blocking */
-
-          });
+          if (textToSend && bridge.wechatSendMessage) {
+            const requestId = `wechat-assistant:${conversationId}:${assistantMessageId}`;
+            try {
+              await bridge.wechatSendMessage({
+                requestId,
+                conversationId,
+                peerId,
+                text: textToSend,
+                localMessageId: `wechat-local-assistant:${assistantMessageId}`,
+              });
+            } catch (err) {
+              bridge.logRendererMessage?.({
+                level: "warn",
+                message: `[wechat] text send failed: ${String(err?.message ?? err)}`,
+              });
+            }
+          }
+        })();
 
         return;
 

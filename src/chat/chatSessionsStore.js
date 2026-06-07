@@ -306,7 +306,7 @@ function sanitizeMessages(raw) {
       const ia = sanitizeImageAttachments(m.imageAttachments);
       if (ia?.length) row.imageAttachments = ia;
     }
-    if (role === "user" && Array.isArray(m.fileRefs) && m.fileRefs.length > 0) {
+    if (Array.isArray(m.fileRefs) && m.fileRefs.length > 0) {
       const fr = sanitizeFileRefs(m.fileRefs);
       if (fr?.length) row.fileRefs = fr;
     }

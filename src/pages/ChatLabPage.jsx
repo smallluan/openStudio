@@ -1056,7 +1056,28 @@ export default function ChatLabPage() {
               effectiveSlice = null;
             }
           }
-          setMessages(mapSessionRecordToUiMessages(sessionRec, effectiveSlice));
+          const mapped = mapSessionRecordToUiMessages(sessionRec, effectiveSlice);
+          const pendingId = String(d.assistantMessageId ?? "");
+          const finalId = isWechatPendingAssistantId(pendingId)
+            ? pendingId.replace(/^wechat-replying-/, "wechat-assistant-")
+            : pendingId;
+          const hasFinalRow = mapped.some((m) => m.id === finalId || m.id === pendingId);
+          if (!hasFinalRow) {
+            finalizeAssistantById(pendingId, {
+              ...(d.kind === "error"
+                ? { error: formatStreamError(String(d.message ?? ""), t) }
+                : d.kind === "aborted"
+                  ? { error: "aborted" }
+                  : {}),
+              ...(typeof d.content === "string" ? { content: d.content } : {}),
+              ...(typeof d.thinking === "string" ? { thinking: d.thinking } : {}),
+              ...(Array.isArray(d.toolTrace) ? { toolTrace: d.toolTrace } : {}),
+              ...(Array.isArray(d.activityLog) ? { activityLog: d.activityLog } : {}),
+              ...(Array.isArray(d.assistantTimeline) ? { assistantTimeline: d.assistantTimeline } : {}),
+            });
+            return;
+          }
+          setMessages(mapped);
         }
         return;
       }
@@ -3653,6 +3674,18 @@ const MessageBubble = memo(function MessageBubble({
 
   const [copiedPulse, setCopiedPulse] = useState(false);
 
+  const fileRefs = Array.isArray(message.fileRefs) ? message.fileRefs : [];
+
+  const handleOpenFileRef = useCallback(
+    /** @param {{ path?: string; name?: string }} ref */
+    (ref) => {
+      const path = String(ref?.path ?? "").trim();
+      if (!path || !previewApi?.openFromWorkspacePath) return;
+      void previewApi.openFromWorkspacePath(path, ref?.name);
+    },
+    [previewApi],
+  );
+
   const handleCopy = useCallback(async () => {
     const text = copyPlain.trim();
     if (!text) return;
@@ -3783,22 +3816,6 @@ const MessageBubble = memo(function MessageBubble({
           <span className="chat-lab__msg-skill-label">{message.skillMeta.label}</span>
         </div>
       ) : null}
-      {isUser && Array.isArray(message.fileRefs) && message.fileRefs.length > 0 ? (
-        <div className="chat-lab__msg-file-pills" aria-label={t("chatLab.messageFileRefsLabel")}>
-          {message.fileRefs.map((ref, idx) => (
-            <div
-              key={`${message.id}-fref-${idx}`}
-              className="chat-lab__msg-skill-pill"
-              title={ref.path}
-            >
-              <span className="chat-lab__msg-skill-emoji" aria-hidden>
-                {emojiForFileRefKind(ref.kind === "directory" ? "directory" : "file")}
-              </span>
-              <span className="chat-lab__msg-skill-label">{ref.name}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
       <article
         className={cn(
           "chat-lab__bubble",
@@ -3873,7 +3890,8 @@ const MessageBubble = memo(function MessageBubble({
             ) : !message.thinking &&
               !message.error &&
               toolRows.length === 0 &&
-              activityRows.length === 0 ? (
+              activityRows.length === 0 &&
+              !fileRefs.length ? (
               <p className="chat-lab__empty-reply muted">{t("chatLab.emptyAssistantReply")}</p>
             ) : null}
             {message.error ? (
@@ -3905,42 +3923,47 @@ const MessageBubble = memo(function MessageBubble({
               {t("chatLab.userMessageCollapse")}
             </button>
           ) : null}
-          <div className="chat-lab__msg-actions">
+          <div
+            className={cn("chat-lab__msg-actions", fileRefs.length > 0 && "chat-lab__msg-actions--with-files")}
+            aria-label={fileRefs.length > 0 ? t("chatLab.messageFileRefsLabel") : undefined}
+          >
+            <button
+              type="button"
+              className={cn("chat-lab__msg-action-btn", copiedPulse && "chat-lab__msg-action-btn--copied")}
+              onClick={handleCopy}
+              disabled={!copyPlain.trim()}
+              title={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
+              aria-label={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
+            >
+              {copiedPulse ? <MessageMetaCopiedIcon /> : <MessageMetaCopyIcon />}
+            </button>
+            {fileRefs.map((ref, idx) => (
+              <button
+                key={`${message.id}-fref-${idx}`}
+                type="button"
+                className="chat-lab__msg-file-ref"
+                onClick={() => handleOpenFileRef(ref)}
+                title={`${t("chatLab.messageFileRefOpen")}\n${ref.path}`}
+                aria-label={t("chatLab.messageFileRefOpenNamed", { name: ref.name })}
+              >
+                <span className="chat-lab__msg-file-ref-emoji" aria-hidden>
+                  {emojiForFileRefKind(ref.kind === "directory" ? "directory" : "file")}
+                </span>
+                <span className="chat-lab__msg-file-ref-label">{ref.name}</span>
+              </button>
+            ))}
             {isUser ? (
-              <>
-                <button
-                  type="button"
-                  className={cn("chat-lab__msg-action-btn", copiedPulse && "chat-lab__msg-action-btn--copied")}
-                  onClick={handleCopy}
-                  disabled={!copyPlain.trim()}
-                  title={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
-                  aria-label={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
-                >
-                  {copiedPulse ? <MessageMetaCopiedIcon /> : <MessageMetaCopyIcon />}
-                </button>
-                <button
-                  type="button"
-                  className="chat-lab__msg-action-btn"
-                  onClick={startComposerEdit}
-                  disabled={disableUserEdit}
-                  title={t("chatLab.messageEdit")}
-                  aria-label={t("chatLab.messageEdit")}
-                >
-                  <MessageMetaEditIcon />
-                </button>
-              </>
-            ) : (
               <button
                 type="button"
-                className={cn("chat-lab__msg-action-btn", copiedPulse && "chat-lab__msg-action-btn--copied")}
-                onClick={handleCopy}
-                disabled={!copyPlain.trim()}
-                title={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
-                aria-label={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
+                className="chat-lab__msg-action-btn"
+                onClick={startComposerEdit}
+                disabled={disableUserEdit}
+                title={t("chatLab.messageEdit")}
+                aria-label={t("chatLab.messageEdit")}
               >
-                {copiedPulse ? <MessageMetaCopiedIcon /> : <MessageMetaCopyIcon />}
+                <MessageMetaEditIcon />
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       ) : null}
