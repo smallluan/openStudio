@@ -23,6 +23,11 @@ import { isWechatPendingAssistantId } from "./useWechatSessionSync.js";
 import { isWechatNewChatCommand } from "./wechatSessionCommands.js";
 import { pickWechatOutboundMedia, filterExistingWechatMedia, composeWechatReplyText, wechatMediaToFileRefs } from "./wechatOutboundMedia.js";
 import { wechatGatewayAssistantContent } from "./wechatGatewayHistory.js";
+import {
+  listWechatSealedTextSegments,
+  markWechatTextSegmentSent,
+  wasWechatTextSegmentSent,
+} from "./wechatIncrementalReply.js";
 
 
 
@@ -167,13 +172,76 @@ function finalizeWechatAssistantInStore(conversationId, assistantMessageId, extr
 
 }
 
+/**
+ * @param {string} conversationId
+ * @param {string} assistantMessageId
+ */
+function wechatSegmentSendKey(conversationId, assistantMessageId) {
+  return `${conversationId}:${assistantMessageId}`;
+}
 
+/**
+ * Push sealed timeline prose blocks to WeChat as they complete (tool/step gap follows).
+ *
+ * @param {{
+ *   bridge: NonNullable<typeof window.studioBridge>;
+ *   conversationId: string;
+ *   peerId: string;
+ *   assistantMessageId: string;
+ *   timeline: import("./streamTimelineMerge.js").AssistantTimelineSegment[] | undefined;
+ *   streamComplete: boolean;
+ *   sentSegmentsRef: import("react").MutableRefObject<Map<string, Set<number>>>;
+ * }} args
+ */
+async function sendWechatSealedTextSegments({
+  bridge,
+  conversationId,
+  peerId,
+  assistantMessageId,
+  timeline,
+  streamComplete,
+  sentSegmentsRef,
+}) {
+  const segments = listWechatSealedTextSegments(timeline, streamComplete);
+  if (!segments.length || !bridge.wechatSendMessage) return;
+
+  const key = wechatSegmentSendKey(conversationId, assistantMessageId);
+  for (const seg of segments) {
+    if (wasWechatTextSegmentSent(sentSegmentsRef.current, key, seg.segmentIndex)) continue;
+    const text = String(seg.body ?? "").trim();
+    if (!text) continue;
+
+    const requestId = `wechat-assistant-chunk:${conversationId}:${assistantMessageId}:${seg.segmentIndex}`;
+    try {
+      const res = await bridge.wechatSendMessage({
+        requestId,
+        conversationId,
+        peerId,
+        text,
+        localMessageId: `wechat-local-assistant:${assistantMessageId}:${seg.segmentIndex}`,
+      });
+      if (res && res.ok === false) {
+        bridge.logRendererMessage?.({
+          level: "warn",
+          message: `[wechat] chunk send failed (${seg.segmentIndex}): ${String(res.message ?? "unknown")}`,
+        });
+        continue;
+      }
+      markWechatTextSegmentSent(sentSegmentsRef.current, key, seg.segmentIndex);
+    } catch (err) {
+      bridge.logRendererMessage?.({
+        level: "warn",
+        message: `[wechat] chunk send failed (${seg.segmentIndex}): ${String(err?.message ?? err)}`,
+      });
+    }
+  }
+}
 
 /**
 
  * Always-mounted: run WeChat inbound auto-replies through the same renderer `startChatStream`
 
- * path as Chat Lab (gateway + tools), then push the final answer back to WeChat.
+ * path as Chat Lab (gateway + tools), then push timeline prose blocks to WeChat as they seal.
 
  */
 
@@ -191,6 +259,8 @@ export function useWechatAutoReplyStream() {
 
     clearWechatReplyingSessionId,
 
+    gatewayStreamSlice,
+
   } = useChatLabStreaming();
 
   /** @type {import("react").MutableRefObject<Set<string>>} */
@@ -200,6 +270,10 @@ export function useWechatAutoReplyStream() {
   /** @type {import("react").MutableRefObject<Set<string>>} */
 
   const sentWechatAssistantIdsRef = useRef(new Set());
+
+  /** @type {import("react").MutableRefObject<Map<string, Set<number>>>} */
+
+  const sentWechatTextSegmentsRef = useRef(new Map());
 
 
 
@@ -463,8 +537,30 @@ export function useWechatAutoReplyStream() {
         sentWechatAssistantIdsRef.current.add(assistantMessageId);
 
         void (async () => {
+          const timeline = Array.isArray(d.assistantTimeline) ? d.assistantTimeline : [];
+          const sealedOnDone = listWechatSealedTextSegments(timeline, true);
+
+          if (sealedOnDone.length > 0) {
+            await sendWechatSealedTextSegments({
+              bridge,
+              conversationId,
+              peerId,
+              assistantMessageId,
+              timeline,
+              streamComplete: true,
+              sentSegmentsRef: sentWechatTextSegmentsRef,
+            });
+          }
+
           const mediaToSend = await filterExistingWechatMedia(bridge, mediaItems);
-          const textToSend = composeWechatReplyText(replyText, mediaToSend);
+          const segmentKey = wechatSegmentSendKey(conversationId, assistantMessageId);
+          const sentSegmentSet = sentWechatTextSegmentsRef.current.get(segmentKey);
+          const allTextSentIncrementally =
+            sealedOnDone.length > 0 &&
+            sealedOnDone.every((seg) => sentSegmentSet?.has(seg.segmentIndex));
+          const textToSend = allTextSentIncrementally
+            ? ""
+            : composeWechatReplyText(replyText, mediaToSend);
           const fileRefs = wechatMediaToFileRefs(mediaToSend);
 
           if (textToSend !== replyText || fileRefs.length > 0) {
@@ -570,6 +666,32 @@ export function useWechatAutoReplyStream() {
     };
 
   }, [beginGatewayStream, clearWechatReplyingSessionId, resetGatewayStream, setWechatReplyingSessionId, t]);
+
+  useEffect(() => {
+    const slice = gatewayStreamSlice;
+    if (!slice?.active) return undefined;
+
+    const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+    if (!bridge?.wechatSendMessage) return undefined;
+
+    const rec = getSession(slice.conversationId);
+    if (!rec || rec.channel !== CHAT_SESSION_CHANNEL_WECHAT) return undefined;
+
+    const peerId = String(rec.channelPeerId ?? "").trim();
+    if (!peerId) return undefined;
+
+    void sendWechatSealedTextSegments({
+      bridge,
+      conversationId: slice.conversationId,
+      peerId,
+      assistantMessageId: slice.assistantMessageId,
+      timeline: slice.assistantTimeline,
+      streamComplete: false,
+      sentSegmentsRef: sentWechatTextSegmentsRef,
+    });
+
+    return undefined;
+  }, [gatewayStreamSlice]);
 
 }
 
