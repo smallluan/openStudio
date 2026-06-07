@@ -44,8 +44,29 @@ import {
   getSession,
   loadAllSessions,
   renameSession,
+  updateSessionParticipants,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
+import {
+  activeMentionQuery,
+  agentMentionLabel,
+  insertMention,
+  insertMentionEveryone,
+  isEveryoneMention,
+  mentionEveryoneAgents,
+  parseAgentMentions,
+  resolveReplyTargets,
+} from "../studio/agentMentions.js";
+import {
+  agentAvatarGlyph,
+  agentDisplayLabel,
+  groupAgentsInSession,
+  sessionKeyForAgent,
+  systemMessageForAgent,
+} from "../studio/agents.js";
+import { useStudio } from "../context/StudioContext.jsx";
+import ChatLabParticipantBar from "../components/chat-lab/ChatLabParticipantBar.jsx";
+import ChatLabAgentMentionPopover from "../components/chat-lab/ChatLabAgentMentionPopover.jsx";
 import { startWechatTypingPulse } from "../chat/wechatStreamTyping.js";
 import { isWechatPendingAssistantId } from "../chat/useWechatSessionSync.js";
 import ChatLabHero from "../components/chat-lab/ChatLabHero.jsx";
@@ -55,9 +76,8 @@ import { useTheme } from "../context/ThemeContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import {
   useChatLabStreaming,
-  useGatewayStreamSlice,
+  useGatewayStreamSlices,
 } from "../context/ChatLabStreamingContext.jsx";
-import { useRafThrottledValue } from "../hooks/useRafThrottle.js";
 import { createChatLabMarkdownComponents, chatMarkdownPlainText } from "../components/chat-lab/chatLabMarkdown.jsx";
 import ChatLabPreviewDock from "../components/chat-lab/ChatLabPreviewDock.jsx";
 import {
@@ -142,14 +162,42 @@ function formatMessageTimestamp(ts, locale) {
 }
 
 /**
+ * @param {Record<string, unknown>} m
+ */
+function toPersistedChatMessage(m) {
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
+    ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
+    ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
+    ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
+      ? { assistantTimeline: m.assistantTimeline }
+      : {}),
+    ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
+    ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
+    ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
+      ? { imageAttachments: m.imageAttachments }
+      : {}),
+    ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
+    ...(typeof m.agentId === "string" && m.agentId ? { agentId: m.agentId } : {}),
+    ...(Array.isArray(m.mentions) && m.mentions.length ? { mentions: m.mentions } : {}),
+  };
+}
+
+/**
  * History rows posted to OpenClaw (system + tail user line are appended by the caller).
  * Put OpenClaw `attachments` only when `includeImageAttachments` is true (latest user turn);
  * earlier turns use short "[N images attached]" text so we do not resend base64 every request.
- * @param {Array<{role: string; content?: string; thinking?: string; error?: string; imageAttachments?: unknown; fileRefs?: unknown}>} msgs
- * @param {{ includeImageAttachments?: boolean }} [opts]
+ * @param {Array<{role: string; content?: string; thinking?: string; error?: string; imageAttachments?: unknown; fileRefs?: unknown; agentId?: string}>} msgs
+ * @param {{ includeImageAttachments?: boolean; agentById?: Map<string, import("../studio/agents.js").LobsterAgent> }} [opts]
  */
 function buildGatewayPayloadRows(msgs, opts = {}) {
   const includeImageAttachments = opts.includeImageAttachments === true;
+  const agentById = opts.agentById;
+  const targetAgentId = typeof opts.targetAgentId === "string" ? opts.targetAgentId : "";
+  const mainAgentStudioId = typeof opts.mainAgentStudioId === "string" ? opts.mainAgentStudioId : "";
   return msgs
     .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
     .map((m) => {
@@ -166,7 +214,22 @@ function buildGatewayPayloadRows(msgs, opts = {}) {
       }
       const c = String(m.content ?? "").trim();
       const th = String(m.thinking ?? "").trim();
-      return { role: m.role, content: c || th || "" };
+      let body = c || th || "";
+      const agentId =
+        typeof m.agentId === "string" && m.agentId
+          ? m.agentId
+          : m.role === "assistant" && mainAgentStudioId
+            ? mainAgentStudioId
+            : "";
+      if (body && agentId && agentById?.has(agentId)) {
+        const agent = agentById.get(agentId);
+        const label = agentDisplayLabel(agent);
+        body =
+          targetAgentId && agentId !== targetAgentId
+            ? `[群聊 · ${label}]: ${body}`
+            : `[${label}]: ${body}`;
+      }
+      return { role: m.role, content: body };
     });
 }
 
@@ -212,6 +275,8 @@ function mapSessionMessageRow(m, opts = {}) {
       ? { imageAttachments: m.imageAttachments }
       : {}),
     ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
+    ...(m.agentId ? { agentId: m.agentId } : {}),
+    ...(Array.isArray(m.mentions) && m.mentions.length ? { mentions: m.mentions } : {}),
     streaming,
   };
 }
@@ -251,40 +316,57 @@ function dedupeWechatAssistantStoreRows(messages) {
   });
 }
 
-function mapSessionRecordToUiMessages(rec, gatewaySlice) {
-  let activeAssistantId =
-    gatewaySlice?.active && gatewaySlice.conversationId === rec.id
-      ? String(gatewaySlice.assistantMessageId ?? "").trim()
-      : "";
+function mapSessionRecordToUiMessages(rec, gatewaySliceOrSlices) {
+  const gatewaySlices = !gatewaySliceOrSlices
+    ? []
+    : Array.isArray(gatewaySliceOrSlices)
+      ? gatewaySliceOrSlices
+      : [gatewaySliceOrSlices];
+  const activeSlices = gatewaySlices.filter((s) => s?.active && s.conversationId === rec.id);
+  /** @type {Map<string, (typeof gatewaySlices)[number]>} */
+  const sliceByAssistantId = new Map(
+    activeSlices.map((s) => [String(s.assistantMessageId ?? "").trim(), s]).filter(([id]) => id),
+  );
+  let activeAssistantIds = new Set(sliceByAssistantId.keys());
   /** @type {typeof rec.messages} */
   let storeRows = Array.isArray(rec.messages) ? rec.messages : [];
   if (rec.channel === CHAT_SESSION_CHANNEL_WECHAT) {
     storeRows = dedupeWechatAssistantStoreRows(storeRows);
-    if (activeAssistantId && isWechatPendingAssistantId(activeAssistantId)) {
+    for (const activeAssistantId of [...activeAssistantIds]) {
+      if (!isWechatPendingAssistantId(activeAssistantId)) continue;
       const src = wechatAssistantSourceKey(activeAssistantId);
       const finalId = src ? `wechat-assistant-${src}` : "";
       if (finalId && storeRows.some((m) => m.id === finalId)) {
-        activeAssistantId = finalId;
+        const slice = sliceByAssistantId.get(activeAssistantId);
+        activeAssistantIds.delete(activeAssistantId);
+        activeAssistantIds.add(finalId);
+        if (slice) {
+          sliceByAssistantId.delete(activeAssistantId);
+          sliceByAssistantId.set(finalId, slice);
+        }
       }
     }
   }
-  if (activeAssistantId && !storeRows.some((m) => m.id === activeAssistantId)) {
-    storeRows = [
-      ...storeRows,
-      {
-        id: activeAssistantId,
-        role: /** @type {const} */ ("assistant"),
-        content: "",
-        createdAt: Date.now(),
-      },
-    ];
+  for (const activeAssistantId of activeAssistantIds) {
+    if (!storeRows.some((m) => m.id === activeAssistantId)) {
+      storeRows = [
+        ...storeRows,
+        {
+          id: activeAssistantId,
+          role: /** @type {const} */ ("assistant"),
+          content: "",
+          createdAt: Date.now(),
+        },
+      ];
+    }
   }
   let rows = storeRows.map((m) =>
-    mapSessionMessageRow(m, { streaming: Boolean(activeAssistantId && m.id === activeAssistantId) }),
+    mapSessionMessageRow(m, { streaming: Boolean(activeAssistantIds.has(m.id)) }),
   );
-  if (activeAssistantId && gatewaySlice) {
+  if (activeSlices.length > 0) {
     rows = rows.map((m) => {
-      if (m.id !== activeAssistantId) return m;
+      const gatewaySlice = sliceByAssistantId.get(m.id);
+      if (!gatewaySlice) return m;
       return {
         ...m,
         streaming: true,
@@ -451,6 +533,7 @@ export default function ChatLabPage() {
 
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
   const isElectron = Boolean(bridge?.startChatStream);
+  const { agents, agentById, mainAgent } = useStudio();
   const skillEnv = useSkillEnvironment();
   const skillPickEnv = useMemo(
     () => (skillEnv.loading ? { platform: skillEnv.platform, loading: true } : skillEnv),
@@ -516,27 +599,71 @@ export default function ChatLabPage() {
   const [chatApiBlocked, setChatApiBlocked] = useState(false);
   const [probeRestartKey, setProbeRestartKey] = useState(0);
   const [toolbarModelId, setToolbarModelId] = useState("");
+  const [participantIds, setParticipantIds] = useState(/** @type {string[]} */ ([]));
+  const [mentionCaret, setMentionCaret] = useState(0);
+  const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
 
-  /** The id of the assistant bubble currently being filled (if any). */
-  const activeAssistantIdRef = useRef(/** @type {string | null} */ (null));
-  /** The streamId tracked by main process for abort. */
-  const activeStreamIdRef = useRef(/** @type {string | null} */ (null));
+  const participantPool = useMemo(() => {
+    const ids = new Set(participantIds);
+    if (mainAgent) ids.add(mainAgent.id);
+    return agents.filter((a) => ids.has(a.id));
+  }, [agents, mainAgent, participantIds]);
+
+  const mainAgentLabel = t("agents.defaultName");
+
+  const mentionActive = useMemo(
+    () => activeMentionQuery(input, mentionCaret, agents),
+    [agents, input, mentionCaret],
+  );
+
+  const mentionEveryoneLabel = t("chatLab.mentionEveryone");
+
+  const mentionFilteredAgents = useMemo(() => {
+    if (!mentionActive) return [];
+    const q = mentionActive.query.trim().toLowerCase();
+    return agents.filter((a) => {
+      const label = agentMentionLabel(a, mainAgentLabel).toLowerCase();
+      const gid = (a.gatewayAgentId || "").toLowerCase();
+      return !q || label.includes(q) || gid.includes(q);
+    });
+  }, [agents, mainAgentLabel, mentionActive]);
+
+  const mentionEveryoneEnabled = useMemo(
+    () => mentionEveryoneAgents(agents, { mainAgent, participantIds }).length >= 2,
+    [agents, mainAgent, participantIds],
+  );
+
+  const mentionEveryoneVisible = useMemo(() => {
+    if (!mentionActive || !mentionEveryoneEnabled) return false;
+    const q = mentionActive.query.trim().toLowerCase();
+    if (!q) return true;
+    return mentionEveryoneLabel.toLowerCase().includes(q);
+  }, [mentionActive, mentionEveryoneEnabled, mentionEveryoneLabel]);
+
+  const mentionOptionCount = (mentionEveryoneVisible ? 1 : 0) + mentionFilteredAgents.length;
+
+  /** Active gateway stream ids for abort/stop (multi-agent turns may have several). */
+  const activeStreamIdsRef = useRef(/** @type {Set<string>} */ (new Set()));
+  /** Assistant bubble id → gateway stream id. */
+  const assistantStreamIdsRef = useRef(/** @type {Map<string, string>} */ (new Map()));
   const messagesRef = useRef(messages);
   const messagesScrollRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const autoScrollRef = useRef(true);
 
   const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
-  const gatewaySliceForConv = useGatewayStreamSlice(conversationId);
-  const gatewaySliceRef = useRef(gatewaySliceForConv);
-  gatewaySliceRef.current = gatewaySliceForConv;
-  const throttledStreamContent = useRafThrottledValue(gatewaySliceForConv?.content ?? "");
-  const throttledStreamThinking = useRafThrottledValue(gatewaySliceForConv?.thinking ?? "");
-  const gatewayStreaming = Boolean(gatewaySliceForConv?.active);
+  const gatewaySlicesForConv = useGatewayStreamSlices(conversationId);
+  const gatewaySlicesRef = useRef(gatewaySlicesForConv);
+  gatewaySlicesRef.current = gatewaySlicesForConv;
+  const gatewayStreaming = gatewaySlicesForConv.some((s) => s.active);
+  const parallelReplyActive = useMemo(
+    () => messages.filter((m) => m.role === "assistant" && m.streaming).length > 1,
+    [messages],
+  );
 
   /** Switching threads clears send guards; finalize skips terminal events when conversationId mismatch left refs stuck. */
   useEffect(() => {
-    activeAssistantIdRef.current = null;
-    activeStreamIdRef.current = null;
+    activeStreamIdsRef.current.clear();
+    assistantStreamIdsRef.current.clear();
     setPendingEditMessageId(null);
     setComposerSkillRow(null);
     setComposerAttachments([]);
@@ -685,12 +812,23 @@ export default function ChatLabPage() {
     const rec = getSession(paramC);
     if (rec) {
       setMessages(mapSessionRecordToUiMessages(rec, null));
+      const stored = Array.isArray(rec.participantIds) ? rec.participantIds : [];
+      setParticipantIds(stored.filter((id) => id && id !== mainAgent?.id));
       setChatApiBlocked(false);
       return;
     }
     if (messagesRef.current.length > 0) return;
     navigate("/chat", { replace: true });
-  }, [navigate, paramC]);
+  }, [mainAgent?.id, navigate, paramC]);
+
+  const handleParticipantsChange = useCallback(
+    (ids) => {
+      const next = [...new Set([...(mainAgent ? [mainAgent.id] : []), ...ids])];
+      setParticipantIds(ids.filter((id) => id !== mainAgent?.id));
+      if (paramC) updateSessionParticipants(paramC, next);
+    },
+    [mainAgent, paramC],
+  );
 
   useEffect(() => {
     autoScrollRef.current = true;
@@ -703,23 +841,26 @@ export default function ChatLabPage() {
     const mergeWechatThreadFromStore = () => {
       const rec = getSession(paramC);
       if (!rec || rec.channel !== CHAT_SESSION_CHANNEL_WECHAT) return;
-      const liveSlice = gatewaySliceRef.current;
-      if (liveSlice?.active && liveSlice.conversationId === paramC) {
+      const liveSlices = gatewaySlicesRef.current.filter((s) => s.conversationId === paramC);
+      if (liveSlices.some((s) => s.active)) {
         return;
       }
-      let slice = liveSlice?.conversationId === paramC ? liveSlice : null;
-      if (
-        slice?.active &&
-        isWechatPendingAssistantId(slice.assistantMessageId) &&
-        Array.isArray(rec.messages)
-      ) {
-        const src = wechatAssistantSourceKey(slice.assistantMessageId);
-        const finalId = src ? `wechat-assistant-${src}` : "";
-        if (finalId && rec.messages.some((m) => m.id === finalId)) {
-          slice = null;
+      let slices = liveSlices;
+      if (slices.length === 1) {
+        const slice = slices[0];
+        if (
+          slice?.active &&
+          isWechatPendingAssistantId(slice.assistantMessageId) &&
+          Array.isArray(rec.messages)
+        ) {
+          const src = wechatAssistantSourceKey(slice.assistantMessageId);
+          const finalId = src ? `wechat-assistant-${src}` : "";
+          if (finalId && rec.messages.some((m) => m.id === finalId)) {
+            slices = [];
+          }
         }
       }
-      setMessages(mapSessionRecordToUiMessages(rec, slice));
+      setMessages(mapSessionRecordToUiMessages(rec, slices));
     };
 
     /** @param {Event} ev */
@@ -738,22 +879,17 @@ export default function ChatLabPage() {
 
   /** Gateway stream may start before the pending WeChat assistant row is in React state. */
   useEffect(() => {
-    if (!paramC || !gatewaySliceForConv?.active) return;
-    if (gatewaySliceForConv.conversationId !== paramC) return;
-    const assistantMessageId = gatewaySliceForConv.assistantMessageId;
+    if (!paramC || !gatewaySlicesForConv.some((s) => s.active)) return;
     setMessages((prev) => {
-      if (prev.some((m) => m.id === assistantMessageId)) return prev;
+      const missing = gatewaySlicesForConv.some(
+        (s) => s.active && !prev.some((m) => m.id === s.assistantMessageId),
+      );
+      if (!missing) return prev;
       const rec = getSession(paramC);
       if (!rec) return prev;
-      return mapSessionRecordToUiMessages(rec, gatewaySliceForConv);
+      return mapSessionRecordToUiMessages(rec, gatewaySlicesForConv);
     });
-  }, [
-    gatewaySliceForConv,
-    gatewaySliceForConv?.active,
-    gatewaySliceForConv?.assistantMessageId,
-    gatewaySliceForConv?.conversationId,
-    paramC,
-  ]);
+  }, [gatewaySlicesForConv, paramC]);
 
   /** Deep-link from Skills: open chat with OpenClaw skill slug pre-selected (e.g. skill-creator). */
   useEffect(() => {
@@ -794,23 +930,7 @@ export default function ChatLabPage() {
             !m.error &&
             !isWechatPendingAssistantId(m.id),
         )
-        .map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
-          ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
-          ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
-          ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
-            ? { assistantTimeline: m.assistantTimeline }
-            : {}),
-          ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
-          ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
-          ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
-            ? { imageAttachments: m.imageAttachments }
-            : {}),
-          ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
-        }));
+        .map((m) => toPersistedChatMessage(m));
       if (toSave.length === 0) return;
       const title = deriveTitleFromMessages(messages, { imageFallback: t("chatLab.chatUntitledImage") });
       upsertSession(conversationId, title || "…", toSave);
@@ -960,51 +1080,72 @@ export default function ChatLabPage() {
   }, [bridge, configIssueKey, configLoaded, isElectron, probeRestartKey]);
 
   useEffect(() => {
-    if (!gatewaySliceForConv) return;
-    const { assistantMessageId, active, toolTrace, activityLog, assistantTimeline } = gatewaySliceForConv;
-    const content = throttledStreamContent;
-    const thinking = throttledStreamThinking;
+    if (!gatewaySlicesForConv.length) return;
     setMessages((prev) => {
-      let idx = prev.findIndex((m) => m.id === assistantMessageId);
-      let rowId = assistantMessageId;
-      if (idx === -1 && isWechatPendingAssistantId(assistantMessageId)) {
-        const finalId = assistantMessageId.replace(/^wechat-replying-/, "wechat-assistant-");
-        idx = prev.findIndex((m) => m.id === finalId);
-        if (idx !== -1) rowId = finalId;
-      }
-      if (idx === -1) return prev;
-      return prev.map((m) => {
-        if (m.id !== rowId) return m;
-        const next = { ...m, content, thinking, streaming: active };
-        if (toolTrace && toolTrace.length > 0) next.toolTrace = toolTrace;
-        if (activityLog && activityLog.length > 0) next.activityLog = activityLog;
-        if (Array.isArray(assistantTimeline)) {
-          if (assistantTimeline.length > 0) next.assistantTimeline = assistantTimeline;
-          else delete next.assistantTimeline;
+      let next = prev;
+      let changed = false;
+      for (const slice of gatewaySlicesForConv) {
+        if (!slice.active) continue;
+        const { assistantMessageId, active, content, thinking, toolTrace, activityLog, assistantTimeline } =
+          slice;
+        let idx = next.findIndex((m) => m.id === assistantMessageId);
+        let rowId = assistantMessageId;
+        if (idx === -1 && isWechatPendingAssistantId(assistantMessageId)) {
+          const finalId = assistantMessageId.replace(/^wechat-replying-/, "wechat-assistant-");
+          idx = next.findIndex((m) => m.id === finalId);
+          if (idx !== -1) rowId = finalId;
         }
-        return next;
-      });
+        if (idx === -1) continue;
+        next = next.map((m) => {
+          if (m.id !== rowId) return m;
+          changed = true;
+          const row = { ...m, content, thinking, streaming: active };
+          if (toolTrace && toolTrace.length > 0) row.toolTrace = toolTrace;
+          if (activityLog && activityLog.length > 0) row.activityLog = activityLog;
+          if (Array.isArray(assistantTimeline)) {
+            if (assistantTimeline.length > 0) row.assistantTimeline = assistantTimeline;
+            else delete row.assistantTimeline;
+          }
+          return row;
+        });
+      }
+      return changed ? next : prev;
     });
-  }, [gatewaySliceForConv, paramC, throttledStreamContent, throttledStreamThinking]);
+  }, [gatewaySlicesForConv, paramC]);
 
-  const prevSliceForConvRef = useRef(/** @type {typeof gatewaySliceForConv} */ (null));
+  const prevSliceCountForConvRef = useRef(0);
   useEffect(() => {
-    const prev = prevSliceForConvRef.current;
-    prevSliceForConvRef.current = gatewaySliceForConv;
-    if (prev && !gatewaySliceForConv && prev.conversationId === conversationId) {
+    const prevCount = prevSliceCountForConvRef.current;
+    const nextCount = gatewaySlicesForConv.length;
+    prevSliceCountForConvRef.current = nextCount;
+    if (prevCount > 0 && nextCount === 0) {
       setMessages((pm) =>
         pm.some((m) => m.streaming)
           ? pm.map((m) => (m.streaming ? { ...m, streaming: false } : m))
           : pm,
       );
     }
-  }, [conversationId, gatewaySliceForConv]);
+  }, [conversationId, gatewaySlicesForConv.length]);
+
+  const abortAllActiveStreams = useCallback(async () => {
+    const ids = [...activeStreamIdsRef.current];
+    for (const sid of ids) {
+      resetGatewayStream(sid);
+      if (bridge?.abortChatStream) {
+        try {
+          await bridge.abortChatStream(sid);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    activeStreamIdsRef.current.clear();
+    assistantStreamIdsRef.current.clear();
+  }, [bridge, resetGatewayStream]);
 
   const finalizeAssistantById = useCallback(
     (assistantId, extra) => {
       if (!assistantId) return;
-      activeAssistantIdRef.current = null;
-      activeStreamIdRef.current = null;
       const finalId = isWechatPendingAssistantId(assistantId)
         ? assistantId.replace(/^wechat-replying-/, "wechat-assistant-")
         : assistantId;
@@ -1037,26 +1178,34 @@ export default function ChatLabPage() {
       const ce = /** @type {CustomEvent} */ (e);
       const d = ce.detail;
       if (!d || d.conversationId !== conversationId) return;
+      const clearStreamTracking = (assistantMessageId) => {
+        const sid = assistantStreamIdsRef.current.get(String(assistantMessageId ?? ""));
+        if (sid) {
+          activeStreamIdsRef.current.delete(sid);
+          assistantStreamIdsRef.current.delete(String(assistantMessageId ?? ""));
+        }
+      };
       const sessionRec = getSession(conversationId);
       if (sessionRec?.channel === CHAT_SESSION_CHANNEL_WECHAT) {
         if (d.kind === "done" || d.kind === "aborted" || d.kind === "error") {
-          const slice =
-            gatewaySliceRef.current?.conversationId === conversationId
-              ? gatewaySliceRef.current
-              : null;
-          let effectiveSlice = slice;
-          if (
-            slice?.active &&
-            isWechatPendingAssistantId(d.assistantMessageId) &&
-            Array.isArray(sessionRec.messages)
-          ) {
-            const src = wechatAssistantSourceKey(d.assistantMessageId);
-            const finalId = src ? `wechat-assistant-${src}` : "";
-            if (finalId && sessionRec.messages.some((m) => m.id === finalId)) {
-              effectiveSlice = null;
+          clearStreamTracking(d.assistantMessageId);
+          const liveSlices = gatewaySlicesRef.current.filter((s) => s.conversationId === conversationId);
+          let effectiveSlices = liveSlices;
+          if (liveSlices.length === 1) {
+            const slice = liveSlices[0];
+            if (
+              slice?.active &&
+              isWechatPendingAssistantId(d.assistantMessageId) &&
+              Array.isArray(sessionRec.messages)
+            ) {
+              const src = wechatAssistantSourceKey(d.assistantMessageId);
+              const finalId = src ? `wechat-assistant-${src}` : "";
+              if (finalId && sessionRec.messages.some((m) => m.id === finalId)) {
+                effectiveSlices = [];
+              }
             }
           }
-          const mapped = mapSessionRecordToUiMessages(sessionRec, effectiveSlice);
+          const mapped = mapSessionRecordToUiMessages(sessionRec, effectiveSlices);
           const pendingId = String(d.assistantMessageId ?? "");
           const finalId = isWechatPendingAssistantId(pendingId)
             ? pendingId.replace(/^wechat-replying-/, "wechat-assistant-")
@@ -1081,7 +1230,9 @@ export default function ChatLabPage() {
         }
         return;
       }
+
       if (d.kind === "error") {
+        clearStreamTracking(d.assistantMessageId);
         const raw = String(d.message ?? "");
         const msg = formatStreamError(raw, t);
         finalizeAssistantById(d.assistantMessageId, {
@@ -1099,6 +1250,7 @@ export default function ChatLabPage() {
         return;
       }
       if (d.kind === "aborted" || d.kind === "done") {
+        clearStreamTracking(d.assistantMessageId);
         const extra = {
           ...(typeof d.content === "string" ? { content: d.content } : {}),
           ...(typeof d.thinking === "string" ? { thinking: d.thinking } : {}),
@@ -1163,19 +1315,7 @@ export default function ChatLabPage() {
       if (configIssueKey) return false;
       if (gatewayPhase !== "online" || chatApiBlocked) return false;
 
-      const sidAbort = activeStreamIdRef.current;
-      if (sidAbort) {
-        if (bridge?.abortChatStream) {
-          try {
-            await bridge.abortChatStream(sidAbort);
-          } catch {
-            /* ignore */
-          }
-        }
-        resetGatewayStream(sidAbort);
-      }
-      activeStreamIdRef.current = null;
-      activeAssistantIdRef.current = null;
+      await abortAllActiveStreams();
 
       const preservedCreated = prev[idx].createdAt;
       const skillSnap = skillMetaFromPickRow(composerSkillRow);
@@ -1211,27 +1351,12 @@ export default function ChatLabPage() {
         thinking: "",
         streaming: true,
         createdAt: assistantNow,
+        ...(mainAgent ? { agentId: mainAgent.id } : {}),
       };
 
       const persistableBase = base
         .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
-        .map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
-          ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
-          ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
-          ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
-          ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
-            ? { assistantTimeline: m.assistantTimeline }
-            : {}),
-          ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
-          ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
-            ? { imageAttachments: m.imageAttachments }
-            : {}),
-          ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
-        }));
+        .map((m) => toPersistedChatMessage(m));
       const persistableNext = [
         ...persistableBase,
         {
@@ -1240,6 +1365,7 @@ export default function ChatLabPage() {
           content: "",
           thinking: "",
           createdAt: assistantMsg.createdAt,
+          ...(assistantMsg.agentId ? { agentId: assistantMsg.agentId } : {}),
         },
       ];
       const provisionalTitle = deriveTitleFromMessages(
@@ -1269,11 +1395,22 @@ export default function ChatLabPage() {
       setComposerFileRefs([]);
       autoScrollRef.current = true;
 
-      activeStreamIdRef.current = streamId;
-      activeAssistantIdRef.current = assistantMsg.id;
+      activeStreamIdsRef.current.add(streamId);
+      assistantStreamIdsRef.current.set(assistantMsg.id, streamId);
 
-      const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
-      const outgoing = [systemMessage, ...priorRows, lastUserGatewayRow];
+      const editGroupAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
+      const sysRow = mainAgent
+        ? systemMessageForAgent(mainAgent, t("chatLab.systemPrompt"), { groupAgents: editGroupAgents })
+        : { role: "system", content: t("chatLab.systemPrompt") };
+      const outgoing = [
+        ...(sysRow ? [sysRow] : []),
+        ...buildGatewayPayloadRows(base.slice(0, -1), {
+          agentById,
+          targetAgentId: mainAgent?.id,
+          mainAgentStudioId: mainAgent?.id,
+        }),
+        ...tailUserRows,
+      ];
       const composerSkill = skillPickRowToPayload(composerSkillRow);
       setComposerSkillRow(null);
 
@@ -1294,9 +1431,22 @@ export default function ChatLabPage() {
 
       const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
       try {
-        await bridge.startChatStream({ streamId, conversationId, messages: outgoing, composerSkill });
+        await bridge.startChatStream({
+          streamId,
+          conversationId,
+          messages: outgoing,
+          composerSkill,
+          ...(mainAgent
+            ? {
+                agentSessionKey: sessionKeyForAgent(mainAgent),
+                gatewayAgentId: mainAgent.gatewayAgentId,
+              }
+            : {}),
+        });
       } catch (err) {
         resetGatewayStream(streamId);
+        activeStreamIdsRef.current.delete(streamId);
+        assistantStreamIdsRef.current.delete(assistantMsg.id);
         try {
           await bridge.abortChatStream(streamId);
         } catch {
@@ -1315,6 +1465,7 @@ export default function ChatLabPage() {
       return true;
     },
     [
+      abortAllActiveStreams,
       beginGatewayStream,
       bridge,
       chatApiBlocked,
@@ -1328,6 +1479,7 @@ export default function ChatLabPage() {
       gatewayPhase,
       isElectron,
       paramC,
+      mainAgent,
       resetGatewayStream,
       setSearchParams,
       t,
@@ -1349,8 +1501,21 @@ export default function ChatLabPage() {
         setSearchParams({ c: conversationId }, { replace: true });
       }
 
-      const systemMessage = { role: "system", content: t("chatLab.systemPrompt") };
-      const historyForRequest = buildGatewayPayloadRows(messagesRef.current);
+      const { cleanText, mentionIds } = parseAgentMentions(trimmed, agents, {
+        mainFallback: mainAgentLabel,
+        everyoneLabel: mentionEveryoneLabel,
+        mainAgent,
+        participantIds,
+      });
+      const effectiveText = cleanText || trimmed;
+      const replyTargets = resolveReplyTargets({
+        mentionIds,
+        participantIds,
+        agents,
+      });
+      if (!replyTargets.length) return;
+
+      const priorHistory = buildGatewayPayloadRows(messagesRef.current, { agentById });
 
       const now = Date.now();
       const skillSnap = skillMetaFromPickRow(skillPickRow ?? null);
@@ -1358,40 +1523,83 @@ export default function ChatLabPage() {
       const userMsg = {
         id: newId(),
         role: /** @type {const} */ ("user"),
-        content: trimmed,
+        content: effectiveText,
         createdAt: now,
+        ...(mentionIds.length ? { mentions: mentionIds } : {}),
         ...(skillSnap ? { skillMeta: skillSnap } : {}),
         ...(imageAttachments && imageAttachments.length ? { imageAttachments: imageAttachments } : {}),
         ...(fileRefs && fileRefs.length ? { fileRefs: fileRefs } : {}),
       };
-      const assistantMsg = {
-        id: newId(),
-        role: /** @type {const} */ ("assistant"),
-        content: "",
-        thinking: "",
-        streaming: true,
-        createdAt: now,
-      };
 
       const persistablePrior = messagesRef.current
         .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
-        .map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          ...(m.thinking && String(m.thinking).trim() ? { thinking: m.thinking } : {}),
-          ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
-          ...(Array.isArray(m.toolTrace) && m.toolTrace.length ? { toolTrace: m.toolTrace } : {}),
-          ...(Array.isArray(m.activityLog) && m.activityLog.length ? { activityLog: m.activityLog } : {}),
-          ...(Array.isArray(m.assistantTimeline) && m.assistantTimeline.length
-            ? { assistantTimeline: m.assistantTimeline }
-            : {}),
-          ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
-          ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
-            ? { imageAttachments: m.imageAttachments }
-            : {}),
-          ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
-        }));
+        .map((m) => toPersistedChatMessage(m));
+
+      const sessionParticipantIds = [
+        ...new Set([
+          ...(mainAgent ? [mainAgent.id] : []),
+          ...participantIds,
+          ...mentionIds,
+          ...replyTargets.map((a) => a.id),
+        ]),
+      ];
+
+      setMessages((prev) => [...prev, userMsg]);
+      setUserBubbleEnterMessageId(userMsg.id);
+      onCommitted?.();
+      autoScrollRef.current = true;
+
+      const isFirstTurn = priorHistory.length === 0;
+      if (
+        isFirstTurn &&
+        config?.chatLabAutoTitle &&
+        bridge?.generateChatTitle &&
+        config?.credentials?.hasProviderApiKey
+      ) {
+        void bridge.generateChatTitle({ userText: effectiveText || t("chatLab.chatUntitledImage") }).then((r) => {
+          if (!r?.ok || typeof r.title !== "string" || !r.title.trim()) return;
+          const rec = getSession(conversationId);
+          if (!rec) return;
+          renameSession(conversationId, r.title.trim());
+        });
+      }
+
+      const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
+      const groupAgents = groupAgentsInSession({ agents, mainAgent, participantIds: sessionParticipantIds });
+
+      const parallelReply = replyTargets.length > 1;
+      const historyBeforeUser = messagesRef.current.filter((m) => m.id !== userMsg.id);
+      const tailUserRows = buildGatewayPayloadRows([userMsg], {
+        includeImageAttachments: true,
+        agentById,
+      });
+
+      /** @type {Array<{
+       *   target: import("../studio/agents.js").LobsterAgent;
+       *   assistantMsg: { id: string; role: "assistant"; content: string; thinking: string; streaming: boolean; createdAt: number; agentId: string };
+       *   streamId: string;
+       *   outgoing: Array<{ role: string; content: string; attachments?: unknown[] }>;
+       * }>} */
+      const launchJobs = replyTargets.map((target, i) => {
+        const assistantMsg = {
+          id: newId(),
+          role: /** @type {const} */ ("assistant"),
+          content: "",
+          thinking: "",
+          streaming: true,
+          createdAt: now + i + 1,
+          agentId: target.id,
+        };
+        const sysRow = systemMessageForAgent(target, t("chatLab.systemPrompt"), { groupAgents });
+        const priorOnly = buildGatewayPayloadRows(historyBeforeUser, {
+          agentById,
+          targetAgentId: target.id,
+          mainAgentStudioId: mainAgent?.id,
+        });
+        const outgoing = [...(sysRow ? [sysRow] : []), ...priorOnly, ...tailUserRows];
+        return { target, assistantMsg, streamId: newId(), outgoing };
+      });
+
       const persistableNext = [
         ...persistablePrior,
         {
@@ -1399,17 +1607,19 @@ export default function ChatLabPage() {
           role: /** @type {const} */ ("user"),
           content: userMsg.content,
           createdAt: userMsg.createdAt,
+          ...(userMsg.mentions?.length ? { mentions: userMsg.mentions } : {}),
           ...(userMsg.skillMeta ? { skillMeta: userMsg.skillMeta } : {}),
           ...(userMsg.imageAttachments ? { imageAttachments: userMsg.imageAttachments } : {}),
           ...(userMsg.fileRefs ? { fileRefs: userMsg.fileRefs } : {}),
         },
-        {
+        ...launchJobs.map(({ assistantMsg }) => ({
           id: assistantMsg.id,
           role: /** @type {const} */ ("assistant"),
           content: "",
           thinking: "",
           createdAt: assistantMsg.createdAt,
-        },
+          agentId: assistantMsg.agentId,
+        })),
       ];
       const provisionalTitle = deriveTitleFromMessages(
         persistableNext.map((m) => ({
@@ -1423,72 +1633,71 @@ export default function ChatLabPage() {
         })),
         { imageFallback: t("chatLab.chatUntitledImage") },
       );
-      upsertSession(conversationId, provisionalTitle || "…", persistableNext);
-
-      const streamId = newId();
-      beginGatewayStream({
-        conversationId,
-        streamId,
-        assistantMessageId: assistantMsg.id,
+      upsertSession(conversationId, provisionalTitle || "…", persistableNext, {
+        participantIds: sessionParticipantIds,
       });
 
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
-      setUserBubbleEnterMessageId(userMsg.id);
-      onCommitted?.();
+      setMessages((prev) => [...prev, ...launchJobs.map((j) => j.assistantMsg)]);
 
-      autoScrollRef.current = true;
-
-      activeStreamIdRef.current = streamId;
-      activeAssistantIdRef.current = assistantMsg.id;
-
-      const tailUserRows = buildGatewayPayloadRows([userMsg], { includeImageAttachments: true });
-      const lastUserGatewayRow = tailUserRows[tailUserRows.length - 1];
-      const outgoing = [systemMessage, ...historyForRequest, lastUserGatewayRow];
-
-      const isFirstTurn = historyForRequest.length === 0;
-      if (
-        isFirstTurn &&
-        config?.chatLabAutoTitle &&
-        bridge?.generateChatTitle &&
-        config?.credentials?.hasProviderApiKey
-      ) {
-        void bridge.generateChatTitle({ userText: trimmed || t("chatLab.chatUntitledImage") }).then((r) => {
-          if (!r?.ok || typeof r.title !== "string" || !r.title.trim()) return;
-          const rec = getSession(conversationId);
-          if (!rec) return;
-          renameSession(conversationId, r.title.trim());
+      for (const job of launchJobs) {
+        beginGatewayStream({
+          conversationId,
+          streamId: job.streamId,
+          assistantMessageId: job.assistantMsg.id,
         });
+        activeStreamIdsRef.current.add(job.streamId);
+        assistantStreamIdsRef.current.set(job.assistantMsg.id, job.streamId);
       }
 
-      const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
       try {
-        await bridge.startChatStream({ streamId, conversationId, messages: outgoing, composerSkill });
-      } catch (err) {
-        resetGatewayStream(streamId);
-        try {
-          await bridge.abortChatStream(streamId);
-        } catch {
-          /* ignore */
-        }
-        const raw = String(err?.message ?? err);
-        const msg = formatStreamError(raw, t);
-        finalizeAssistantById(assistantMsg.id, { error: msg });
-        if (isChatHttp404(raw)) {
-          setChatApiBlocked(true);
-          setProbeRestartKey((k) => k + 1);
-        }
+        await Promise.allSettled(
+          launchJobs.map(async (job, i) => {
+            try {
+              await bridge.startChatStream({
+                streamId: job.streamId,
+                conversationId,
+                messages: job.outgoing,
+                composerSkill: i === 0 ? composerSkill : null,
+                agentSessionKey: sessionKeyForAgent(job.target),
+                gatewayAgentId: job.target.gatewayAgentId,
+                concurrent: parallelReply,
+              });
+            } catch (err) {
+              resetGatewayStream(job.streamId);
+              activeStreamIdsRef.current.delete(job.streamId);
+              assistantStreamIdsRef.current.delete(job.assistantMsg.id);
+              try {
+                await bridge.abortChatStream(job.streamId);
+              } catch {
+                /* ignore */
+              }
+              const raw = String(err?.message ?? err);
+              const msg = formatStreamError(raw, t);
+              finalizeAssistantById(job.assistantMsg.id, { error: msg });
+              if (isChatHttp404(raw)) {
+                setChatApiBlocked(true);
+                setProbeRestartKey((k) => k + 1);
+              }
+            }
+          }),
+        );
       } finally {
         stopWechatTyping();
       }
     },
     [
+      agentById,
       beginGatewayStream,
       bridge,
-      chatApiBlocked,
       config,
       conversationId,
       finalizeAssistantById,
+      agents,
+      mainAgent,
+      mainAgentLabel,
       paramC,
+      mentionEveryoneLabel,
+      participantIds,
       resetGatewayStream,
       setProbeRestartKey,
       setSearchParams,
@@ -1498,7 +1707,6 @@ export default function ChatLabPage() {
   );
 
   const send = useCallback(async () => {
-    if (activeAssistantIdRef.current) return;
     if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
     if (gatewayStreaming) return;
     const trimmed = input.trim();
@@ -1573,7 +1781,6 @@ export default function ChatLabPage() {
   const quickReplySend = useCallback(
     async (text) => {
       if (pendingEditMessageIdRef.current) return;
-      if (activeAssistantIdRef.current) return;
       if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
       if (gatewayStreaming) return;
       const trimmed = String(text ?? "").trim();
@@ -1601,12 +1808,8 @@ export default function ChatLabPage() {
   );
 
   const stop = useCallback(() => {
-    const sid = activeStreamIdRef.current;
-    if (!sid || !bridge?.abortChatStream) return;
-    void bridge.abortChatStream(sid).catch(() => {
-      /* ignore — the stream will emit `aborted` or `done` itself */
-    });
-  }, [bridge]);
+    void abortAllActiveStreams();
+  }, [abortAllActiveStreams]);
 
   const exitComposerLongTextMode = useCallback(() => {
     setComposerLongTextMode(false);
@@ -1696,9 +1899,64 @@ export default function ChatLabPage() {
     [composerResizeDragging, finishComposerResize],
   );
 
+  const pickMentionAgent = useCallback(
+    (agent) => {
+      if (!mentionActive) return;
+      const next = insertMention(input, mentionActive, agent, mainAgentLabel);
+      setInput(next);
+      requestAnimationFrame(() => {
+        const ta = textareaRef.current;
+        if (!ta) return;
+        const pos = next.length;
+        ta.focus();
+        ta.setSelectionRange(pos, pos);
+        setMentionCaret(pos);
+      });
+    },
+    [input, mainAgentLabel, mentionActive],
+  );
+
+  const pickMentionEveryone = useCallback(() => {
+    if (!mentionActive) return;
+    const next = insertMentionEveryone(input, mentionActive, mentionEveryoneLabel);
+    setInput(next);
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      const pos = next.length;
+      ta.focus();
+      ta.setSelectionRange(pos, pos);
+      setMentionCaret(pos);
+    });
+  }, [input, mentionActive, mentionEveryoneLabel]);
+
   const onKeyDown = useCallback(
     /** @param {import('react').KeyboardEvent<HTMLTextAreaElement>} e */
     (e) => {
+      if (mentionActive && mentionOptionCount > 0 && !e.nativeEvent.isComposing) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setMentionHighlightIndex((i) => (i + 1) % mentionOptionCount);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setMentionHighlightIndex((i) => (i - 1 + mentionOptionCount) % mentionOptionCount);
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          if (mentionEveryoneVisible && mentionHighlightIndex === 0) {
+            pickMentionEveryone();
+          } else {
+            const agentIndex = mentionHighlightIndex - (mentionEveryoneVisible ? 1 : 0);
+            const agent = mentionFilteredAgents[agentIndex];
+            if (agent) pickMentionAgent(agent);
+          }
+          return;
+        }
+      }
+
       if (slashSkillMenuOpen && slashFilteredSkills.length > 0 && !e.nativeEvent.isComposing) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
@@ -1735,7 +1993,22 @@ export default function ChatLabPage() {
         if (canSend) send();
       }
     },
-    [canSend, composerLongTextMode, pickSlashSkill, send, slashFilteredSkills, slashHighlightIndex, slashSkillMenuOpen],
+    [
+      canSend,
+      composerLongTextMode,
+      mentionActive,
+      mentionEveryoneVisible,
+      mentionFilteredAgents,
+      mentionHighlightIndex,
+      mentionOptionCount,
+      pickMentionAgent,
+      pickMentionEveryone,
+      pickSlashSkill,
+      send,
+      slashFilteredSkills,
+      slashHighlightIndex,
+      slashSkillMenuOpen,
+    ],
   );
 
   const isLanding = messages.length === 0;
@@ -1908,6 +2181,15 @@ export default function ChatLabPage() {
 
   const composer = (
     <div className="chat-lab__composer-outer">
+      <ChatLabParticipantBar
+        agents={agents}
+        participantIds={[
+          ...(mainAgent ? [mainAgent.id] : []),
+          ...participantIds.filter((id) => id !== mainAgent?.id),
+        ]}
+        onChange={handleParticipantsChange}
+        disabled={composerInputLocked || gatewayStreaming}
+      />
       <div className="chat-lab__composer-row">
         <div
         className={cn(
@@ -2083,7 +2365,11 @@ export default function ChatLabPage() {
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
+              setMentionCaret(e.target.selectionStart ?? 0);
             }}
+            onSelect={(e) => setMentionCaret(e.currentTarget.selectionStart ?? 0)}
+            onKeyUp={(e) => setMentionCaret(e.currentTarget.selectionStart ?? 0)}
+            onCompositionEnd={(e) => setMentionCaret(e.currentTarget.selectionStart ?? 0)}
             onFocus={() => setComposerFocused(true)}
             onBlur={() => setComposerFocused(false)}
             onKeyDown={onKeyDown}
@@ -2109,6 +2395,19 @@ export default function ChatLabPage() {
           onPick={pickSlashSkill}
           onClose={() => {}}
           t={t}
+        />
+        <ChatLabAgentMentionPopover
+          open={Boolean(mentionActive)}
+          textareaRef={textareaRef}
+          agents={agents}
+          query={mentionActive?.query ?? ""}
+          highlightIndex={mentionHighlightIndex}
+          onHighlightIndexChange={setMentionHighlightIndex}
+          everyoneLabel={mentionEveryoneLabel}
+          showEveryone={mentionEveryoneEnabled}
+          onPickEveryone={pickMentionEveryone}
+          onPick={pickMentionAgent}
+          onClose={() => {}}
         />
         <div className="chat-lab__shell-toolbar">
           <div className="chat-lab__shell-toolbar-start">
@@ -2244,6 +2543,7 @@ export default function ChatLabPage() {
                   key={conversationId}
                   messages={messages}
                   sessionArtifacts={sessionArtifacts}
+                  agentById={agentById}
                   messagesScrollRef={messagesScrollRef}
                   autoScrollRef={autoScrollRef}
                   gatewayStreaming={gatewayStreaming}
@@ -2257,6 +2557,11 @@ export default function ChatLabPage() {
                   t={t}
                   locale={locale}
                   threadLabel={t("chatLab.title")}
+                  mainAgentLabel={mainAgentLabel}
+                  mentionEveryoneLabel={mentionEveryoneLabel}
+                  mainAgent={mainAgent}
+                  participantIds={participantIds}
+                  collapseTracePanels={parallelReplyActive}
                 />
               </div>
             )}
@@ -2348,13 +2653,17 @@ function ChatStreamingIndicator({ label }) {
  *   streaming: boolean;
  * }} props
  */
-function GapToolActivityPanel({ segments, toolMap, activityMap, t, streaming }) {
-  const [open, setOpen] = useState(() => Boolean(streaming));
+function GapToolActivityPanel({ segments, toolMap, activityMap, t, streaming, keepCollapsed = false }) {
+  const [open, setOpen] = useState(() => !keepCollapsed && Boolean(streaming));
   const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
+    if (keepCollapsed) {
+      setOpen(false);
+      return;
+    }
     if (streaming) setOpen(true);
     else setOpen(false);
-  }, [streaming]);
+  }, [streaming, keepCollapsed]);
 
   const summaryCounts = useMemo(() => {
     let toolCount = 0;
@@ -2431,6 +2740,7 @@ function GapToolActivityPanel({ segments, toolMap, activityMap, t, streaming }) 
  *   streaming: boolean;
  *   tailBusy: boolean;
  *   tailBusyLabel: string;
+ *   keepTraceCollapsed?: boolean;
  * }} props
  */
 const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
@@ -2442,6 +2752,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
   streaming,
   tailBusy,
   tailBusyLabel,
+  keepTraceCollapsed = false,
 }) {
   const toolMap = useMemo(() => new Map(toolRows.map((r) => [r.id, r])), [toolRows]);
   const activityMap = useMemo(() => new Map(activityRows.map((r) => [r.id, r])), [activityRows]);
@@ -2580,6 +2891,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
               activityMap={activityMap}
               t={t}
               streaming={panelStreaming}
+              keepCollapsed={keepTraceCollapsed}
             />
           </div>
         );
@@ -2899,13 +3211,17 @@ function ToolRow({ row, t, enterRegistryRef }) {
  *   streaming: boolean;
  * }} props
  */
-function ToolChainPanel({ rows, t, streaming }) {
-  const [open, setOpen] = useState(() => Boolean(streaming));
+function ToolChainPanel({ rows, t, streaming, keepCollapsed = false }) {
+  const [open, setOpen] = useState(() => !keepCollapsed && Boolean(streaming));
   const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
+    if (keepCollapsed) {
+      setOpen(false);
+      return;
+    }
     if (streaming) setOpen(true);
     else setOpen(false);
-  }, [streaming]);
+  }, [streaming, keepCollapsed]);
   if (!rows?.length) return null;
   return (
     <TraceDisclosure
@@ -3006,13 +3322,17 @@ function ActivityRow({ row, t, streaming, isTail, enterRegistryRef }) {
  *   streaming?: boolean;
  * }} props
  */
-function ActivityChainPanel({ rows, t, streaming }) {
-  const [open, setOpen] = useState(() => Boolean(streaming));
+function ActivityChainPanel({ rows, t, streaming, keepCollapsed = false }) {
+  const [open, setOpen] = useState(() => !keepCollapsed && Boolean(streaming));
   const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
+    if (keepCollapsed) {
+      setOpen(false);
+      return;
+    }
     if (streaming) setOpen(true);
     else setOpen(false);
-  }, [streaming]);
+  }, [streaming, keepCollapsed]);
   if (!rows?.length) return null;
   return (
     <TraceDisclosure
@@ -3534,7 +3854,10 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
  *     createdAt?: number;
  *     skillMeta?: { kind: "openclaw" | "user"; slug?: string; userSkillId?: string; label: string; emoji: string };
  *     imageAttachments?: { mime: string; dataUrl: string }[];
+ *     mentions?: string[];
  *   };
+ *   mentionAgents?: Array<{ label: string; glyph: string }>;
+ *   collapseTracePanels?: boolean;
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  *   locale: import("../i18n/messages.js").LocaleId;
  *   streamLocked: boolean;
@@ -3543,6 +3866,8 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
  *   onQuickReply?: (text: string) => void | Promise<void>;
  *   animateUserEnter?: boolean;
  *   onUserEnterAnimEnd?: (messageId: string) => void;
+ *   agentGlyph?: string;
+ *   agentName?: string;
  *   onBeginUserEdit: (
  *     messageId: string,
  *     payload: {
@@ -3563,6 +3888,10 @@ const MessageBubble = memo(function MessageBubble({
   quickReplyDisabled,
   onQuickReply,
   onBeginUserEdit,
+  agentGlyph,
+  agentName,
+  mentionAgents = [],
+  collapseTracePanels = false,
 }) {
   const isUser = message.role === "user";
   const shouldEnterAnim = isUser && animateUserEnter;
@@ -3816,6 +4145,16 @@ const MessageBubble = memo(function MessageBubble({
           <span className="chat-lab__msg-skill-label">{message.skillMeta.label}</span>
         </div>
       ) : null}
+      {!isUser && agentName ? (
+        <div className="chat-lab__msg-agent-head">
+          {agentGlyph ? (
+            <span className="chat-lab__msg-agent-avatar" aria-hidden>
+              {agentGlyph}
+            </span>
+          ) : null}
+          <span className="chat-lab__msg-agent-name">{agentName}</span>
+        </div>
+      ) : null}
       <article
         className={cn(
           "chat-lab__bubble",
@@ -3826,10 +4165,20 @@ const MessageBubble = memo(function MessageBubble({
       >
         {shouldEnterAnim ? <span className="chat-lab__reveal-blur-veil" aria-hidden /> : null}
         {!isUser && !interleavedAssistant && toolRows.length > 0 ? (
-          <ToolChainPanel rows={toolRows} t={t} streaming={Boolean(message.streaming)} />
+          <ToolChainPanel
+            rows={toolRows}
+            t={t}
+            streaming={Boolean(message.streaming)}
+            keepCollapsed={collapseTracePanels}
+          />
         ) : null}
         {!isUser && !interleavedAssistant && activityRows.length > 0 ? (
-          <ActivityChainPanel rows={activityRows} t={t} streaming={Boolean(message.streaming)} />
+          <ActivityChainPanel
+            rows={activityRows}
+            t={t}
+            streaming={Boolean(message.streaming)}
+            keepCollapsed={collapseTracePanels}
+          />
         ) : null}
         {!isUser && !interleavedAssistant && message.thinking ? (
           <TraceDisclosure
@@ -3868,6 +4217,7 @@ const MessageBubble = memo(function MessageBubble({
               streaming={Boolean(message.streaming)}
               tailBusy={Boolean(interleavedTailBusy)}
               tailBusyLabel={t("chatLab.streaming")}
+              keepTraceCollapsed={collapseTracePanels}
             />
             {message.error ? (
               <div className="mt-1 text-[0.78rem]" style={{ color: "#d84b4b" }}>
@@ -3902,6 +4252,18 @@ const MessageBubble = memo(function MessageBubble({
           </div>
         )}
       </article>
+      {isUser && mentionAgents.length > 0 ? (
+        <div className="chat-lab__msg-mentions" aria-label={t("chatLab.messageMentionsAria")}>
+          {mentionAgents.map((a) => (
+            <span key={a.label} className="chat-lab__msg-mention-pill">
+              <span className="chat-lab__msg-mention-glyph" aria-hidden>
+                {a.glyph}
+              </span>
+              <span className="chat-lab__msg-mention-label">@{a.label}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
       {isUser || !message.streaming ? (
         <div
           className={cn(
@@ -4027,6 +4389,32 @@ function buildMessagesMeasureDigest(messages) {
     .join("|");
 }
 
+/**
+ * @param {{ mentions?: string[] }} message
+ * @param {Map<string, import("../studio/agents.js").LobsterAgent>} agentById
+ * @param {string} mainAgentLabel
+ * @param {{ everyoneLabel?: string; mainAgent?: import("../studio/agents.js").LobsterAgent | null; participantIds?: string[] }} [opts]
+ */
+function mentionAgentsForMessage(message, agentById, mainAgentLabel, opts = {}) {
+  const ids = Array.isArray(message.mentions) ? message.mentions : [];
+  if (!ids.length) return [];
+  const agents = [...agentById.values()];
+  const everyoneIds = mentionEveryoneAgents(agents, {
+    mainAgent: opts.mainAgent ?? null,
+    participantIds: opts.participantIds ?? [],
+  }).map((a) => a.id);
+  if (isEveryoneMention(ids, everyoneIds)) {
+    return [{ label: opts.everyoneLabel || "所有人", glyph: "👥" }];
+  }
+  return ids
+    .map((id) => agentById.get(id))
+    .filter(Boolean)
+    .map((a) => ({
+      label: agentMentionLabel(a, mainAgentLabel),
+      glyph: agentAvatarGlyph(a),
+    }));
+}
+
 /** @typedef {Parameters<typeof ChatLabVirtualMessageList>[0]} ChatLabMessageListProps */
 
 /**
@@ -4046,6 +4434,7 @@ function ChatLabMessageList(props) {
 function ChatLabPlainMessageList({
   messages,
   sessionArtifacts,
+  agentById,
   messagesScrollRef,
   autoScrollRef,
   gatewayStreaming,
@@ -4058,7 +4447,16 @@ function ChatLabPlainMessageList({
   t,
   locale,
   threadLabel,
+  mainAgentLabel,
+  mentionEveryoneLabel,
+  mainAgent,
+  participantIds,
+  collapseTracePanels = false,
 }) {
+  const mentionDisplayOpts = useMemo(
+    () => ({ everyoneLabel: mentionEveryoneLabel, mainAgent, participantIds }),
+    [mentionEveryoneLabel, mainAgent, participantIds],
+  );
   const messagesMeasureDigest = useMemo(() => buildMessagesMeasureDigest(messages), [messages]);
   const scrollPinKey = messages.length
     ? `${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}`
@@ -4106,21 +4504,28 @@ function ChatLabPlainMessageList({
       aria-live="polite"
       aria-label={threadLabel}
     >
-      {messages.map((m, index) => (
-        <MessageBubble
-          key={m.id}
-          message={m}
-          t={t}
-          locale={locale}
-          streamLocked={streamLocked}
-          animateUserEnter={m.role === "user" && m.id === userBubbleEnterMessageId}
-          onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
-          allowAssistantQuickReply={index === messages.length - 1 && m.role === "assistant"}
-          quickReplyDisabled={quickReplyDisabled}
-          onQuickReply={onQuickReply}
-          onBeginUserEdit={onBeginUserEdit}
-        />
-      ))}
+      {messages.map((m, index) => {
+        const agent = m.agentId ? agentById.get(m.agentId) : null;
+        return (
+          <MessageBubble
+            key={m.id}
+            message={m}
+            t={t}
+            locale={locale}
+            streamLocked={streamLocked}
+            animateUserEnter={m.role === "user" && m.id === userBubbleEnterMessageId}
+            onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
+            allowAssistantQuickReply={index === messages.length - 1 && m.role === "assistant"}
+            quickReplyDisabled={quickReplyDisabled}
+            onQuickReply={onQuickReply}
+            onBeginUserEdit={onBeginUserEdit}
+            agentGlyph={agent ? agentAvatarGlyph(agent) : undefined}
+            agentName={agent ? agentDisplayLabel(agent) : undefined}
+            mentionAgents={mentionAgentsForMessage(m, agentById, mainAgentLabel, mentionDisplayOpts)}
+            collapseTracePanels={collapseTracePanels}
+          />
+        );
+      })}
       {sessionArtifacts?.length && !gatewayStreaming ? (
         <ChatLabArtifactsBar artifacts={sessionArtifacts} />
       ) : null}
@@ -4143,7 +4548,13 @@ function ChatLabPlainMessageList({
  *     assistantTimeline?: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[];
  *     createdAt?: number;
  *     skillMeta?: { kind: "openclaw" | "user"; slug?: string; userSkillId?: string; label: string; emoji: string };
+ *     mentions?: string[];
  *   }>;
+ *   mainAgentLabel: string;
+ *   mentionEveryoneLabel: string;
+ *   mainAgent: import("../studio/agents.js").LobsterAgent | null;
+ *   participantIds: string[];
+ *   collapseTracePanels?: boolean;
  *   messagesScrollRef: import("react").MutableRefObject<HTMLDivElement | null>;
  *   autoScrollRef: import("react").MutableRefObject<boolean>;
  *   gatewayStreaming: boolean;
@@ -4168,6 +4579,7 @@ function ChatLabPlainMessageList({
 function ChatLabVirtualMessageList({
   messages,
   sessionArtifacts,
+  agentById,
   messagesScrollRef,
   autoScrollRef,
   gatewayStreaming,
@@ -4181,7 +4593,16 @@ function ChatLabVirtualMessageList({
   t,
   locale,
   threadLabel,
+  mainAgentLabel,
+  mentionEveryoneLabel,
+  mainAgent,
+  participantIds,
+  collapseTracePanels = false,
 }) {
+  const mentionDisplayOpts = useMemo(
+    () => ({ everyoneLabel: mentionEveryoneLabel, mainAgent, participantIds }),
+    [mentionEveryoneLabel, mainAgent, participantIds],
+  );
   const messagesEstRef = useRef(messages);
   messagesEstRef.current = messages;
   const scrollFadeTimerRef = useRef(/** @type {number | null} */ (null));
@@ -4205,6 +4626,8 @@ function ChatLabVirtualMessageList({
       h += Math.min(480, Math.ceil(textLen / 3.2));
       const n = Array.isArray(m.imageAttachments) ? m.imageAttachments.length : 0;
       if (n > 0) h += 56 + Math.min(n, 8) * 56;
+      const mentionN = Array.isArray(m.mentions) ? m.mentions.length : 0;
+      if (mentionN > 0) h += 30 + Math.min(mentionN - 1, 3) * 8;
       return h;
     }
     return estimateAssistantRowHeight(m);
@@ -4491,6 +4914,18 @@ function ChatLabVirtualMessageList({
                   quickReplyDisabled={quickReplyDisabled}
                   onQuickReply={onQuickReply}
                   onBeginUserEdit={onBeginUserEdit}
+                  agentGlyph={
+                    m.agentId && agentById?.has(m.agentId)
+                      ? agentAvatarGlyph(agentById.get(m.agentId))
+                      : undefined
+                  }
+                  agentName={
+                    m.agentId && agentById?.has(m.agentId)
+                      ? agentDisplayLabel(agentById.get(m.agentId))
+                      : undefined
+                  }
+                  mentionAgents={mentionAgentsForMessage(m, agentById, mainAgentLabel, mentionDisplayOpts)}
+                  collapseTracePanels={collapseTracePanels}
                 />
               </div>
             );

@@ -38,7 +38,7 @@
     "chatHistoryTimeHours": "{{n}} 小時前",
     "chatHistoryTimeYesterday": "昨天",
     "chatHistoryTimeDays": "{{n}} 天前",
-    "lobster": "龍蝦管理",
+    "lobster": "智慧體",
     "skills": "技能",
     "settings": "設定",
     "profile": "帳戶",
@@ -118,8 +118,8 @@
     "close": "關閉"
   },
   "lobsterPage": {
-    "title": "龍蝦管理",
-    "desc": "管理工作室中的每個子智慧體（龍蝦）：顯示名稱、描述、綁定技能與 OpenClaw 工作階段鍵。資料儲存在本機並與工作室畫布同步。",
+    "title": "智慧體管理",
+    "desc": "建立並管理 OpenClaw 智慧體：名稱、頭像、soul.md 身份、工作區與技能。新建時會在閘道側初始化 workspace 並註冊到 agents.list。",
     "actions": {
       "create": "新增智慧體",
       "delete": "刪除"
@@ -129,15 +129,33 @@
     "noSelection": "請從左側選擇一個智慧體，或新增一個。",
     "detailTitle": "基本資訊",
     "fieldName": "顯示名稱",
-    "fieldDescription": "描述（選填）",
-    "fieldSessionKey": "OpenClaw 工作階段鍵（選填）",
-    "sessionKeyPlaceholder": "對接 OpenClaw 工作階段／識別",
+    "fieldAvatar": "頭像（Emoji）",
+    "avatarPlaceholder": "例如 🦞 或 ✨",
+    "fieldIdentity": "身份（IDENTITY.md）",
+    "identityPlaceholder": "名字、人設、Emoji…",
+    "identityHint": "定義「我是誰」——名字與對外身份。儲存後寫入 IDENTITY.md。",
+    "fieldDescription": "簡介（選填）",
+    "fieldSoul": "靈魂（SOUL.md）",
+    "soulPlaceholder": "描述語氣、邊界、說話風格…",
+    "soulHint": "定義「我怎麼說話」——語氣與人格。儲存後寫入 SOUL.md。",
+    "fieldGatewayId": "閘道 Agent ID",
+    "gatewayIdHint": "工作階段鍵：{{session}}",
+    "provisionPending": "正在初始化工作區與閘道設定…",
+    "provisionDone": "已建立智慧體並同步閘道，稍等幾秒即可在聊天中使用。",
     "skillsHeading": "綁定技能",
     "skillFilterPlaceholder": "篩選技能",
-    "skillsHint": "勾選後，此智慧體可使用該技能（實際呼叫鏈將由後續執行階段接入）。",
+    "skillsHint": "勾選表示此智慧體具備這些技能（對話中拉入群組後可 @ 指定回覆）。",
     "skillsEmpty": "沒有符合的技能。可先到「技能」頁新增本機技能，或使用內建清單。",
     "skillCount": "已綁定 {{n}} 個技能",
     "defaultNewName": "新增智慧體",
+    "createModal": {
+      "title": "新增智慧體",
+      "namePlaceholder": "例如：前端開發專家",
+      "nameRequired": "請填寫顯示名稱。",
+      "failed": "建立失敗，請確認閘道是否在線後重試。",
+      "confirm": "確認建立",
+      "busy": "正在建立…"
+    },
     "deleteModal": {
       "title": "刪除智慧體",
       "body": "確定要刪除「{{name}}」嗎？無法復原（本機存檔會一併更新）。",
@@ -224,6 +242,14 @@
     "skillChipClose": "移除技能",
     "toolbarConnectHint": "即將推出",
     "attachHint": "附件功能即將推出",
+    "participantsLabel": "在場智慧體",
+    "participantsAria": "目前對話中的智慧體",
+    "participantsAdd": "拉入智慧體",
+    "participantRemove": "將 {{name}} 移出對話",
+    "mentionPickerAria": "選擇要 @ 的智慧體",
+    "mentionEmpty": "沒有可 @ 的智慧體",
+    "mentionEveryone": "所有人",
+    "messageMentionsAria": "本則訊息 @ 的智慧體",
     "systemPrompt": "你是專業且友善的助理。先釐清思路再清楚回答，並使用與使用者相同的語言。",
     "wechatSystemPrompt": "目前對話來自微信通道，token 成本敏感。使用者要檔案時：只用 cp/mv 複製到工作區，禁止 read_file/cat 讀整份文件、禁止貼正文。Open Studio 會自動以微信附件送出，最多兩句話回覆即可。",
     "emptyHint": "在下方輸入訊息開始本輪對話。",
@@ -471,7 +497,8 @@
     "library": "書庫／娛樂"
   },
   "agents": {
-    "defaultName": "龍蝦一號"
+    "defaultName": "主智慧體",
+    "mainBadge": "主"
   },
   "modes": {
     "idle": "閒置",

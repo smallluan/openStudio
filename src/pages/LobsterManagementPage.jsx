@@ -1,7 +1,8 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useStudio } from "../context/StudioContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
+import { agentAvatarGlyph, agentDisplayLabel, buildIdentityMd } from "../studio/agents.js";
 import { filterUsableBundledSkills } from "../skills/skillAvailability.js";
 import { userSkillDisplayTitle } from "../skills/skillDisplay.js";
 import { BUILTIN_SKILL_DEFS } from "../skills/skillsCatalog.js";
@@ -32,10 +33,70 @@ function AgentListItem({ className, selected, onClick, children }) {
   );
 }
 
+/** @param {string} name @param {string} identityMd */
+function syncIdentityNameLine(name, identityMd) {
+  const trimmed = name.trim();
+  if (!trimmed || !identityMd.trim()) return identityMd;
+  if (/\*\*Name:\*\*/i.test(identityMd)) {
+    return identityMd.replace(/\*\*Name:\*\*\s*.+/i, `**Name:** ${trimmed}`);
+  }
+  return identityMd;
+}
+
+/** @param {{ skills: { id: string; title: string; source: string }[]; selectedIds: string[]; onToggle: (id: string) => void; query: string; onQueryChange: (v: string) => void; filterPlaceholder: string; emptyLabel: string; builtinBadge: string; userBadge: string }} props */
+function AgentSkillPicker({
+  skills,
+  selectedIds,
+  onToggle,
+  query,
+  onQueryChange,
+  filterPlaceholder,
+  emptyLabel,
+  builtinBadge,
+  userBadge,
+}) {
+  const norm = query.trim().toLowerCase();
+  const filtered = norm ? skills.filter((s) => s.title.toLowerCase().includes(norm)) : skills;
+  return (
+    <div className="flex min-h-0 flex-col gap-2">
+      <TextField
+        className="h-8 max-w-full text-[0.75rem]"
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
+        placeholder={filterPlaceholder}
+        aria-label={filterPlaceholder}
+      />
+      <ul className="max-h-[min(32vh,220px)] space-y-1 overflow-auto rounded-[10px] border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] bg-[var(--os-bg-elevated)] p-2">
+        {filtered.length === 0 ? (
+          <li className="px-2 py-3 text-[0.78rem] text-[var(--os-text-muted)]">{emptyLabel}</li>
+        ) : (
+          filtered.map((s) => (
+            <li key={s.id}>
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[0.78rem] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_65%,transparent)]">
+                <input
+                  type="checkbox"
+                  className="accent-[var(--os-accent)]"
+                  checked={selectedIds.includes(s.id)}
+                  onChange={() => onToggle(s.id)}
+                />
+                <span className="min-w-0 flex-1 text-[var(--os-text)]">{s.title}</span>
+                <span className="shrink-0 text-[0.65rem] uppercase text-[var(--os-text-faint)]">
+                  {s.source === "builtin" ? builtinBadge : userBadge}
+                </span>
+              </label>
+            </li>
+          ))
+        )}
+      </ul>
+    </div>
+  );
+}
+
 export default function LobsterManagementPage() {
   const { t } = useI18n();
   const delTitleId = useId();
-  const { agents, addAgent, removeAgent, patchAgentMeta } = useStudio();
+  const createTitleId = useId();
+  const { agents, createAgent, removeAgent, patchAgentMeta } = useStudio();
   const { lib } = useSkillLibrary();
   const skillEnv = useSkillEnvironment();
 
@@ -43,6 +104,19 @@ export default function LobsterManagementPage() {
   const [selectedId, setSelectedId] = useState(/** @type {string | null} */ (null));
   const [deleteTargetId, setDeleteTargetId] = useState(/** @type {string | null} */ (null));
   const [skillQuery, setSkillQuery] = useState("");
+  const [provisionNote, setProvisionNote] = useState(/** @type {string | null} */ (null));
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState(/** @type {string | null} */ (null));
+  const [createSkillQuery, setCreateSkillQuery] = useState("");
+  const [createForm, setCreateForm] = useState(() => ({
+    name: "",
+    description: "",
+    avatar: "🦞",
+    identityMd: buildIdentityMd({ name: "", description: "", avatar: "🦞" }),
+    soulMd: "",
+    skillIds: /** @type {string[]} */ ([]),
+  }));
 
   const openclawById = useMemo(() => new Map(OPENCLAW_BUNDLED_SKILLS.map((s) => [s.id, s])), []);
 
@@ -69,7 +143,8 @@ export default function LobsterManagementPage() {
     return agents.filter((a) => {
       const name = (a.name || "").toLowerCase();
       const desc = (a.description || "").toLowerCase();
-      return name.includes(normalizedQuery) || desc.includes(normalizedQuery);
+      const gid = (a.gatewayAgentId || "").toLowerCase();
+      return name.includes(normalizedQuery) || desc.includes(normalizedQuery) || gid.includes(normalizedQuery);
     });
   }, [agents, normalizedQuery]);
 
@@ -86,11 +161,27 @@ export default function LobsterManagementPage() {
   const selected = agents.find((a) => a.id === selectedId) ?? null;
   const deleteTarget = deleteTargetId ? agents.find((a) => a.id === deleteTargetId) : null;
 
-  const skillNorm = skillQuery.trim().toLowerCase();
-  const filteredSkills = useMemo(() => {
-    if (!skillNorm) return selectableSkills;
-    return selectableSkills.filter((s) => s.title.toLowerCase().includes(skillNorm));
-  }, [selectableSkills, skillNorm]);
+  useEffect(() => {
+    if (!selected) return;
+    const bridge = window.studioBridge;
+    if (!bridge) return;
+    let cancelled = false;
+    if (!selected.soulMd.trim() && bridge.readAgentSoul) {
+      void bridge.readAgentSoul({ gatewayAgentId: selected.gatewayAgentId }).then((r) => {
+        if (cancelled || !r?.ok || typeof r.soulMd !== "string" || !r.soulMd.trim()) return;
+        patchAgentMeta(selected.id, { soulMd: r.soulMd });
+      });
+    }
+    if (!selected.identityMd?.trim() && bridge.readAgentIdentity) {
+      void bridge.readAgentIdentity({ gatewayAgentId: selected.gatewayAgentId }).then((r) => {
+        if (cancelled || !r?.ok || typeof r.identityMd !== "string" || !r.identityMd.trim()) return;
+        patchAgentMeta(selected.id, { identityMd: r.identityMd });
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [patchAgentMeta, selected]);
 
   const toggleSkill = (skillId) => {
     if (!selected) return;
@@ -100,9 +191,57 @@ export default function LobsterManagementPage() {
     patchAgentMeta(selected.id, { skillIds: [...set] });
   };
 
-  const onCreate = () => {
-    const id = addAgent({ name: t("lobsterPage.defaultNewName") });
-    setSelectedId(id);
+  const openCreateModal = useCallback(() => {
+    setCreateForm({
+      name: "",
+      description: "",
+      avatar: "🦞",
+      identityMd: buildIdentityMd({ name: "", description: "", avatar: "🦞" }),
+      soulMd: "",
+      skillIds: [],
+    });
+    setCreateSkillQuery("");
+    setCreateError(null);
+    setCreateOpen(true);
+  }, []);
+
+  const toggleCreateSkill = (skillId) => {
+    setCreateForm((prev) => {
+      const set = new Set(prev.skillIds);
+      if (set.has(skillId)) set.delete(skillId);
+      else set.add(skillId);
+      return { ...prev, skillIds: [...set] };
+    });
+  };
+
+  const onConfirmCreate = async () => {
+    const name = createForm.name.trim();
+    if (!name) {
+      setCreateError(t("lobsterPage.createModal.nameRequired"));
+      return;
+    }
+    setCreateBusy(true);
+    setCreateError(null);
+    try {
+      const result = await createAgent({
+        name,
+        description: createForm.description.trim(),
+        avatar: createForm.avatar.trim() || "🦞",
+        identityMd: createForm.identityMd.trim(),
+        soulMd: createForm.soulMd.trim(),
+        skillIds: createForm.skillIds,
+      });
+      if (!result.ok) {
+        setCreateError(t("lobsterPage.createModal.failed"));
+        return;
+      }
+      setCreateOpen(false);
+      if (result.id) setSelectedId(result.id);
+      setProvisionNote(t("lobsterPage.provisionDone"));
+      window.setTimeout(() => setProvisionNote(null), 4000);
+    } finally {
+      setCreateBusy(false);
+    }
   };
 
   return (
@@ -116,7 +255,7 @@ export default function LobsterManagementPage() {
         <button
           type="button"
           className="w-fit rounded-[11px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-on-accent,#fff)] shadow-sm transition hover:opacity-95"
-          onClick={onCreate}
+          onClick={openCreateModal}
         >
           {t("lobsterPage.actions.create")}
         </button>
@@ -134,13 +273,19 @@ export default function LobsterManagementPage() {
         </label>
       </div>
 
+      {provisionNote ? (
+        <p className="mb-3 text-[0.78rem] text-[var(--os-text-muted)]" role="status">
+          {provisionNote}
+        </p>
+      ) : null}
+
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(220px,280px)_1fr]">
         <div className="flex min-h-0 flex-col gap-2 overflow-auto lg:max-h-none">
           {filteredAgents.length === 0 ? (
             <p className="text-[0.82rem] text-[var(--os-text-muted)]">{t("lobsterPage.emptyList")}</p>
           ) : (
             filteredAgents.map((a) => {
-              const label = a.name?.trim() ? a.name : t("agents.defaultName");
+              const label = agentDisplayLabel(a);
               const preview = a.description?.trim() || t("skillsPage.noDescription");
               return (
                 <AgentListItem
@@ -148,7 +293,17 @@ export default function LobsterManagementPage() {
                   selected={a.id === selectedId}
                   onClick={() => setSelectedId(a.id)}
                 >
-                  <span className="font-medium text-[var(--os-text)]">{label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base" aria-hidden>
+                      {agentAvatarGlyph(a)}
+                    </span>
+                    <span className="font-medium text-[var(--os-text)]">{label}</span>
+                    {a.isMain ? (
+                      <span className="rounded-md bg-[color-mix(in_srgb,var(--os-accent)_12%,transparent)] px-1.5 py-0.5 text-[0.62rem] font-medium uppercase tracking-wide text-[var(--os-accent)]">
+                        {t("agents.mainBadge")}
+                      </span>
+                    ) : null}
+                  </div>
                   <span className="mt-0.5 line-clamp-2 text-[0.75rem] text-[var(--os-text-muted)]">{preview}</span>
                   {a.skillIds?.length ? (
                     <span className="mt-1.5 text-[0.7rem] text-[var(--os-text-faint)]">
@@ -170,13 +325,15 @@ export default function LobsterManagementPage() {
                 <h2 className="text-[0.9375rem] font-semibold text-[var(--os-text)]">
                   {t("lobsterPage.detailTitle")}
                 </h2>
-                <button
-                  type="button"
-                  className="rounded-[10px] border border-[color-mix(in_srgb,var(--os-danger,#b91c1c)_35%,var(--os-border))] px-3 py-1.5 text-[0.78rem] font-medium text-[var(--os-danger,#b91c1c)] transition hover:bg-[color-mix(in_srgb,var(--os-danger,#b91c1c)_8%,transparent)]"
-                  onClick={() => setDeleteTargetId(selected.id)}
-                >
-                  {t("lobsterPage.actions.delete")}
-                </button>
+                {!selected.isMain ? (
+                  <button
+                    type="button"
+                    className="rounded-[10px] border border-[color-mix(in_srgb,var(--os-danger,#b91c1c)_35%,var(--os-border))] px-3 py-1.5 text-[0.78rem] font-medium text-[var(--os-danger,#b91c1c)] transition hover:bg-[color-mix(in_srgb,var(--os-danger,#b91c1c)_8%,transparent)]"
+                    onClick={() => setDeleteTargetId(selected.id)}
+                  >
+                    {t("lobsterPage.actions.delete")}
+                  </button>
+                ) : null}
               </div>
 
               <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
@@ -189,24 +346,57 @@ export default function LobsterManagementPage() {
                 </label>
 
                 <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                  {t("lobsterPage.fieldAvatar")}
+                  <TextField
+                    value={selected.avatar}
+                    onChange={(e) => patchAgentMeta(selected.id, { avatar: e.target.value })}
+                    placeholder={t("lobsterPage.avatarPlaceholder")}
+                    maxLength={8}
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                  {t("lobsterPage.fieldIdentity")}
+                  <textarea
+                    className="min-h-[120px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                    value={selected.identityMd || buildIdentityMd(selected)}
+                    onChange={(e) => patchAgentMeta(selected.id, { identityMd: e.target.value })}
+                    placeholder={t("lobsterPage.identityPlaceholder")}
+                  />
+                  <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("lobsterPage.identityHint")}</span>
+                </label>
+
+                <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
                   {t("lobsterPage.fieldDescription")}
                   <textarea
-                    className="min-h-[88px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.8125rem] text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                    className="min-h-[72px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.8125rem] text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                     value={selected.description}
                     onChange={(e) => patchAgentMeta(selected.id, { description: e.target.value })}
                   />
                 </label>
 
                 <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                  {t("lobsterPage.fieldSessionKey")}
-                  <TextField
-                    value={selected.openclaw?.sessionKey ?? ""}
-                    onChange={(e) =>
-                      patchAgentMeta(selected.id, { openclaw: { sessionKey: e.target.value } })
-                    }
-                    placeholder={t("lobsterPage.sessionKeyPlaceholder")}
+                  {t("lobsterPage.fieldSoul")}
+                  <textarea
+                    className="min-h-[140px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                    value={selected.soulMd}
+                    onChange={(e) => patchAgentMeta(selected.id, { soulMd: e.target.value })}
+                    placeholder={t("lobsterPage.soulPlaceholder")}
                   />
+                  <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("lobsterPage.soulHint")}</span>
                 </label>
+
+                <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                  <span>{t("lobsterPage.fieldGatewayId")}</span>
+                  <code className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.78rem] text-[var(--os-text)]">
+                    {selected.gatewayAgentId}
+                  </code>
+                  <span className="text-[0.68rem] text-[var(--os-text-faint)]">
+                    {t("lobsterPage.gatewayIdHint", {
+                      session: selected.openclaw?.sessionKey ?? "",
+                    })}
+                  </span>
+                </div>
 
                 <div className="flex min-h-0 flex-col gap-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -224,39 +414,128 @@ export default function LobsterManagementPage() {
                   <p className="text-[0.7rem] leading-snug text-[var(--os-text-faint)]">
                     {t("lobsterPage.skillsHint")}
                   </p>
-                  <ul className="max-h-[min(40vh,280px)] space-y-1 overflow-auto rounded-[10px] border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] bg-[var(--os-bg-elevated)] p-2">
-                    {filteredSkills.length === 0 ? (
-                      <li className="px-2 py-3 text-[0.78rem] text-[var(--os-text-muted)]">
-                        {t("lobsterPage.skillsEmpty")}
-                      </li>
-                    ) : (
-                      filteredSkills.map((s) => {
-                        const checked = selected.skillIds.includes(s.id);
-                        return (
-                          <li key={s.id}>
-                            <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[0.78rem] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_65%,transparent)]">
-                              <input
-                                type="checkbox"
-                                className="accent-[var(--os-accent)]"
-                                checked={checked}
-                                onChange={() => toggleSkill(s.id)}
-                              />
-                              <span className="min-w-0 flex-1 text-[var(--os-text)]">{s.title}</span>
-                              <span className="shrink-0 text-[0.65rem] uppercase text-[var(--os-text-faint)]">
-                                {s.source === "builtin" ? t("skillsPage.badgeBuiltin") : t("skillsPage.badgeUser")}
-                              </span>
-                            </label>
-                          </li>
-                        );
-                      })
-                    )}
-                  </ul>
+                  <AgentSkillPicker
+                    skills={selectableSkills}
+                    selectedIds={selected.skillIds}
+                    onToggle={toggleSkill}
+                    query={skillQuery}
+                    onQueryChange={setSkillQuery}
+                    filterPlaceholder={t("lobsterPage.skillFilterPlaceholder")}
+                    emptyLabel={t("lobsterPage.skillsEmpty")}
+                    builtinBadge={t("skillsPage.badgeBuiltin")}
+                    userBadge={t("skillsPage.badgeUser")}
+                  />
                 </div>
               </div>
             </>
           )}
         </div>
       </div>
+
+      {createOpen ? (
+        <Modal onClose={() => !createBusy && setCreateOpen(false)} labelledBy={createTitleId}>
+          <div className="flex w-full min-w-[min(100vw-2rem,520px)] max-h-[min(90vh,720px)] flex-col bg-[var(--os-bg-modal)]">
+            <div className="flex shrink-0 items-center justify-between border-b border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
+              <h2 id={createTitleId} className="text-base font-semibold">
+                {t("lobsterPage.createModal.title")}
+              </h2>
+              <ModalCloseButton onClick={() => !createBusy && setCreateOpen(false)} />
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-5 py-4">
+              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                {t("lobsterPage.fieldName")}
+                <TextField
+                  value={createForm.name}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setCreateForm((prev) => ({
+                      ...prev,
+                      name,
+                      identityMd: syncIdentityNameLine(name, prev.identityMd),
+                    }));
+                  }}
+                  placeholder={t("lobsterPage.createModal.namePlaceholder")}
+                  autoFocus
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                {t("lobsterPage.fieldAvatar")}
+                <TextField
+                  value={createForm.avatar}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, avatar: e.target.value }))}
+                  placeholder={t("lobsterPage.avatarPlaceholder")}
+                  maxLength={8}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                {t("lobsterPage.fieldIdentity")}
+                <textarea
+                  className="min-h-[100px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)]"
+                  value={createForm.identityMd}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, identityMd: e.target.value }))}
+                  placeholder={t("lobsterPage.identityPlaceholder")}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                {t("lobsterPage.fieldDescription")}
+                <textarea
+                  className="min-h-[64px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.8125rem] text-[var(--os-text)]"
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, description: e.target.value }))}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                {t("lobsterPage.fieldSoul")}
+                <textarea
+                  className="min-h-[100px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)]"
+                  value={createForm.soulMd}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, soulMd: e.target.value }))}
+                  placeholder={t("lobsterPage.soulPlaceholder")}
+                />
+              </label>
+              <div className="flex flex-col gap-1">
+                <span className="text-[0.75rem] font-medium text-[var(--os-text-muted)]">
+                  {t("lobsterPage.skillsHeading")}
+                </span>
+                <AgentSkillPicker
+                  skills={selectableSkills}
+                  selectedIds={createForm.skillIds}
+                  onToggle={toggleCreateSkill}
+                  query={createSkillQuery}
+                  onQueryChange={setCreateSkillQuery}
+                  filterPlaceholder={t("lobsterPage.skillFilterPlaceholder")}
+                  emptyLabel={t("lobsterPage.skillsEmpty")}
+                  builtinBadge={t("skillsPage.badgeBuiltin")}
+                  userBadge={t("skillsPage.badgeUser")}
+                />
+              </div>
+              {createError ? (
+                <p className="text-[0.78rem] text-[var(--os-danger,#b91c1c)]" role="alert">
+                  {createError}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
+              <button
+                type="button"
+                className="rounded-[10px] px-3 py-2 text-[0.8rem] text-[var(--os-text-muted)]"
+                disabled={createBusy}
+                onClick={() => setCreateOpen(false)}
+              >
+                {t("skillsPage.cancel")}
+              </button>
+              <button
+                type="button"
+                className="rounded-[10px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8rem] font-medium text-[var(--os-on-accent,#fff)] disabled:opacity-60"
+                disabled={createBusy}
+                onClick={() => void onConfirmCreate()}
+              >
+                {createBusy ? t("lobsterPage.createModal.busy") : t("lobsterPage.createModal.confirm")}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
 
       {deleteTarget ? (
         <Modal onClose={() => setDeleteTargetId(null)} labelledBy={delTitleId}>

@@ -38,7 +38,7 @@
     "chatHistoryBulkDelete": "批量删除",
     "chatHistoryBulkDeleteAria": "删除当前列表中的会话（不含正在生成的会话）",
     "chatHistoryBulkDeleteConfirm": "确定删除 {{n}} 条会话吗？此操作无法撤销。",
-    "lobster": "龙虾管理",
+    "lobster": "智能体",
     "skills": "技能",
     "settings": "设置",
     "profile": "账户",
@@ -118,8 +118,8 @@
     "close": "关闭"
   },
   "lobsterPage": {
-    "title": "龙虾管理",
-    "desc": "管理工作室中的每只「龙虾」子智能体：名称与描述、可调用技能列表、以及与 OpenClaw 联动的会话键。数据保存在本机会话，并与工作室画布同步。",
+    "title": "智能体管理",
+    "desc": "创建并管理 OpenClaw 智能体：名称、IDENTITY.md（我是谁）、SOUL.md（语气与人格）、工作区与技能。确认创建后会写入磁盘并重启网关。",
     "actions": {
       "create": "新建智能体",
       "delete": "删除"
@@ -129,15 +129,33 @@
     "noSelection": "请从左侧选择一个智能体，或新建一个。",
     "detailTitle": "基本信息",
     "fieldName": "显示名称",
-    "fieldDescription": "描述（选填）",
-    "fieldSessionKey": "OpenClaw 会话键（可选）",
-    "sessionKeyPlaceholder": "用于对接 OpenClaw 会话 / 标识",
+    "fieldAvatar": "头像（Emoji）",
+    "avatarPlaceholder": "例如 🦞 或 ✨",
+    "fieldIdentity": "身份（IDENTITY.md）",
+    "identityPlaceholder": "名字、人设、Emoji…",
+    "identityHint": "定义「我是谁」——名字与对外身份。保存后写入 IDENTITY.md。",
+    "fieldDescription": "简介（选填）",
+    "fieldSoul": "灵魂（SOUL.md）",
+    "soulPlaceholder": "描述语气、边界、说话风格…",
+    "soulHint": "定义「我怎么说话」——语气与人格。保存后写入 SOUL.md。",
+    "fieldGatewayId": "网关 Agent ID",
+    "gatewayIdHint": "会话键：{{session}}",
+    "provisionPending": "正在初始化工作区与网关配置…",
+    "provisionDone": "已创建智能体并同步网关，稍等几秒即可在聊天中使用。",
     "skillsHeading": "绑定技能",
     "skillFilterPlaceholder": "筛选技能",
-    "skillsHint": "勾选后，该智能体在执行任务时可使用该技能（具体调用链路由后续运行时接入）。",
+    "skillsHint": "勾选表示该智能体具备这些技能（对话中拉入群聊后可 @ 指定回复）。",
     "skillsEmpty": "没有匹配的技能。可先前往「技能」页添加本地技能，或使用内置列表。",
     "skillCount": "已绑定 {{n}} 个技能",
     "defaultNewName": "新建智能体",
+    "createModal": {
+      "title": "新建智能体",
+      "namePlaceholder": "例如：前端开发专家",
+      "nameRequired": "请填写显示名称。",
+      "failed": "创建失败，请检查网关是否在线后重试。",
+      "confirm": "确认创建",
+      "busy": "正在创建…"
+    },
     "deleteModal": {
       "title": "删除智能体",
       "body": "确定要删除「{{name}}」吗？此操作无法撤销（本机存档将同步删除）。",
@@ -224,6 +242,14 @@
     "skillChipClose": "移除技能",
     "toolbarConnectHint": "即将推出",
     "attachHint": "附件功能即将推出",
+    "participantsLabel": "在场智能体",
+    "participantsAria": "当前对话中的智能体",
+    "participantsAdd": "拉入智能体",
+    "participantRemove": "将 {{name}} 移出对话",
+    "mentionPickerAria": "选择要 @ 的智能体",
+    "mentionEmpty": "没有可 @ 的智能体",
+    "mentionEveryone": "所有人",
+    "messageMentionsAria": "本条消息 @ 的智能体",
     "systemPrompt": "你是一位专业、友好的助手。先理清思路再给清晰回答。使用与用户一致的语言作答。",
     "wechatSystemPrompt": "当前对话来自微信通道，token 成本敏感。用户要文件/截图/PDF 时：只用 cp/mv（或 Copy-Item）把文件放进工作区，禁止 read_file/cat/Get-Content 读取整份文件，禁止在回复里粘贴文件正文。Open Studio 会自动把文件发到用户微信。你最多用两句话说明「已发送」即可。",
     "emptyHint": "在下方输入消息开始本轮对话。",
@@ -473,7 +499,8 @@
     "library": "书库/娱乐"
   },
   "agents": {
-    "defaultName": "龙虾一号"
+    "defaultName": "主智能体",
+    "mainBadge": "主"
   },
   "modes": {
     "idle": "空闲",

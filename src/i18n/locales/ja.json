@@ -38,7 +38,7 @@
     "chatHistoryTimeHours": "{{n}} 時間前",
     "chatHistoryTimeYesterday": "昨日",
     "chatHistoryTimeDays": "{{n}} 日前",
-    "lobster": "ロブスター管理",
+    "lobster": "エージェント",
     "skills": "スキル",
     "settings": "設定",
     "profile": "アカウント",
@@ -118,8 +118,8 @@
     "close": "閉じる"
   },
   "lobsterPage": {
-    "title": "ロブスター管理",
-    "desc": "スタジオ上のサブエージェント（ロブスターごと）を管理します。表示名・説明・バインドするスキル・OpenClaw セションキーを設定できます。データはローカルに保存されスタジオ表示と同期します。",
+    "title": "エージェント管理",
+    "desc": "OpenClaw エージェントの作成と管理：名前・アバター・soul.md・ワークスペース・スキル。新規作成時にゲートウェイ側の workspace を初期化し agents.list に登録します。",
     "actions": {
       "create": "エージェントを作成",
       "delete": "削除"
@@ -129,15 +129,33 @@
     "noSelection": "一覧から選ぶか、新規作成してください。",
     "detailTitle": "基本情報",
     "fieldName": "表示名",
+    "fieldAvatar": "アバター（絵文字）",
+    "avatarPlaceholder": "例: 🦞 や ✨",
+    "fieldIdentity": "アイデンティティ（IDENTITY.md）",
+    "identityPlaceholder": "名前・雰囲気・絵文字…",
+    "identityHint": "「自分は誰か」— 名前と対外的なペルソナ。IDENTITY.md に保存。",
     "fieldDescription": "説明（任意）",
-    "fieldSessionKey": "OpenClaw セッションキー（任意）",
-    "sessionKeyPlaceholder": "OpenClaw のセッション／識別子",
+    "fieldSoul": "ソウル（SOUL.md）",
+    "soulPlaceholder": "口調・境界・話し方…",
+    "soulHint": "「どう話すか」— 口調と人格。SOUL.md に保存。",
+    "fieldGatewayId": "ゲートウェイ Agent ID",
+    "gatewayIdHint": "セッションキー: {{session}}",
+    "provisionPending": "ワークスペースとゲートウェイ設定を初期化中…",
+    "provisionDone": "エージェントを作成しゲートウェイと同期しました。数秒後にチャットで利用できます。",
     "skillsHeading": "バインドするスキル",
     "skillFilterPlaceholder": "スキルを絞り込み",
-    "skillsHint": "チェックしたスキルはこのエージェント向けに有効になります（実行時の接続は今後）。",
+    "skillsHint": "チェックしたスキルはチャットに参加したとき利用可能（@ で返信先を指定）。",
     "skillsEmpty": "一致するスキルがありません。「スキル」ページで追加するか、同梱スキルを利用してください。",
     "skillCount": "スキル {{n}} 件をバインド",
     "defaultNewName": "新しいエージェント",
+    "createModal": {
+      "title": "新しいエージェント",
+      "namePlaceholder": "例: フロントエンド専門家",
+      "nameRequired": "表示名を入力してください。",
+      "failed": "作成に失敗しました。ゲートウェイがオンラインか確認して再試行してください。",
+      "confirm": "作成",
+      "busy": "作成中…"
+    },
     "deleteModal": {
       "title": "エージェントを削除",
       "body": "「{{name}}」を削除しますか？元に戻せません（ローカル保存も更新されます）。",
@@ -224,6 +242,14 @@
     "skillChipClose": "スキルを削除",
     "toolbarConnectHint": "準備中",
     "attachHint": "添付は準備中です",
+    "participantsLabel": "参加エージェント",
+    "participantsAria": "この会話にいるエージェント",
+    "participantsAdd": "エージェントを追加",
+    "participantRemove": "{{name}} を会話から外す",
+    "mentionPickerAria": "@ メンションするエージェントを選択",
+    "mentionEmpty": "@ できるエージェントがありません",
+    "mentionEveryone": "全員",
+    "messageMentionsAria": "このメッセージで @ メンションしたエージェント",
     "systemPrompt": "あなたは有能で親切なアシスタントです。必要なら短く考えてから、ユーザーの言語で明確に答えてください。",
     "wechatSystemPrompt": "WeChat チャネル — トークン節約必須。ファイル依頼時は cp/mv でワークスペースへコピーのみ。read_file/cat で全文読み取り・本文貼付は禁止。Open Studio が添付送信。返答は最大2文。",
     "emptyHint": "下にメッセージを入力して開始します。",
@@ -470,7 +496,8 @@
     "library": "書庫／娯楽"
   },
   "agents": {
-    "defaultName": "ロブスター1号"
+    "defaultName": "メインエージェント",
+    "mainBadge": "メイン"
   },
   "modes": {
     "idle": "待機",

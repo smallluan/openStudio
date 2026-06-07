@@ -9,8 +9,13 @@ import { getZoneById, pickZoneIdForMode } from "./zones.js";
 /**
  * @typedef {object} LobsterAgent
  * @property {string} id
+ * @property {string} gatewayAgentId
  * @property {string} name
  * @property {string} description
+ * @property {string} avatar
+ * @property {string} soulMd
+ * @property {string} identityMd
+ * @property {boolean} [isMain]
  * @property {string[]} skillIds
  * @property {import("./modes.js").AgentModeValue} mode
  * @property {string} zoneId
@@ -19,6 +24,144 @@ import { getZoneById, pickZoneIdForMode } from "./zones.js";
  */
 
 const MODE_SET = new Set(Object.values(AgentMode));
+export const MAIN_AGENT_STUDIO_ID = "agent-main";
+
+/** @param {string} value */
+export function slugifyGatewayAgentId(value) {
+  const trimmed = String(value ?? "").trim().toLowerCase();
+  if (!trimmed) return "agent";
+  const slug = trimmed
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "")
+    .slice(0, 48);
+  return slug || "agent";
+}
+
+/** @param {string} gatewayAgentId */
+export function sessionKeyForGatewayAgentId(gatewayAgentId) {
+  const id = slugifyGatewayAgentId(gatewayAgentId);
+  if (id === "dev") return "agent:dev:dev";
+  return `agent:${id}:main`;
+}
+
+/** @param {Partial<LobsterAgent>} agent */
+export function sessionKeyForAgent(agent) {
+  const fromBinding = agent.openclaw?.sessionKey?.trim();
+  if (fromBinding) return fromBinding;
+  return sessionKeyForGatewayAgentId(agent.gatewayAgentId || "main");
+}
+
+/** @param {LobsterAgent} agent */
+export function agentDisplayLabel(agent) {
+  return agent.name?.trim() || agent.gatewayAgentId || "Agent";
+}
+
+/** @param {LobsterAgent} agent */
+export function agentAvatarGlyph(agent) {
+  const av = String(agent.avatar ?? "").trim();
+  if (av) return av.slice(0, 4);
+  return agent.isMain ? "✨" : "🦞";
+}
+
+/** @param {{ name?: string; description?: string; avatar?: string }} meta */
+export function buildIdentityMd(meta) {
+  const name = String(meta.name ?? "").trim() || "Agent";
+  const vibe = String(meta.description ?? "").trim() || "Helpful specialist";
+  const emoji = String(meta.avatar ?? "🦞").trim().slice(0, 8) || "🦞";
+  return [
+    "# IDENTITY.md - Who Am I?",
+    "",
+    `- **Name:** ${name}`,
+    `- **Creature:** AI assistant`,
+    `- **Vibe:** ${vibe}`,
+    `- **Emoji:** ${emoji}`,
+  ].join("\n");
+}
+
+/** @param {string} identityMd */
+export function parseIdentityNameFromMd(identityMd) {
+  const m = /\*\*Name:\*\*\s*(.+)/i.exec(String(identityMd ?? ""));
+  return m?.[1]?.trim() ?? "";
+}
+
+/** @param {LobsterAgent} agent */
+export function identityBlockForAgent(agent) {
+  const custom = String(agent.identityMd ?? "").trim();
+  if (custom) return custom;
+  return buildIdentityMd(agent);
+}
+
+/** @param {LobsterAgent} agent */
+export function resolvedAgentName(agent) {
+  return parseIdentityNameFromMd(identityBlockForAgent(agent)) || agentDisplayLabel(agent);
+}
+
+/**
+ * @param {{ agents: LobsterAgent[]; mainAgent: LobsterAgent | null; participantIds?: string[] }} args
+ * @returns {LobsterAgent[]}
+ */
+export function groupAgentsInSession({ agents, mainAgent, participantIds }) {
+  const ids = new Set();
+  if (mainAgent?.id) ids.add(mainAgent.id);
+  for (const id of participantIds ?? []) {
+    if (id) ids.add(id);
+  }
+  return agents.filter((a) => ids.has(a.id));
+}
+
+/**
+ * OpenClaw loads IDENTITY.md (who) and SOUL.md (how) separately — keep both in the system row.
+ * @param {LobsterAgent} agent
+ * @param {string} [fallbackSystemPrompt]
+ * @param {{ groupAgents?: LobsterAgent[] }} [opts]
+ * @returns {{ role: "system"; content: string } | null}
+ */
+export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
+  const identity = identityBlockForAgent(agent);
+  const agentName = resolvedAgentName(agent);
+  const others = (opts.groupAgents ?? []).filter((a) => a.id !== agent.id);
+  const groupBlock =
+    others.length > 0
+      ? [
+          "",
+          "## Group chat",
+          "You share this thread with these **separate** agents (not you):",
+          ...others.map((a) => `- **${resolvedAgentName(a)}** (${agentDisplayLabel(a)})`),
+          "Their messages appear as `Agent · Name` in the embedded history (raw prefix `[群聊 · Name]`).",
+          "When the user asks about them, answer from that chat history first — do not search memory to learn who they are.",
+        ].join("\n")
+      : "";
+  const identityLock = [
+    "",
+    "## Session rules",
+    `- You are **${agentName}** only. Never claim you spoke under another agent's name.`,
+    "- `Agent · …` / `[群聊 · …]` lines are **other agents** — not your prior replies.",
+    "- `You · …` lines are **your** earlier messages in this thread.",
+  ].join("\n");
+  const soul = String(agent.soulMd ?? "").trim();
+  if (soul) {
+    return {
+      role: "system",
+      content: `${identity}${groupBlock}${identityLock}\n\n# SOUL.md\n\n${soul}`,
+    };
+  }
+  if (agent.isMain && fallbackSystemPrompt?.trim()) {
+    return {
+      role: "system",
+      content: `${identity}${groupBlock}${identityLock}\n\n${fallbackSystemPrompt.trim()}`,
+    };
+  }
+  return { role: "system", content: `${identity}${groupBlock}${identityLock}` };
+}
+
+/**
+ * @param {LobsterAgent[]} agents
+ * @returns {LobsterAgent | null}
+ */
+export function findMainAgent(agents) {
+  return agents.find((a) => a.isMain) ?? agents[0] ?? null;
+}
 
 /**
  * @param {unknown} raw
@@ -36,10 +179,21 @@ export function normalizeLobsterAgent(raw) {
       : AgentMode.IDLE;
   const oc = r.openclaw && typeof r.openclaw === "object" ? /** @type {Record<string, unknown>} */ (r.openclaw) : null;
   const sessionKey = oc && typeof oc.sessionKey === "string" ? oc.sessionKey : undefined;
+  const gatewayAgentId =
+    typeof r.gatewayAgentId === "string" && r.gatewayAgentId.trim()
+      ? slugifyGatewayAgentId(r.gatewayAgentId)
+      : id === MAIN_AGENT_STUDIO_ID
+        ? "dev"
+        : slugifyGatewayAgentId(typeof r.name === "string" ? r.name : id);
   return agentDefaults({
     id,
+    gatewayAgentId,
     name: typeof r.name === "string" ? r.name : "",
     description: typeof r.description === "string" ? r.description : "",
+    avatar: typeof r.avatar === "string" ? r.avatar : "",
+    soulMd: typeof r.soulMd === "string" ? r.soulMd : "",
+    identityMd: typeof r.identityMd === "string" ? r.identityMd : "",
+    isMain: Boolean(r.isMain) || id === MAIN_AGENT_STUDIO_ID,
     skillIds: Array.isArray(r.skillIds) ? r.skillIds.filter((x) => typeof x === "string") : [],
     mode,
     zoneId: typeof r.zoneId === "string" && r.zoneId ? r.zoneId : undefined,
@@ -53,21 +207,39 @@ function agentDefaults(o) {
   const mode = o.mode ?? AgentMode.IDLE;
   const zoneId = o.zoneId ?? pickZoneIdForMode(mode);
   const skillIds = Array.isArray(o.skillIds) ? o.skillIds.filter((x) => typeof x === "string") : [];
+  const gatewayAgentId = slugifyGatewayAgentId(o.gatewayAgentId ?? o.name ?? o.id ?? "agent");
+  const openclaw = o.openclaw && typeof o.openclaw === "object" ? { ...o.openclaw } : {};
+  if (!openclaw.sessionKey) openclaw.sessionKey = sessionKeyForGatewayAgentId(gatewayAgentId);
   return {
     id: o.id ?? "lobster-1",
+    gatewayAgentId,
     name: o.name ?? "",
     description: typeof o.description === "string" ? o.description : "",
+    avatar: typeof o.avatar === "string" ? o.avatar : o.isMain ? "✨" : "🦞",
+    soulMd: typeof o.soulMd === "string" ? o.soulMd : "",
+    identityMd: typeof o.identityMd === "string" ? o.identityMd : "",
+    isMain: Boolean(o.isMain),
     skillIds,
     mode,
     zoneId,
     agentSlot: o.agentSlot ?? 0,
-    openclaw: o.openclaw && typeof o.openclaw === "object" ? o.openclaw : {},
+    openclaw,
   };
 }
 
-/** 初始演示数据：单虾；阶段 B 改为自配置文件或 IPC */
+/** Built-in main agent + demo slot for studio canvas. */
 export function createInitialAgents() {
-  return [agentDefaults({ id: "lobster-1", mode: AgentMode.IDLE })];
+  return [
+    agentDefaults({
+      id: MAIN_AGENT_STUDIO_ID,
+      gatewayAgentId: "dev",
+      name: "",
+      description: "",
+      avatar: "✨",
+      isMain: true,
+      mode: AgentMode.IDLE,
+    }),
+  ];
 }
 
 /**
@@ -89,4 +261,20 @@ export function anchorForAgent(agent) {
   if (!zone?.defaultAnchors?.length) return null;
   const idx = Math.min(agent.agentSlot, zone.defaultAnchors.length - 1);
   return zone.defaultAnchors[idx] ?? zone.defaultAnchors[0];
+}
+
+/**
+ * @param {string} name
+ * @param {LobsterAgent[]} existing
+ * @returns {string}
+ */
+export function uniqueGatewayAgentIdForName(name, existing) {
+  const base = slugifyGatewayAgentId(name);
+  const taken = new Set(existing.map((a) => a.gatewayAgentId));
+  if (!taken.has(base)) return base;
+  for (let i = 2; i < 100; i++) {
+    const candidate = `${base}-${i}`.slice(0, 48);
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${base}-${Date.now().toString(36)}`.slice(0, 48);
 }

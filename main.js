@@ -22,7 +22,18 @@ const {
   hydrateGatewayChatPrep,
   prewarmStudioGatewaySessions,
 } = require("./lib/openclaw-gateway-session.cjs");
-const { syncOpenClawAgentFromStudioConfig } = require("./lib/sync-openclaw-agent-from-studio.cjs");
+const {
+  syncOpenClawAgentFromStudioConfig,
+  parseAgentIdFromSessionKey,
+} = require("./lib/sync-openclaw-agent-from-studio.cjs");
+const {
+  provisionOpenClawAgent,
+  removeOpenClawAgent,
+  readAgentSoulMd,
+  readAgentIdentityMd,
+  readAgentBootstrapForChat,
+  defaultGatewayAgentIdFromConfig,
+} = require("./lib/openclaw-agent-crud.cjs");
 const {
   isWechatNewChatCommand,
   toWechatConversationId,
@@ -36,6 +47,7 @@ const {
   ensureLocalGatewayRunning,
   waitForGatewayWarmupIfNeeded,
   attachGatewayQuitHandlers,
+  restartOwnedGateway,
   resolveBundledOpenClawPackageMetaSync,
 } = require("./lib/openclaw-gateway-supervisor.cjs");
 const {
@@ -116,6 +128,9 @@ const inFlightChatSends = new Map();
 /** UI conversation id → active stream id (abort stale WeChat / edit resends). */
 /** @type {Map<string, string>} */
 const chatStreamByConversationId = new Map();
+/** UI conversation id → concurrent multi-agent stream ids. */
+/** @type {Map<string, Set<string>>} */
+const chatStreamsByConversationId = new Map();
 /** @type {Map<string, Promise<{ ok: boolean }>>} */
 const inFlightWechatSends = new Map();
 /** @type {Set<string>} */
@@ -642,6 +657,58 @@ app.whenReady().then(async () => {
     return { ok: true, opened: true, filePath: r.filePath };
   });
 
+  ipcMain.handle("studio:getDefaultGatewayAgentId", () => {
+    const cfg = userConfigStore.readRaw();
+    return { ok: true, gatewayAgentId: defaultGatewayAgentIdFromConfig(cfg) };
+  });
+
+  ipcMain.handle("studio:provisionAgent", async (_event, payload) => {
+    try {
+      const cfg = userConfigStore.readRaw();
+      const result = provisionOpenClawAgent(payload, cfg);
+      if (result.ok) {
+        runOpenClawAgentSyncFromStudio("agent-provision");
+        await restartOwnedGateway(() => userConfigStore.readRaw(), { probeOpenClawGateway });
+        await waitForGatewayWarmupIfNeeded(() => userConfigStore.readRaw(), { probeOpenClawGateway });
+      }
+      return result;
+    } catch (e) {
+      return { ok: false, reason: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:deleteGatewayAgent", async (_event, payload) => {
+    try {
+      const cfg = userConfigStore.readRaw();
+      const result = removeOpenClawAgent(payload, cfg);
+      if (result.ok && result.removed) {
+        await restartOwnedGateway(() => userConfigStore.readRaw(), { probeOpenClawGateway });
+        await waitForGatewayWarmupIfNeeded(() => userConfigStore.readRaw(), { probeOpenClawGateway });
+      }
+      return result;
+    } catch (e) {
+      return { ok: false, reason: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:readAgentSoul", async (_event, payload) => {
+    try {
+      const cfg = userConfigStore.readRaw();
+      return readAgentSoulMd(payload, cfg);
+    } catch (e) {
+      return { ok: false, reason: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:readAgentIdentity", async (_event, payload) => {
+    try {
+      const cfg = userConfigStore.readRaw();
+      return readAgentIdentityMd(payload, cfg);
+    } catch (e) {
+      return { ok: false, reason: String(e?.message ?? e) };
+    }
+  });
+
   ipcMain.handle("studio:probeGateway", async () => {
     try {
       runOpenClawAgentSyncFromStudio("wechat");
@@ -850,9 +917,26 @@ app.whenReady().then(async () => {
         : conversationId;
     const channel = payload?.channel === "wechat" ? "wechat" : "internal";
     const wechatPeerId = typeof payload?.wechatPeerId === "string" ? payload.wechatPeerId.trim() : "";
+    const agentSessionKey =
+      typeof payload?.agentSessionKey === "string" ? payload.agentSessionKey.trim() : "";
+    const gatewayAgentId =
+      typeof payload?.gatewayAgentId === "string" ? payload.gatewayAgentId.trim() : "";
     if (typeof streamId !== "string" || !streamId.trim() || !Array.isArray(messages)) {
       throw new Error("invalid_chat_payload");
     }
+
+    /** @param {unknown[]} rows @param {string} soul */
+    const withAgentSoulSystem = (rows, soul) => {
+      const rest = rows.filter((m) => !(m && typeof m === "object" && m.role === "system"));
+      const studioSystem = rows.find((m) => m && typeof m === "object" && m.role === "system");
+      const studioBody =
+        studioSystem && typeof studioSystem.content === "string" ? studioSystem.content.trim() : "";
+      // Renderer builds system rows with group-chat attribution rules; do not replace with disk bootstrap.
+      if (studioBody) return [{ role: "system", content: studioBody }, ...rest];
+      const body = String(soul ?? "").trim();
+      if (!body) return rows;
+      return [{ role: "system", content: body }, ...rest];
+    };
 
     const pending = inFlightChatSends.get(streamId);
     if (pending) {
@@ -866,14 +950,31 @@ app.whenReady().then(async () => {
       chatStreamAbortControllers.set(streamId, ac);
       const wc = event.sender;
       const composerSkill = payload?.composerSkill;
+      const allowConcurrent = payload?.concurrent === true;
       let terminalSent = false;
       try {
         if (conversationId) {
-          const prevStreamId = chatStreamByConversationId.get(conversationId);
-          if (prevStreamId && prevStreamId !== streamId) {
-            chatStreamAbortControllers.get(prevStreamId)?.abort();
+          if (allowConcurrent) {
+            let set = chatStreamsByConversationId.get(conversationId);
+            if (!set) {
+              set = new Set();
+              chatStreamsByConversationId.set(conversationId, set);
+            }
+            set.add(streamId);
+          } else {
+            const prevStreamId = chatStreamByConversationId.get(conversationId);
+            if (prevStreamId && prevStreamId !== streamId) {
+              chatStreamAbortControllers.get(prevStreamId)?.abort();
+            }
+            const concurrentSet = chatStreamsByConversationId.get(conversationId);
+            if (concurrentSet) {
+              for (const sid of concurrentSet) {
+                if (sid !== streamId) chatStreamAbortControllers.get(sid)?.abort();
+              }
+              chatStreamsByConversationId.delete(conversationId);
+            }
+            chatStreamByConversationId.set(conversationId, streamId);
           }
-          chatStreamByConversationId.set(conversationId, streamId);
         }
         getStudioLog().info("[chat.send.perf] host.start", {
           streamId,
@@ -884,9 +985,13 @@ app.whenReady().then(async () => {
         runOpenClawAgentSyncFromStudio("chat");
         const cfg = userConfigStore.readRaw();
         await waitForGatewayWarmupIfNeeded(() => userConfigStore.readRaw(), { probeOpenClawGateway });
+        const routedAgentId =
+          gatewayAgentId || (agentSessionKey ? parseAgentIdFromSessionKey(agentSessionKey) : "");
+        const bootstrapFromDisk = routedAgentId ? readAgentBootstrapForChat(routedAgentId, cfg) : "";
+        const outboundMessages = withAgentSoulSystem(messages, bootstrapFromDisk);
         await dispatchOpenClawGatewayStream(
           cfg,
-          messages,
+          outboundMessages,
           ac.signal,
           (evt) => {
             if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
@@ -898,8 +1003,14 @@ app.whenReady().then(async () => {
                 composerSkill,
                 channel,
                 wechatPeerId,
+                ...(agentSessionKey ? { agentSessionKey } : {}),
               }
-            : { composerSkill, channel, wechatPeerId },
+            : {
+                composerSkill,
+                channel,
+                wechatPeerId,
+                ...(agentSessionKey ? { agentSessionKey } : {}),
+              },
         );
         if (channel === "wechat" && wechatPeerId && conversationId) {
           wechatPeerConversationMap.set(wechatPeerId, conversationId);
@@ -916,8 +1027,14 @@ app.whenReady().then(async () => {
         }
       } finally {
         chatStreamAbortControllers.delete(streamId);
-        if (conversationId && chatStreamByConversationId.get(conversationId) === streamId) {
-          chatStreamByConversationId.delete(conversationId);
+        if (conversationId) {
+          if (allowConcurrent) {
+            const set = chatStreamsByConversationId.get(conversationId);
+            set?.delete(streamId);
+            if (set && set.size === 0) chatStreamsByConversationId.delete(conversationId);
+          } else if (chatStreamByConversationId.get(conversationId) === streamId) {
+            chatStreamByConversationId.delete(conversationId);
+          }
         }
         if (!terminalSent && !wc.isDestroyed()) {
           const sid = streamId;

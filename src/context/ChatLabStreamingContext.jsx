@@ -31,6 +31,8 @@ import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
  *   streamingSessionId: string | null;
  *   wechatReplyingSessionId: string | null;
  *   gatewayStreamSlice: GatewayStreamSlice | null;
+ *   slicesTick: number;
+ *   listGatewayStreamSlices: (conversationId?: string) => GatewayStreamSlice[];
  *   beginGatewayStream: (args: {
  *     conversationId: string;
  *     streamId: string;
@@ -107,83 +109,109 @@ function persistAssistantMerge(
 export function ChatLabStreamingProvider({ children }) {
   const [streamingSessionId, setStreamingSessionIdState] = useState(/** @type {string | null} */ (null));
   const [wechatReplyingSessionId, setWechatReplyingSessionIdState] = useState(/** @type {string | null} */ (null));
-  const [gatewayStreamSlice, setGatewayStreamSlice] = useState(/** @type {GatewayStreamSlice | null} */ (null));
+  const [slicesTick, setSlicesTick] = useState(0);
 
-  const sliceRef = useRef(/** @type {GatewayStreamSlice | null} */ (null));
-  const persistTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
-  /** Deferred finalization after a `{ type: "done" }` event — absorbs trailing deltas that arrive milliseconds late */
-  const doneGraceTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
-  /** Stream awaiting finalize after `done`; cleared when grace completes or stream aborts/errors. */
-  const pendingDoneFinalizeStreamIdRef = useRef(/** @type {string | null} */ (null));
-  /** Active gateway stream id; keeps matching `done`/`error` after a terminal clears React slice (main always sends `done`). */
-  const processingStreamIdRef = useRef(/** @type {string | null} */ (null));
+  /** @type {import("react").MutableRefObject<Map<string, GatewayStreamSlice>>} */
+  const slicesRef = useRef(new Map());
+  /** @type {import("react").MutableRefObject<Map<string, ReturnType<typeof setTimeout>>>} */
+  const persistTimersRef = useRef(new Map());
+  /** @type {import("react").MutableRefObject<Map<string, ReturnType<typeof setTimeout>>>} */
+  const doneGraceTimersRef = useRef(new Map());
+  /** @type {import("react").MutableRefObject<Set<string>>} */
+  const pendingDoneFinalizeRef = useRef(new Set());
+  /** @type {import("react").MutableRefObject<Set<string>>} */
+  const processingStreamIdsRef = useRef(new Set());
 
-  useEffect(() => {
-    sliceRef.current = gatewayStreamSlice;
-  }, [gatewayStreamSlice]);
-
-  useEffect(() => {
-    if (gatewayStreamSlice?.active && gatewayStreamSlice.conversationId) {
-      setStreamingSessionIdState(gatewayStreamSlice.conversationId);
-    } else {
-      setStreamingSessionIdState(null);
-    }
-  }, [gatewayStreamSlice?.active, gatewayStreamSlice?.conversationId]);
-
-  const beginGatewayStream = useCallback((args) => {
-    if (persistTimerRef.current) {
-      clearTimeout(persistTimerRef.current);
-      persistTimerRef.current = null;
-    }
-    if (doneGraceTimerRef.current) {
-      clearTimeout(doneGraceTimerRef.current);
-      doneGraceTimerRef.current = null;
-    }
-    pendingDoneFinalizeStreamIdRef.current = null;
-    processingStreamIdRef.current = args.streamId;
-    setWechatReplyingSessionIdState((cur) =>
-      cur === args.conversationId ? null : cur,
-    );
-    const next = {
-      conversationId: args.conversationId,
-      streamId: args.streamId,
-      assistantMessageId: args.assistantMessageId,
-      content: "",
-      thinking: "",
-      toolTrace: [],
-      activityLog: [],
-      assistantTimeline: [],
-      active: true,
-    };
-    sliceRef.current = next;
-    setGatewayStreamSlice(next);
+  const bumpSlices = useCallback(() => {
+    setSlicesTick((t) => t + 1);
   }, []);
 
-  const resetGatewayStream = useCallback((streamId) => {
-    if (processingStreamIdRef.current !== streamId) return;
-    if (persistTimerRef.current) {
-      clearTimeout(persistTimerRef.current);
-      persistTimerRef.current = null;
-    }
-    if (doneGraceTimerRef.current) {
-      clearTimeout(doneGraceTimerRef.current);
-      doneGraceTimerRef.current = null;
-    }
-    pendingDoneFinalizeStreamIdRef.current = null;
-    processingStreamIdRef.current = null;
-    sliceRef.current = null;
-    setGatewayStreamSlice(null);
+  const syncStreamingSessionId = useCallback(() => {
+    const active = [...slicesRef.current.values()].find((s) => s.active);
+    setStreamingSessionIdState(active?.conversationId ?? null);
   }, []);
+
+  const listGatewayStreamSlices = useCallback(
+    /** @param {string} [conversationId] */
+    (conversationId) => {
+      const all = [...slicesRef.current.values()];
+      const cid = typeof conversationId === "string" ? conversationId.trim() : "";
+      if (!cid) return all;
+      return all.filter((s) => s.conversationId === cid);
+    },
+    [],
+  );
+
+  const beginGatewayStream = useCallback(
+    (args) => {
+      processingStreamIdsRef.current.add(args.streamId);
+      setWechatReplyingSessionIdState((cur) => (cur === args.conversationId ? null : cur));
+      const next = {
+        conversationId: args.conversationId,
+        streamId: args.streamId,
+        assistantMessageId: args.assistantMessageId,
+        content: "",
+        thinking: "",
+        toolTrace: [],
+        activityLog: [],
+        assistantTimeline: [],
+        active: true,
+      };
+      slicesRef.current.set(args.streamId, next);
+      bumpSlices();
+      syncStreamingSessionId();
+    },
+    [bumpSlices, syncStreamingSessionId],
+  );
+
+  const resetGatewayStream = useCallback(
+    (streamId) => {
+      if (!processingStreamIdsRef.current.has(streamId) && !slicesRef.current.has(streamId)) return;
+      const persistTimer = persistTimersRef.current.get(streamId);
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+        persistTimersRef.current.delete(streamId);
+      }
+      const doneTimer = doneGraceTimersRef.current.get(streamId);
+      if (doneTimer) {
+        clearTimeout(doneTimer);
+        doneGraceTimersRef.current.delete(streamId);
+      }
+      pendingDoneFinalizeRef.current.delete(streamId);
+      processingStreamIdsRef.current.delete(streamId);
+      slicesRef.current.delete(streamId);
+      bumpSlices();
+      syncStreamingSessionId();
+    },
+    [bumpSlices, syncStreamingSessionId],
+  );
 
   useEffect(() => {
     const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
     if (!bridge?.onChatStream) return undefined;
 
-    const schedulePersist = () => {
-      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-      persistTimerRef.current = setTimeout(() => {
-        persistTimerRef.current = null;
-        const s = sliceRef.current;
+    /** @param {string} streamId */
+    const getSlice = (streamId) => slicesRef.current.get(streamId) ?? null;
+
+    /** @param {string} streamId @param {GatewayStreamSlice} slice */
+    const putSlice = (streamId, slice) => {
+      slicesRef.current.set(streamId, slice);
+      bumpSlices();
+    };
+
+    /** @param {string} streamId */
+    const removeSlice = (streamId) => {
+      slicesRef.current.delete(streamId);
+      bumpSlices();
+    };
+
+    /** @param {string} streamId */
+    const schedulePersist = (streamId) => {
+      const existing = persistTimersRef.current.get(streamId);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        persistTimersRef.current.delete(streamId);
+        const s = getSlice(streamId);
         if (!s?.active || !s.conversationId) return;
         persistAssistantMerge(
           s.conversationId,
@@ -195,14 +223,17 @@ export function ChatLabStreamingProvider({ children }) {
           s.assistantTimeline ?? [],
         );
       }, PERSIST_MS);
+      persistTimersRef.current.set(streamId, timer);
     };
 
-    const flushPersistNow = () => {
-      if (persistTimerRef.current) {
-        clearTimeout(persistTimerRef.current);
-        persistTimerRef.current = null;
+    /** @param {string} streamId */
+    const flushPersistNow = (streamId) => {
+      const existing = persistTimersRef.current.get(streamId);
+      if (existing) {
+        clearTimeout(existing);
+        persistTimersRef.current.delete(streamId);
       }
-      const s = sliceRef.current;
+      const s = getSlice(streamId);
       if (!s?.conversationId) return;
       persistAssistantMerge(
         s.conversationId,
@@ -215,18 +246,15 @@ export function ChatLabStreamingProvider({ children }) {
       );
     };
 
-    const clearSlice = () => {
-      sliceRef.current = null;
-      setGatewayStreamSlice(null);
-    };
-
+    /** @param {string} streamId */
     const endProcessing = (streamId) => {
-      if (processingStreamIdRef.current === streamId) processingStreamIdRef.current = null;
+      processingStreamIdsRef.current.delete(streamId);
+      syncStreamingSessionId();
     };
 
-    /** Read stream buffer for terminal handlers — must stay in sync without waiting for React batching. */
-    const snapshotSlice = () => {
-      const s = sliceRef.current;
+    /** @param {string} streamId */
+    const snapshotSlice = (streamId) => {
+      const s = getSlice(streamId);
       if (!s) {
         return {
           conversationId: "",
@@ -249,34 +277,38 @@ export function ChatLabStreamingProvider({ children }) {
       };
     };
 
-    const cancelPendingDoneFinalize = () => {
-      if (doneGraceTimerRef.current != null) {
-        clearTimeout(doneGraceTimerRef.current);
-        doneGraceTimerRef.current = null;
+    /** @param {string} streamId */
+    const cancelPendingDoneFinalize = (streamId) => {
+      pendingDoneFinalizeRef.current.delete(streamId);
+      const timer = doneGraceTimersRef.current.get(streamId);
+      if (timer) {
+        clearTimeout(timer);
+        doneGraceTimersRef.current.delete(streamId);
       }
     };
 
-    const rescheduleDoneIfPending = (/** @type {string} */ streamId) => {
-      if (pendingDoneFinalizeStreamIdRef.current !== streamId) return;
+    /** @param {string} streamId */
+    const rescheduleDoneIfPending = (streamId) => {
+      if (!pendingDoneFinalizeRef.current.has(streamId)) return;
       scheduleDoneFinalize(streamId);
     };
 
-    /** Keeps streaming state live until STREAM_DONE_GRACE_MS so trailing `text`/`thinking`/… can merge */
-    const scheduleDoneFinalize = (/** @type {string} */ streamId) => {
-      pendingDoneFinalizeStreamIdRef.current = streamId;
-      if (doneGraceTimerRef.current != null) return;
+    /** @param {string} streamId */
+    const scheduleDoneFinalize = (streamId) => {
+      pendingDoneFinalizeRef.current.add(streamId);
+      if (doneGraceTimersRef.current.has(streamId)) return;
       const sid = streamId;
-      doneGraceTimerRef.current = setTimeout(() => {
-        doneGraceTimerRef.current = null;
-        pendingDoneFinalizeStreamIdRef.current = null;
-        const cur = sliceRef.current;
+      const timer = setTimeout(() => {
+        doneGraceTimersRef.current.delete(sid);
+        pendingDoneFinalizeRef.current.delete(sid);
+        const cur = getSlice(sid);
         if (!cur || cur.streamId !== sid) {
-          if (processingStreamIdRef.current === sid) processingStreamIdRef.current = null;
+          endProcessing(sid);
           return;
         }
-        const snap = snapshotSlice();
-        flushPersistNow();
-        clearSlice();
+        const snap = snapshotSlice(sid);
+        flushPersistNow(sid);
+        removeSlice(sid);
         try {
           window.dispatchEvent(
             new CustomEvent("openstudio-gateway-chat-terminal", {
@@ -297,26 +329,28 @@ export function ChatLabStreamingProvider({ children }) {
         }
         endProcessing(sid);
       }, STREAM_DONE_GRACE_MS);
+      doneGraceTimersRef.current.set(sid, timer);
     };
 
     const off = bridge.onChatStream((evt) => {
       if (!evt || typeof evt !== "object") return;
       if (!evt.streamId) return;
+      const streamId = String(evt.streamId);
 
       const terminalKind =
         evt.type === "done" || evt.type === "error" || evt.type === "aborted" ? evt.type : null;
       if (terminalKind) {
-        const cur = sliceRef.current;
-        if (!cur || cur.streamId !== evt.streamId) return;
-      } else if (evt.streamId !== processingStreamIdRef.current) {
+        const cur = getSlice(streamId);
+        if (!cur || cur.streamId !== streamId) return;
+      } else if (!processingStreamIdsRef.current.has(streamId)) {
         return;
       }
 
       switch (evt.type) {
         case "content_sync": {
-          cancelPendingDoneFinalize();
-          const prev = sliceRef.current;
-          if (!prev || prev.streamId !== evt.streamId) return;
+          cancelPendingDoneFinalize(streamId);
+          const prev = getSlice(streamId);
+          if (!prev || prev.streamId !== streamId) return;
           const content = preferLongerAssistantText(
             prev.content ?? "",
             typeof evt.content === "string" ? evt.content : "",
@@ -326,85 +360,73 @@ export function ChatLabStreamingProvider({ children }) {
             typeof evt.thinking === "string" ? evt.thinking : "",
           );
           const assistantTimeline = mergeTimelineContentSync(prev.assistantTimeline, content, thinking);
-          const next = { ...prev, content, thinking, assistantTimeline };
-          sliceRef.current = next;
-          setGatewayStreamSlice(next);
-          schedulePersist();
-          rescheduleDoneIfPending(evt.streamId);
+          putSlice(streamId, { ...prev, content, thinking, assistantTimeline });
+          schedulePersist(streamId);
+          rescheduleDoneIfPending(streamId);
           return;
         }
         case "tool_trace": {
-          cancelPendingDoneFinalize();
-          const prev = sliceRef.current;
-          if (!prev || prev.streamId !== evt.streamId) return;
+          cancelPendingDoneFinalize(streamId);
+          const prev = getSlice(streamId);
+          if (!prev || prev.streamId !== streamId) return;
           const toolTrace = mergeToolTrace(prev.toolTrace, evt);
           const assistantTimeline = mergeTimelineToolTrace(prev.assistantTimeline, evt);
-          const next = { ...prev, toolTrace, assistantTimeline };
-          sliceRef.current = next;
-          setGatewayStreamSlice(next);
-          schedulePersist();
-          rescheduleDoneIfPending(evt.streamId);
+          putSlice(streamId, { ...prev, toolTrace, assistantTimeline });
+          schedulePersist(streamId);
+          rescheduleDoneIfPending(streamId);
           return;
         }
         case "agent_activity": {
-          cancelPendingDoneFinalize();
-          const prev = sliceRef.current;
-          if (!prev || prev.streamId !== evt.streamId) return;
+          cancelPendingDoneFinalize(streamId);
+          const prev = getSlice(streamId);
+          if (!prev || prev.streamId !== streamId) return;
           const activityLog = mergeActivityLog(prev.activityLog, evt);
           const assistantTimeline = mergeTimelineAgentActivity(prev.assistantTimeline, evt);
-          const next = { ...prev, activityLog, assistantTimeline };
-          sliceRef.current = next;
-          setGatewayStreamSlice(next);
-          schedulePersist();
-          rescheduleDoneIfPending(evt.streamId);
+          putSlice(streamId, { ...prev, activityLog, assistantTimeline });
+          schedulePersist(streamId);
+          rescheduleDoneIfPending(streamId);
           return;
         }
         case "thinking":
-          cancelPendingDoneFinalize();
+          cancelPendingDoneFinalize(streamId);
           if (typeof evt.delta !== "string") return;
           {
-            const prev = sliceRef.current;
-            if (!prev || prev.streamId !== evt.streamId) return;
+            const prev = getSlice(streamId);
+            if (!prev || prev.streamId !== streamId) return;
             const assistantTimeline = mergeTimelineThinkingDelta(prev.assistantTimeline, evt.delta);
-            const next = {
+            putSlice(streamId, {
               ...prev,
               thinking: mergeAssistantTextChunk(prev.thinking ?? "", evt.delta),
               assistantTimeline,
-            };
-            sliceRef.current = next;
-            setGatewayStreamSlice(next);
+            });
           }
-          schedulePersist();
-          rescheduleDoneIfPending(evt.streamId);
+          schedulePersist(streamId);
+          rescheduleDoneIfPending(streamId);
           return;
         case "text":
-          cancelPendingDoneFinalize();
+          cancelPendingDoneFinalize(streamId);
           if (typeof evt.delta !== "string") return;
           {
-            const prev = sliceRef.current;
-            if (!prev || prev.streamId !== evt.streamId) return;
+            const prev = getSlice(streamId);
+            if (!prev || prev.streamId !== streamId) return;
             const assistantTimeline = mergeTimelineTextDelta(prev.assistantTimeline, evt.delta);
-            const next = {
+            putSlice(streamId, {
               ...prev,
               content: mergeAssistantTextChunk(prev.content ?? "", evt.delta),
               assistantTimeline,
-            };
-            sliceRef.current = next;
-            setGatewayStreamSlice(next);
+            });
           }
-          schedulePersist();
-          rescheduleDoneIfPending(evt.streamId);
+          schedulePersist(streamId);
+          rescheduleDoneIfPending(streamId);
           return;
         case "meta":
         case "usage":
           return;
         case "aborted": {
-          cancelPendingDoneFinalize();
-          pendingDoneFinalizeStreamIdRef.current = null;
-          const sid = evt.streamId;
-          const snap = snapshotSlice();
-          flushPersistNow();
-          clearSlice();
+          cancelPendingDoneFinalize(streamId);
+          const snap = snapshotSlice(streamId);
+          flushPersistNow(streamId);
+          removeSlice(streamId);
           try {
             window.dispatchEvent(
               new CustomEvent("openstudio-gateway-chat-terminal", {
@@ -423,17 +445,15 @@ export function ChatLabStreamingProvider({ children }) {
           } catch {
             /* ignore */
           }
-          endProcessing(sid);
+          endProcessing(streamId);
           return;
         }
         case "error": {
-          cancelPendingDoneFinalize();
-          pendingDoneFinalizeStreamIdRef.current = null;
-          const sid = evt.streamId;
-          const snap = snapshotSlice();
+          cancelPendingDoneFinalize(streamId);
+          const snap = snapshotSlice(streamId);
           const raw = String(evt.message ?? "");
-          flushPersistNow();
-          clearSlice();
+          flushPersistNow(streamId);
+          removeSlice(streamId);
           try {
             window.dispatchEvent(
               new CustomEvent("openstudio-gateway-chat-terminal", {
@@ -453,11 +473,11 @@ export function ChatLabStreamingProvider({ children }) {
           } catch {
             /* ignore */
           }
-          endProcessing(sid);
+          endProcessing(streamId);
           return;
         }
         case "done": {
-          scheduleDoneFinalize(evt.streamId);
+          scheduleDoneFinalize(streamId);
           return;
         }
         default:
@@ -471,17 +491,13 @@ export function ChatLabStreamingProvider({ children }) {
       } catch {
         /* ignore */
       }
-      if (persistTimerRef.current) {
-        clearTimeout(persistTimerRef.current);
-        persistTimerRef.current = null;
-      }
-      if (doneGraceTimerRef.current) {
-        clearTimeout(doneGraceTimerRef.current);
-        doneGraceTimerRef.current = null;
-      }
-      pendingDoneFinalizeStreamIdRef.current = null;
+      for (const timer of persistTimersRef.current.values()) clearTimeout(timer);
+      persistTimersRef.current.clear();
+      for (const timer of doneGraceTimersRef.current.values()) clearTimeout(timer);
+      doneGraceTimersRef.current.clear();
+      pendingDoneFinalizeRef.current.clear();
     };
-  }, []);
+  }, [bumpSlices, syncStreamingSessionId]);
 
   const setWechatReplyingSessionId = useCallback((conversationId) => {
     const cid = String(conversationId ?? "").trim();
@@ -494,11 +510,19 @@ export function ChatLabStreamingProvider({ children }) {
     setWechatReplyingSessionIdState((cur) => (cur === cid ? null : cur));
   }, []);
 
+  const gatewayStreamSlice = useMemo(() => {
+    void slicesTick;
+    const all = [...slicesRef.current.values()];
+    return all.find((s) => s.active) ?? all[0] ?? null;
+  }, [slicesTick]);
+
   const value = useMemo(
     () => ({
       streamingSessionId,
       wechatReplyingSessionId,
       gatewayStreamSlice,
+      slicesTick,
+      listGatewayStreamSlices,
       beginGatewayStream,
       resetGatewayStream,
       setWechatReplyingSessionId,
@@ -508,6 +532,8 @@ export function ChatLabStreamingProvider({ children }) {
       streamingSessionId,
       wechatReplyingSessionId,
       gatewayStreamSlice,
+      slicesTick,
+      listGatewayStreamSlices,
       beginGatewayStream,
       resetGatewayStream,
       setWechatReplyingSessionId,
@@ -526,6 +552,8 @@ export function useChatLabStreaming() {
       streamingSessionId: null,
       wechatReplyingSessionId: null,
       gatewayStreamSlice: null,
+      slicesTick: 0,
+      listGatewayStreamSlices: () => [],
       beginGatewayStream: () => {},
       resetGatewayStream: () => {},
       setWechatReplyingSessionId: () => {},
@@ -536,8 +564,16 @@ export function useChatLabStreaming() {
 }
 
 /** @param {string} conversationId */
+export function useGatewayStreamSlices(conversationId) {
+  const { listGatewayStreamSlices, slicesTick } = useChatLabStreaming();
+  return useMemo(() => {
+    void slicesTick;
+    return listGatewayStreamSlices(conversationId);
+  }, [conversationId, listGatewayStreamSlices, slicesTick]);
+}
+
+/** @param {string} conversationId */
 export function useGatewayStreamSlice(conversationId) {
-  const { gatewayStreamSlice } = useChatLabStreaming();
-  if (!gatewayStreamSlice || gatewayStreamSlice.conversationId !== conversationId) return null;
-  return gatewayStreamSlice;
+  const slices = useGatewayStreamSlices(conversationId);
+  return slices.length === 1 ? slices[0] : slices.find((s) => s.active) ?? slices[0] ?? null;
 }

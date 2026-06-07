@@ -38,7 +38,7 @@
     "chatHistoryTimeHours": "{{n}} h ago",
     "chatHistoryTimeYesterday": "Yesterday",
     "chatHistoryTimeDays": "{{n}} days ago",
-    "lobster": "Lobster",
+    "lobster": "Agents",
     "skills": "Skills",
     "settings": "Settings",
     "profile": "Profile",
@@ -118,8 +118,8 @@
     "close": "Close"
   },
   "lobsterPage": {
-    "title": "Lobster management",
-    "desc": "Manage each sub-agent (“lobster”) in the studio: display name, description, bound skills, and an optional OpenClaw session key. Data is stored locally and stays in sync with the studio view.",
+    "title": "Agent management",
+    "desc": "Create and manage OpenClaw agents: name, IDENTITY.md (who), SOUL.md (voice), workspace, and skills. Confirming create writes to disk and restarts the gateway.",
     "actions": {
       "create": "New agent",
       "delete": "Delete"
@@ -129,15 +129,33 @@
     "noSelection": "Pick an agent from the list or create one.",
     "detailTitle": "Details",
     "fieldName": "Display name",
+    "fieldAvatar": "Avatar (emoji)",
+    "avatarPlaceholder": "e.g. 🦞 or ✨",
+    "fieldIdentity": "Identity (IDENTITY.md)",
+    "identityPlaceholder": "Name, vibe, emoji…",
+    "identityHint": "Who this agent is — name and public persona. Saved to IDENTITY.md.",
     "fieldDescription": "Description (optional)",
-    "fieldSessionKey": "OpenClaw session key (optional)",
-    "sessionKeyPlaceholder": "Session or agent identifier for OpenClaw",
+    "fieldSoul": "Soul (SOUL.md)",
+    "soulPlaceholder": "Tone, boundaries, speaking style…",
+    "soulHint": "How this agent talks — voice and personality. Saved to SOUL.md.",
+    "fieldGatewayId": "Gateway agent ID",
+    "gatewayIdHint": "Session key: {{session}}",
+    "provisionPending": "Provisioning workspace and gateway config…",
+    "provisionDone": "Agent created and gateway synced. Ready for chat in a few seconds.",
     "skillsHeading": "Bound skills",
     "skillFilterPlaceholder": "Filter skills",
-    "skillsHint": "Checked skills are enabled for this agent (runtime wiring comes later).",
+    "skillsHint": "Checked skills are available when this agent joins a chat (@ to reply).",
     "skillsEmpty": "No skills match. Add local skills on the Skills page or use built-ins.",
     "skillCount": "{{n}} skill(s) bound",
     "defaultNewName": "New agent",
+    "createModal": {
+      "title": "New agent",
+      "namePlaceholder": "e.g. Frontend specialist",
+      "nameRequired": "Display name is required.",
+      "failed": "Create failed. Check that the gateway is online and try again.",
+      "confirm": "Create",
+      "busy": "Creating…"
+    },
     "deleteModal": {
       "title": "Delete agent",
       "body": "Remove “{{name}}”? This cannot be undone (local save will update).",
@@ -224,6 +242,14 @@
     "skillChipClose": "Remove skill",
     "toolbarConnectHint": "Coming soon",
     "attachHint": "Attachments coming soon",
+    "participantsLabel": "In chat",
+    "participantsAria": "Agents in this conversation",
+    "participantsAdd": "Add agent",
+    "participantRemove": "Remove {{name}} from chat",
+    "mentionPickerAria": "Pick an agent to @mention",
+    "mentionEmpty": "No agents to mention",
+    "mentionEveryone": "everyone",
+    "messageMentionsAria": "Agents mentioned in this message",
     "systemPrompt": "You are a capable, friendly assistant. Think briefly when helpful, then answer clearly in the user's language.",
     "wechatSystemPrompt": "WeChat channel — token cost matters. When the user wants a file/screenshot/PDF: copy/move it into the workspace only (cp/mv). NEVER read_file/cat/Get-Content the whole document. NEVER paste file bodies in replies. Open Studio sends the attachment automatically. Reply in at most two short sentences.",
     "emptyHint": "Type a message below to start.",
@@ -472,7 +498,8 @@
     "library": "Library / entertainment"
   },
   "agents": {
-    "defaultName": "Lobster 1"
+    "defaultName": "Main agent",
+    "mainBadge": "Main"
   },
   "modes": {
     "idle": "Idle",

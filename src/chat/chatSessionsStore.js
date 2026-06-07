@@ -48,6 +48,8 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {MessageSkillMeta} [skillMeta]
  * @property {PersistedImageAttachment[]} [imageAttachments]
  * @property {PersistedFileRef[]} [fileRefs]
+ * @property {string} [agentId] Studio agent id (assistant bubbles)
+ * @property {string[]} [mentions] Studio agent ids @-mentioned on user turns
  */
 
 /**
@@ -59,6 +61,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {'internal' | 'wechat'} [channel]
  * @property {string} [channelPeerId]
  * @property {string} [gatewayConversationId] UUID gateway thread for WeChat auto-reply (UI id stays `wechat:<peer>`)
+ * @property {string[]} [participantIds] Studio agent ids in this thread (group chat)
  * @property {PersistedChatMessage[]} messages
  */
 
@@ -116,11 +119,29 @@ function parseSessionsFromStorage() {
         channelPeerId: typeof r.channelPeerId === "string" ? r.channelPeerId.trim().slice(0, 180) : "",
         gatewayConversationId:
           typeof r.gatewayConversationId === "string" ? r.gatewayConversationId.trim().slice(0, 96) : "",
+        participantIds: sanitizeParticipantIds(r.participantIds),
         messages: sanitizeMessages(r.messages),
       }));
   } catch {
     return [];
   }
+}
+
+/** @param {unknown} raw @returns {string[]} */
+function sanitizeParticipantIds(raw) {
+  if (!Array.isArray(raw)) return [];
+  /** @type {string[]} */
+  const out = [];
+  const seen = new Set();
+  for (const id of raw) {
+    if (typeof id !== "string") continue;
+    const t = id.trim().slice(0, 96);
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+    if (out.length >= 24) break;
+  }
+  return out;
 }
 
 /** @param {unknown} raw */
@@ -221,6 +242,8 @@ function persistedMessagesEqual(a, b) {
     if (JSON.stringify(x.skillMeta ?? null) !== JSON.stringify(y.skillMeta ?? null)) return false;
     if (JSON.stringify(x.imageAttachments ?? null) !== JSON.stringify(y.imageAttachments ?? null)) return false;
     if (JSON.stringify(x.fileRefs ?? null) !== JSON.stringify(y.fileRefs ?? null)) return false;
+    if ((x.agentId ?? "") !== (y.agentId ?? "")) return false;
+    if (JSON.stringify(x.mentions ?? null) !== JSON.stringify(y.mentions ?? null)) return false;
     const xc = typeof x.createdAt === "number" && Number.isFinite(x.createdAt) ? x.createdAt : -1;
     const yc = typeof y.createdAt === "number" && Number.isFinite(y.createdAt) ? y.createdAt : -1;
     if (xc !== yc) return false;
@@ -310,6 +333,11 @@ function sanitizeMessages(raw) {
       const fr = sanitizeFileRefs(m.fileRefs);
       if (fr?.length) row.fileRefs = fr;
     }
+    if (typeof m.agentId === "string" && m.agentId.trim()) row.agentId = m.agentId.trim().slice(0, 96);
+    if (Array.isArray(m.mentions) && m.mentions.length > 0) {
+      const ms = sanitizeParticipantIds(m.mentions);
+      if (ms.length) row.mentions = ms;
+    }
     out.push(row);
   }
   return out;
@@ -335,7 +363,7 @@ function writeAll(rows) {
  * @param {string} id
  * @param {string} title
  * @param {PersistedChatMessage[]} messages
- * @param {{ channel?: 'internal' | 'wechat'; channelPeerId?: string; gatewayConversationId?: string }} [opts]
+ * @param {{ channel?: 'internal' | 'wechat'; channelPeerId?: string; gatewayConversationId?: string; participantIds?: string[] }} [opts]
  */
 export function upsertSession(id, title, messages, opts = {}) {
   if (!id) return;
@@ -360,6 +388,10 @@ export function upsertSession(id, title, messages, opts = {}) {
       : typeof prev?.gatewayConversationId === "string"
         ? prev.gatewayConversationId
         : "";
+  const nextParticipants =
+    opts.participantIds !== undefined
+      ? sanitizeParticipantIds(opts.participantIds)
+      : sanitizeParticipantIds(prev?.participantIds);
   all.push({
     id,
     title: resolvedTitle,
@@ -368,6 +400,7 @@ export function upsertSession(id, title, messages, opts = {}) {
     channel: nextChannel,
     channelPeerId: nextPeer,
     ...(nextGatewayConversationId ? { gatewayConversationId: nextGatewayConversationId } : {}),
+    ...(nextParticipants.length ? { participantIds: nextParticipants } : {}),
     messages,
   });
   writeAll(all);
@@ -425,6 +458,22 @@ export function deleteSessionsByIds(ids) {
 export function getSession(id) {
   if (!id) return null;
   return loadAllSessions().find((s) => s.id === id) ?? null;
+}
+
+/**
+ * @param {string} id
+ * @param {string[]} participantIds
+ */
+export function updateSessionParticipants(id, participantIds) {
+  if (!id) return;
+  const rec = getSession(id);
+  if (!rec) return;
+  upsertSession(id, rec.title, rec.messages, {
+    channel: rec.channel,
+    channelPeerId: rec.channelPeerId,
+    gatewayConversationId: rec.gatewayConversationId,
+    participantIds,
+  });
 }
 
 /**
