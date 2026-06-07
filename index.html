@@ -14,6 +14,19 @@
       })();
       (function () {
         try {
+          var mode = localStorage.getItem("openstudio_ui_motion");
+          if (mode !== "full" && mode !== "reduced" && mode !== "system") mode = "full";
+          var reduced =
+            mode === "reduced" ||
+            (mode === "system" &&
+              window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+          document.documentElement.dataset.osMotion = reduced ? "reduced" : "full";
+        } catch (e) {
+          document.documentElement.dataset.osMotion = "full";
+        }
+      })();
+      (function () {
+        try {
           var loc = localStorage.getItem("openstudio_locale");
           if (
             loc === "zh-CN" ||

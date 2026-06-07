@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
+import { useMotionPreference } from "../../context/MotionPreferenceContext.jsx";
 import { useTheme } from "../../context/ThemeContext.jsx";
 import { isLocaleId } from "../../i18n/messages.js";
 import Select from "../../ui/Select.jsx";
@@ -29,6 +30,7 @@ function GeneralSettingRow({ title, children, last = false }) {
 export default function GeneralSettingsSection() {
   const { theme, setTheme } = useTheme();
   const { t, locale, setLocale } = useI18n();
+  const { mode: uiMotion, setMode: setUiMotion } = useMotionPreference();
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
 
   const [chatLabAutoTitle, setChatLabAutoTitle] = useState(false);
@@ -82,6 +84,15 @@ export default function GeneralSettingsSection() {
     [t],
   );
 
+  const uiMotionOptions = useMemo(
+    () => [
+      { value: "full", label: t("settings.uiMotion.full") },
+      { value: "system", label: t("settings.uiMotion.system") },
+      { value: "reduced", label: t("settings.uiMotion.reduced") },
+    ],
+    [t],
+  );
+
   return (
     <div className="general-settings mx-auto w-full max-w-md">
       <div className="overflow-hidden rounded-2xl border border-[color-mix(in_srgb,var(--os-border)_88%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-elevated)_96%,var(--os-bg-subtle))] shadow-[0_1px_0_rgba(255,255,255,0.45)_inset,0_8px_28px_rgba(15,23,42,0.04)]">
@@ -103,6 +114,19 @@ export default function GeneralSettingsSection() {
             value={locale}
             onChange={(v) => isLocaleId(v) && setLocale(v)}
             options={languageOptions}
+            className="min-w-[8.5rem]"
+          />
+        </GeneralSettingRow>
+
+        <GeneralSettingRow title={t("settings.uiMotionShort")}>
+          <Select
+            id="settings-ui-motion"
+            ariaLabel={t("settings.uiMotionAria")}
+            value={uiMotion}
+            onChange={(v) => {
+              if (v === "full" || v === "system" || v === "reduced") setUiMotion(v);
+            }}
+            options={uiMotionOptions}
             className="min-w-[8.5rem]"
           />
         </GeneralSettingRow>

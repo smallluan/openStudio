@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import heroAvatarLight from "../../assets/images/hero-avatar-light.png";
 import heroAvatarDark from "../../assets/images/hero-avatar-dark.png";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -9,6 +9,8 @@ import { cn } from "../../ui/cn.js";
 export function HeroPhraseRotator({ phrases, holdMs = 3200, fadeMs = 420 }) {
   const [index, setIndex] = useState(0);
   const [leaving, setLeaving] = useState(false);
+  const [entering, setEntering] = useState(false);
+  const skipEnterOnMountRef = useRef(true);
 
   useEffect(() => {
     if (!phrases?.length) return;
@@ -45,10 +47,29 @@ export function HeroPhraseRotator({ phrases, holdMs = 3200, fadeMs = 420 }) {
     };
   }, [phrases, holdMs, fadeMs]);
 
+  useEffect(() => {
+    if (skipEnterOnMountRef.current) {
+      skipEnterOnMountRef.current = false;
+      return undefined;
+    }
+    if (leaving) return undefined;
+    setEntering(true);
+    const raf = requestAnimationFrame(() => setEntering(false));
+    return () => cancelAnimationFrame(raf);
+  }, [index, leaving]);
+
   const phrase = phrases[index] ?? "";
 
   return (
-    <span className={cn("chat-lab__hero-rotator", leaving && "chat-lab__hero-rotator--leaving")}>{phrase}</span>
+    <span
+      className={cn(
+        "chat-lab__hero-rotator",
+        leaving && "chat-lab__hero-rotator--leaving",
+        entering && "chat-lab__hero-rotator--entering",
+      )}
+    >
+      {phrase}
+    </span>
   );
 }
 

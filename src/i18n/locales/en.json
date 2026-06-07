@@ -71,6 +71,13 @@
     "languageAria": "Choose interface language",
     "autoSummarize": "Auto-summarize title",
     "autoSummarizeTitle": "Auto-generate conversation title (first message)",
+    "uiMotionShort": "UI motion",
+    "uiMotionAria": "UI motion intensity",
+    "uiMotion": {
+      "full": "Full",
+      "system": "Follow system",
+      "reduced": "Reduced"
+    },
     "openLogsFolder": "Open log folder",
     "openLogsAria": "Open the application log folder in the file manager",
     "lang": {

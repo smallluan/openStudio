@@ -71,6 +71,13 @@
     "languageAria": "表示言語を選択",
     "autoSummarize": "タイトルを自動要約",
     "autoSummarizeTitle": "最初のメッセージから会話タイトルを自動生成",
+    "uiMotionShort": "UI アニメーション",
+    "uiMotionAria": "UI アニメーションの強さ",
+    "uiMotion": {
+      "full": "フル",
+      "system": "システムに従う",
+      "reduced": "控えめ"
+    },
     "openLogsFolder": "ログフォルダを開く",
     "openLogsAria": "ファイルマネージャーでアプリのログフォルダを開く",
     "lang": {

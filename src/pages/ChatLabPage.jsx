@@ -92,6 +92,15 @@ const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
 
 /** Below this count, skip virtual scroll — avoids row-height drift on some Electron/GPU setups. */
 const CHAT_LAB_PLAIN_MESSAGE_MAX = 48;
+/** Distance from bottom (px) within which the transcript stays pinned during streaming. */
+const CHAT_AUTO_SCROLL_BOTTOM_PX = 96;
+
+/** @param {HTMLElement | null} el @param {import("react").MutableRefObject<boolean>} autoScrollRef */
+function syncChatAutoScrollFromEl(el, autoScrollRef) {
+  if (!el) return;
+  const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+  autoScrollRef.current = distFromBottom < CHAT_AUTO_SCROLL_BOTTOM_PX;
+}
 
 /** Min height of the chat composer textarea in px (~5.5rem at default root font size). */
 const CHAT_LAB_COMPOSER_TEXT_MIN_PX = 88;
@@ -3810,17 +3819,49 @@ function ChatLabPlainMessageList({
   locale,
   threadLabel,
 }) {
-  useLayoutEffect(() => {
+  const messagesMeasureDigest = useMemo(() => buildMessagesMeasureDigest(messages), [messages]);
+  const scrollPinKey = messages.length
+    ? `${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}`
+    : "";
+
+  const handleScroll = useCallback(() => {
+    syncChatAutoScrollFromEl(messagesScrollRef.current, autoScrollRef);
+  }, [messagesScrollRef, autoScrollRef]);
+
+  const onUserScrollIntent = useCallback(() => {
+    autoScrollRef.current = false;
+  }, [autoScrollRef]);
+
+  const pinScrollToBottom = useCallback(() => {
     if (!autoScrollRef.current || messages.length === 0) return;
     const el = messagesScrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages, gatewayStreaming, autoScrollRef, messagesScrollRef]);
+  }, [autoScrollRef, messages.length, messagesScrollRef]);
+
+  useLayoutEffect(() => {
+    pinScrollToBottom();
+  }, [scrollPinKey, pinScrollToBottom]);
+
+  useLayoutEffect(() => {
+    pinScrollToBottom();
+  }, [messagesMeasureDigest, pinScrollToBottom]);
 
   return (
     <div
       className="chat-lab__messages"
       ref={messagesScrollRef}
+      onScroll={handleScroll}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (target.closest("a,button,input,textarea,select,[role='button'],[contenteditable='true']")) return;
+        onUserScrollIntent();
+      }}
+      onTouchStart={onUserScrollIntent}
+      onWheel={(e) => {
+        if (e.deltaY < 0) onUserScrollIntent();
+      }}
       role="log"
       aria-live="polite"
       aria-label={threadLabel}
@@ -4005,15 +4046,20 @@ function ChatLabVirtualMessageList({
     }, delayMs);
   }, []);
 
+  const onUserScrollIntent = useCallback(() => {
+    autoScrollRef.current = false;
+  }, [autoScrollRef]);
+
   const handleScroll = useCallback(() => {
-    const el = messagesScrollRef.current;
-    if (!el) return;
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    autoScrollRef.current = distFromBottom < 80;
+    syncChatAutoScrollFromEl(messagesScrollRef.current, autoScrollRef);
     syncScrollbarMetrics();
     setScrollbarVisible(true);
     scheduleScrollbarHide();
   }, [messagesScrollRef, autoScrollRef, scheduleScrollbarHide, syncScrollbarMetrics]);
+
+  const scrollPinKey = messages.length
+    ? `${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}`
+    : "";
 
   useEffect(
     () => () => {
@@ -4084,11 +4130,20 @@ function ChatLabVirtualMessageList({
     };
   }, [messagesScrollRef, syncScrollbarMetrics]);
 
-  /** Pin-to-bottom only when the transcript or stream phase changes — not on row height remeasure (e.g. tool panels). */
-  useLayoutEffect(() => {
+  const pinVirtualToBottom = useCallback(() => {
     if (!autoScrollRef.current || messages.length === 0) return;
     vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
-  }, [messages, gatewayStreaming, autoScrollRef]);
+  }, [autoScrollRef, messages.length]);
+
+  /** Pin when a new turn starts — not on every streaming token (messages reference churn). */
+  useLayoutEffect(() => {
+    pinVirtualToBottom();
+  }, [scrollPinKey, pinVirtualToBottom]);
+
+  /** Follow streaming growth only while the reader is already at the bottom. */
+  useLayoutEffect(() => {
+    pinVirtualToBottom();
+  }, [messagesMeasureDigest, pinVirtualToBottom]);
 
   /** User-bubble enter anim + streaming row growth need a remeasure or the first turn can clip. */
   useLayoutEffect(() => {
@@ -4143,6 +4198,16 @@ function ChatLabVirtualMessageList({
         className="chat-lab__messages chat-lab__messages--virtual"
         ref={messagesScrollRef}
         onScroll={handleScroll}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          const target = /** @type {HTMLElement} */ (e.target);
+          if (target.closest("a,button,input,textarea,select,[role='button'],[contenteditable='true']")) return;
+          onUserScrollIntent();
+        }}
+        onTouchStart={onUserScrollIntent}
+        onWheel={(e) => {
+          if (e.deltaY < 0) onUserScrollIntent();
+        }}
         role="log"
         aria-live="polite"
         aria-label={threadLabel}

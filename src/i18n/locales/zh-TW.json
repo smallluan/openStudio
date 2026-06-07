@@ -71,6 +71,13 @@
     "languageAria": "選擇介面語言",
     "autoSummarize": "自動總結為標題",
     "autoSummarizeTitle": "自動將對話內容總結為標題",
+    "uiMotionShort": "介面動畫",
+    "uiMotionAria": "介面動畫強度",
+    "uiMotion": {
+      "full": "完整",
+      "system": "跟隨系統",
+      "reduced": "減少"
+    },
     "openLogsFolder": "開啟日誌資料夾",
     "openLogsAria": "在檔案總管中開啟應用程式日誌資料夾",
     "lang": {

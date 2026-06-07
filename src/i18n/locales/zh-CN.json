@@ -71,6 +71,13 @@
     "languageAria": "选择界面语言",
     "autoSummarize": "自动总结为标题",
     "autoSummarizeTitle": "自动总结对话内容为标题",
+    "uiMotionShort": "界面动画",
+    "uiMotionAria": "界面动画强度",
+    "uiMotion": {
+      "full": "完整",
+      "system": "跟随系统",
+      "reduced": "减少"
+    },
     "openLogsFolder": "打开日志目录",
     "openLogsAria": "在资源管理器中打开应用日志文件夹",
     "lang": {

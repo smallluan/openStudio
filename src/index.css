@@ -2321,24 +2321,28 @@ code {
   transform: translateY(0.35rem);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .chat-lab__hero-rotator {
-    transition: none;
-  }
+.chat-lab__hero-rotator--entering {
+  opacity: 0;
+  transform: translateY(-0.35rem);
+}
 
-  .chat-lab__hero-rotator--leaving {
-    opacity: 1;
-    transform: none;
-  }
+html[data-os-motion="reduced"] .chat-lab__hero-rotator {
+  transition: none;
+}
 
-  .chat-lab__shell-skill-row,
-  .chat-lab__composer-attachments {
-    animation: none;
-  }
+html[data-os-motion="reduced"] .chat-lab__hero-rotator--leaving,
+html[data-os-motion="reduced"] .chat-lab__hero-rotator--entering {
+  opacity: 1;
+  transform: none;
+}
 
-  .chat-lab__shell-textarea {
-    transition: none;
-  }
+html[data-os-motion="reduced"] .chat-lab__shell-skill-row,
+html[data-os-motion="reduced"] .chat-lab__composer-attachments {
+  animation: none;
+}
+
+html[data-os-motion="reduced"] .chat-lab__shell-textarea {
+  transition: none;
 }
 
 .chat-lab__hero-meta {
@@ -5289,27 +5293,36 @@ code {
   max-width: 36rem;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .bootstrap-gate,
-  .bootstrap-gate-chrome__stack .chat-lab__gate-progress,
-  .chat-lab__hero--gate-releasing {
-    transition: none;
-  }
+html[data-os-motion="reduced"] .bootstrap-gate,
+html[data-os-motion="reduced"] .bootstrap-gate-chrome__stack .chat-lab__gate-progress,
+html[data-os-motion="reduced"] .chat-lab__hero--gate-releasing {
+  transition: none;
+}
 
-  .bootstrap-gate--exiting {
-    opacity: 0;
-  }
+html[data-os-motion="reduced"] .bootstrap-gate--exiting {
+  opacity: 0;
+}
 
-  .chat-lab__reveal-enter,
-  .chat-lab__reveal-blur-host > :not(.chat-lab__reveal-blur-veil),
+html[data-os-motion="reduced"] .chat-lab__reveal-enter,
+html[data-os-motion="reduced"] .chat-lab__reveal-blur-host > :not(.chat-lab__reveal-blur-veil),
+html[data-os-motion="reduced"] .chat-lab__reveal-blur-veil {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+html[data-os-motion="reduced"] .chat-lab__reveal-blur-veil {
+  display: none !important;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .chat-lab__reveal-blur-veil {
-    animation: none !important;
-    opacity: 1 !important;
-    transform: none !important;
+    display: none;
+  }
+
+  .chat-lab__reveal-blur-host > :not(.chat-lab__reveal-blur-veil) {
+    animation-name: chat-lab-reveal-enter;
     filter: none !important;
-  }
-
-  .chat-lab__reveal-blur-veil {
-    display: none !important;
   }
 }
