@@ -144,9 +144,14 @@ export function buildGatewayPayloadRows(msgs, opts = {}) {
         body =
           targetAgentId && agentId !== targetAgentId
             ? `[群聊 · ${label}]: ${body}`
-            : `[${label}]: ${body}`;
+            : `[You · ${label}]: ${body}`;
       }
-      return { role: m.role, content: body };
+      // Peer agents must not use `assistant` — the model would treat their lines as its own prior reply.
+      const role =
+        targetAgentId && m.role === "assistant" && agentId && agentId !== targetAgentId
+          ? "user"
+          : m.role;
+      return { role, content: body };
     })
     .filter(Boolean);
 }
@@ -162,6 +167,7 @@ export function buildGatewayPayloadRows(msgs, opts = {}) {
  *   agentById?: Map<string, import("../studio/agents.js").LobsterAgent>;
  *   mainAgentStudioId?: string;
  *   excludeMessageIds?: string[];
+ *   forceBootstrap?: boolean;
  * }} args
  * @returns {GatewayOutgoingContext}
  */
@@ -174,6 +180,7 @@ export function resolveAgentGatewayContext(args) {
     agentById,
     mainAgentStudioId = "",
     excludeMessageIds = [],
+    forceBootstrap = false,
   } = args;
 
   const exclude = new Set(excludeMessageIds.filter(Boolean));
@@ -194,7 +201,7 @@ export function resolveAgentGatewayContext(args) {
   const chatMessages = filterMessagesForGatewayContext(rawHistory, "thread");
   const syncAnchor = findSyncAnchorMessageId(rawHistory);
 
-  if (!lastSyncedId) {
+  if (forceBootstrap || !lastSyncedId) {
     const recSummary = rec?.threadContext?.summary?.trim();
     const { slice, summary: computedSummary } = bootstrapMessageSlice(rawHistory);
     const summary = recSummary || computedSummary;

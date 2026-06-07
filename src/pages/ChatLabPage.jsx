@@ -76,6 +76,7 @@ import {
   mentionEligibleAgents,
   mentionEveryoneAgents,
   parseAgentMentions,
+  parseAgentDelegateMention,
   resolveReplyTargets,
 } from "../studio/agentMentions.js";
 import {
@@ -319,6 +320,47 @@ function formatMessageTimestamp(ts, locale) {
 }
 
 /**
+ * @param {import("../studio/agents.js").LobsterAgent} agent
+ * @param {(key: string) => string} t
+ * @param {import("../studio/agents.js").LobsterAgent[]} groupAgents
+ * @param {{ orchestrationTeamRoster?: string }} [extra]
+ */
+function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
+  const others = groupAgents.filter((a) => a.id !== agent.id);
+  const groupDelegateHint =
+    others.length > 0
+      ? extra.mentionDelegateReply
+        ? t("chatLab.groupDelegateReplyHint")
+        : t("chatLab.groupDelegateHint")
+      : "";
+  return systemMessageForAgent(agent, t("chatLab.systemPrompt"), {
+    groupAgents,
+    groupDelegateHint,
+    ...extra,
+  });
+}
+
+/**
+ * @param {Record<string, unknown> | undefined} msg
+ * @param {Set<string>} sessionAgentIds
+ */
+function isDelegatableGroupAssistantMessage(msg, sessionAgentIds) {
+  if (!msg || msg.role !== "assistant" || typeof msg.agentId !== "string" || !msg.agentId || msg.error) {
+    return false;
+  }
+  if (
+    msg.messageKind === "orchestration_event" ||
+    msg.messageKind === "orchestration_internal" ||
+    msg.messageKind === "orchestration_plan" ||
+    msg.messageKind === "orchestration_anchor"
+  ) {
+    return false;
+  }
+  if (msg.mentionDelegateReply) return false;
+  return sessionAgentIds.has(msg.agentId);
+}
+
+/**
  * @param {Record<string, unknown>} m
  */
 function toPersistedChatMessage(m) {
@@ -340,6 +382,10 @@ function toPersistedChatMessage(m) {
     ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
     ...(typeof m.agentId === "string" && m.agentId ? { agentId: m.agentId } : {}),
     ...(Array.isArray(m.mentions) && m.mentions.length ? { mentions: m.mentions } : {}),
+    ...(m.mentionDelegateReply ? { mentionDelegateReply: true } : {}),
+    ...(typeof m.mentionDelegateFromAgentId === "string" && m.mentionDelegateFromAgentId
+      ? { mentionDelegateFromAgentId: m.mentionDelegateFromAgentId }
+      : {}),
     ...(m.messageKind === "orchestration_event" ||
     m.messageKind === "orchestration_plan" ||
     m.messageKind === "orchestration_internal"
@@ -410,6 +456,8 @@ function mapSessionMessageRow(m, opts = {}) {
     ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
     ...(m.agentId ? { agentId: m.agentId } : {}),
     ...(Array.isArray(m.mentions) && m.mentions.length ? { mentions: m.mentions } : {}),
+    ...(m.mentionDelegateReply ? { mentionDelegateReply: true } : {}),
+    ...(m.mentionDelegateFromAgentId ? { mentionDelegateFromAgentId: m.mentionDelegateFromAgentId } : {}),
     ...(m.messageKind ? { messageKind: m.messageKind } : {}),
     ...(m.orchestrationPlan ? { orchestrationPlan: m.orchestrationPlan } : {}),
     ...(m.orchestrationPhase ? { orchestrationPhase: m.orchestrationPhase } : {}),
@@ -635,6 +683,10 @@ function mergeTerminalAssistantPayload(m, extra) {
         canon.trim().length > 0 ? reconcileTimelineWithCanonicalText(tl, canon) : tl;
     } else delete next.assistantTimeline;
   }
+  if (Array.isArray(extra?.mentions)) {
+    if (extra.mentions.length > 0) next.mentions = extra.mentions;
+    else delete next.mentions;
+  }
   return next;
 }
 
@@ -743,6 +795,12 @@ export default function ChatLabPage() {
   const [toolbarModelId, setToolbarModelId] = useState("");
   const [participantIds, setParticipantIds] = useState(/** @type {string[]} */ ([]));
   const [orchestrationMode, setOrchestrationMode] = useState(false);
+  const delegatedFromMessageRef = useRef(/** @type {Set<string>} */ (new Set()));
+  const delegateAfterAgentReplyRef = useRef(
+    /** @type {((assistantMessageId: string, mergedHistory: Array<Record<string, unknown>>) => void) | null} */ (
+      null
+    ),
+  );
   const [mentionCaret, setMentionCaret] = useState(0);
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
 
@@ -1462,6 +1520,10 @@ export default function ChatLabPage() {
 
   const prevConversationIdRef = useRef(conversationId);
   useEffect(() => {
+    delegatedFromMessageRef.current.clear();
+  }, [conversationId]);
+
+  useEffect(() => {
     const prev = prevConversationIdRef.current;
     if (prev && prev !== conversationId) {
       const leavingOrchBusy = isOrchestrationSessionBusy(getSession(prev));
@@ -1579,6 +1641,30 @@ export default function ChatLabPage() {
           ...(Array.isArray(d.activityLog) ? { activityLog: d.activityLog } : {}),
           ...(Array.isArray(d.assistantTimeline) ? { assistantTimeline: d.assistantTimeline } : {}),
         };
+        if (d.kind === "done" && !orchestrationMode) {
+          const row = messagesRef.current.find((m) => m.id === d.assistantMessageId);
+          const sessionAgentIds = new Set(
+            groupAgentsInSession({ agents, mainAgent, participantIds }).map((a) => a.id),
+          );
+          const content =
+            typeof extra.content === "string"
+              ? extra.content
+              : String(row?.content ?? "");
+          if (
+            sessionAgentIds.size >= 2 &&
+            isDelegatableGroupAssistantMessage(row, sessionAgentIds) &&
+            content.includes("@")
+          ) {
+            const { mentionIds } = parseAgentDelegateMention(content, agents, {
+              speakerAgentId: String(row?.agentId ?? ""),
+              mainAgent,
+              participantIds,
+              mainFallback: mainAgentLabel,
+              everyoneLabel: mentionEveryoneLabel,
+            });
+            if (mentionIds.length) extra.mentions = mentionIds;
+          }
+        }
         finalizeAssistantById(d.assistantMessageId, extra);
         if (d.kind === "done") {
           const merged = messagesWithTerminalAssistantPayload(messagesRef.current, d.assistantMessageId, extra);
@@ -1597,12 +1683,24 @@ export default function ChatLabPage() {
               recordAgentGatewaySync(conversationId, agentId, ctx.syncThroughMessageId, merged);
             }
           }
+          delegateAfterAgentReplyRef.current?.(d.assistantMessageId, merged);
         }
       }
     };
     window.addEventListener("openstudio-gateway-chat-terminal", fn);
     return () => window.removeEventListener("openstudio-gateway-chat-terminal", fn);
-  }, [agentById, conversationId, finalizeAssistantById, mainAgent?.id, t]);
+  }, [
+    agentById,
+    agents,
+    conversationId,
+    finalizeAssistantById,
+    mainAgent,
+    mainAgentLabel,
+    mentionEveryoneLabel,
+    orchestrationMode,
+    participantIds,
+    t,
+  ]);
 
   const canSend =
     !gatewayStreaming &&
@@ -1747,7 +1845,7 @@ export default function ChatLabPage() {
 
       const editGroupAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
       const sysRow = mainAgent
-        ? systemMessageForAgent(mainAgent, t("chatLab.systemPrompt"), { groupAgents: editGroupAgents })
+        ? systemRowForGroupAgent(mainAgent, t, editGroupAgents)
         : { role: "system", content: t("chatLab.systemPrompt") };
       const outgoing = [
         ...(sysRow ? [sysRow] : []),
@@ -1936,7 +2034,7 @@ export default function ChatLabPage() {
           createdAt: now + i + 1,
           agentId: target.id,
         };
-        const sysRow = systemMessageForAgent(target, t("chatLab.systemPrompt"), { groupAgents });
+        const sysRow = systemRowForGroupAgent(target, t, groupAgents);
         const ctx = resolveAgentGatewayContext({
           conversationId,
           agentId: target.id,
@@ -2075,6 +2173,184 @@ export default function ChatLabPage() {
       t,
     ],
   );
+
+  const launchGroupAgentReply = useCallback(
+    async ({ target, historyMessages, triggerAgentId }) => {
+      if (!target || !bridge?.startChatStream || !mainAgent || !conversationId) return;
+
+      const now = Date.now();
+      const assistantMsg = {
+        id: newId(),
+        role: /** @type {const} */ ("assistant"),
+        content: "",
+        thinking: "",
+        streaming: true,
+        createdAt: now,
+        agentId: target.id,
+        mentionDelegateReply: true,
+        ...(triggerAgentId ? { mentionDelegateFromAgentId: triggerAgentId } : {}),
+      };
+      const streamId = newId();
+      const sessionParticipantIds = [...new Set([mainAgent.id, ...participantIds, target.id])];
+      const groupAgents = groupAgentsInSession({
+        agents,
+        mainAgent,
+        participantIds: sessionParticipantIds,
+      });
+      const sysRow = systemRowForGroupAgent(target, t, groupAgents, { mentionDelegateReply: true });
+      const ctx = resolveAgentGatewayContext({
+        conversationId,
+        agentId: target.id,
+        historyMessages,
+        mode: "thread",
+        agentById,
+        mainAgentStudioId: mainAgent.id,
+        forceBootstrap: true,
+      });
+      const outgoing = [...(sysRow ? [sysRow] : []), ...ctx.priorRows];
+
+      const persistablePrior = historyMessages
+        .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
+        .map((m) => toPersistedChatMessage(m));
+      const persistableNext = [
+        ...persistablePrior,
+        {
+          id: assistantMsg.id,
+          role: /** @type {const} */ ("assistant"),
+          content: "",
+          thinking: "",
+          createdAt: assistantMsg.createdAt,
+          agentId: assistantMsg.agentId,
+          mentionDelegateReply: true,
+          ...(triggerAgentId ? { mentionDelegateFromAgentId: triggerAgentId } : {}),
+        },
+      ];
+      const rec = getSession(conversationId);
+      const provisionalTitle = deriveTitleFromMessages(
+        persistableNext.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          thinking: m.thinking,
+        })),
+        { imageFallback: t("chatLab.chatUntitledImage") },
+      );
+      upsertSession(conversationId, rec?.title || provisionalTitle || "…", persistableNext, {
+        participantIds: sessionParticipantIds,
+      });
+
+      setMessages((prev) => (prev.some((m) => m.id === assistantMsg.id) ? prev : [...prev, assistantMsg]));
+      autoScrollRef.current = true;
+
+      beginGatewayStream({
+        conversationId,
+        streamId,
+        assistantMessageId: assistantMsg.id,
+      });
+      activeStreamIdsRef.current.add(streamId);
+      assistantStreamIdsRef.current.set(assistantMsg.id, streamId);
+
+      const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
+      try {
+        await bridge.startChatStream({
+          streamId,
+          conversationId,
+          messages: outgoing,
+          composerSkill: null,
+          agentSessionKey: sessionKeyForAgent(target),
+          gatewayAgentId: target.gatewayAgentId,
+          concurrent: true,
+          contextEmbedMode: ctx.contextEmbedMode,
+          ...(ctx.threadSummaryPrefix ? { threadSummaryPrefix: ctx.threadSummaryPrefix } : {}),
+        });
+      } catch (err) {
+        resetGatewayStream(streamId);
+        activeStreamIdsRef.current.delete(streamId);
+        assistantStreamIdsRef.current.delete(assistantMsg.id);
+        try {
+          await bridge.abortChatStream(streamId);
+        } catch {
+          /* ignore */
+        }
+        const raw = String(err?.message ?? err);
+        const msg = formatStreamError(raw, t);
+        finalizeAssistantById(assistantMsg.id, { error: msg });
+        if (isChatHttp404(raw)) {
+          setChatApiBlocked(true);
+          setProbeRestartKey((k) => k + 1);
+        }
+      } finally {
+        stopWechatTyping();
+      }
+    },
+    [
+      agentById,
+      agents,
+      beginGatewayStream,
+      bridge,
+      conversationId,
+      finalizeAssistantById,
+      mainAgent,
+      participantIds,
+      resetGatewayStream,
+      setProbeRestartKey,
+      setMessages,
+      t,
+    ],
+  );
+
+  const maybeDelegateAfterAgentReply = useCallback(
+    (assistantMessageId, mergedHistory) => {
+      if (orchestrationMode) return;
+      if (!conversationId) return;
+      if (delegatedFromMessageRef.current.has(assistantMessageId)) return;
+
+      const msg = mergedHistory.find((m) => m.id === assistantMessageId);
+      const sessionAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
+      const sessionAgentIds = new Set(sessionAgents.map((a) => a.id));
+      if (sessionAgentIds.size < 2) return;
+      if (!isDelegatableGroupAssistantMessage(msg, sessionAgentIds)) return;
+
+      const speakerId = String(msg?.agentId ?? "");
+      const { mentionIds } = parseAgentDelegateMention(String(msg?.content ?? ""), agents, {
+        speakerAgentId: speakerId,
+        mainAgent,
+        participantIds,
+        mainFallback: mainAgentLabel,
+        everyoneLabel: mentionEveryoneLabel,
+      });
+      if (mentionIds.length !== 1) return;
+
+      const target = agentById.get(mentionIds[0]);
+      if (!target || target.id === speakerId) return;
+
+      delegatedFromMessageRef.current.add(assistantMessageId);
+
+      const historyWithMentions = mergedHistory.map((m) =>
+        m.id === assistantMessageId && !m.mentions?.length ? { ...m, mentions: mentionIds } : m,
+      );
+      void launchGroupAgentReply({
+        target,
+        historyMessages: historyWithMentions,
+        triggerAgentId: speakerId,
+      });
+    },
+    [
+      agentById,
+      agents,
+      conversationId,
+      launchGroupAgentReply,
+      mainAgent,
+      mainAgentLabel,
+      mentionEveryoneLabel,
+      orchestrationMode,
+      participantIds,
+    ],
+  );
+
+  useEffect(() => {
+    delegateAfterAgentReplyRef.current = maybeDelegateAfterAgentReply;
+  }, [maybeDelegateAfterAgentReply]);
 
   const send = useCallback(async () => {
     if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
@@ -4942,8 +5218,14 @@ const MessageBubble = memo(function MessageBubble({
           </div>
         )}
       </article>
-      {isUser && mentionAgents.length > 0 ? (
-        <div className="chat-lab__msg-mentions" aria-label={t("chatLab.messageMentionsAria")}>
+      {mentionAgents.length > 0 ? (
+        <div
+          className={cn(
+            "chat-lab__msg-mentions",
+            !isUser && "chat-lab__msg-mentions--assistant",
+          )}
+          aria-label={t("chatLab.messageMentionsAria")}
+        >
           {mentionAgents.map((a) => (
             <span key={a.label} className="chat-lab__msg-mention-pill">
               <span className="chat-lab__msg-mention-glyph" aria-hidden>
@@ -5124,13 +5406,31 @@ function buildOrchestrationActivityDigest(activityLog) {
 }
 
 /**
- * @param {{ mentions?: string[] }} message
+ * @param {{ mentions?: string[]; content?: string; role?: string; agentId?: string }} message
  * @param {Map<string, import("../studio/agents.js").LobsterAgent>} agentById
  * @param {string} mainAgentLabel
  * @param {{ everyoneLabel?: string; mainAgent?: import("../studio/agents.js").LobsterAgent | null; participantIds?: string[] }} [opts]
  */
 function mentionAgentsForMessage(message, agentById, mainAgentLabel, opts = {}) {
-  const ids = Array.isArray(message.mentions) ? message.mentions : [];
+  let ids = Array.isArray(message.mentions) ? message.mentions : [];
+  const content = typeof message.content === "string" ? message.content : "";
+  if (!ids.length && content.includes("@")) {
+    const pool = [...agentById.values()];
+    const parseOpts = {
+      mainAgent: opts.mainAgent ?? null,
+      participantIds: opts.participantIds ?? [],
+      mainFallback: mainAgentLabel,
+      everyoneLabel: opts.everyoneLabel,
+    };
+    if (message.role === "user") {
+      ids = parseAgentMentions(content, pool, parseOpts).mentionIds;
+    } else if (message.role === "assistant" && message.agentId) {
+      ids = parseAgentDelegateMention(content, pool, {
+        ...parseOpts,
+        speakerAgentId: message.agentId,
+      }).mentionIds;
+    }
+  }
   if (!ids.length) return [];
   const agents = [...agentById.values()];
   const everyoneIds = mentionEveryoneAgents(agents, {

@@ -88,7 +88,13 @@ export function parseAgentMentions(text, agents, opts = {}) {
     typeof opts.everyoneLabel === "string" && opts.everyoneLabel.trim()
       ? opts.everyoneLabel.trim()
       : "所有人";
-  const eligible = mentionEligibleAgents(agents, opts);
+  const allowEveryone = opts.allowEveryone !== false;
+  const maxMentions =
+    typeof opts.maxMentions === "number" && opts.maxMentions > 0 ? opts.maxMentions : Infinity;
+  const excludeIds = new Set(
+    (Array.isArray(opts.excludeAgentIds) ? opts.excludeAgentIds : []).filter(Boolean),
+  );
+  const eligible = mentionEligibleAgents(agents, opts).filter((a) => !excludeIds.has(a.id));
   if (!raw.includes("@") || !eligible.length) {
     return { cleanText: raw, mentionIds: [] };
   }
@@ -100,9 +106,10 @@ export function parseAgentMentions(text, agents, opts = {}) {
 
   const escapedEveryone = everyoneLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const everyoneRe = new RegExp(`@${escapedEveryone}(?=\\s|$|[.,!?;:，。！？；：])`, "gu");
-  if (everyoneRe.test(cleanText)) {
+  if (allowEveryone && everyoneRe.test(cleanText)) {
     cleanText = cleanText.replace(everyoneRe, "").replace(/\s{2,}/g, " ").trim();
     for (const agent of mentionEveryoneAgents(eligible, opts)) {
+      if (mentionIds.length >= maxMentions) break;
       if (!seen.has(agent.id)) {
         seen.add(agent.id);
         mentionIds.push(agent.id);
@@ -117,6 +124,7 @@ export function parseAgentMentions(text, agents, opts = {}) {
   });
 
   for (const agent of sorted) {
+    if (mentionIds.length >= maxMentions) break;
     for (const label of mentionMatchTokens(agent, mainFallback)) {
       const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const re = new RegExp(`@${escaped}(?=\\s|$|[.,!?;:，。！？；：])`, "gu");
@@ -130,7 +138,39 @@ export function parseAgentMentions(text, agents, opts = {}) {
     }
   }
 
-  return { cleanText: cleanText.trim(), mentionIds };
+  return {
+    cleanText: cleanText.trim(),
+    mentionIds: mentionIds.slice(0, maxMentions),
+  };
+}
+
+/**
+ * Parse one effective @mention from an agent's reply (group delegation).
+ * Ignores @everyone and self-mentions; at most one teammate per message.
+ * @param {string} text
+ * @param {import("./agents.js").LobsterAgent[]} agents
+ * @param {{ speakerAgentId?: string; mainAgent?: import("./agents.js").LobsterAgent | null; participantIds?: string[]; mainFallback?: string; everyoneLabel?: string }} opts
+ * @returns {{ mentionIds: string[] }}
+ */
+export function parseAgentDelegateMention(text, agents, opts = {}) {
+  const speakerId =
+    typeof opts.speakerAgentId === "string" && opts.speakerAgentId.trim()
+      ? opts.speakerAgentId.trim()
+      : opts.mainAgent?.id ?? null;
+  const exclude = [...(Array.isArray(opts.excludeAgentIds) ? opts.excludeAgentIds : [])];
+  if (speakerId) exclude.push(speakerId);
+  const { mentionIds } = parseAgentMentions(text, agents, {
+    ...opts,
+    allowEveryone: false,
+    maxMentions: 1,
+    excludeAgentIds: exclude,
+  });
+  return { mentionIds };
+}
+
+/** @deprecated Use {@link parseAgentDelegateMention} */
+export function parseMainAgentDelegateMention(text, agents, opts = {}) {
+  return parseAgentDelegateMention(text, agents, opts);
 }
 
 /**

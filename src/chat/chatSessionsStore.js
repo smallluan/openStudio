@@ -51,7 +51,9 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {PersistedImageAttachment[]} [imageAttachments]
  * @property {PersistedFileRef[]} [fileRefs]
  * @property {string} [agentId] Studio agent id (assistant bubbles)
- * @property {string[]} [mentions] Studio agent ids @-mentioned on user turns
+ * @property {string[]} [mentions] Studio agent ids @-mentioned on user or assistant turns
+ * @property {boolean} [mentionDelegateReply] Auto-reply triggered by another agent's @mention
+ * @property {string} [mentionDelegateFromAgentId] Studio agent id that @mentioned this reply
  * @property {'orchestration_event' | 'orchestration_plan' | 'orchestration_internal'} [messageKind]
  * @property {import("../studio/orchestration.js").OrchestrationPlan} [orchestrationPlan]
  * @property {string} [orchestrationPhase]
@@ -394,6 +396,10 @@ function sanitizeMessages(raw) {
     if (Array.isArray(m.mentions) && m.mentions.length > 0) {
       const ms = sanitizeParticipantIds(m.mentions);
       if (ms.length) row.mentions = ms;
+    }
+    if (m.mentionDelegateReply === true) row.mentionDelegateReply = true;
+    if (typeof m.mentionDelegateFromAgentId === "string" && m.mentionDelegateFromAgentId.trim()) {
+      row.mentionDelegateFromAgentId = m.mentionDelegateFromAgentId.trim().slice(0, 96);
     }
     const mk = m.messageKind;
     if (mk === "orchestration_event" || mk === "orchestration_plan" || mk === "orchestration_internal") {

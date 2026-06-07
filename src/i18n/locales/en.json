@@ -257,6 +257,8 @@
     "mentionEmpty": "No agents to mention",
     "mentionEveryone": "everyone",
     "messageMentionsAria": "Agents mentioned in this message",
+    "groupDelegateHint": "Any agent in this group chat may @mention exactly one other teammate per message (e.g. `@Analyst please review …`). Only one @ takes effect per message; do not use @everyone. The mentioned agent will reply after your message; that auto-reply cannot @mention anyone else (prevents loops). If you are @mentioned, answer in your own voice — never repeat or impersonate another agent's introduction.",
+    "groupDelegateReplyHint": "This reply was triggered because a teammate @mentioned you. Answer directly — do not @mention other agents (chained @mentions are disabled to prevent ping-pong loops).",
     "systemPrompt": "You are a capable, friendly assistant. Think briefly when helpful, then answer clearly in the user's language.",
     "wechatSystemPrompt": "WeChat channel — token cost matters. When the user wants a file/screenshot/PDF: copy/move it into the workspace only (cp/mv). NEVER read_file/cat/Get-Content the whole document. NEVER paste file bodies in replies. Open Studio sends the attachment automatically. Reply in at most two short sentences.",
     "emptyHint": "Type a message below to start.",

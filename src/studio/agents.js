@@ -117,7 +117,7 @@ export function groupAgentsInSession({ agents, mainAgent, participantIds }) {
  * OpenClaw loads IDENTITY.md (who) and SOUL.md (how) separately — keep both in the system row.
  * @param {LobsterAgent} agent
  * @param {string} [fallbackSystemPrompt]
- * @param {{ groupAgents?: LobsterAgent[]; orchestrationTeamRoster?: string }} [opts]
+ * @param {{ groupAgents?: LobsterAgent[]; orchestrationTeamRoster?: string; groupDelegateHint?: string }} [opts]
  * @returns {{ role: "system"; content: string } | null}
  */
 export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
@@ -131,9 +131,15 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
           "## Group chat",
           "You share this thread with these **separate** agents (not you):",
           ...others.map((a) => `- **${resolvedAgentName(a)}** (${agentDisplayLabel(a)})`),
-          "Their messages appear as `Agent · Name` in the embedded history (raw prefix `[群聊 · Name]`).",
+          "Their messages appear as `Agent · Name` in the UI; in your context they arrive as user lines prefixed `[群聊 · Name]`.",
+          "Lines prefixed `[You · …]` are your own earlier messages in this thread.",
+          "When a teammate @mentions you, reply as **yourself** only — never copy their introduction or claim their name/role.",
           "When the user asks about them, answer from that chat history first — do not search memory to learn who they are.",
         ].join("\n")
+      : "";
+  const delegateBlock =
+    others.length > 0 && opts.groupDelegateHint?.trim()
+      ? ["", "## @mentioning teammates", opts.groupDelegateHint.trim()].join("\n")
       : "";
   const orchBlock = opts.orchestrationTeamRoster?.trim()
     ? ["", "## Orchestration team", opts.orchestrationTeamRoster.trim()].join("\n")
@@ -142,23 +148,24 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
     "",
     "## Session rules",
     `- You are **${agentName}** only. Never claim you spoke under another agent's name.`,
-    "- `Agent · …` / `[群聊 · …]` lines are **other agents** — not your prior replies.",
-    "- `You · …` lines are **your** earlier messages in this thread.",
+    "- `[群聊 · …]` lines are **other agents** speaking to you — not your prior replies.",
+    "- `[You · …]` lines are **your** earlier messages in this thread.",
+    "- If the latest `[群聊 · …]` line @mentions you, answer that request in your own voice.",
   ].join("\n");
   const soul = String(agent.soulMd ?? "").trim();
   if (soul) {
     return {
       role: "system",
-      content: `${identity}${groupBlock}${orchBlock}${identityLock}\n\n# SOUL.md\n\n${soul}`,
+      content: `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}\n\n# SOUL.md\n\n${soul}`,
     };
   }
   if (agent.isMain && fallbackSystemPrompt?.trim()) {
     return {
       role: "system",
-      content: `${identity}${groupBlock}${orchBlock}${identityLock}\n\n${fallbackSystemPrompt.trim()}`,
+      content: `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}\n\n${fallbackSystemPrompt.trim()}`,
     };
   }
-  return { role: "system", content: `${identity}${groupBlock}${orchBlock}${identityLock}` };
+  return { role: "system", content: `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}` };
 }
 
 /**
