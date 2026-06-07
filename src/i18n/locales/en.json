@@ -245,7 +245,7 @@
     "skillChipClose": "Remove skill",
     "toolbarConnectHint": "Coming soon",
     "attachHint": "Attachments coming soon",
-    "participantsLabel": "In chat",
+    "participantsLabel": "Chat members",
     "participantsAria": "Agents in this conversation",
     "participantsAdd": "Add agent",
     "participantRemove": "Remove {{name}} from chat",

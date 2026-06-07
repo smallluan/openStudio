@@ -245,7 +245,7 @@
     "skillChipClose": "スキルを削除",
     "toolbarConnectHint": "準備中",
     "attachHint": "添付は準備中です",
-    "participantsLabel": "参加エージェント",
+    "participantsLabel": "チャットメンバー",
     "participantsAria": "この会話にいるエージェント",
     "participantsAdd": "エージェントを追加",
     "participantRemove": "{{name}} を会話から外す",

@@ -79,6 +79,7 @@ import {
 } from "../studio/agents.js";
 import { useStudio } from "../context/StudioContext.jsx";
 import ChatLabParticipantBar from "../components/chat-lab/ChatLabParticipantBar.jsx";
+import ChatLabToolbarScroll from "../components/chat-lab/ChatLabToolbarScroll.jsx";
 import ChatLabAgentMentionPopover from "../components/chat-lab/ChatLabAgentMentionPopover.jsx";
 import { startWechatTypingPulse } from "../chat/wechatStreamTyping.js";
 import { isWechatPendingAssistantId } from "../chat/useWechatSessionSync.js";
@@ -126,6 +127,7 @@ import {
 } from "../skills/skillCreatorChatSync.js";
 import { cn } from "../ui/cn.js";
 import Select from "../ui/Select.jsx";
+import Checkbox from "../ui/Checkbox.jsx";
 import { CHAT_MD_REHYPE_PLUGINS } from "../chat/chatLabRehypePlugins.js";
 
 /** Markdown pipelines for chat bubbles (GFM + LaTeX via KaTeX). */
@@ -156,6 +158,19 @@ function schedulePinChatScroll(el, autoScrollRef, rafRef) {
     rafRef.current = null;
     if (!autoScrollRef.current || !el) return;
     el.scrollTop = el.scrollHeight;
+  });
+}
+
+/** Pin transcript to bottom on thread open — ignores auto-scroll opt-out. */
+function forcePinChatScroll(el) {
+  if (!el) return;
+  const apply = () => {
+    el.scrollTop = el.scrollHeight;
+  };
+  apply();
+  requestAnimationFrame(() => {
+    apply();
+    requestAnimationFrame(apply);
   });
 }
 
@@ -873,12 +888,13 @@ export default function ChatLabPage() {
 
   const prevParamCRef = useRef(/** @type {string | null} */ (null));
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const prev = prevParamCRef.current;
     prevParamCRef.current = paramC;
 
     if (!paramC) {
       if (prev != null) {
+        autoScrollRef.current = true;
         setMessages([]);
         setParticipantIds([]);
         setOrchestrationMode(false);
@@ -891,6 +907,7 @@ export default function ChatLabPage() {
 
     const rec = getSession(paramC);
     if (rec) {
+      autoScrollRef.current = true;
       setMessages(mapSessionRecordToUiMessages(rec, null));
       const stored = Array.isArray(rec.participantIds) ? rec.participantIds : [];
       setParticipantIds(stored.filter((id) => id && id !== mainAgent?.id));
@@ -911,10 +928,6 @@ export default function ChatLabPage() {
     },
     [conversationId, mainAgent, paramC],
   );
-
-  useEffect(() => {
-    autoScrollRef.current = true;
-  }, [paramC]);
 
   /** WeChat inbound / store updates: keep the open thread aligned with sidebar persistence (avoids race with auto-reply). */
   useEffect(() => {
@@ -1072,11 +1085,8 @@ export default function ChatLabPage() {
       .map((id) => profiles.find((p) => p && p.id === id))
       .filter(Boolean)
       .map((p) => {
-        const provider = providerLabelFromId(t, String(p.provider ?? ""));
         const modelId = String(p.modelId ?? "").trim();
-        const labelCore = modelId || t("chatLab.modelNeedConfig");
-        const label = provider ? `${provider} · ${labelCore}` : labelCore;
-        return { value: p.id, label };
+        return { value: p.id, label: modelId || t("chatLab.modelNeedConfig") };
       });
   }, [config?.enabledModelProfileIds, config?.modelProfiles, t]);
 
@@ -1387,13 +1397,9 @@ export default function ChatLabPage() {
     if (prev && prev !== conversationId) {
       void abortAllActiveStreams();
       void orchestrationRunner.pauseOrchestration(prev);
+      autoScrollRef.current = true;
       const rec = getSession(conversationId);
-      if (rec) {
-        setMessages(mapSessionRecordToUiMessages(rec, null));
-        const stored = Array.isArray(rec.participantIds) ? rec.participantIds : [];
-        setParticipantIds(stored.filter((id) => id && id !== mainAgent?.id));
-        setOrchestrationMode(Boolean(rec.orchestrationMode));
-      } else {
+      if (!rec) {
         setParticipantIds([]);
         setOrchestrationMode(false);
       }
@@ -2491,15 +2497,6 @@ export default function ChatLabPage() {
 
   const composer = (
     <div className="chat-lab__composer-outer">
-      <ChatLabParticipantBar
-        agents={agents}
-        participantIds={[
-          ...(mainAgent ? [mainAgent.id] : []),
-          ...participantIds.filter((id) => id !== mainAgent?.id),
-        ]}
-        onChange={handleParticipantsChange}
-        disabled={composerInputLocked || gatewayStreaming}
-      />
       <div className="chat-lab__composer-row">
         <div
         className={cn(
@@ -2720,7 +2717,7 @@ export default function ChatLabPage() {
           onClose={() => {}}
         />
         <div className="chat-lab__shell-toolbar">
-          <div className="chat-lab__shell-toolbar-start">
+          <ChatLabToolbarScroll>
             <Select
               id="chat-toolbar-model"
               ariaLabel={t("chatLab.toolbarAuto")}
@@ -2735,7 +2732,7 @@ export default function ChatLabPage() {
                   ? enabledModelOptions
                   : [{ value: "__model_not_configured__", label: t("chatLab.modelNeedConfig") }]
               }
-              className="chat-lab__pill-model min-w-[11rem]"
+              className="chat-lab__pill-model"
             />
             <ComposerSkillToolbarPicker
               skills={skillPickList}
@@ -2744,23 +2741,28 @@ export default function ChatLabPage() {
               disabled={composerSkillUiLocked}
               t={t}
             />
-            <button
-              type="button"
-              className={cn("chat-lab__pill-btn", orchestrationMode && "chat-lab__pill-btn--user")}
+            <ChatLabParticipantBar
+              agents={agents}
+              participantIds={[
+                ...(mainAgent ? [mainAgent.id] : []),
+                ...participantIds.filter((id) => id !== mainAgent?.id),
+              ]}
+              onChange={handleParticipantsChange}
+              disabled={composerInputLocked || gatewayStreaming}
+            />
+            <Checkbox
+              id="chat-toolbar-orch-toggle"
+              className="chat-lab__orch-check"
+              tone="toolbar"
+              checked={orchestrationMode}
               disabled={composerInputLocked || orchestrationInProgress}
+              label={t("orchestration.modeToggle")}
               title={t("orchestration.modeToggleHint")}
-              aria-pressed={orchestrationMode}
-              onClick={() => {
-                const on = !orchestrationMode;
+              onCheckedChange={(on) => {
                 setOrchestrationMode(on);
                 if (paramC) setSessionOrchestrationMode(paramC, on);
               }}
-            >
-              <span className="chat-lab__pill-ico" aria-hidden>
-                ⚡
-              </span>
-              {t("orchestration.modeToggle")}
-            </button>
+            />
             {showOrchestrationPlanPopover && orchestrationRun ? (
               <ChatLabOrchestrationPlanPopover
                 plan={orchestrationRun.plan}
@@ -2790,7 +2792,7 @@ export default function ChatLabPage() {
                 </button>
               </span>
             ) : null}
-          </div>
+          </ChatLabToolbarScroll>
           <div className="chat-lab__shell-toolbar-end">
             <ChatLabContextMeter
               ratio={Math.min(1, contextUsageApprox.frac)}
@@ -2887,6 +2889,7 @@ export default function ChatLabPage() {
                 </header>
                 <ChatLabMessageList
                     key={conversationId}
+                    conversationId={conversationId}
                     messages={messages}
                     sessionArtifacts={sessionArtifacts}
                     agentById={agentById}
@@ -4977,6 +4980,7 @@ function ChatLabMessageList(props) {
  * @param {ChatLabMessageListProps} props
  */
 function ChatLabPlainMessageList({
+  conversationId,
   messages,
   sessionArtifacts,
   agentById,
@@ -5035,7 +5039,7 @@ function ChatLabPlainMessageList({
     [orchestrationAnchorMessage],
   );
   const scrollPinKey = messages.length
-    ? `${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}:${orchestrationBusy ? 1 : 0}:${orchestrationActivityDigest}`
+    ? `${conversationId}:${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}:${orchestrationBusy ? 1 : 0}:${orchestrationActivityDigest}`
     : "";
 
   const handleScroll = useCallback(() => {
@@ -5052,6 +5056,12 @@ function ChatLabPlainMessageList({
     if (orchestrationBusy) autoScrollRef.current = true;
     schedulePinChatScroll(messagesScrollRef.current, autoScrollRef, pinScrollRafRef);
   }, [autoScrollRef, messages.length, messagesScrollRef, orchestrationBusy]);
+
+  useLayoutEffect(() => {
+    if (!conversationId || messages.length === 0) return;
+    autoScrollRef.current = true;
+    forcePinChatScroll(messagesScrollRef.current);
+  }, [autoScrollRef, conversationId, messages.length, messagesScrollRef]);
 
   useEffect(() => {
     if (orchestrationBusy) autoScrollRef.current = true;
@@ -5247,6 +5257,7 @@ function ChatLabPlainMessageList({
  * }} props
  */
 function ChatLabVirtualMessageList({
+  conversationId,
   messages,
   sessionArtifacts,
   agentById,
@@ -5398,7 +5409,7 @@ function ChatLabVirtualMessageList({
   }, [messagesScrollRef, autoScrollRef, scheduleScrollbarHide, syncScrollbarMetrics]);
 
   const scrollPinKey = messages.length
-    ? `${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}`
+    ? `${conversationId}:${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}`
     : "";
 
   useEffect(
@@ -5472,8 +5483,28 @@ function ChatLabVirtualMessageList({
 
   const pinVirtualToBottom = useCallback(() => {
     if (!autoScrollRef.current || messages.length === 0) return;
+    vInstRef.current.measure();
     vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
   }, [autoScrollRef, messages.length]);
+
+  const forcePinVirtualToBottom = useCallback(() => {
+    if (messages.length === 0) return;
+    const run = () => {
+      vInstRef.current.measure();
+      vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
+    };
+    run();
+    requestAnimationFrame(() => {
+      run();
+      requestAnimationFrame(run);
+    });
+  }, [messages.length]);
+
+  useLayoutEffect(() => {
+    if (!conversationId || messages.length === 0) return;
+    autoScrollRef.current = true;
+    forcePinVirtualToBottom();
+  }, [autoScrollRef, conversationId, forcePinVirtualToBottom, messages.length]);
 
   /** Pin when a new turn starts — not on every streaming token (messages reference churn). */
   useLayoutEffect(() => {

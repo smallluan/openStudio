@@ -245,7 +245,7 @@
     "skillChipClose": "移除技能",
     "toolbarConnectHint": "即将推出",
     "attachHint": "附件功能即将推出",
-    "participantsLabel": "在场智能体",
+    "participantsLabel": "聊天成员",
     "participantsAria": "当前对话中的智能体",
     "participantsAdd": "拉入智能体",
     "participantRemove": "将 {{name}} 移出对话",
