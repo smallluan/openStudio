@@ -1,7 +1,7 @@
 import { patchPlanTask } from "../studio/orchestration.js";
 
 /** Default parallel task cap for orchestration development/review. */
-export const ORCHESTRATION_TASK_CONCURRENCY = 8;
+export const ORCHESTRATION_TASK_CONCURRENCY = 4;
 
 /**
  * @typedef {import("../studio/orchestration.js").OrchestrationPlan} OrchestrationPlan
@@ -66,7 +66,13 @@ export async function runOrchestrationTaskDag(initialPlan, hooks, opts = {}) {
   };
 
   const dispatchReady = () => {
-    const ready = plan.tasks.filter(isReady);
+    // Prefer review before development when both are ready — unblocks dependent dev retries sooner.
+    const ready = plan.tasks
+      .filter(isReady)
+      .sort((a, b) => {
+        const rank = (t) => (t.phase === "review" ? 0 : 1);
+        return rank(a) - rank(b);
+      });
     for (const task of ready) {
       if (inflight.size >= maxConcurrency) break;
       const owner = hooks.pickOwner(task, busyAgentIds, loadByAgent);

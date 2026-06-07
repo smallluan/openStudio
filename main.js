@@ -81,6 +81,98 @@ const STUDIO_PREWARM_BUDGET_MS = 900_000;
 const CHAT_HYDRATE_THROTTLE_MS = 90_000;
 /** Must cover worst-case `tools.catalog` + multi-minute `sessions.create` / `tools.effective` under Windows + gateway lock contention. */
 const CHAT_HYDRATE_BUDGET_MS = 600_000;
+/** Cap simultaneous `chat.send` streams (group @everyone + orchestration DAG). */
+const MAX_CONCURRENT_CHAT_STREAMS = Math.max(
+  1,
+  Math.min(8, Number(process.env.OPEN_STUDIO_CHAT_STREAM_CONCURRENCY) || 4),
+);
+
+let activeChatStreamSlots = 0;
+/** @type {Array<() => void>} */
+const chatStreamSlotWaiters = [];
+
+function acquireChatStreamSlot(streamId) {
+  if (activeChatStreamSlots < MAX_CONCURRENT_CHAT_STREAMS) {
+    activeChatStreamSlots += 1;
+    return Promise.resolve();
+  }
+  getStudioLog().info("[chat.send.perf] host.slot.wait", {
+    streamId,
+    active: activeChatStreamSlots,
+    max: MAX_CONCURRENT_CHAT_STREAMS,
+  });
+  return new Promise((resolve) => {
+    chatStreamSlotWaiters.push(() => {
+      activeChatStreamSlots += 1;
+      resolve();
+    });
+  });
+}
+
+function releaseChatStreamSlot() {
+  activeChatStreamSlots = Math.max(0, activeChatStreamSlots - 1);
+  const next = chatStreamSlotWaiters.shift();
+  if (next) next();
+}
+
+function attachProcessDiagnostics() {
+  const log = getStudioLog();
+
+  process.on("uncaughtException", (err) => {
+    log.error("[process] uncaughtException", {
+      message: /** @type {any} */ (err)?.message ?? String(err),
+      stack: /** @type {any} */ (err)?.stack,
+    });
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    log.error("[process] unhandledRejection", {
+      message: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+    });
+  });
+
+  app.on("render-process-gone", (_event, webContents, details) => {
+    log.error("[electron] render-process-gone", {
+      reason: details.reason,
+      exitCode: details.exitCode,
+      url: webContents?.getURL?.() ?? "",
+    });
+  });
+
+  app.on("child-process-gone", (_event, details) => {
+    log.error("[electron] child-process-gone", {
+      type: details.type,
+      reason: details.reason,
+      exitCode: details.exitCode,
+      serviceName: details.serviceName,
+      name: details.name,
+    });
+  });
+}
+
+/**
+ * @param {import("electron").WebContents} webContents
+ */
+function attachWebContentsDiagnostics(webContents) {
+  const log = getStudioLog();
+  webContents.on("render-process-gone", (_event, details) => {
+    log.error("[electron] webContents.render-process-gone", {
+      reason: details.reason,
+      exitCode: details.exitCode,
+      url: webContents.getURL(),
+    });
+  });
+  webContents.on("unresponsive", () => {
+    log.warn("[electron] webContents.unresponsive", { url: webContents.getURL() });
+  });
+  webContents.on("responsive", () => {
+    log.info("[electron] webContents.responsive", { url: webContents.getURL() });
+  });
+  webContents.on("did-fail-load", (_event, code, desc, url) => {
+    log.error("[electron] webContents.did-fail-load", { code, desc, url });
+  });
+}
 
 const gatewayWarmState = {
   lastChatHydrateMs: 0,
@@ -455,6 +547,8 @@ function createWindow() {
     if (mainWindow === win) mainWindow = null;
   });
 
+  attachWebContentsDiagnostics(win.webContents);
+
   win.webContents.on("did-finish-load", () => {
     try {
       if (userConfigStore) ensureWechatPoller(win.webContents, () => userConfigStore.readRaw());
@@ -517,6 +611,7 @@ app.whenReady().then(async () => {
   });
 
   initStudioLogger(app, { isDev });
+  attachProcessDiagnostics();
   try {
     const py = enableBundledPythonRuntime({ app, log: getStudioLog() });
     if (!py.ok) {
@@ -965,12 +1060,22 @@ app.whenReady().then(async () => {
 
     const run = (async () => {
       const startedAt = Date.now();
+      await acquireChatStreamSlot(streamId);
       const ac = new AbortController();
       chatStreamAbortControllers.set(streamId, ac);
       const wc = event.sender;
       const composerSkill = payload?.composerSkill;
-      const allowConcurrent = payload?.concurrent === true;
+      let allowConcurrent = payload?.concurrent === true;
+      if (conversationId && !allowConcurrent) {
+        const existing = chatStreamsByConversationId.get(conversationId);
+        if (existing && existing.size > 0) allowConcurrent = true;
+      }
       let terminalSent = false;
+      let streamEventCount = 0;
+      const trackStreamEvent = (evt) => {
+        streamEventCount += 1;
+        if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
+      };
       try {
         if (conversationId) {
           if (allowConcurrent) {
@@ -1024,9 +1129,7 @@ app.whenReady().then(async () => {
           cfg,
           outboundMessages,
           ac.signal,
-          (evt) => {
-            if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
-          },
+          trackStreamEvent,
           gatewayConversationId
             ? {
                 conversationId: gatewayConversationId,
@@ -1049,6 +1152,7 @@ app.whenReady().then(async () => {
           }
         }
       } finally {
+        releaseChatStreamSlot();
         chatStreamAbortControllers.delete(streamId);
         if (conversationId) {
           if (allowConcurrent) {
@@ -1060,14 +1164,35 @@ app.whenReady().then(async () => {
           }
         }
         if (!terminalSent && !wc.isDestroyed()) {
+          const elapsedMs = Date.now() - startedAt;
           const sid = streamId;
-          setImmediate(() => {
-            if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId: sid, type: "done" });
-          });
+          if (streamEventCount === 0 && elapsedMs < 500) {
+            getStudioLog().warn("[chat.send.perf] host.empty_early", {
+              streamId,
+              conversationId,
+              elapsedMs,
+              concurrent: allowConcurrent,
+              aborted: ac.signal.aborted,
+            });
+            wc.send(CHAT_STREAM_CHAN, {
+              streamId: sid,
+              type: "error",
+              message: ac.signal.aborted
+                ? "stream_aborted_before_reply"
+                : "stream_empty_before_gateway_reply",
+            });
+            terminalSent = true;
+          } else {
+            setImmediate(() => {
+              if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId: sid, type: "done" });
+            });
+          }
         }
         getStudioLog().info("[chat.send.perf] host.done", {
           streamId,
           elapsedMs: Date.now() - startedAt,
+          events: streamEventCount,
+          concurrent: allowConcurrent,
         });
       }
       return { ok: true };

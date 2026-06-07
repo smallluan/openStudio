@@ -186,6 +186,8 @@ export function insertMentionEveryone(draft, active, everyoneLabel) {
 
 /**
  * Resolve which agents should reply for a user turn.
+ * Without an @mention (including @everyone), only the main agent replies — participant bar
+ * agents stay available for explicit @mentions but do not all chime in on every message.
  * @param {{
  *   mentionIds?: string[];
  *   participantIds?: string[];
@@ -193,18 +195,11 @@ export function insertMentionEveryone(draft, active, everyoneLabel) {
  * }} args
  * @returns {import("./agents.js").LobsterAgent[]}
  */
-export function resolveReplyTargets({ mentionIds, participantIds, agents }) {
+export function resolveReplyTargets({ mentionIds, agents }) {
   const byId = new Map(agents.map((a) => [a.id, a]));
   const mentions = (mentionIds ?? []).map((id) => byId.get(id)).filter(Boolean);
   if (mentions.length) return /** @type {import("./agents.js").LobsterAgent[]} */ (mentions);
 
   const main = agents.find((a) => a.isMain) ?? agents[0];
-  if (!main) return [];
-
-  const participants = (participantIds ?? [])
-    .map((id) => byId.get(id))
-    .filter((a) => a && a.id !== main.id);
-  if (participants.length) return /** @type {import("./agents.js").LobsterAgent[]} */ (participants);
-
-  return [main];
+  return main ? [main] : [];
 }

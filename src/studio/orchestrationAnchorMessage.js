@@ -68,6 +68,12 @@ function isLegacyWorkerOrchMessage(m) {
   return /^我来完成\s*Phase\s*\d+/i.test(text) || /^I(?:'ll| will)\s+(?:complete|work on)\s+Phase\s*\d+/i.test(text);
 }
 
+/** @param {import("../chat/chatSessionsStore.js").ChatSessionRecord | null | undefined} rec */
+export function isOrchestrationSessionBusy(rec) {
+  if (!rec?.orchestrationMode || !rec?.orchestration) return false;
+  return ["planning", "revising", "running", "awaiting_approval", "paused"].includes(rec.orchestration.status);
+}
+
 /** @param {unknown} m */
 /**
  * @param {unknown} m
@@ -83,6 +89,8 @@ function isOrchestrationMarkedMessage(m, mainAgentId = null) {
   ) {
     return true;
   }
+  if (typeof row.orchestrationRunId === "string" && row.orchestrationRunId.trim()) return true;
+  if (typeof row.orchestrationTaskId === "string" && row.orchestrationTaskId.trim()) return true;
   const phase = row.orchestrationPhase;
   if (
     phase === "triage" ||
@@ -217,9 +225,21 @@ export function isOrchestrationTuckedMessage(m, ctx = {}) {
   const orchestrationMode = Boolean(ctx.orchestrationMode);
 
   if (row.messageKind === "orchestration_anchor") return false;
+  if (row.role === "user") return false;
+  if (row.messageKind === "orchestration_plan") return false;
   if (run?.status === "failed") return false;
 
-  if (!isOrchestrationMarkedMessage(m)) return false;
+  // Any assistant output scoped to the active run belongs inside the anchor timeline.
+  if (
+    run &&
+    run.status !== "failed" &&
+    row.role === "assistant" &&
+    messageBelongsToOrchestrationRun(m, run)
+  ) {
+    return true;
+  }
+
+  if (!isOrchestrationMarkedMessage(m, ctx.mainAgentId ?? null)) return false;
 
   if (run && run.status !== "failed" && messageBelongsToOrchestrationRun(m, run)) return true;
 

@@ -9,7 +9,7 @@ import {
   recordAgentGatewaySync,
   resolveAgentGatewayContext,
 } from "../chat/gatewayContext.js";
-import { runOrchestrationTaskDag } from "./taskScheduler.js";
+import { ORCHESTRATION_TASK_CONCURRENCY, runOrchestrationTaskDag } from "./taskScheduler.js";
 import {
   agentDisplayLabel,
   groupAgentsInSession,
@@ -335,11 +335,10 @@ export function useOrchestrationRunner(deps) {
       const outgoing = [...(sysRow ? [sysRow] : []), ...ctx.priorRows, tailUser];
 
       applyMessagesUpdate(conversationId, (prev) => [...prev, assistantMsg]);
-      if (isViewingConversation(conversationId)) {
-        deps.beginGatewayStream({ conversationId, streamId, assistantMessageId: assistantMsg.id });
-        deps.activeStreamIdsRef.current.add(streamId);
-        deps.assistantStreamIdsRef.current.set(assistantMsg.id, streamId);
-      }
+      // Register every orchestration stream so gateway deltas persist even when another thread is open.
+      deps.beginGatewayStream({ conversationId, streamId, assistantMessageId: assistantMsg.id });
+      deps.activeStreamIdsRef.current.add(streamId);
+      deps.assistantStreamIdsRef.current.set(assistantMsg.id, streamId);
 
       const liveRows = isViewingConversation(conversationId)
         ? deps.messagesRef.current
@@ -395,21 +394,27 @@ export function useOrchestrationRunner(deps) {
         }
         return { text, messageId: assistantMsg.id };
       } catch (err) {
+        deps.resetGatewayStream(streamId);
+        deps.activeStreamIdsRef.current.delete(streamId);
+        deps.assistantStreamIdsRef.current.delete(assistantMsg.id);
         if (isViewingConversation(conversationId)) {
-          deps.resetGatewayStream(streamId);
-          deps.activeStreamIdsRef.current.delete(streamId);
-          deps.assistantStreamIdsRef.current.delete(assistantMsg.id);
           deps.finalizeAssistantById(assistantMsg.id, {
             error: String(err?.message ?? err),
             streaming: false,
           });
+        } else {
+          applyMessagesUpdate(conversationId, (prev) =>
+            prev.map((m) =>
+              m.id === assistantMsg.id
+                ? { ...m, error: String(err?.message ?? err), streaming: false }
+                : m,
+            ),
+          );
         }
         throw err;
       } finally {
-        if (isViewingConversation(conversationId)) {
-          deps.activeStreamIdsRef.current.delete(streamId);
-          deps.assistantStreamIdsRef.current.delete(assistantMsg.id);
-        }
+        deps.activeStreamIdsRef.current.delete(streamId);
+        deps.assistantStreamIdsRef.current.delete(assistantMsg.id);
       }
     },
     [checkPaused, deps, isViewingConversation, orchestrationRunMeta, sessionMessagesFor, applyMessagesUpdate, waitIfPaused],
@@ -630,7 +635,9 @@ export function useOrchestrationRunner(deps) {
         };
       };
 
-      const { plan, runPatch } = await runOrchestrationTaskDag(run.plan, {
+      const { plan, runPatch } = await runOrchestrationTaskDag(
+        run.plan,
+        {
         pickOwner: (task, busyAgentIds, loadByAgent) =>
           pickExecutionOwner(task, deps.agents, roleOpts, busyAgentIds, loadByAgent),
         executeTask,
@@ -679,7 +686,9 @@ export function useOrchestrationRunner(deps) {
           }
           return next;
         },
-      });
+      },
+        { maxConcurrency: ORCHESTRATION_TASK_CONCURRENCY },
+      );
 
       return { ...run, plan, ...(runPatch.reviewResults ? { reviewResults: runPatch.reviewResults } : {}) };
     },

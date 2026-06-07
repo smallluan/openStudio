@@ -62,6 +62,7 @@ import {
   buildOrchestrationAnchorMessage,
   hasOrchestrationTimelineMessages,
   inferOrchestrationRunFromMessages,
+  isOrchestrationSessionBusy,
   isOrchestrationTuckedMessage,
   normalizeMessagesForOrchestrationUi,
   resolveOrchestrationRunForTimeline,
@@ -179,6 +180,111 @@ function forcePinChatScroll(el) {
     apply();
     requestAnimationFrame(apply);
   });
+}
+
+/** Distance from bottom (px) within which nested trace panels stay pinned during streaming. */
+const NESTED_AUTO_SCROLL_BOTTOM_PX = 48;
+
+/**
+ * Pin a nested overflow container to bottom while content grows, unless the user scrolled up.
+ * @param {boolean} active
+ * @param {unknown} contentDigest
+ */
+function useNestedAutoScroll(active, contentDigest) {
+  const ref = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const pinnedRef = useRef(true);
+  const rafRef = useRef(/** @type {number | null} */ (null));
+
+  const syncPinned = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    pinnedRef.current = distFromBottom < NESTED_AUTO_SCROLL_BOTTOM_PX;
+  }, []);
+
+  const pinToBottom = useCallback(() => {
+    const el = ref.current;
+    if (!el || !pinnedRef.current) return;
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const el2 = ref.current;
+      if (!el2 || !pinnedRef.current) return;
+      el2.scrollTop = el2.scrollHeight;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (active) pinnedRef.current = true;
+  }, [active]);
+
+  useLayoutEffect(() => {
+    if (!active) return;
+    pinnedRef.current = true;
+    pinToBottom();
+  }, [active, contentDigest, pinToBottom]);
+
+  useLayoutEffect(() => {
+    if (!active) return;
+    const el = ref.current;
+    if (!el) return;
+    pinnedRef.current = true;
+    const pin = () => {
+      if (!pinnedRef.current) return;
+      el.scrollTop = el.scrollHeight;
+    };
+    pin();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(pin) : null;
+    ro?.observe(el);
+    for (const child of el.children) ro?.observe(child);
+    return () => ro?.disconnect();
+  }, [active, contentDigest]);
+
+  useEffect(
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    },
+    [],
+  );
+
+  const onScroll = useCallback(() => syncPinned(), [syncPinned]);
+  const onUserScrollIntent = useCallback(() => {
+    pinnedRef.current = false;
+  }, []);
+
+  return { ref, onScroll, onUserScrollIntent };
+}
+
+/**
+ * Scrollable nested trace body — auto-pins to bottom while streaming output grows.
+ * @param {{
+ *   className?: string;
+ *   pinActive?: boolean;
+ *   contentDigest?: unknown;
+ *   children: import("react").ReactNode;
+ * }} props
+ */
+function TraceNestedScrollBody({ className, pinActive = false, contentDigest = "", children }) {
+  const { ref, onScroll, onUserScrollIntent } = useNestedAutoScroll(pinActive, contentDigest);
+  return (
+    <div
+      ref={ref}
+      className={className}
+      onScroll={onScroll}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        const target = /** @type {HTMLElement} */ (e.target);
+        if (target.closest("a,button,input,textarea,select,[role='button'],[contenteditable='true']")) return;
+        onUserScrollIntent();
+      }}
+      onTouchStart={onUserScrollIntent}
+      onWheel={(e) => {
+        if (e.deltaY < 0) onUserScrollIntent();
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 /** Min height of the chat composer textarea in px (~5.5rem at default root font size). */
@@ -473,6 +579,8 @@ function formatStreamError(raw, t) {
     return detail ? t("chatLab.gatewayUnreachableDetail", { detail }) : t("chatLab.gatewayUnreachable");
   }
   if (trimmed.startsWith("gateway_missing_operator_scope")) return t("chatLab.gatewayMissingOperatorScope");
+  if (trimmed === "stream_aborted_before_reply") return t("chatLab.streamAbortedBeforeReply");
+  if (trimmed === "stream_empty_before_gateway_reply") return t("chatLab.streamEmptyBeforeGatewayReply");
   const httpMatch = trimmed.match(/^http_(\d{3})\b/);
   if (httpMatch) {
     const code = `http_${httpMatch[1]}`;
@@ -858,7 +966,8 @@ export default function ChatLabPage() {
     const rec = getSession(paramC);
     if (rec) {
       autoScrollRef.current = true;
-      setMessages(mapSessionRecordToUiMessages(rec, null));
+      const liveSlices = gatewaySlicesRef.current.filter((s) => s.active && s.conversationId === paramC);
+      setMessages(mapSessionRecordToUiMessages(rec, liveSlices.length ? liveSlices : null));
       const stored = Array.isArray(rec.participantIds) ? rec.participantIds : [];
       setParticipantIds(stored.filter((id) => id && id !== mainAgent?.id));
       setOrchestrationMode(Boolean(rec.orchestrationMode));
@@ -1355,8 +1464,11 @@ export default function ChatLabPage() {
   useEffect(() => {
     const prev = prevConversationIdRef.current;
     if (prev && prev !== conversationId) {
-      void abortAllActiveStreams();
-      void orchestrationRunner.pauseOrchestration(prev);
+      const leavingOrchBusy = isOrchestrationSessionBusy(getSession(prev));
+      if (!leavingOrchBusy) {
+        void abortAllActiveStreams();
+        void orchestrationRunner.pauseOrchestration(prev);
+      }
       autoScrollRef.current = true;
       const rec = getSession(conversationId);
       if (!rec) {
@@ -1366,6 +1478,20 @@ export default function ChatLabPage() {
     }
     prevConversationIdRef.current = conversationId;
   }, [abortAllActiveStreams, conversationId, mainAgent?.id, orchestrationRunner]);
+
+  /** Background orchestration persists to the session store while another thread is open. */
+  useEffect(() => {
+    if (!conversationId) return undefined;
+    const syncFromStore = () => {
+      const rec = getSession(conversationId);
+      if (!rec || !isOrchestrationSessionBusy(rec)) return;
+      const liveSlices = gatewaySlicesRef.current.filter((s) => s.active && s.conversationId === conversationId);
+      if (liveSlices.length > 0) return;
+      setMessages(mapSessionRecordToUiMessages(rec, null));
+    };
+    window.addEventListener("openstudio-chat-sessions-changed", syncFromStore);
+    return () => window.removeEventListener("openstudio-chat-sessions-changed", syncFromStore);
+  }, [conversationId]);
 
   useEffect(() => {
     /** @param {Event} e */
@@ -1880,40 +2006,50 @@ export default function ChatLabPage() {
         assistantStreamIdsRef.current.set(job.assistantMsg.id, job.streamId);
       }
 
+      const runFanoutJob = async (job, composerSkillForJob) => {
+        try {
+          await bridge.startChatStream({
+            streamId: job.streamId,
+            conversationId,
+            messages: job.outgoing,
+            composerSkill: composerSkillForJob,
+            agentSessionKey: sessionKeyForAgent(job.target),
+            gatewayAgentId: job.target.gatewayAgentId,
+            concurrent: true,
+            contextEmbedMode: job.contextEmbedMode,
+            ...(job.threadSummaryPrefix ? { threadSummaryPrefix: job.threadSummaryPrefix } : {}),
+          });
+        } catch (err) {
+          resetGatewayStream(job.streamId);
+          activeStreamIdsRef.current.delete(job.streamId);
+          assistantStreamIdsRef.current.delete(job.assistantMsg.id);
+          try {
+            await bridge.abortChatStream(job.streamId);
+          } catch {
+            /* ignore */
+          }
+          const raw = String(err?.message ?? err);
+          const msg = formatStreamError(raw, t);
+          finalizeAssistantById(job.assistantMsg.id, { error: msg });
+          if (isChatHttp404(raw)) {
+            setChatApiBlocked(true);
+            setProbeRestartKey((k) => k + 1);
+          }
+        }
+      };
+
+      const FANOUT_BATCH_SIZE = 4;
       try {
-        await Promise.allSettled(
-          launchJobs.map(async (job, i) => {
-            try {
-              await bridge.startChatStream({
-                streamId: job.streamId,
-                conversationId,
-                messages: job.outgoing,
-                composerSkill: i === 0 ? composerSkill : null,
-                agentSessionKey: sessionKeyForAgent(job.target),
-                gatewayAgentId: job.target.gatewayAgentId,
-                concurrent: parallelReply,
-                contextEmbedMode: job.contextEmbedMode,
-                ...(job.threadSummaryPrefix ? { threadSummaryPrefix: job.threadSummaryPrefix } : {}),
-              });
-            } catch (err) {
-              resetGatewayStream(job.streamId);
-              activeStreamIdsRef.current.delete(job.streamId);
-              assistantStreamIdsRef.current.delete(job.assistantMsg.id);
-              try {
-                await bridge.abortChatStream(job.streamId);
-              } catch {
-                /* ignore */
-              }
-              const raw = String(err?.message ?? err);
-              const msg = formatStreamError(raw, t);
-              finalizeAssistantById(job.assistantMsg.id, { error: msg });
-              if (isChatHttp404(raw)) {
-                setChatApiBlocked(true);
-                setProbeRestartKey((k) => k + 1);
-              }
-            }
-          }),
-        );
+        if (parallelReply) {
+          for (let i = 0; i < launchJobs.length; i += FANOUT_BATCH_SIZE) {
+            const batch = launchJobs.slice(i, i + FANOUT_BATCH_SIZE);
+            await Promise.allSettled(
+              batch.map((job, j) => runFanoutJob(job, i + j === 0 ? composerSkill : null)),
+            );
+          }
+        } else {
+          await runFanoutJob(launchJobs[0], composerSkill);
+        }
       } finally {
         stopWechatTyping();
       }
@@ -3048,6 +3184,8 @@ function GapToolActivityPanel({
 
   if (!segments.length) return null;
 
+  const disableEnterAnim = shouldDisableTraceRowEnterAnim(streaming, segments.length);
+
   return (
     <TraceDisclosure
       className={cn(
@@ -3073,6 +3211,7 @@ function GapToolActivityPanel({
                 row={row}
                 t={t}
                 enterRegistryRef={enterRegistryRef}
+                disableEnterAnim={disableEnterAnim}
               />
             );
           }
@@ -3086,6 +3225,7 @@ function GapToolActivityPanel({
               streaming={streaming}
               isTail={Boolean(streaming) && idx === lastActivityIdx}
               enterRegistryRef={enterRegistryRef}
+              disableEnterAnim={disableEnterAnim}
             />
           );
         })}
@@ -3475,13 +3615,26 @@ function activityGlyphState(row, streaming, isTailRow) {
   return "ok";
 }
 
+/** Completed trace panels with more than this many rows skip per-row enter animations. */
+const TRACE_ROW_ENTER_ANIM_MAX = 10;
+
+/**
+ * @param {boolean} streaming
+ * @param {number} childCount
+ */
+function shouldDisableTraceRowEnterAnim(streaming, childCount) {
+  return !streaming && childCount > TRACE_ROW_ENTER_ANIM_MAX;
+}
+
 /**
  * Claim a one-time enter animation when this row instance mounts (not when parent merely sees the id).
  * @param {string} rowId
  * @param {import("react").MutableRefObject<Set<string>>} enterRegistryRef
+ * @param {boolean} [enterAnimDisabled]
  */
-function useTraceRowEnterOnMount(rowId, enterRegistryRef) {
+function useTraceRowEnterOnMount(rowId, enterRegistryRef, enterAnimDisabled = false) {
   const showRef = useRef(false);
+  if (enterAnimDisabled) return false;
   if (!showRef.current && enterRegistryRef) {
     const key = String(rowId ?? "").trim();
     if (key && !enterRegistryRef.current.has(key)) {
@@ -3497,10 +3650,11 @@ function useTraceRowEnterOnMount(rowId, enterRegistryRef) {
  *   row: import("../chat/toolTraceMerge.js").ToolTraceRow;
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  *   enterRegistryRef: import("react").MutableRefObject<Set<string>>;
+ *   disableEnterAnim?: boolean;
  * }} props
  */
-function ToolRow({ row, t, enterRegistryRef }) {
-  const showEnterAnim = useTraceRowEnterOnMount(row.id, enterRegistryRef);
+function ToolRow({ row, t, enterRegistryRef, disableEnterAnim = false }) {
+  const showEnterAnim = useTraceRowEnterOnMount(row.id, enterRegistryRef, disableEnterAnim);
   const name = row.toolName || row.label || "(tool)";
   const pres = getToolTracePresentation(row, t);
   const done = Boolean(row.done) || /^(end|complete|completed|ok)$/i.test(String(row.phase ?? "").trim());
@@ -3605,6 +3759,7 @@ function ToolChainPanel({ rows, t, streaming, keepCollapsed = false }) {
     else setOpen(false);
   }, [streaming, keepCollapsed]);
   if (!rows?.length) return null;
+  const disableEnterAnim = shouldDisableTraceRowEnterAnim(streaming, rows.length);
   return (
     <TraceDisclosure
       className="chat-lab__tool-chain"
@@ -3615,7 +3770,13 @@ function ToolChainPanel({ rows, t, streaming, keepCollapsed = false }) {
     >
       <div className="chat-lab__tool-chain-body">
         {rows.map((row) => (
-          <ToolRow key={row.id} row={row} t={t} enterRegistryRef={enterRegistryRef} />
+          <ToolRow
+            key={row.id}
+            row={row}
+            t={t}
+            enterRegistryRef={enterRegistryRef}
+            disableEnterAnim={disableEnterAnim}
+          />
         ))}
       </div>
     </TraceDisclosure>
@@ -3629,10 +3790,19 @@ function ToolChainPanel({ rows, t, streaming, keepCollapsed = false }) {
  *   streaming?: boolean;
  *   isTail?: boolean;
  *   enterRegistryRef: import("react").MutableRefObject<Set<string>>;
+ *   disableEnterAnim?: boolean;
  * }} props
  */
-function ActivityRow({ row, t, streaming, isTail, enterRegistryRef, autoExpandOnContent = false }) {
-  const showEnterAnimRaw = useTraceRowEnterOnMount(row.id, enterRegistryRef);
+function ActivityRow({
+  row,
+  t,
+  streaming,
+  isTail,
+  enterRegistryRef,
+  autoExpandOnContent = false,
+  disableEnterAnim = false,
+}) {
+  const showEnterAnimRaw = useTraceRowEnterOnMount(row.id, enterRegistryRef, disableEnterAnim);
   const stream = truncateOneLine(String(row.stream ?? "").trim(), 64);
   const isOrchRow = stream.toLowerCase() === "orchestration";
   const showEnterAnim = isOrchRow ? false : showEnterAnimRaw;
@@ -3681,6 +3851,29 @@ function ActivityRow({ row, t, streaming, isTail, enterRegistryRef, autoExpandOn
     setRowOpen(active);
   }, [autoExpandOnContent, workerStreaming, streaming, isTail, rowPhase]);
 
+  const nestedScrollDigest = useMemo(
+    () =>
+      [
+        nestedActivityRows
+          .map((r) =>
+            [
+              r.id,
+              String(r.text ?? "").length,
+              timelineContentDigest(r.assistantTimeline),
+              toolTraceContentDigest(r.toolTrace),
+              r.workerStreaming ? 1 : 0,
+            ].join("."),
+          )
+          .join("|"),
+        toolTraceContentDigest(nestedToolRows),
+        timelineContentDigest(workerTimeline),
+        truncatedText.length,
+        workerStreaming ? 1 : 0,
+      ].join(":"),
+    [nestedActivityRows, nestedToolRows, workerTimeline, truncatedText, workerStreaming],
+  );
+  const nestedScrollPinActive = isOrchRow && (workerStreaming || (Boolean(streaming) && Boolean(isTail)));
+
   return (
     <TraceDisclosure
       variant="row"
@@ -3712,7 +3905,11 @@ function ActivityRow({ row, t, streaming, isTail, enterRegistryRef, autoExpandOn
       }
     >
       {hasDetail ? (
-        <div className={cn("chat-lab__tool-nested-body", isOrchRow && "chat-lab__tool-nested-body--orch")}>
+        <TraceNestedScrollBody
+          className={cn("chat-lab__tool-nested-body", isOrchRow && "chat-lab__tool-nested-body--orch")}
+          pinActive={nestedScrollPinActive}
+          contentDigest={nestedScrollDigest}
+        >
           {isOrchRow ? (
             workerTimeline.length > 0 || nestedToolRows.length > 0 || nestedActivityRows.length > 0 ? (
               <div className="chat-lab__orch-nested-traces chat-lab__orch-nested-traces--interleaved">
@@ -3747,7 +3944,7 @@ function ActivityRow({ row, t, streaming, isTail, enterRegistryRef, autoExpandOn
               ) : null}
             </>
           )}
-        </div>
+        </TraceNestedScrollBody>
       ) : null}
     </TraceDisclosure>
   );
@@ -3776,6 +3973,7 @@ function ActivityChainPanel({ rows, t, streaming, keepCollapsed = false, orchest
     else setOpen(false);
   }, [streaming, keepCollapsed, orchestrationMode]);
   if (!rows?.length) return null;
+  const disableEnterAnim = shouldDisableTraceRowEnterAnim(streaming, rows.length);
   return (
     <TraceDisclosure
       className="chat-lab__tool-chain chat-lab__activity-chain"
@@ -3794,6 +3992,7 @@ function ActivityChainPanel({ rows, t, streaming, keepCollapsed = false, orchest
             isTail={Boolean(streaming) && idx === rows.length - 1}
             enterRegistryRef={enterRegistryRef}
             autoExpandOnContent={orchestrationMode}
+            disableEnterAnim={disableEnterAnim}
           />
         ))}
       </div>
