@@ -11,7 +11,9 @@ import {
   useInteractions,
   useRole,
 } from "@floating-ui/react";
+import { ChevronDown, Maximize2, Minimize2, Trash2 } from "lucide-react";
 import {
+  Fragment,
   useCallback,
   useContext,
   useEffect,
@@ -21,6 +23,9 @@ import {
   useState,
 } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import heroAvatarLight from "../../assets/images/hero-avatar-light.png";
+import heroAvatarDark from "../../assets/images/hero-avatar-dark.png";
+import WechatIcon from "../../assets/svg/WechatIcon.jsx";
 import {
   CHAT_SESSION_CHANNEL_INTERNAL,
   CHAT_SESSION_CHANNEL_WECHAT,
@@ -32,6 +37,7 @@ import {
 import { formatSessionRelativeTime } from "../../i18n/relativeTime.js";
 import { useChatLabStreaming } from "../../context/ChatLabStreamingContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import EmptyState from "../../ui/EmptyState.jsx";
 import FluidConfirmDialog from "../../ui/FluidConfirmDialog.jsx";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
@@ -39,7 +45,13 @@ import { useFluidPopupBlob } from "../../ui/useFluidPopupBlob.js";
 import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 import { FluidNavHighlightApi } from "./FluidNavHighlightApi.jsx";
 import { cn } from "../../ui/cn.js";
-import { useChatHistoryListMotion } from "./useChatHistoryListMotion.js";
+import {
+  CHAT_HISTORY_ROW_COLLAPSE_MS,
+  CHAT_HISTORY_ROW_LEAVE_MS,
+  useChatHistoryListMotion,
+} from "./useChatHistoryListMotion.js";
+
+const CHAT_HISTORY_GROUP_LEAVE_MS = CHAT_HISTORY_ROW_LEAVE_MS + CHAT_HISTORY_ROW_COLLAPSE_MS;
 
 function HistorySessionSpinner({ label }) {
   return (
@@ -102,6 +114,142 @@ function TrashIcon({ className }) {
 
 /**
  * @param {{
+ *   channel: 'internal' | 'wechat';
+ *   label: string;
+ *   collapsed: boolean;
+ *   focused: boolean;
+ *   deleteMode: boolean;
+ *   selectedCount: number;
+ *   onToggleCollapsed: () => void;
+ *   onToggleFocus: () => void;
+ *   onEnterDeleteMode: () => void;
+ *   onCancelDeleteMode: () => void;
+ *   onConfirmDelete: () => void;
+ * }} props
+ */
+function ChatHistoryGroupHead({
+  channel,
+  label,
+  collapsed,
+  focused,
+  deleteMode,
+  selectedCount,
+  onToggleCollapsed,
+  onToggleFocus,
+  onEnterDeleteMode,
+  onCancelDeleteMode,
+  onConfirmDelete,
+}) {
+  const { t } = useI18n();
+  const { theme } = useTheme();
+  const isWechat = channel === CHAT_SESSION_CHANNEL_WECHAT;
+
+  return (
+    <div
+      className={cn(
+        "chat-history-group__head group",
+        (deleteMode || focused) && "chat-history-group__head--actions-visible",
+      )}
+    >
+      <button
+        type="button"
+        className="chat-history-group__head-main"
+        onClick={() => {
+          if (!deleteMode) onToggleCollapsed();
+        }}
+        aria-expanded={!collapsed}
+        disabled={deleteMode}
+      >
+        <span className="chat-history-group__logo" aria-hidden>
+          {isWechat ? (
+            <WechatIcon className="chat-history-group__logo-wechat" />
+          ) : (
+            <img
+              className="chat-history-group__logo-img"
+              src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
+              alt=""
+            />
+          )}
+        </span>
+        <span className="chat-history-group__label">{label}</span>
+      </button>
+      <div className="chat-history-group__actions">
+        {deleteMode ? (
+          <>
+            <button
+              type="button"
+              className="chat-history-group__action-btn chat-history-group__action-btn--text"
+              onClick={onCancelDeleteMode}
+            >
+              {t("dialog.cancel")}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "chat-history-group__action-btn chat-history-group__action-btn--text",
+                selectedCount < 1 && "chat-history-group__action-btn--disabled",
+              )}
+              disabled={selectedCount < 1}
+              onClick={onConfirmDelete}
+            >
+              {t("nav.chatHistoryDeleteSelected", { n: selectedCount })}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="chat-history-group__action-btn"
+              aria-label={t("nav.chatHistoryGroupDeleteSelectAria")}
+              title={t("nav.chatHistoryGroupDeleteSelectAria")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEnterDeleteMode();
+              }}
+            >
+              <Trash2 className="size-3.5" strokeWidth={2} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="chat-history-group__action-btn"
+              aria-label={focused ? t("nav.chatHistoryGroupShrinkAria") : t("nav.chatHistoryGroupExpandAria")}
+              title={focused ? t("nav.chatHistoryGroupShrinkAria") : t("nav.chatHistoryGroupExpandAria")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFocus();
+              }}
+            >
+              {focused ? (
+                <Minimize2 className="size-3.5" strokeWidth={2} aria-hidden />
+              ) : (
+                <Maximize2 className="size-3.5" strokeWidth={2} aria-hidden />
+              )}
+            </button>
+          </>
+        )}
+      </div>
+      <button
+        type="button"
+        className="chat-history-group__caret-btn"
+        onClick={() => {
+          if (!deleteMode) onToggleCollapsed();
+        }}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? t("nav.chatHistoryGroupExpandList") : t("nav.chatHistoryGroupCollapseList")}
+        disabled={deleteMode}
+      >
+        <ChevronDown
+          className={cn("chat-history-group__caret", collapsed && "chat-history-group__caret--collapsed")}
+          strokeWidth={2.25}
+          aria-hidden
+        />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * @param {{
  *   sessionId: string;
  *   displayTitle: string;
  *   updatedAt: number;
@@ -113,6 +261,10 @@ function TrashIcon({ className }) {
  *   onRenamed: () => void;
  *   onAfterDelete: () => void;
  *   isStreaming?: boolean;
+ *   selectMode?: boolean;
+ *   selected?: boolean;
+ *   selectDisabled?: boolean;
+ *   onToggleSelect?: () => void;
  * }} props
  */
 function HistorySessionRow({
@@ -127,6 +279,10 @@ function HistorySessionRow({
   onRenamed,
   onAfterDelete,
   isStreaming = false,
+  selectMode = false,
+  selected = false,
+  selectDisabled = false,
+  onToggleSelect,
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -202,46 +358,90 @@ function HistorySessionRow({
           !rowActive && "hover:bg-[var(--os-bg-hover)] hover:text-[var(--os-text)]",
         )}
       >
-        <NavLink
-          to={to}
-          title={displayTitle}
-          className={cn(
-            "chat-history-card__link flex min-w-0 flex-1 items-center gap-1.5 rounded-lg py-1 pl-0.5 pr-1 leading-tight no-underline outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
-            rowActive && "font-semibold",
-          )}
-          aria-current={rowActive ? "page" : undefined}
-        >
-          {isStreaming ? (
-            <HistorySessionSpinner label={t("nav.chatHistoryGenerating")} />
-          ) : (
-            <HistorySessionGlyph active={rowActive} />
-          )}
-          <span className="flex min-w-0 flex-1 flex-col gap-0 text-left">
-            <span className="chat-history-card__title truncate text-[0.78rem] font-medium leading-snug">{displayTitle}</span>
-            <span className="chat-history-card__time text-[0.6875rem] leading-snug text-[var(--os-text-faint)]">
-              {formatSessionRelativeTime(t, updatedAt)}
+        {selectMode ? (
+          <button
+            type="button"
+            title={displayTitle}
+            disabled={selectDisabled}
+            className={cn(
+              "chat-history-card__link flex min-w-0 flex-1 items-center gap-1.5 rounded-lg py-1 pl-0.5 pr-1 leading-tight text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
+              selectDisabled && "cursor-not-allowed opacity-50",
+              selected && "bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)]",
+            )}
+            onClick={() => {
+              if (!selectDisabled) onToggleSelect?.();
+            }}
+          >
+            <span
+              className={cn(
+                "chat-history-card__select-box shrink-0",
+                selected && "chat-history-card__select-box--checked",
+              )}
+              aria-hidden
+            >
+              {selected ? (
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
+                  <path
+                    d="M2.2 5.2 4.1 7.1 7.8 3.4"
+                    stroke="currentColor"
+                    strokeWidth="1.35"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : null}
             </span>
-          </span>
-        </NavLink>
-        <button
-          type="button"
-          className={cn(
-            "chat-history-card__more flex h-7 w-7 shrink-0 items-center justify-center self-center rounded-md text-[0.9375rem] font-bold leading-none text-[var(--os-text-muted)] transition-colors hover:bg-transparent hover:text-[var(--os-text)]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
-            present &&
-              "bg-[color-mix(in_srgb,var(--os-border)_22%,transparent)] text-[var(--os-text)] hover:bg-[color-mix(in_srgb,var(--os-border)_22%,transparent)]",
-          )}
-          ref={refs.setReference}
-          aria-label={t("nav.chatHistoryMore")}
-          aria-haspopup="menu"
-          aria-expanded={present}
-          {...getReferenceProps()}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <span className="translate-y-[-1px]" aria-hidden>
-            ⋮
-          </span>
-        </button>
+            <span className="flex min-w-0 flex-1 flex-col gap-0 text-left">
+              <span className="chat-history-card__title truncate text-[0.78rem] font-medium leading-snug">{displayTitle}</span>
+              <span className="chat-history-card__time text-[0.6875rem] leading-snug text-[var(--os-text-faint)]">
+                {formatSessionRelativeTime(t, updatedAt)}
+              </span>
+            </span>
+          </button>
+        ) : (
+          <NavLink
+            to={to}
+            title={displayTitle}
+            className={cn(
+              "chat-history-card__link flex min-w-0 flex-1 items-center gap-1.5 rounded-lg py-1 pl-0.5 pr-1 leading-tight no-underline outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
+              rowActive && "font-semibold",
+            )}
+            aria-current={rowActive ? "page" : undefined}
+          >
+            {isStreaming ? (
+              <HistorySessionSpinner label={t("nav.chatHistoryGenerating")} />
+            ) : (
+              <HistorySessionGlyph active={rowActive} />
+            )}
+            <span className="flex min-w-0 flex-1 flex-col gap-0 text-left">
+              <span className="chat-history-card__title truncate text-[0.78rem] font-medium leading-snug">{displayTitle}</span>
+              <span className="chat-history-card__time text-[0.6875rem] leading-snug text-[var(--os-text-faint)]">
+                {formatSessionRelativeTime(t, updatedAt)}
+              </span>
+            </span>
+          </NavLink>
+        )}
+        {!selectMode ? (
+          <button
+            type="button"
+            className={cn(
+              "chat-history-card__more flex h-7 w-7 shrink-0 items-center justify-center self-center rounded-md text-[0.9375rem] font-bold leading-none text-[var(--os-text-muted)] transition-colors hover:bg-transparent hover:text-[var(--os-text)]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
+              present &&
+                "bg-[color-mix(in_srgb,var(--os-border)_22%,transparent)] text-[var(--os-text)] hover:bg-[color-mix(in_srgb,var(--os-border)_22%,transparent)]",
+            )}
+            ref={refs.setReference}
+            aria-label={t("nav.chatHistoryMore")}
+            aria-haspopup="menu"
+            aria-expanded={present}
+            {...getReferenceProps()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <span className="translate-y-[-1px]" aria-hidden>
+              ⋮
+            </span>
+          </button>
+        ) : null}
       </div>
       </div>
       {present ? (
@@ -314,7 +514,14 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   const [listVersion, setListVersion] = useState(0);
   const reload = useCallback(() => setListVersion((v) => v + 1), []);
 
-  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [focusedChannel, setFocusedChannel] = useState(
+    /** @type {null | typeof CHAT_SESSION_CHANNEL_INTERNAL | typeof CHAT_SESSION_CHANNEL_WECHAT} */ (null),
+  );
+  const [deleteModeChannel, setDeleteModeChannel] = useState(
+    /** @type {null | typeof CHAT_SESSION_CHANNEL_INTERNAL | typeof CHAT_SESSION_CHANNEL_WECHAT} */ (null),
+  );
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [groupCollapsed, setGroupCollapsed] = useState(() => {
     try {
       const raw = window.localStorage.getItem("openstudio_chat_history_fold_v1");
@@ -364,7 +571,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
 
   const allSessions = useMemo(() => loadAllSessions(), [listVersion, location.pathname, location.search]);
 
-  const filtered = useMemo(() => {
+  const searchFiltered = useMemo(() => {
     const q = filterQuery.trim().toLowerCase();
     if (!q) return allSessions;
     return allSessions.filter(
@@ -374,7 +581,83 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     );
   }, [allSessions, filterQuery]);
 
-  const { displaySessions, getRowMotion, registerRowRef } = useChatHistoryListMotion(allSessions, filtered);
+  const viewSessions = useMemo(
+    () =>
+      searchFiltered.filter((s) => {
+        const channel =
+          s.channel === CHAT_SESSION_CHANNEL_WECHAT ? CHAT_SESSION_CHANNEL_WECHAT : CHAT_SESSION_CHANNEL_INTERNAL;
+        if (focusedChannel && channel !== focusedChannel) return false;
+        if (deleteModeChannel === channel) return true;
+        if (groupCollapsed[channel]) return false;
+        return true;
+      }),
+    [searchFiltered, focusedChannel, deleteModeChannel, groupCollapsed],
+  );
+
+  const { displaySessions, getRowMotion, registerRowRef } = useChatHistoryListMotion(allSessions, viewSessions);
+
+  const prevFocusedRef = useRef(focusedChannel);
+  const headerLeaveTimersRef = useRef(/** @type {Set<number>} */ (new Set()));
+  const [leavingChannelHeaders, setLeavingChannelHeaders] = useState(
+    /** @type {Array<typeof CHAT_SESSION_CHANNEL_INTERNAL | typeof CHAT_SESSION_CHANNEL_WECHAT>} */ ([]),
+  );
+  const [headerMotionByChannel, setHeaderMotionByChannel] = useState(
+    () => new Map(/** @type {[typeof CHAT_SESSION_CHANNEL_INTERNAL | typeof CHAT_SESSION_CHANNEL_WECHAT, 'leave-out' | 'leave-collapse'][]} */ ([])),
+  );
+
+  useEffect(
+    () => () => {
+      for (const id of headerLeaveTimersRef.current) window.clearTimeout(id);
+      headerLeaveTimersRef.current.clear();
+    },
+    [],
+  );
+
+  useLayoutEffect(() => {
+    const prevFocus = prevFocusedRef.current;
+    const nextFocus = focusedChannel;
+    if (prevFocus === nextFocus) return;
+
+    const allChannels = [CHAT_SESSION_CHANNEL_INTERNAL, CHAT_SESSION_CHANNEL_WECHAT];
+    const prevVisible = prevFocus ? [prevFocus] : allChannels;
+    const nextVisible = nextFocus ? [nextFocus] : allChannels;
+    const hiding = prevVisible.filter((c) => !nextVisible.includes(c));
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    for (const channel of hiding) {
+      if (reducedMotion) continue;
+      setLeavingChannelHeaders((prev) => (prev.includes(channel) ? prev : [...prev, channel]));
+      setHeaderMotionByChannel((m) => new Map(m).set(channel, "leave-out"));
+
+      const collapseTimer = window.setTimeout(() => {
+        headerLeaveTimersRef.current.delete(collapseTimer);
+        setHeaderMotionByChannel((m) => {
+          const n = new Map(m);
+          if (n.get(channel) === "leave-out") n.set(channel, "leave-collapse");
+          return n;
+        });
+      }, CHAT_HISTORY_ROW_LEAVE_MS);
+      headerLeaveTimersRef.current.add(collapseTimer);
+
+      const removeTimer = window.setTimeout(() => {
+        headerLeaveTimersRef.current.delete(removeTimer);
+        setLeavingChannelHeaders((prev) => prev.filter((c) => c !== channel));
+        setHeaderMotionByChannel((m) => {
+          const n = new Map(m);
+          n.delete(channel);
+          return n;
+        });
+      }, CHAT_HISTORY_GROUP_LEAVE_MS);
+      headerLeaveTimersRef.current.add(removeTimer);
+    }
+
+    if (reducedMotion) {
+      setLeavingChannelHeaders([]);
+      setHeaderMotionByChannel(new Map());
+    }
+
+    prevFocusedRef.current = nextFocus;
+  }, [focusedChannel]);
 
   useEffect(() => {
     try {
@@ -383,16 +666,6 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
       /* ignore */
     }
   }, [groupCollapsed]);
-
-  const visibleRows = useMemo(
-    () =>
-      displaySessions.filter((s) => {
-        const channel =
-          s.channel === CHAT_SESSION_CHANNEL_WECHAT ? CHAT_SESSION_CHANNEL_WECHAT : CHAT_SESSION_CHANNEL_INTERNAL;
-        return !groupCollapsed[channel];
-      }),
-    [displaySessions, groupCollapsed],
-  );
 
   const activeC = useMemo(() => {
     try {
@@ -403,7 +676,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   }, [location.search]);
 
   const emptyAll = allSessions.length === 0;
-  const emptyFilter = !emptyAll && filtered.length === 0;
+  const emptyFilter = !emptyAll && searchFiltered.length === 0;
 
   const groupedCounts = useMemo(() => {
     let internal = 0;
@@ -416,41 +689,124 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   }, [displaySessions]);
 
   const groupedVisible = useMemo(() => {
-    /** @type {{ internal: typeof visibleRows; wechat: typeof visibleRows }} */
+    /** @type {{ internal: typeof displaySessions; wechat: typeof displaySessions }} */
     const groups = { internal: [], wechat: [] };
-    for (const row of visibleRows) {
+    for (const row of displaySessions) {
       if (row.channel === CHAT_SESSION_CHANNEL_WECHAT) groups.wechat.push(row);
       else groups.internal.push(row);
     }
     return groups;
-  }, [visibleRows]);
+  }, [displaySessions]);
 
-  const bulkDeleteIds = useMemo(() => {
+  const selectedDeleteIds = useMemo(() => {
     const skip = new Set([streamingSessionId, wechatReplyingSessionId].filter(Boolean));
-    return visibleRows.map((s) => s.id).filter((id) => id && !skip.has(id));
-  }, [visibleRows, streamingSessionId, wechatReplyingSessionId]);
+    return [...selectedIds].filter((id) => id && !skip.has(id));
+  }, [selectedIds, streamingSessionId, wechatReplyingSessionId]);
 
-  const handleBulkConfirm = useCallback(() => {
-    const n = bulkDeleteIds.length;
+  const handleCancelDeleteMode = useCallback(() => {
+    setDeleteModeChannel(null);
+    setSelectedIds(new Set());
+    setDeleteConfirmOpen(false);
+  }, []);
+
+  const handleConfirmDeleteSelected = useCallback(() => {
+    const n = selectedDeleteIds.length;
     if (n < 1) return;
-    deleteSessionsByIds(bulkDeleteIds);
+    deleteSessionsByIds(selectedDeleteIds);
+    handleCancelDeleteMode();
     reload();
-    if (activeC && bulkDeleteIds.includes(activeC)) navigate("/chat", { replace: true });
-  }, [activeC, bulkDeleteIds, navigate, reload]);
+    if (activeC && selectedDeleteIds.includes(activeC)) navigate("/chat", { replace: true });
+  }, [activeC, handleCancelDeleteMode, navigate, reload, selectedDeleteIds]);
 
-  const handleBulkDeleteClick = useCallback(() => {
-    if (bulkDeleteIds.length < 1) return;
-    setBulkDialogOpen(true);
-  }, [bulkDeleteIds.length]);
+  const handleEnterDeleteMode = useCallback((channel) => {
+    setDeleteModeChannel(channel);
+    setSelectedIds(new Set());
+    setDeleteConfirmOpen(false);
+    setGroupCollapsed((g) => ({ ...g, [channel]: false }));
+  }, []);
+
+  const handleToggleSelect = useCallback((sessionId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
+  }, []);
+
+  const handleToggleFocus = useCallback((channel) => {
+    handleCancelDeleteMode();
+    setFocusedChannel((prev) => {
+      if (prev === channel) return null;
+      setGroupCollapsed((g) => ({ ...g, [channel]: false }));
+      return channel;
+    });
+  }, [handleCancelDeleteMode]);
 
   const toggleGroupCollapsed = useCallback((channel) => {
     setGroupCollapsed((prev) => ({ ...prev, [channel]: !prev[channel] }));
   }, []);
 
+  const channelGroups = useMemo(
+    () => [
+      {
+        channel: CHAT_SESSION_CHANNEL_INTERNAL,
+        label: t("nav.chatHistoryGroupInternal"),
+        rows: groupedVisible.internal,
+        count: groupedCounts.internal,
+      },
+      {
+        channel: CHAT_SESSION_CHANNEL_WECHAT,
+        label: t("nav.chatHistoryGroupWechat"),
+        rows: groupedVisible.wechat,
+        count: groupedCounts.wechat,
+      },
+    ],
+    [groupedCounts.internal, groupedCounts.wechat, groupedVisible.internal, groupedVisible.wechat, t],
+  );
+
+  const channelsForHeaders = useMemo(() => {
+    const active = focusedChannel
+      ? [focusedChannel]
+      : [CHAT_SESSION_CHANNEL_INTERNAL, CHAT_SESSION_CHANNEL_WECHAT];
+    const extra = leavingChannelHeaders.filter((c) => !active.includes(c));
+    return [...active, ...extra];
+  }, [focusedChannel, leavingChannelHeaders]);
+
+  const renderChannelGroups = useMemo(
+    () =>
+      channelsForHeaders
+        .map((channel) => channelGroups.find((g) => g.channel === channel))
+        .filter(Boolean),
+    [channelGroups, channelsForHeaders],
+  );
+
+  const isGroupExpanded = useCallback(
+    (channel) => deleteModeChannel === channel || !groupCollapsed[channel],
+    [deleteModeChannel, groupCollapsed],
+  );
+
+  const getGroupRows = useCallback(
+    (channel, fallbackRows) => {
+      if (deleteModeChannel !== channel) return fallbackRows;
+      return searchFiltered.filter((row) => {
+        const rowChannel =
+          row.channel === CHAT_SESSION_CHANNEL_WECHAT ? CHAT_SESSION_CHANNEL_WECHAT : CHAT_SESSION_CHANNEL_INTERNAL;
+        if (rowChannel !== channel) return false;
+        return !focusedChannel || focusedChannel === channel;
+      });
+    },
+    [deleteModeChannel, focusedChannel, searchFiltered],
+  );
+
   const renderHistoryRow = (s) => {
     const to = `/chat?c=${encodeURIComponent(s.id)}`;
     const rowActive = (location.pathname === "/chat" || location.pathname === "/") && activeC === s.id;
     const displayTitle = s.title || t("nav.chatHistoryUntitled");
+    const rowChannel =
+      s.channel === CHAT_SESSION_CHANNEL_WECHAT ? CHAT_SESSION_CHANNEL_WECHAT : CHAT_SESSION_CHANNEL_INTERNAL;
+    const inDeleteMode = deleteModeChannel === rowChannel;
+    const isStreaming = streamingSessionId === s.id || wechatReplyingSessionId === s.id;
     return (
       <HistorySessionRow
         key={s.id}
@@ -464,7 +820,11 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
         rowMotion={getRowMotion(s.id)}
         onRenamed={reload}
         onAfterDelete={reload}
-        isStreaming={streamingSessionId === s.id || wechatReplyingSessionId === s.id}
+        isStreaming={isStreaming}
+        selectMode={inDeleteMode}
+        selected={selectedIds.has(s.id)}
+        selectDisabled={isStreaming}
+        onToggleSelect={() => handleToggleSelect(s.id)}
       />
     );
   };
@@ -517,7 +877,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
       el.removeEventListener("scroll", onScroll);
       ro?.disconnect();
     };
-  }, [narrow, updateRailScrollbar, listVersion, visibleRows.length, emptyAll, emptyFilter, groupCollapsed]);
+  }, [narrow, updateRailScrollbar, listVersion, displaySessions.length, emptyAll, emptyFilter, groupCollapsed, focusedChannel, deleteModeChannel, leavingChannelHeaders.length]);
 
   const onRailThumbPointerDown = useCallback(
     (e) => {
@@ -555,25 +915,10 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
 
   return (
     <div className="chat-history-rail flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden border-t border-[color-mix(in_srgb,var(--os-border)_80%,transparent)] px-0.5 pt-2.5">
-      <div className="chat-history-rail__heading-row flex shrink-0 items-center justify-between gap-2 px-2">
+      <div className="chat-history-rail__heading-row flex shrink-0 items-center gap-2 px-2">
         <div className="chat-history-rail__heading min-w-0 truncate text-[0.72rem] font-semibold uppercase tracking-wide">
           {t("nav.chatHistory")}
         </div>
-        <button
-          type="button"
-          className={cn(
-            "chat-history-rail__bulk shrink-0 rounded-md px-1.5 py-0.5 text-[0.68rem] font-semibold uppercase tracking-wide transition-colors",
-            "text-[var(--os-text-muted)] hover:bg-[var(--os-bg-hover)] hover:text-[var(--os-text)]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
-            "disabled:pointer-events-none disabled:opacity-40",
-          )}
-          disabled={bulkDeleteIds.length < 1}
-          aria-label={t("nav.chatHistoryBulkDeleteAria")}
-          title={t("nav.chatHistoryBulkDeleteAria")}
-          onClick={handleBulkDeleteClick}
-        >
-          {t("nav.chatHistoryBulkDelete")}
-        </button>
       </div>
       <div className="chat-history-rail__scroll-clip relative min-h-0 flex-1">
         <div
@@ -590,36 +935,48 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
               <EmptyState title={t("nav.chatHistoryNoMatch")} hideDecoration className="min-h-[5rem] py-6" />
             ) : (
               <ul className="relative z-[1] m-0 flex list-none flex-col gap-0.5 p-0 px-1">
-                <li className="chat-history-group">
-                  <button
-                    type="button"
-                    className="chat-history-group__head"
-                    onClick={() => toggleGroupCollapsed(CHAT_SESSION_CHANNEL_INTERNAL)}
-                    aria-expanded={!groupCollapsed[CHAT_SESSION_CHANNEL_INTERNAL]}
-                  >
-                    <span className="chat-history-group__caret" aria-hidden>
-                      {groupCollapsed[CHAT_SESSION_CHANNEL_INTERNAL] ? "▸" : "▾"}
-                    </span>
-                    <span className="chat-history-group__label">{t("nav.chatHistoryGroupInternal")}</span>
-                    <span className="chat-history-group__count">{groupedCounts.internal}</span>
-                  </button>
-                </li>
-                {!groupCollapsed[CHAT_SESSION_CHANNEL_INTERNAL] ? groupedVisible.internal.map(renderHistoryRow) : null}
-                <li className="chat-history-group">
-                  <button
-                    type="button"
-                    className="chat-history-group__head"
-                    onClick={() => toggleGroupCollapsed(CHAT_SESSION_CHANNEL_WECHAT)}
-                    aria-expanded={!groupCollapsed[CHAT_SESSION_CHANNEL_WECHAT]}
-                  >
-                    <span className="chat-history-group__caret" aria-hidden>
-                      {groupCollapsed[CHAT_SESSION_CHANNEL_WECHAT] ? "▸" : "▾"}
-                    </span>
-                    <span className="chat-history-group__label">{t("nav.chatHistoryGroupWechat")}</span>
-                    <span className="chat-history-group__count">{groupedCounts.wechat}</span>
-                  </button>
-                </li>
-                {!groupCollapsed[CHAT_SESSION_CHANNEL_WECHAT] ? groupedVisible.wechat.map(renderHistoryRow) : null}
+                {renderChannelGroups.map((group) => {
+                  const groupRows = getGroupRows(group.channel, group.rows);
+                  const channelSelectedCount = groupRows.filter(
+                    (row) =>
+                      selectedIds.has(row.id) &&
+                      row.id !== streamingSessionId &&
+                      row.id !== wechatReplyingSessionId,
+                  ).length;
+                  const headerMotion = headerMotionByChannel.get(group.channel);
+                  const showDivider =
+                    !focusedChannel && group.channel === CHAT_SESSION_CHANNEL_WECHAT;
+                  return (
+                    <Fragment key={group.channel}>
+                      <li
+                        className={cn(
+                          "chat-history-group",
+                          showDivider && "chat-history-group--divider",
+                          headerMotion === "leave-out" && "chat-history-group--leave-out",
+                          headerMotion === "leave-collapse" && "chat-history-group--leave-collapse",
+                        )}
+                      >
+                        <ChatHistoryGroupHead
+                          channel={group.channel}
+                          label={group.label}
+                          collapsed={!isGroupExpanded(group.channel)}
+                          focused={focusedChannel === group.channel}
+                          deleteMode={deleteModeChannel === group.channel}
+                          selectedCount={channelSelectedCount}
+                          onToggleCollapsed={() => toggleGroupCollapsed(group.channel)}
+                          onToggleFocus={() => handleToggleFocus(group.channel)}
+                          onEnterDeleteMode={() => handleEnterDeleteMode(group.channel)}
+                          onCancelDeleteMode={handleCancelDeleteMode}
+                          onConfirmDelete={() => {
+                            if (selectedDeleteIds.length < 1) return;
+                            setDeleteConfirmOpen(true);
+                          }}
+                        />
+                      </li>
+                      {isGroupExpanded(group.channel) ? groupRows.map(renderHistoryRow) : null}
+                    </Fragment>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -641,8 +998,13 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
           </div>
         </div>
       </div>
-      <FluidConfirmDialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen} danger onConfirm={handleBulkConfirm}>
-        {t("nav.chatHistoryBulkDeleteConfirm", { n: bulkDeleteIds.length })}
+      <FluidConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        danger
+        onConfirm={handleConfirmDeleteSelected}
+      >
+        {t("nav.chatHistoryDeleteSelectedConfirm", { n: selectedDeleteIds.length })}
       </FluidConfirmDialog>
     </div>
   );

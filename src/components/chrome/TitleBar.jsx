@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import heroAvatarLight from "../../assets/images/hero-avatar-light.png";
-import heroAvatarDark from "../../assets/images/hero-avatar-dark.png";
 import { useI18n } from "../../context/I18nContext.jsx";
-import { useTheme } from "../../context/ThemeContext.jsx";
 import { cn } from "../../ui/cn.js";
 
 function WinIconMinimize({ className }) {
@@ -40,7 +37,6 @@ function WinIconClose({ className }) {
 
 export default function TitleBar() {
   const { t } = useI18n();
-  const { theme } = useTheme();
   const shell = typeof window !== "undefined" ? window.electronShell : null;
   const [maximized, setMaximized] = useState(false);
 
@@ -64,19 +60,6 @@ export default function TitleBar() {
 
   return (
     <header className={cn("os-titlebar flex shrink-0 items-stretch overflow-hidden pr-0")} style={{ height: "var(--os-titlebar-height)" }}>
-      <div
-        className="os-titlebar__brand flex shrink-0 items-center gap-2.5 px-3 py-1"
-        style={{ WebkitAppRegion: "drag" }}
-      >
-        <img
-          className="h-7 w-7 shrink-0 rounded-full object-cover"
-          src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
-          alt=""
-          aria-hidden
-        />
-        <span className="whitespace-nowrap text-[0.8125rem] font-semibold tracking-tight">{t("titlebar.appName")}</span>
-      </div>
-
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex min-h-0 min-w-0 flex-1 items-stretch">
           {!shell ? (

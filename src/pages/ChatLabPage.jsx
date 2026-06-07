@@ -72,6 +72,7 @@ import {
 } from "../components/chat-lab/ChatLabComposerSkills.jsx";
 import { ChatLabContextMeter } from "../components/chat-lab/ChatLabContextMeter.jsx";
 import {
+  filterSkillPickList,
   listSkillsForPicker,
   pickRowFromSkillMeta,
   skillMetaFromPickRow,
@@ -581,9 +582,34 @@ export default function ChatLabPage() {
     }, 180);
   }, []);
 
+  const [composerFocused, setComposerFocused] = useState(false);
+  const [slashHighlightIndex, setSlashHighlightIndex] = useState(0);
+
   const firstComposerLine = (input.split("\n")[0] ?? "");
-  const slashSkillMenuActive = !composerSkillRow && firstComposerLine.startsWith("/");
-  const slashFilterQuery = slashSkillMenuActive ? firstComposerLine.slice(1) : "";
+  const slashSkillMenuEligible = !composerSkillRow && firstComposerLine.startsWith("/");
+  const slashSkillMenuOpen = composerFocused && slashSkillMenuEligible;
+  const slashFilterQuery = slashSkillMenuEligible ? firstComposerLine.slice(1) : "";
+  const slashFilteredSkills = useMemo(
+    () => filterSkillPickList(skillPickList, slashFilterQuery),
+    [skillPickList, slashFilterQuery],
+  );
+
+  useEffect(() => {
+    setSlashHighlightIndex(0);
+  }, [slashFilterQuery]);
+
+  useEffect(() => {
+    setSlashHighlightIndex((i) => {
+      if (slashFilteredSkills.length === 0) return 0;
+      return Math.min(i, slashFilteredSkills.length - 1);
+    });
+  }, [slashFilteredSkills.length]);
+
+  const pickSlashSkill = useCallback((row) => {
+    setComposerSkillRow(row);
+    setInput((v) => stripSlashPickerPrefix(v));
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
 
   /** Background `#studio:` prewarm (non-blocking); `urgentFirst` keeps the visible thread ahead of historical sessions on the hydrate queue. */
   useEffect(() => {
@@ -1600,6 +1626,25 @@ export default function ChatLabPage() {
   const onKeyDown = useCallback(
     /** @param {import('react').KeyboardEvent<HTMLTextAreaElement>} e */
     (e) => {
+      if (slashSkillMenuOpen && slashFilteredSkills.length > 0 && !e.nativeEvent.isComposing) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashHighlightIndex((i) => (i + 1) % slashFilteredSkills.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashHighlightIndex((i) => (i - 1 + slashFilteredSkills.length) % slashFilteredSkills.length);
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          const row = slashFilteredSkills[slashHighlightIndex];
+          if (row) pickSlashSkill(row);
+          return;
+        }
+      }
+
       if (composerLongTextMode) {
         if (
           e.key === "Enter" &&
@@ -1617,7 +1662,7 @@ export default function ChatLabPage() {
         if (canSend) send();
       }
     },
-    [canSend, composerLongTextMode, send],
+    [canSend, composerLongTextMode, pickSlashSkill, send, slashFilteredSkills, slashHighlightIndex, slashSkillMenuOpen],
   );
 
   const isLanding = messages.length === 0;
@@ -1880,6 +1925,8 @@ export default function ChatLabPage() {
             onChange={(e) => {
               setInput(e.target.value);
             }}
+            onFocus={() => setComposerFocused(true)}
+            onBlur={() => setComposerFocused(false)}
             onKeyDown={onKeyDown}
             onPaste={(e) => {
               const fl = e.clipboardData?.files;
@@ -1894,15 +1941,13 @@ export default function ChatLabPage() {
           />
         </div>
         <ComposerSkillSlashPopover
-          open={slashSkillMenuActive}
+          open={slashSkillMenuOpen}
           textareaRef={textareaRef}
           filterQuery={slashFilterQuery}
           skills={skillPickList}
-          onPick={(row) => {
-            setComposerSkillRow(row);
-            setInput((v) => stripSlashPickerPrefix(v));
-            requestAnimationFrame(() => textareaRef.current?.focus());
-          }}
+          highlightIndex={slashHighlightIndex}
+          onHighlightIndexChange={setSlashHighlightIndex}
+          onPick={pickSlashSkill}
           onClose={() => {}}
           t={t}
         />
@@ -2848,6 +2893,20 @@ function MessageMetaCopyIcon() {
   );
 }
 
+function MessageMetaCopiedIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M6.5 12.5 10 16l7.5-9"
+        stroke="currentColor"
+        strokeWidth="1.85"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function MessageMetaEditIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -3693,13 +3752,13 @@ const MessageBubble = memo(function MessageBubble({
               <>
                 <button
                   type="button"
-                  className="chat-lab__msg-action-btn"
+                  className={cn("chat-lab__msg-action-btn", copiedPulse && "chat-lab__msg-action-btn--copied")}
                   onClick={handleCopy}
                   disabled={!copyPlain.trim()}
                   title={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
-                  aria-label={t("chatLab.messageCopy")}
+                  aria-label={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
                 >
-                  <MessageMetaCopyIcon />
+                  {copiedPulse ? <MessageMetaCopiedIcon /> : <MessageMetaCopyIcon />}
                 </button>
                 <button
                   type="button"
@@ -3715,13 +3774,13 @@ const MessageBubble = memo(function MessageBubble({
             ) : (
               <button
                 type="button"
-                className="chat-lab__msg-action-btn"
+                className={cn("chat-lab__msg-action-btn", copiedPulse && "chat-lab__msg-action-btn--copied")}
                 onClick={handleCopy}
                 disabled={!copyPlain.trim()}
                 title={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
-                aria-label={t("chatLab.messageCopy")}
+                aria-label={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
               >
-                <MessageMetaCopyIcon />
+                {copiedPulse ? <MessageMetaCopiedIcon /> : <MessageMetaCopyIcon />}
               </button>
             )}
           </div>

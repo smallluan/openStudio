@@ -10,7 +10,7 @@ import {
   useInteractions,
   useRole,
 } from "@floating-ui/react";
-import { useEffect, useId, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { filterSkillPickList } from "../../skills/skillRegistry.js";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { cn } from "../../ui/cn.js";
@@ -69,9 +69,55 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
   const listId = `${autoId}-skill-list`;
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const optionRefs = useRef(/** @type {Array<HTMLButtonElement | null>} */ ([]));
   const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
 
   const filtered = useMemo(() => filterSkillPickList(skills, q), [skills, q]);
+
+  useEffect(() => {
+    setHighlightIndex(0);
+  }, [q, open]);
+
+  useEffect(() => {
+    setHighlightIndex((i) => {
+      if (filtered.length === 0) return 0;
+      return Math.min(i, filtered.length - 1);
+    });
+  }, [filtered.length]);
+
+  useEffect(() => {
+    optionRefs.current[highlightIndex]?.scrollIntoView({ block: "nearest" });
+  }, [highlightIndex, filtered.length]);
+
+  const confirmHighlighted = useCallback(() => {
+    const row = filtered[highlightIndex];
+    if (!row) return;
+    onSelect(row);
+    setOpen(false);
+  }, [filtered, highlightIndex, onSelect]);
+
+  const onPopoverKeyDown = useCallback(
+    /** @param {import('react').KeyboardEvent} e */
+    (e) => {
+      if (!present || filtered.length === 0 || e.nativeEvent.isComposing) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightIndex((i) => (i + 1) % filtered.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightIndex((i) => (i - 1 + filtered.length) % filtered.length);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        confirmHighlighted();
+      }
+    },
+    [confirmHighlighted, filtered.length, present],
+  );
 
   const { refs, floatingStyles, context } = useFloating({
     open: present,
@@ -120,6 +166,7 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
               ref={refs.setFloating}
               style={floatingStyles}
               className="outline-none z-[400] w-[min(100vw-2rem,320px)] max-w-[min(100vw-2rem,320px)]"
+              onKeyDown={onPopoverKeyDown}
               {...getFloatingProps()}
             >
               <FluidPopupAnimatedSurface
@@ -167,12 +214,20 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
                     {t("chatLab.skillPickerEmpty")}
                   </div>
                 ) : (
-                  filtered.map((row) => (
+                  filtered.map((row, index) => (
                     <button
                       key={row.id}
+                      ref={(node) => {
+                        optionRefs.current[index] = node;
+                      }}
                       type="button"
                       role="option"
-                      className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_55%,transparent)]"
+                      aria-selected={index === highlightIndex}
+                      className={cn(
+                        "chat-lab__skill-popover-option flex w-full items-start gap-2.5 px-3 py-2 text-left",
+                        index === highlightIndex && "chat-lab__skill-popover-option--active",
+                      )}
+                      onMouseEnter={() => setHighlightIndex(index)}
                       onClick={() => {
                         onSelect(row);
                         setOpen(false);
@@ -205,15 +260,32 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
  *   textareaRef: import("react").RefObject<HTMLTextAreaElement | null>;
  *   filterQuery: string;
  *   skills: import("../../skills/skillRegistry.js").SkillPickRow[];
+ *   highlightIndex?: number;
+ *   onHighlightIndexChange?: (index: number) => void;
  *   onPick: (row: import("../../skills/skillRegistry.js").SkillPickRow) => void;
  *   onClose: () => void;
  *   t: (k: string) => string;
  * }} props
  */
-export function ComposerSkillSlashPopover({ open, textareaRef, filterQuery, skills, onPick, onClose, t }) {
+export function ComposerSkillSlashPopover({
+  open,
+  textareaRef,
+  filterQuery,
+  skills,
+  highlightIndex = 0,
+  onHighlightIndexChange,
+  onPick,
+  onClose,
+  t,
+}) {
   const autoId = useId();
   const listId = `${autoId}-slash-skills`;
+  const optionRefs = useRef(/** @type {Array<HTMLButtonElement | null>} */ ([]));
   const filtered = useMemo(() => filterSkillPickList(skills, filterQuery), [skills, filterQuery]);
+
+  useEffect(() => {
+    optionRefs.current[highlightIndex]?.scrollIntoView({ block: "nearest" });
+  }, [highlightIndex, filtered.length]);
 
   const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
 
@@ -245,6 +317,7 @@ export function ComposerSkillSlashPopover({ open, textareaRef, filterQuery, skil
         ref={refs.setFloating}
         style={floatingStyles}
         className="outline-none z-[400] w-[min(100vw-2rem,300px)] max-w-[min(100vw-2rem,300px)]"
+        onMouseDown={(e) => e.preventDefault()}
         {...getFloatingProps()}
       >
         <FluidPopupAnimatedSurface
@@ -266,12 +339,20 @@ export function ComposerSkillSlashPopover({ open, textareaRef, filterQuery, skil
           {filtered.length === 0 ? (
             <div className="px-3 py-4 text-center text-[0.78rem] text-[var(--os-text-faint)]">{t("chatLab.skillPickerEmpty")}</div>
           ) : (
-            filtered.map((row) => (
+            filtered.map((row, index) => (
               <button
                 key={row.id}
+                ref={(node) => {
+                  optionRefs.current[index] = node;
+                }}
                 type="button"
                 role="option"
-                className="flex w-full items-start gap-2.5 px-3 py-2 text-left hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_55%,transparent)]"
+                aria-selected={index === highlightIndex}
+                className={cn(
+                  "chat-lab__skill-popover-option flex w-full items-start gap-2.5 px-3 py-2 text-left",
+                  index === highlightIndex && "chat-lab__skill-popover-option--active",
+                )}
+                onMouseEnter={() => onHighlightIndexChange?.(index)}
                 onClick={() => onPick(row)}
               >
                 <span className="text-lg leading-none" aria-hidden>
