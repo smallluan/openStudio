@@ -122,7 +122,11 @@
     "desc": "创建并管理 OpenClaw 智能体：名称、IDENTITY.md（我是谁）、SOUL.md（语气与人格）、工作区与技能。确认创建后会写入磁盘并重启网关。",
     "actions": {
       "create": "新建智能体",
+      "edit": "编辑",
       "delete": "删除"
+    },
+    "editModal": {
+      "title": "编辑 · {{name}}"
     },
     "searchPlaceholder": "搜索智能体",
     "emptyList": "没有匹配的智能体。",

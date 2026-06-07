@@ -16,22 +16,18 @@ import TextField from "../ui/TextField.jsx";
 import Select from "../ui/Select.jsx";
 import { cn } from "../ui/cn.js";
 
-/** @param {{ className?: string; selected?: boolean; onClick?: () => void; children: React.ReactNode }} props */
-function AgentListItem({ className, selected, onClick, children }) {
+/** @param {{ className?: string; children: React.ReactNode }} props */
+function AgentCardShell({ className, children }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <article
       className={cn(
-        "flex w-full flex-col rounded-[12px] border px-3.5 py-3 text-left text-[0.8125rem] transition",
-        selected
-          ? "border-[color-mix(in_srgb,var(--os-accent)_42%,var(--os-border))] bg-[color-mix(in_srgb,var(--os-accent)_10%,var(--os-bg-panel))]"
-          : "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-panel)_88%,var(--os-bg-elevated))] hover:border-[var(--os-border)]",
+        "flex min-h-[148px] flex-col rounded-[14px] border border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-panel)_88%,var(--os-bg-elevated))] p-3.5 shadow-[var(--os-shadow-soft)] transition-[box-shadow,transform] duration-150",
+        "hover:shadow-[0_10px_28px_-12px_color-mix(in_srgb,var(--os-shadow-color,#000)_28%,transparent)]",
         className,
       )}
     >
       {children}
-    </button>
+    </article>
   );
 }
 
@@ -98,12 +94,13 @@ export default function LobsterManagementPage() {
   const { t } = useI18n();
   const delTitleId = useId();
   const createTitleId = useId();
+  const detailTitleId = useId();
   const { agents, createAgent, removeAgent, patchAgentMeta } = useStudio();
   const { lib } = useSkillLibrary();
   const skillEnv = useSkillEnvironment();
 
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState(/** @type {string | null} */ (null));
+  const [detailAgentId, setDetailAgentId] = useState(/** @type {string | null} */ (null));
   const [deleteTargetId, setDeleteTargetId] = useState(/** @type {string | null} */ (null));
   const [skillQuery, setSkillQuery] = useState("");
   const [provisionNote, setProvisionNote] = useState(/** @type {string | null} */ (null));
@@ -150,47 +147,47 @@ export default function LobsterManagementPage() {
     });
   }, [agents, normalizedQuery]);
 
-  useEffect(() => {
-    if (agents.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-    if (!selectedId || !agents.some((a) => a.id === selectedId)) {
-      setSelectedId(agents[0].id);
-    }
-  }, [agents, selectedId]);
-
-  const selected = agents.find((a) => a.id === selectedId) ?? null;
+  const detailAgent = detailAgentId ? agents.find((a) => a.id === detailAgentId) ?? null : null;
   const deleteTarget = deleteTargetId ? agents.find((a) => a.id === deleteTargetId) : null;
 
+  const openDetail = useCallback((agentId) => {
+    setSkillQuery("");
+    setDetailAgentId(agentId);
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    setDetailAgentId(null);
+    setSkillQuery("");
+  }, []);
+
   useEffect(() => {
-    if (!selected) return;
+    if (!detailAgent) return;
     const bridge = window.studioBridge;
     if (!bridge) return;
     let cancelled = false;
-    if (!selected.soulMd.trim() && bridge.readAgentSoul) {
-      void bridge.readAgentSoul({ gatewayAgentId: selected.gatewayAgentId }).then((r) => {
+    if (!detailAgent.soulMd.trim() && bridge.readAgentSoul) {
+      void bridge.readAgentSoul({ gatewayAgentId: detailAgent.gatewayAgentId }).then((r) => {
         if (cancelled || !r?.ok || typeof r.soulMd !== "string" || !r.soulMd.trim()) return;
-        patchAgentMeta(selected.id, { soulMd: r.soulMd });
+        patchAgentMeta(detailAgent.id, { soulMd: r.soulMd });
       });
     }
-    if (!selected.identityMd?.trim() && bridge.readAgentIdentity) {
-      void bridge.readAgentIdentity({ gatewayAgentId: selected.gatewayAgentId }).then((r) => {
+    if (!detailAgent.identityMd?.trim() && bridge.readAgentIdentity) {
+      void bridge.readAgentIdentity({ gatewayAgentId: detailAgent.gatewayAgentId }).then((r) => {
         if (cancelled || !r?.ok || typeof r.identityMd !== "string" || !r.identityMd.trim()) return;
-        patchAgentMeta(selected.id, { identityMd: r.identityMd });
+        patchAgentMeta(detailAgent.id, { identityMd: r.identityMd });
       });
     }
     return () => {
       cancelled = true;
     };
-  }, [patchAgentMeta, selected]);
+  }, [detailAgent, patchAgentMeta]);
 
   const toggleSkill = (skillId) => {
-    if (!selected) return;
-    const set = new Set(selected.skillIds);
+    if (!detailAgent) return;
+    const set = new Set(detailAgent.skillIds);
     if (set.has(skillId)) set.delete(skillId);
     else set.add(skillId);
-    patchAgentMeta(selected.id, { skillIds: [...set] });
+    patchAgentMeta(detailAgent.id, { skillIds: [...set] });
   };
 
   const openCreateModal = useCallback(() => {
@@ -238,7 +235,7 @@ export default function LobsterManagementPage() {
         return;
       }
       setCreateOpen(false);
-      if (result.id) setSelectedId(result.id);
+      if (result.id) openDetail(result.id);
       setProvisionNote(t("lobsterPage.provisionDone"));
       window.setTimeout(() => setProvisionNote(null), 4000);
     } finally {
@@ -281,197 +278,244 @@ export default function LobsterManagementPage() {
         </p>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(220px,280px)_1fr]">
-        <div className="flex min-h-0 flex-col gap-2 overflow-auto lg:max-h-none">
-          {filteredAgents.length === 0 ? (
-            <p className="text-[0.82rem] text-[var(--os-text-muted)]">{t("lobsterPage.emptyList")}</p>
-          ) : (
-            filteredAgents.map((a) => {
+      <div className="min-h-0 flex-1 overflow-auto pb-10">
+        {filteredAgents.length === 0 ? (
+          <p className="text-[0.82rem] text-[var(--os-text-muted)]">{t("lobsterPage.emptyList")}</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            {filteredAgents.map((a) => {
               const label = agentDisplayLabel(a);
               const preview = a.description?.trim() || t("skillsPage.noDescription");
+              const role = a.orchestrationRole;
+              const hasRole = role && role !== OrchestrationRole.NONE;
               return (
-                <AgentListItem
-                  key={a.id}
-                  selected={a.id === selectedId}
-                  onClick={() => setSelectedId(a.id)}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-base" aria-hidden>
+                <AgentCardShell key={a.id} className="group relative">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-xl leading-none" aria-hidden>
                       {agentAvatarGlyph(a)}
                     </span>
-                    <span className="font-medium text-[var(--os-text)]">{label}</span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-[0.9rem] font-semibold text-[var(--os-text)]">{label}</h3>
+                    </div>
+                  </div>
+                  <p
+                    className="mt-2 line-clamp-2 min-h-[2.5rem] cursor-default text-[0.78rem] leading-snug text-[var(--os-text-muted)]"
+                    title={a.description?.trim() || undefined}
+                  >
+                    {preview}
+                  </p>
+                  <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] pt-2.5">
                     {a.isMain ? (
-                      <span className="rounded-md bg-[color-mix(in_srgb,var(--os-accent)_12%,transparent)] px-1.5 py-0.5 text-[0.62rem] font-medium uppercase tracking-wide text-[var(--os-accent)]">
+                      <span className="rounded-md bg-[color-mix(in_srgb,var(--os-accent)_12%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-accent)]">
                         {t("agents.mainBadge")}
                       </span>
                     ) : null}
+                    {hasRole ? (
+                      <span className="rounded-md bg-[color-mix(in_srgb,var(--os-text-muted)_10%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-text-muted)]">
+                        {orchestrationRoleLabel(role, t)}
+                      </span>
+                    ) : null}
+                    {a.skillIds?.length ? (
+                      <span className="rounded-md bg-[color-mix(in_srgb,var(--os-text-muted)_10%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-text-muted)]">
+                        {t("lobsterPage.skillCount", { n: a.skillIds.length })}
+                      </span>
+                    ) : null}
+                    <div
+                      className={cn(
+                        "ml-auto flex shrink-0 items-center gap-2",
+                        "opacity-0 transition-opacity duration-200 ease-in-out",
+                        "pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
+                        "group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] px-2 py-1 text-[0.7rem] font-medium text-[var(--os-text-muted)] transition hover:border-[var(--os-border)] hover:text-[var(--os-text)]"
+                        onClick={() => openDetail(a.id)}
+                      >
+                        {t("lobsterPage.actions.edit")}
+                      </button>
+                      {!a.isMain ? (
+                        <button
+                          type="button"
+                          className="rounded-lg px-2 py-1 text-[0.7rem] font-medium text-[#c45a5a] transition hover:opacity-80"
+                          onClick={() => setDeleteTargetId(a.id)}
+                        >
+                          {t("lobsterPage.actions.delete")}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                  <span className="mt-0.5 line-clamp-2 text-[0.75rem] text-[var(--os-text-muted)]">{preview}</span>
-                  {a.skillIds?.length ? (
-                    <span className="mt-1.5 text-[0.7rem] text-[var(--os-text-faint)]">
-                      {t("lobsterPage.skillCount", { n: a.skillIds.length })}
-                    </span>
-                  ) : null}
-                </AgentListItem>
+                </AgentCardShell>
               );
-            })
-          )}
-        </div>
-
-        <div className="flex min-h-[320px] min-w-0 flex-col rounded-[14px] border border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-panel)_88%,var(--os-bg-elevated))] p-4 shadow-[var(--os-shadow-soft)]">
-          {!selected ? (
-            <p className="text-[0.82rem] text-[var(--os-text-muted)]">{t("lobsterPage.noSelection")}</p>
-          ) : (
-            <>
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
-                <h2 className="text-[0.9375rem] font-semibold text-[var(--os-text)]">
-                  {t("lobsterPage.detailTitle")}
-                </h2>
-                {!selected.isMain ? (
-                  <button
-                    type="button"
-                    className="rounded-[10px] border border-[color-mix(in_srgb,var(--os-danger,#b91c1c)_35%,var(--os-border))] px-3 py-1.5 text-[0.78rem] font-medium text-[var(--os-danger,#b91c1c)] transition hover:bg-[color-mix(in_srgb,var(--os-danger,#b91c1c)_8%,transparent)]"
-                    onClick={() => setDeleteTargetId(selected.id)}
-                  >
-                    {t("lobsterPage.actions.delete")}
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
-                <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                  {t("lobsterPage.fieldName")}
-                  <TextField
-                    value={selected.name}
-                    onChange={(e) => patchAgentMeta(selected.id, { name: e.target.value })}
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                  {t("lobsterPage.fieldAvatar")}
-                  <TextField
-                    value={selected.avatar}
-                    onChange={(e) => patchAgentMeta(selected.id, { avatar: e.target.value })}
-                    placeholder={t("lobsterPage.avatarPlaceholder")}
-                    maxLength={8}
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                  {t("lobsterPage.fieldIdentity")}
-                  <textarea
-                    className="min-h-[120px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
-                    value={selected.identityMd || buildIdentityMd(selected)}
-                    onChange={(e) => patchAgentMeta(selected.id, { identityMd: e.target.value })}
-                    placeholder={t("lobsterPage.identityPlaceholder")}
-                  />
-                  <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("lobsterPage.identityHint")}</span>
-                </label>
-
-                {!selected.isMain ? (
-                  <>
-                    <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                      {t("lobsterPage.fieldOrchestrationRole")}
-                      <Select
-                        value={selected.orchestrationRole || OrchestrationRole.NONE}
-                        onChange={(role) =>
-                          patchAgentMeta(selected.id, {
-                            orchestrationRole: /** @type {import("../studio/orchestrationRoles.js").OrchestrationRoleValue} */ (
-                              role
-                            ),
-                          })
-                        }
-                        options={[
-                          OrchestrationRole.NONE,
-                          OrchestrationRole.PM,
-                          OrchestrationRole.FE,
-                          OrchestrationRole.BE,
-                          OrchestrationRole.REVIEWER,
-                        ].map((role) => ({
-                          value: role,
-                          label: orchestrationRoleLabel(role, t),
-                        }))}
-                        className="w-full min-w-0"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                      {t("lobsterPage.fieldOrchestrationDomain")}
-                      <TextField
-                        value={selected.orchestrationDomain || ""}
-                        onChange={(e) =>
-                          patchAgentMeta(selected.id, { orchestrationDomain: e.target.value })
-                        }
-                        placeholder={t("lobsterPage.orchestrationDomainPlaceholder")}
-                      />
-                    </label>
-                  </>
-                ) : null}
-
-                <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                  {t("lobsterPage.fieldDescription")}
-                  <textarea
-                    className="min-h-[72px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.8125rem] text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
-                    value={selected.description}
-                    onChange={(e) => patchAgentMeta(selected.id, { description: e.target.value })}
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                  {t("lobsterPage.fieldSoul")}
-                  <textarea
-                    className="min-h-[140px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
-                    value={selected.soulMd}
-                    onChange={(e) => patchAgentMeta(selected.id, { soulMd: e.target.value })}
-                    placeholder={t("lobsterPage.soulPlaceholder")}
-                  />
-                  <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("lobsterPage.soulHint")}</span>
-                </label>
-
-                <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                  <span>{t("lobsterPage.fieldGatewayId")}</span>
-                  <code className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.78rem] text-[var(--os-text)]">
-                    {selected.gatewayAgentId}
-                  </code>
-                  <span className="text-[0.68rem] text-[var(--os-text-faint)]">
-                    {t("lobsterPage.gatewayIdHint", {
-                      session: selected.openclaw?.sessionKey ?? "",
-                    })}
-                  </span>
-                </div>
-
-                <div className="flex min-h-0 flex-col gap-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[0.75rem] font-medium text-[var(--os-text-muted)]">
-                      {t("lobsterPage.skillsHeading")}
-                    </span>
-                    <TextField
-                      className="h-8 max-w-[200px] text-[0.75rem]"
-                      value={skillQuery}
-                      onChange={(e) => setSkillQuery(e.target.value)}
-                      placeholder={t("lobsterPage.skillFilterPlaceholder")}
-                      aria-label={t("lobsterPage.skillFilterPlaceholder")}
-                    />
-                  </div>
-                  <p className="text-[0.7rem] leading-snug text-[var(--os-text-faint)]">
-                    {t("lobsterPage.skillsHint")}
-                  </p>
-                  <AgentSkillPicker
-                    skills={selectableSkills}
-                    selectedIds={selected.skillIds}
-                    onToggle={toggleSkill}
-                    query={skillQuery}
-                    onQueryChange={setSkillQuery}
-                    filterPlaceholder={t("lobsterPage.skillFilterPlaceholder")}
-                    emptyLabel={t("lobsterPage.skillsEmpty")}
-                    builtinBadge={t("skillsPage.badgeBuiltin")}
-                    userBadge={t("skillsPage.badgeUser")}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+            })}
+          </div>
+        )}
       </div>
+
+      {detailAgent ? (
+        <Modal onClose={closeDetail} labelledBy={detailTitleId}>
+          <div className="flex w-full min-w-[min(100vw-2rem,560px)] max-h-[min(90vh,720px)] flex-col bg-[var(--os-bg-modal)]">
+            <div className="flex shrink-0 items-center justify-between border-b border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
+              <h2 id={detailTitleId} className="text-base font-semibold">
+                {t("lobsterPage.editModal.title", { name: agentDisplayLabel(detailAgent) })}
+              </h2>
+              <ModalCloseButton onClick={closeDetail} />
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-5 py-4">
+              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                {t("lobsterPage.fieldName")}
+                <TextField
+                  value={detailAgent.name}
+                  onChange={(e) => patchAgentMeta(detailAgent.id, { name: e.target.value })}
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                {t("lobsterPage.fieldAvatar")}
+                <TextField
+                  value={detailAgent.avatar}
+                  onChange={(e) => patchAgentMeta(detailAgent.id, { avatar: e.target.value })}
+                  placeholder={t("lobsterPage.avatarPlaceholder")}
+                  maxLength={8}
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                {t("lobsterPage.fieldIdentity")}
+                <textarea
+                  className="min-h-[120px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  value={detailAgent.identityMd || buildIdentityMd(detailAgent)}
+                  onChange={(e) => patchAgentMeta(detailAgent.id, { identityMd: e.target.value })}
+                  placeholder={t("lobsterPage.identityPlaceholder")}
+                />
+                <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("lobsterPage.identityHint")}</span>
+              </label>
+
+              {!detailAgent.isMain ? (
+                <>
+                  <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                    {t("lobsterPage.fieldOrchestrationRole")}
+                    <Select
+                      value={detailAgent.orchestrationRole || OrchestrationRole.NONE}
+                      onChange={(role) =>
+                        patchAgentMeta(detailAgent.id, {
+                          orchestrationRole: /** @type {import("../studio/orchestrationRoles.js").OrchestrationRoleValue} */ (
+                            role
+                          ),
+                        })
+                      }
+                      options={[
+                        OrchestrationRole.NONE,
+                        OrchestrationRole.PM,
+                        OrchestrationRole.FE,
+                        OrchestrationRole.BE,
+                        OrchestrationRole.REVIEWER,
+                      ].map((role) => ({
+                        value: role,
+                        label: orchestrationRoleLabel(role, t),
+                      }))}
+                      className="w-full min-w-0"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                    {t("lobsterPage.fieldOrchestrationDomain")}
+                    <TextField
+                      value={detailAgent.orchestrationDomain || ""}
+                      onChange={(e) =>
+                        patchAgentMeta(detailAgent.id, { orchestrationDomain: e.target.value })
+                      }
+                      placeholder={t("lobsterPage.orchestrationDomainPlaceholder")}
+                    />
+                  </label>
+                </>
+              ) : null}
+
+              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                {t("lobsterPage.fieldDescription")}
+                <textarea
+                  className="min-h-[72px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.8125rem] text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  value={detailAgent.description}
+                  onChange={(e) => patchAgentMeta(detailAgent.id, { description: e.target.value })}
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                {t("lobsterPage.fieldSoul")}
+                <textarea
+                  className="min-h-[140px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  value={detailAgent.soulMd}
+                  onChange={(e) => patchAgentMeta(detailAgent.id, { soulMd: e.target.value })}
+                  placeholder={t("lobsterPage.soulPlaceholder")}
+                />
+                <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("lobsterPage.soulHint")}</span>
+              </label>
+
+              <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span>{t("lobsterPage.fieldGatewayId")}</span>
+                <code className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.78rem] text-[var(--os-text)]">
+                  {detailAgent.gatewayAgentId}
+                </code>
+                <span className="text-[0.68rem] text-[var(--os-text-faint)]">
+                  {t("lobsterPage.gatewayIdHint", {
+                    session: detailAgent.openclaw?.sessionKey ?? "",
+                  })}
+                </span>
+              </div>
+
+              <div className="flex min-h-0 flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[0.75rem] font-medium text-[var(--os-text-muted)]">
+                    {t("lobsterPage.skillsHeading")}
+                  </span>
+                  <TextField
+                    className="h-8 max-w-[200px] text-[0.75rem]"
+                    value={skillQuery}
+                    onChange={(e) => setSkillQuery(e.target.value)}
+                    placeholder={t("lobsterPage.skillFilterPlaceholder")}
+                    aria-label={t("lobsterPage.skillFilterPlaceholder")}
+                  />
+                </div>
+                <p className="text-[0.7rem] leading-snug text-[var(--os-text-faint)]">
+                  {t("lobsterPage.skillsHint")}
+                </p>
+                <AgentSkillPicker
+                  skills={selectableSkills}
+                  selectedIds={detailAgent.skillIds}
+                  onToggle={toggleSkill}
+                  query={skillQuery}
+                  onQueryChange={setSkillQuery}
+                  filterPlaceholder={t("lobsterPage.skillFilterPlaceholder")}
+                  emptyLabel={t("lobsterPage.skillsEmpty")}
+                  builtinBadge={t("skillsPage.badgeBuiltin")}
+                  userBadge={t("skillsPage.badgeUser")}
+                />
+              </div>
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
+              {!detailAgent.isMain ? (
+                <button
+                  type="button"
+                  className="mr-auto rounded-[10px] border border-[color-mix(in_srgb,var(--os-danger,#b91c1c)_35%,var(--os-border))] px-3 py-2 text-[0.8rem] font-medium text-[var(--os-danger,#b91c1c)] transition hover:bg-[color-mix(in_srgb,var(--os-danger,#b91c1c)_8%,transparent)]"
+                  onClick={() => {
+                    closeDetail();
+                    setDeleteTargetId(detailAgent.id);
+                  }}
+                >
+                  {t("lobsterPage.actions.delete")}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="rounded-[10px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8rem] font-medium text-[var(--os-on-accent,#fff)]"
+                onClick={closeDetail}
+              >
+                {t("skillsPage.close")}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
 
       {createOpen ? (
         <Modal onClose={() => !createBusy && setCreateOpen(false)} labelledBy={createTitleId}>
@@ -606,6 +650,7 @@ export default function LobsterManagementPage() {
                 onClick={() => {
                   removeAgent(deleteTarget.id);
                   setDeleteTargetId(null);
+                  if (detailAgentId === deleteTarget.id) closeDetail();
                 }}
               >
                 {t("lobsterPage.deleteModal.confirm")}

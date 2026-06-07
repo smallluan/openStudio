@@ -122,7 +122,11 @@
     "desc": "建立並管理 OpenClaw 智慧體：名稱、頭像、soul.md 身份、工作區與技能。新建時會在閘道側初始化 workspace 並註冊到 agents.list。",
     "actions": {
       "create": "新增智慧體",
+      "edit": "編輯",
       "delete": "刪除"
+    },
+    "editModal": {
+      "title": "編輯 · {{name}}"
     },
     "searchPlaceholder": "搜尋智慧體",
     "emptyList": "沒有符合的智慧體。",

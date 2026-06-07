@@ -122,7 +122,11 @@
     "desc": "Create and manage OpenClaw agents: name, IDENTITY.md (who), SOUL.md (voice), workspace, and skills. Confirming create writes to disk and restarts the gateway.",
     "actions": {
       "create": "New agent",
+      "edit": "Edit",
       "delete": "Delete"
+    },
+    "editModal": {
+      "title": "Edit · {{name}}"
     },
     "searchPlaceholder": "Search agents",
     "emptyList": "No matching agents.",

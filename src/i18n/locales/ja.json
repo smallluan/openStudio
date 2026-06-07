@@ -122,7 +122,11 @@
     "desc": "OpenClaw エージェントの作成と管理：名前・アバター・soul.md・ワークスペース・スキル。新規作成時にゲートウェイ側の workspace を初期化し agents.list に登録します。",
     "actions": {
       "create": "エージェントを作成",
+      "edit": "編集",
       "delete": "削除"
+    },
+    "editModal": {
+      "title": "編集 · {{name}}"
     },
     "searchPlaceholder": "エージェントを検索",
     "emptyList": "一致するエージェントがありません。",
