@@ -2735,6 +2735,7 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
+  flex-shrink: 0;
   padding: 0.65rem 1.1rem 0;
   animation: skill-row-enter 0.22s ease-out;
 }
@@ -2864,6 +2865,7 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   display: flex;
   flex-wrap: nowrap;
   gap: 0.45rem;
+  flex-shrink: 0;
   padding: 0.45rem 1.05rem 0;
   overflow-x: auto;
   scrollbar-width: thin;
@@ -3548,6 +3550,19 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-lab__msg-file-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  max-width: min(70%, 36rem);
+  margin-bottom: 0.35rem;
+}
+
+.chat-lab__file-chip {
+  max-width: min(100%, 18rem);
 }
 
 :root[data-theme="dark"] .chat-lab__msg-skill-pill {

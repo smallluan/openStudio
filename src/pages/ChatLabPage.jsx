@@ -20,11 +20,17 @@ import {
   CONTEXT_WINDOW_APPROX_TOKENS,
   approxTokensFromChars,
   estimateThreadCharBudget,
-  gatewayUserMessageBody,
   openClawAttachmentsFromComposer,
   MAX_CHAT_COMPOSER_IMAGES,
+  imageAttachmentsContextChars,
   readImageFileAsComposerAttachment,
 } from "../chat/chatLabComposerAttachments.js";
+import {
+  emojiForFileRefKind,
+  gatewayUserMessageBodyWithRefs,
+  MAX_CHAT_COMPOSER_FILE_REFS,
+  resolveDroppedLocalPaths,
+} from "../chat/chatLabComposerFileRefs.js";
 import {
   formatChoiceSequenceReply,
   formatQuestionnaireReplyMessage,
@@ -70,6 +76,7 @@ import {
   isSlashOnlyComposerDraft,
   stripSlashPickerPrefix,
 } from "../components/chat-lab/ChatLabComposerSkills.jsx";
+import { ComposerFileRefChip } from "../components/chat-lab/ChatLabComposerFileRefs.jsx";
 import { ChatLabContextMeter } from "../components/chat-lab/ChatLabContextMeter.jsx";
 import {
   filterSkillPickList,
@@ -138,7 +145,7 @@ function formatMessageTimestamp(ts, locale) {
  * History rows posted to OpenClaw (system + tail user line are appended by the caller).
  * Put OpenClaw `attachments` only when `includeImageAttachments` is true (latest user turn);
  * earlier turns use short "[N images attached]" text so we do not resend base64 every request.
- * @param {Array<{role: string; content?: string; thinking?: string; error?: string; imageAttachments?: unknown}>} msgs
+ * @param {Array<{role: string; content?: string; thinking?: string; error?: string; imageAttachments?: unknown; fileRefs?: unknown}>} msgs
  * @param {{ includeImageAttachments?: boolean }} [opts]
  */
 function buildGatewayPayloadRows(msgs, opts = {}) {
@@ -149,7 +156,7 @@ function buildGatewayPayloadRows(msgs, opts = {}) {
       if (m.role !== "assistant") {
         const row = {
           role: m.role,
-          content: gatewayUserMessageBody(m.content, m.imageAttachments),
+          content: gatewayUserMessageBodyWithRefs(m.content, m.imageAttachments, m.fileRefs),
         };
         if (includeImageAttachments) {
           const att = openClawAttachmentsFromComposer(m.imageAttachments);
@@ -204,6 +211,7 @@ function mapSessionMessageRow(m, opts = {}) {
     ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
       ? { imageAttachments: m.imageAttachments }
       : {}),
+    ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
     streaming,
   };
 }
@@ -465,6 +473,10 @@ export default function ChatLabPage() {
     /** @type {Array<{ id: string; name: string; mime: string; dataUrl: string }>} */
     ([]),
   );
+  const [composerFileRefs, setComposerFileRefs] = useState(
+    /** @type {import("../chat/chatLabComposerFileRefs.js").ComposerFileRef[]} */
+    ([]),
+  );
   const [composerDragActive, setComposerDragActive] = useState(false);
   /** Locale key last shown for attachment errors (translated at render). */
   const [composerAttachErrKey, setComposerAttachErrKey] = useState(/** @type {string | null} */ (null));
@@ -475,6 +487,7 @@ export default function ChatLabPage() {
   );
   const [composerSkillRowLeaving, setComposerSkillRowLeaving] = useState(false);
   const [composerAttachmentsLeaving, setComposerAttachmentsLeaving] = useState(false);
+  const [composerFileRefsLeaving, setComposerFileRefsLeaving] = useState(false);
   const textareaRef = useRef(/** @type {HTMLTextAreaElement | null} */ (null));
   const composerResizeDragRef = useRef(
     /** @type {{ startY: number; startH: number }} */ ({ startY: 0, startH: CHAT_LAB_COMPOSER_TEXT_MIN_PX }),
@@ -527,6 +540,7 @@ export default function ChatLabPage() {
     setPendingEditMessageId(null);
     setComposerSkillRow(null);
     setComposerAttachments([]);
+    setComposerFileRefs([]);
     setComposerDragActive(false);
     composerDragDepthRef.current = 0;
     setComposerLongTextMode(false);
@@ -579,6 +593,14 @@ export default function ChatLabPage() {
     setTimeout(() => {
       setComposerAttachments([]);
       setComposerAttachmentsLeaving(false);
+    }, 180);
+  }, []);
+
+  const clearComposerFileRefs = useCallback(() => {
+    setComposerFileRefsLeaving(true);
+    setTimeout(() => {
+      setComposerFileRefs([]);
+      setComposerFileRefsLeaving(false);
     }, 180);
   }, []);
 
@@ -787,6 +809,7 @@ export default function ChatLabPage() {
           ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
             ? { imageAttachments: m.imageAttachments }
             : {}),
+          ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
         }));
       if (toSave.length === 0) return;
       const title = deriveTitleFromMessages(messages, { imageFallback: t("chatLab.chatUntitledImage") });
@@ -1075,8 +1098,10 @@ export default function ChatLabPage() {
 
   const canSend =
     !gatewayStreaming &&
-    (input.trim().length > 0 || composerAttachments.length > 0) &&
-    (composerAttachments.length > 0 || !isSlashOnlyComposerDraft(input, Boolean(composerSkillRow))) &&
+    (input.trim().length > 0 || composerAttachments.length > 0 || composerFileRefs.length > 0) &&
+    (composerAttachments.length > 0 ||
+      composerFileRefs.length > 0 ||
+      !isSlashOnlyComposerDraft(input, Boolean(composerSkillRow))) &&
     isElectron &&
     configLoaded &&
     !configIssueKey &&
@@ -1107,14 +1132,15 @@ export default function ChatLabPage() {
   const commitUserMessageEdit = useCallback(
     async (messageId, nextRaw) => {
       const trimmed = String(nextRaw ?? "").trim();
-      if (!trimmed) return false;
-      if (!isElectron || !bridge?.startChatStream) return false;
-      if (configIssueKey) return false;
-      if (gatewayPhase !== "online" || chatApiBlocked) return false;
-
       const prev = messagesRef.current;
       const idx = prev.findIndex((m) => m.id === messageId && m.role === "user");
       if (idx === -1) return false;
+      const preservedImages = prev[idx].imageAttachments;
+      const hasImages = Array.isArray(preservedImages) && preservedImages.length > 0;
+      if (!trimmed && composerFileRefs.length === 0 && !hasImages) return false;
+      if (!isElectron || !bridge?.startChatStream) return false;
+      if (configIssueKey) return false;
+      if (gatewayPhase !== "online" || chatApiBlocked) return false;
 
       const sidAbort = activeStreamIdRef.current;
       if (sidAbort) {
@@ -1140,6 +1166,12 @@ export default function ChatLabPage() {
       };
       if (skillSnap) editedUser.skillMeta = skillSnap;
       else delete editedUser.skillMeta;
+      const fileSnap =
+        composerFileRefs.length > 0
+          ? composerFileRefs.map(({ path, name, kind }) => ({ path, name, kind }))
+          : [];
+      if (fileSnap.length) editedUser.fileRefs = fileSnap;
+      else delete editedUser.fileRefs;
       const base = [...prev.slice(0, idx), editedUser];
 
       const priorRows = buildGatewayPayloadRows(base.slice(0, -1));
@@ -1177,6 +1209,7 @@ export default function ChatLabPage() {
           ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
             ? { imageAttachments: m.imageAttachments }
             : {}),
+          ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
         }));
       const persistableNext = [
         ...persistableBase,
@@ -1212,6 +1245,7 @@ export default function ChatLabPage() {
       setMessages([...base, assistantMsg]);
       setInput("");
       setComposerAttachments([]);
+      setComposerFileRefs([]);
       autoScrollRef.current = true;
 
       activeStreamIdRef.current = streamId;
@@ -1263,6 +1297,7 @@ export default function ChatLabPage() {
       beginGatewayStream,
       bridge,
       chatApiBlocked,
+      composerFileRefs,
       composerSkillRow,
       config?.chatLabAutoTitle,
       config?.credentials?.hasProviderApiKey,
@@ -1283,11 +1318,12 @@ export default function ChatLabPage() {
      * @param {{
      *   trimmed: string;
      *   imageAttachments?: { mime: string; dataUrl: string }[];
+     *   fileRefs?: import("../chat/chatSessionsStore.js").PersistedFileRef[];
      *   skillPickRow: import("../skills/skillRegistry.js").SkillPickRow | null;
      *   onCommitted?: () => void;
      * }} args
      */
-    async ({ trimmed, imageAttachments, skillPickRow, onCommitted }) => {
+    async ({ trimmed, imageAttachments, fileRefs, skillPickRow, onCommitted }) => {
       if (!paramC) {
         setSearchParams({ c: conversationId }, { replace: true });
       }
@@ -1305,6 +1341,7 @@ export default function ChatLabPage() {
         createdAt: now,
         ...(skillSnap ? { skillMeta: skillSnap } : {}),
         ...(imageAttachments && imageAttachments.length ? { imageAttachments: imageAttachments } : {}),
+        ...(fileRefs && fileRefs.length ? { fileRefs: fileRefs } : {}),
       };
       const assistantMsg = {
         id: newId(),
@@ -1332,6 +1369,7 @@ export default function ChatLabPage() {
           ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
             ? { imageAttachments: m.imageAttachments }
             : {}),
+          ...(Array.isArray(m.fileRefs) && m.fileRefs.length ? { fileRefs: m.fileRefs } : {}),
         }));
       const persistableNext = [
         ...persistablePrior,
@@ -1342,6 +1380,7 @@ export default function ChatLabPage() {
           createdAt: userMsg.createdAt,
           ...(userMsg.skillMeta ? { skillMeta: userMsg.skillMeta } : {}),
           ...(userMsg.imageAttachments ? { imageAttachments: userMsg.imageAttachments } : {}),
+          ...(userMsg.fileRefs ? { fileRefs: userMsg.fileRefs } : {}),
         },
         {
           id: assistantMsg.id,
@@ -1446,7 +1485,17 @@ export default function ChatLabPage() {
       composerAttachments.length > 0
         ? composerAttachments.map(({ mime, dataUrl }) => ({ mime, dataUrl }))
         : undefined;
-    if (!trimmed && (!attachmentSnap || attachmentSnap.length === 0)) return;
+    const fileRefsSnap =
+      composerFileRefs.length > 0
+        ? composerFileRefs.map(({ path, name, kind }) => ({ path, name, kind }))
+        : undefined;
+    if (
+      !trimmed &&
+      (!attachmentSnap || attachmentSnap.length === 0) &&
+      (!fileRefsSnap || fileRefsSnap.length === 0)
+    ) {
+      return;
+    }
     if (!isElectron || !bridge?.startChatStream) return;
     if (configIssueKey) {
       return;
@@ -1476,11 +1525,13 @@ export default function ChatLabPage() {
     await submitNewUserTurn({
       trimmed,
       imageAttachments: attachmentSnap,
+      fileRefs: fileRefsSnap,
       skillPickRow: effectiveSkillRow ?? null,
       onCommitted: () => {
         setInput("");
         setComposerSkillRow(null);
         setComposerAttachments([]);
+        setComposerFileRefs([]);
       },
     });
   }, [
@@ -1488,6 +1539,7 @@ export default function ChatLabPage() {
     chatApiBlocked,
     commitUserMessageEdit,
     composerAttachments,
+    composerFileRefs,
     composerSkillRow,
     configIssueKey,
     gatewayPhase,
@@ -1700,20 +1752,25 @@ export default function ChatLabPage() {
     return () => window.clearTimeout(h);
   }, [composerAttachErrKey]);
 
-  const composerDataChars = useMemo(
-    () => composerAttachments.reduce((sum, a) => sum + a.dataUrl.length, 0),
+  const composerPendingImageChars = useMemo(
+    () =>
+      imageAttachmentsContextChars(
+        composerAttachments.map((a) => ({ dataUrl: a.dataUrl })),
+        { includePayload: true },
+      ),
     [composerAttachments],
   );
 
   const contextUsageApprox = useMemo(() => {
     const chars = estimateThreadCharBudget(messages, {
       systemPromptLen: t("chatLab.systemPrompt").length,
-      inputLen: input.length + composerDataChars,
+      inputLen: input.length,
+      pendingImagePayloadChars: composerPendingImageChars,
     });
     const tokens = approxTokensFromChars(chars);
     const frac = tokens / CONTEXT_WINDOW_APPROX_TOKENS;
     return { chars, tokens, frac };
-  }, [composerDataChars, input.length, messages, t]);
+  }, [composerPendingImageChars, input.length, messages, t]);
 
   const contextMeterLines = useMemo(() => {
     const pct = Math.round(Math.min(100, Math.max(0, contextUsageApprox.frac * 100)));
@@ -1752,6 +1809,55 @@ export default function ChatLabPage() {
     [composerInputLocked],
   );
 
+  const addComposerDroppedFiles = useCallback(
+    /** @param {FileList | File[] | null | undefined} fileList */
+    async (fileList) => {
+      if (composerInputLocked) return;
+      const files = Array.from(fileList ?? []).filter(Boolean);
+      if (files.length === 0) return;
+
+      const getPathForFile = bridge?.getPathForFile;
+      const statLocalPath = bridge?.statLocalPath;
+      if (typeof getPathForFile !== "function" || typeof statLocalPath !== "function") {
+        const imageFiles = files.filter((f) => typeof f.type === "string" && f.type.startsWith("image/"));
+        if (imageFiles.length > 0) void addComposerImageFiles(imageFiles);
+        else setComposerAttachErrKey("chatLab.fileRefElectronOnly");
+        return;
+      }
+
+      setComposerAttachErrKey(null);
+      const resolved = await resolveDroppedLocalPaths(
+        files,
+        (file) => String(getPathForFile(file) ?? "").trim(),
+        async (p) => {
+          try {
+            return await statLocalPath(p);
+          } catch {
+            return null;
+          }
+        },
+      );
+      if (resolved.length === 0) {
+        setComposerAttachErrKey("chatLab.fileRefPathUnavailable");
+        return;
+      }
+
+      setComposerFileRefs((prev) => {
+        const seen = new Set(prev.map((r) => r.path));
+        const merged = [...prev];
+        for (const row of resolved) {
+          if (seen.has(row.path)) continue;
+          seen.add(row.path);
+          merged.push(row);
+        }
+        if (merged.length <= MAX_CHAT_COMPOSER_FILE_REFS) return merged;
+        setComposerAttachErrKey("chatLab.maxComposerFileRefs");
+        return merged.slice(0, MAX_CHAT_COMPOSER_FILE_REFS);
+      });
+    },
+    [addComposerImageFiles, bridge, composerInputLocked],
+  );
+
   const clearUserBubbleEnterAnim = useCallback((messageId) => {
     setUserBubbleEnterMessageId((cur) => (cur === messageId ? null : cur));
   }, []);
@@ -1762,6 +1868,16 @@ export default function ChatLabPage() {
     const skillMeta = typeof payload === "object" && payload && "skillMeta" in payload ? payload.skillMeta : undefined;
     const row = pickRowFromSkillMeta(skillMeta, skillPickList);
     setComposerSkillRow(row);
+    const rawRefs =
+      typeof payload === "object" && payload && Array.isArray(payload.fileRefs) ? payload.fileRefs : [];
+    setComposerFileRefs(
+      rawRefs.map((r, i) => ({
+        id: `edit_${messageId}_${i}`,
+        path: String(r?.path ?? ""),
+        name: String(r?.name ?? ""),
+        kind: r?.kind === "directory" ? /** @type {const} */ ("directory") : /** @type {const} */ ("file"),
+      })).filter((r) => r.path && r.name),
+    );
     setInput(content);
     autoScrollRef.current = true;
   }, [skillPickList]);
@@ -1866,17 +1982,37 @@ export default function ChatLabPage() {
             setComposerDragActive(false);
             if (composerInputLocked) return;
             e.preventDefault();
-            if (e.dataTransfer?.files?.length) void addComposerImageFiles(e.dataTransfer.files);
+            if (e.dataTransfer?.files?.length) void addComposerDroppedFiles(e.dataTransfer.files);
           }}
         >
-          {composerSkillRow || composerSkillRowLeaving ? (
-            <div className={cn("chat-lab__shell-skill-row", composerSkillRowLeaving && "chat-lab__shell-skill-row--leaving")}>
-              <ComposerSkillChip
-                row={composerSkillRow}
-                disabled={composerSkillUiLocked}
-                onClear={clearComposerSkillRow}
-                t={t}
-              />
+          {composerSkillRow ||
+          composerSkillRowLeaving ||
+          composerFileRefs.length > 0 ||
+          composerFileRefsLeaving ? (
+            <div
+              className={cn(
+                "chat-lab__shell-skill-row",
+                (composerSkillRowLeaving || composerFileRefsLeaving) && "chat-lab__shell-skill-row--leaving",
+              )}
+              aria-label={t("chatLab.composerRefsRowLabel")}
+            >
+              {composerSkillRow ? (
+                <ComposerSkillChip
+                  row={composerSkillRow}
+                  disabled={composerSkillUiLocked}
+                  onClear={clearComposerSkillRow}
+                  t={t}
+                />
+              ) : null}
+              {composerFileRefs.map((row) => (
+                <ComposerFileRefChip
+                  key={row.id}
+                  row={row}
+                  disabled={composerInputLocked}
+                  onClear={() => setComposerFileRefs((prev) => prev.filter((x) => x.id !== row.id))}
+                  t={t}
+                />
+              ))}
             </div>
           ) : null}
           {composerAttachments.length > 0 || composerAttachmentsLeaving ? (
@@ -1907,14 +2043,16 @@ export default function ChatLabPage() {
             <div className="chat-lab__composer-att-err" role="status">
               {composerAttachErrKey === "chatLab.maxComposerImages"
                 ? t(composerAttachErrKey, { max: MAX_CHAT_COMPOSER_IMAGES })
-                : t(composerAttachErrKey)}
+                : composerAttachErrKey === "chatLab.maxComposerFileRefs"
+                  ? t(composerAttachErrKey, { max: MAX_CHAT_COMPOSER_FILE_REFS })
+                  : t(composerAttachErrKey)}
             </div>
           ) : null}
           <textarea
             ref={textareaRef}
             className={cn(
               "chat-lab__shell-textarea",
-              composerSkillRow && "chat-lab__shell-textarea--with-chip",
+              (composerSkillRow || composerFileRefs.length > 0) && "chat-lab__shell-textarea--with-chip",
               composerAttachments.length > 0 && "chat-lab__shell-textarea--with-attachments",
             )}
             style={{
@@ -3493,11 +3631,14 @@ const MessageBubble = memo(function MessageBubble({
     if (isUser) {
       const base = String(message.content ?? "").trim();
       const n = Array.isArray(message.imageAttachments) ? message.imageAttachments.length : 0;
-      if (n > 0) {
-        const note = t("chatLab.messageImagesCopyNote", { count: n });
-        if (!base) return note;
-        return `${base}\n${note}`;
+      const refs = Array.isArray(message.fileRefs) ? message.fileRefs : [];
+      const parts = /** @type {string[]} */ ([]);
+      if (base) parts.push(base);
+      if (n > 0) parts.push(t("chatLab.messageImagesCopyNote", { count: n }));
+      if (refs.length > 0) {
+        parts.push(refs.map((r) => r.path).join("\n"));
       }
+      if (parts.length) return parts.join("\n");
       return String(message.content ?? "");
     }
     const c = String(message.content ?? "").trim();
@@ -3508,7 +3649,7 @@ const MessageBubble = memo(function MessageBubble({
     if (th) parts.push(th);
     if (err) parts.push(err);
     return parts.join("\n\n---\n");
-  }, [isUser, message.content, message.error, message.imageAttachments, message.thinking, t]);
+  }, [isUser, message.content, message.error, message.fileRefs, message.imageAttachments, message.thinking, t]);
 
   const [copiedPulse, setCopiedPulse] = useState(false);
 
@@ -3542,8 +3683,9 @@ const MessageBubble = memo(function MessageBubble({
     onBeginUserEdit(message.id, {
       content: String(message.content ?? ""),
       ...(message.skillMeta ? { skillMeta: message.skillMeta } : {}),
+      ...(Array.isArray(message.fileRefs) && message.fileRefs.length ? { fileRefs: message.fileRefs } : {}),
     });
-  }, [message.content, message.id, message.skillMeta, onBeginUserEdit]);
+  }, [message.content, message.fileRefs, message.id, message.skillMeta, onBeginUserEdit]);
 
   const [userLongFoldable, setUserLongFoldable] = useState(false);
   const [userLongExpanded, setUserLongExpanded] = useState(false);
@@ -3639,6 +3781,22 @@ const MessageBubble = memo(function MessageBubble({
             {message.skillMeta.emoji}
           </span>
           <span className="chat-lab__msg-skill-label">{message.skillMeta.label}</span>
+        </div>
+      ) : null}
+      {isUser && Array.isArray(message.fileRefs) && message.fileRefs.length > 0 ? (
+        <div className="chat-lab__msg-file-pills" aria-label={t("chatLab.messageFileRefsLabel")}>
+          {message.fileRefs.map((ref, idx) => (
+            <div
+              key={`${message.id}-fref-${idx}`}
+              className="chat-lab__msg-skill-pill"
+              title={ref.path}
+            >
+              <span className="chat-lab__msg-skill-emoji" aria-hidden>
+                {emojiForFileRefKind(ref.kind === "directory" ? "directory" : "file")}
+              </span>
+              <span className="chat-lab__msg-skill-label">{ref.name}</span>
+            </div>
+          ))}
         </div>
       ) : null}
       <article

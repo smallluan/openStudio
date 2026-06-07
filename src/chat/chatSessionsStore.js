@@ -28,6 +28,14 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  */
 
 /**
+ * Local file / folder path attached in the composer (Electron).
+ * @typedef {object} PersistedFileRef
+ * @property {string} path
+ * @property {string} name
+ * @property {'file' | 'directory'} kind
+ */
+
+/**
  * @typedef {object} PersistedChatMessage
  * @property {string} id
  * @property {'user' | 'assistant'} role
@@ -39,6 +47,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {number} [createdAt]
  * @property {MessageSkillMeta} [skillMeta]
  * @property {PersistedImageAttachment[]} [imageAttachments]
+ * @property {PersistedFileRef[]} [fileRefs]
  */
 
 /**
@@ -211,6 +220,7 @@ function persistedMessagesEqual(a, b) {
     if (JSON.stringify(x.assistantTimeline ?? null) !== JSON.stringify(y.assistantTimeline ?? null)) return false;
     if (JSON.stringify(x.skillMeta ?? null) !== JSON.stringify(y.skillMeta ?? null)) return false;
     if (JSON.stringify(x.imageAttachments ?? null) !== JSON.stringify(y.imageAttachments ?? null)) return false;
+    if (JSON.stringify(x.fileRefs ?? null) !== JSON.stringify(y.fileRefs ?? null)) return false;
     const xc = typeof x.createdAt === "number" && Number.isFinite(x.createdAt) ? x.createdAt : -1;
     const yc = typeof y.createdAt === "number" && Number.isFinite(y.createdAt) ? y.createdAt : -1;
     if (xc !== yc) return false;
@@ -229,6 +239,23 @@ function sanitizeImageAttachments(raw) {
     const dataUrl = typeof a.dataUrl === "string" ? a.dataUrl : "";
     if (!mime.startsWith("image/") || !dataUrl.startsWith("data:image/")) continue;
     out.push({ mime: mime.slice(0, 120), dataUrl });
+    if (out.length >= 12) break;
+  }
+  return out.length ? out : undefined;
+}
+
+/** @param {unknown} raw */
+function sanitizeFileRefs(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  /** @type {PersistedFileRef[]} */
+  const out = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const path = typeof r.path === "string" ? r.path.trim().slice(0, 2048) : "";
+    const name = typeof r.name === "string" ? r.name.trim().slice(0, 260) : "";
+    const kind = r.kind === "directory" ? "directory" : r.kind === "file" ? "file" : null;
+    if (!path || !name || !kind) continue;
+    out.push({ path, name, kind });
     if (out.length >= 12) break;
   }
   return out.length ? out : undefined;
@@ -278,6 +305,10 @@ function sanitizeMessages(raw) {
     if (role === "user" && Array.isArray(m.imageAttachments) && m.imageAttachments.length > 0) {
       const ia = sanitizeImageAttachments(m.imageAttachments);
       if (ia?.length) row.imageAttachments = ia;
+    }
+    if (role === "user" && Array.isArray(m.fileRefs) && m.fileRefs.length > 0) {
+      const fr = sanitizeFileRefs(m.fileRefs);
+      if (fr?.length) row.fileRefs = fr;
     }
     out.push(row);
   }

@@ -615,6 +615,17 @@ app.whenReady().then(async () => {
     return readWorkspacePreviewFile(cfg, rawPath);
   });
 
+  ipcMain.handle("studio:statLocalPath", (_event, rawPath) => {
+    const p = typeof rawPath === "string" ? rawPath.trim() : "";
+    if (!p) return { ok: false, exists: false };
+    try {
+      const st = fs.statSync(p);
+      return { ok: true, exists: true, isFile: st.isFile(), isDirectory: st.isDirectory() };
+    } catch {
+      return { ok: true, exists: false };
+    }
+  });
+
   /**
    * @returns {{ ok: boolean; opened: boolean; message?: string }}
    */

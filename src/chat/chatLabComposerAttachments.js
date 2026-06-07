@@ -106,23 +106,41 @@ export function approxTokensFromChars(chars) {
 }
 
 /**
+ * Rough char budget for images in context meter.
+ * History turns only resend a short "[N images attached]" note — not base64 again.
+ * @param {Array<{ dataUrl?: string }> | undefined} attachments
+ * @param {{ includePayload?: boolean }} [opts]
+ */
+export function imageAttachmentsContextChars(attachments, opts = {}) {
+  const includePayload = opts.includePayload === true;
+  const imgs = Array.isArray(attachments) ? attachments : [];
+  let count = 0;
+  let payloadChars = 0;
+  for (const a of imgs) {
+    const url = typeof a?.dataUrl === "string" ? a.dataUrl : "";
+    if (!url.startsWith("data:image/")) continue;
+    count++;
+    if (includePayload) payloadChars += url.length;
+  }
+  if (count === 0) return 0;
+  if (includePayload) return payloadChars;
+  return count === 1 ? "[1 image attached]".length : `[${count} images attached]`.length;
+}
+
+/**
  * @param {Array<{ role?: string; content?: string; thinking?: string; error?: unknown; imageAttachments?: unknown }>} threadMessages
- * @param {{ systemPromptLen: number; inputLen: number }} extra
+ * @param {{ systemPromptLen: number; inputLen: number; pendingImagePayloadChars?: number }} extra
  */
 export function estimateThreadCharBudget(threadMessages, extra) {
   let n = Math.max(0, extra.systemPromptLen) + Math.max(0, extra.inputLen);
+  n += Math.max(0, extra.pendingImagePayloadChars ?? 0);
   for (const m of threadMessages) {
     if (!m || typeof m !== "object") continue;
     if (m.error) continue;
     if (m.role !== "user" && m.role !== "assistant") continue;
     n += String(m.content ?? "").length;
     n += String(m.thinking ?? "").length;
-    const imgs = m.imageAttachments;
-    if (Array.isArray(imgs)) {
-      for (const a of imgs) {
-        if (a && typeof a === "object" && typeof a.dataUrl === "string") n += a.dataUrl.length;
-      }
-    }
+    n += imageAttachmentsContextChars(m.imageAttachments);
   }
   return n;
 }

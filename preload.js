@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("appInfo", {
   name: "Open Studio",
@@ -29,6 +29,14 @@ contextBridge.exposeInMainWorld("studioBridge", {
   logRendererMessage: (payload) =>
     ipcRenderer.invoke("studio:logRendererMessage", payload && typeof payload === "object" ? payload : { message: String(payload) }),
   readWorkspacePreviewFile: (rawPath) => ipcRenderer.invoke("studio:readWorkspacePreviewFile", rawPath),
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
+  statLocalPath: (rawPath) => ipcRenderer.invoke("studio:statLocalPath", rawPath),
   maybeOpenWorkspaceOfficeFileExternally: (rawPath) =>
     ipcRenderer.invoke("studio:maybeOpenWorkspaceOfficeFileExternally", rawPath),
   probeGateway: () => ipcRenderer.invoke("studio:probeGateway"),
