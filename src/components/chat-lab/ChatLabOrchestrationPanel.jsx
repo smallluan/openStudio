@@ -12,6 +12,16 @@ import { cn } from "../../ui/cn.js";
  */
 export default function ChatLabOrchestrationPanel({ run, agents, onResume, t }) {
   const agentById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
+  const activeTaskIds = useMemo(
+    () =>
+      new Set(
+        [
+          ...(Array.isArray(run?.activeTaskIds) ? run.activeTaskIds : []),
+          ...(typeof run?.activeTaskId === "string" && run.activeTaskId ? [run.activeTaskId] : []),
+        ].filter(Boolean),
+      ),
+    [run?.activeTaskId, run?.activeTaskIds],
+  );
 
   const columns = useMemo(() => {
     const tasks = run?.plan?.tasks ?? [];
@@ -54,7 +64,9 @@ export default function ChatLabOrchestrationPanel({ run, agents, onResume, t }) 
                       key={task.id}
                       className={cn(
                         "orch-panel__task",
-                        task.id === run?.activeTaskId && "orch-panel__task--active",
+                        task.status === "in_progress" || activeTaskIds.has(task.id)
+                          ? "orch-panel__task--active"
+                          : null,
                       )}
                     >
                       <span className="orch-panel__task-title">{task.title}</span>

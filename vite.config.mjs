@@ -22,6 +22,59 @@ function openclawBundledSkillsFallback() {
   };
 }
 
+const ORCH_CJS_ENTRIES = {
+  "open-studio:orchestration/roles": path.resolve(__dirname, "lib/orchestration/roles.cjs"),
+  "open-studio:orchestration/core": path.resolve(__dirname, "lib/orchestration/core.cjs"),
+};
+
+/** @type {Map<string, Promise<string>>} */
+const orchBundleCache = new Map();
+
+/**
+ * Vite dev serves `.cjs` as raw browser modules (`module.exports` throws). Bundle shared
+ * orchestration CJS for the renderer while main process keeps requiring the same files.
+ */
+function orchestrationCjsForBrowser() {
+  return {
+    name: "open-studio-orchestration-cjs-browser",
+    enforce: "pre",
+    resolveId(source) {
+      if (source.endsWith("lib/orchestration/roles.cjs")) return "open-studio:orchestration/roles";
+      if (source.endsWith("lib/orchestration/core.cjs")) return "open-studio:orchestration/core";
+      return null;
+    },
+    async load(id) {
+      const entry = ORCH_CJS_ENTRIES[id];
+      if (!entry) return null;
+      let pending = orchBundleCache.get(id);
+      if (!pending) {
+        pending = bundleOrchestrationCjs(entry);
+        orchBundleCache.set(id, pending);
+      }
+      return pending;
+    },
+  };
+}
+
+async function bundleOrchestrationCjs(entryPath) {
+  const { build } = await import("vite");
+  const out = await build({
+    configFile: false,
+    logLevel: "error",
+    build: {
+      lib: {
+        entry: entryPath,
+        formats: ["es"],
+        fileName: () => "mod.js",
+      },
+      write: false,
+      minify: false,
+      emptyOutDir: false,
+    },
+  });
+  return out[0].output[0].code;
+}
+
 /** Avoid `crossorigin` on file:// loads in packaged Electron (can block CSS/JS in some builds). */
 function stripIndexCrossorigin() {
   return {
@@ -33,7 +86,13 @@ function stripIndexCrossorigin() {
 }
 
 export default defineConfig({
-  plugins: [openclawBundledSkillsFallback(), react(), tailwindcss(), stripIndexCrossorigin()],
+  plugins: [
+    openclawBundledSkillsFallback(),
+    orchestrationCjsForBrowser(),
+    react(),
+    tailwindcss(),
+    stripIndexCrossorigin(),
+  ],
   base: "./",
   build: {
     outDir: "dist",

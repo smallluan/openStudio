@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("openclawBridge", {
 });
 
 const CHAT_STREAM_CHAN = "studio:chatStream";
+const ORCH_EVENT_CHAN = "studio:orchestration-event";
 const WECHAT_STATUS_CHAN = "studio:wechatStatus";
 
 contextBridge.exposeInMainWorld("studioBridge", {
@@ -58,6 +59,12 @@ contextBridge.exposeInMainWorld("studioBridge", {
   readAgentIdentity: (payload) => ipcRenderer.invoke("studio:readAgentIdentity", payload),
   startChatStream: (payload) => ipcRenderer.invoke("studio:startChatStream", payload),
   abortChatStream: (streamId) => ipcRenderer.invoke("studio:abortChatStream", streamId),
+  orchestrationCommand: (payload) => ipcRenderer.invoke("studio:orchestrationCommand", payload),
+  onOrchestrationEvent: (listener) => {
+    const wrapped = (_e, data) => listener(data);
+    ipcRenderer.on(ORCH_EVENT_CHAN, wrapped);
+    return () => ipcRenderer.removeListener(ORCH_EVENT_CHAN, wrapped);
+  },
   generateChatTitle: (payload) => ipcRenderer.invoke("studio:generateChatTitle", payload),
   onChatStream: (listener) => {
     const wrapped = (_e, data) => listener(data);

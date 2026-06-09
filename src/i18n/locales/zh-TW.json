@@ -571,6 +571,12 @@
         "done": "已完成"
       }
     },
+    "dock": {
+      "title": "調度",
+      "activeWorkers": "正在工作的智慧體：{{count}}",
+      "empty": "目前沒有活躍任務",
+      "viewFlow": "查看調度流程"
+    },
     "planProgress": {
       "hint": "查看開發計劃與進度",
       "awaitingHint": "計劃已生成，請接受、微調或拒絕",
@@ -580,7 +586,8 @@
         "planning": "產品經理調研與計劃生成進行中，完成後會自動彈出確認。",
         "revising": "正在根據你的回饋微調計劃…",
         "running": "計劃執行中，可在此查看各階段進度。",
-        "paused": "調度已暫停，可在此查看計劃並恢復執行。"
+        "paused": "調度已暫停，可在此查看計劃並恢復執行。",
+        "awaiting_approval": "計劃已生成，請閱讀摘要並確認是否接受、微調或拒絕。"
       }
     },
     "planCard": {
@@ -588,6 +595,7 @@
       "title": "開發計畫",
       "feasibility": "可行性",
       "depends": "{{n}} 項依賴",
+      "unstructuredHint": "未能解析為結構化任務列表，以下為模型輸出的計劃摘要。",
       "approve": "接受計畫",
       "reject": "拒絕",
       "revise": "微調",
@@ -609,10 +617,22 @@
       "planRejected": "計畫已拒絕 — 調度已停止。",
       "planRevising": "正在根據你的回饋微調計畫。",
       "taskStart": "已將 **{{title}}** 分配給 {{agent}}。",
-      "taskDone": "已完成 **{{title}}**。",
-      "reviewPassed": "**{{title}}** 程式碼 Review 通過。",
-      "reviewRework": "**{{title}}** Review 有問題 — 已打回給 {{agent}} 修改。",
-      "reviewBlocked": "**{{title}}** Review 多次未通過，已阻塞。",
+      "taskDone": "已完成 **{{title}}**（{{agent}}）。",
+      "task_start": "{{agent}} 開始執行 **{{title}}**。",
+      "task_assigned": "已將 **{{title}}** 分配給 {{agent}}。",
+      "task_done": "已完成 **{{title}}**（{{agent}}）。",
+      "synthesizing_plan": "主智慧體正在彙總開發計畫…",
+      "awaiting_approval": "計畫已生成 — 請接受、微調或拒絕。",
+      "plan_approved": "計畫已接受 — 進入開發階段。",
+      "plan_rejected": "計畫已拒絕 — 調度已停止。",
+      "plan_revising": "正在根據你的回饋微調計畫。",
+      "pre_tasks_dispatch": "已啟動 {{count}} 項預研任務。",
+      "pre_task_start": "預研任務已分發給 **{{agent}}**",
+      "pre_task_running": "**{{agent}}** 正在執行預研任務。",
+      "pre_task_done": "預研任務已完成（{{agent}}）。",
+      "review_passed": "**{{title}}** 程式碼 Review 通過。",
+      "review_rework": "**{{title}}** Review 有問題 — 已打回給 {{agent}} 修改。",
+      "review_blocked": "**{{title}}** Review 多次未通過，已阻塞。",
       "rollup": "主智慧體正在彙總匯報。",
       "completed": "調度流程已完成。",
       "failed": "調度失敗：{{message}}",

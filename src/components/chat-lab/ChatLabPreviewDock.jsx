@@ -32,12 +32,21 @@ function mapArtifactError(code, t) {
   return code;
 }
 
-export default function ChatLabPreviewDock() {
+/**
+ * @param {{
+ *   extension?: {
+ *     title: string;
+ *     meta?: string;
+ *     body: import("react").ReactNode;
+ *   } | null;
+ * }} props
+ */
+export default function ChatLabPreviewDock({ extension = null }) {
   const { t } = useI18n();
   const api = useChatLabPreview();
   const session = api?.session ?? null;
   const artifactsPanel = api?.artifactsPanel ?? null;
-  const open = Boolean(session || artifactsPanel);
+  const open = Boolean(session || artifactsPanel || extension);
 
   const [panelWidth, setPanelWidth] = useState(() =>
     readStoredWidth(PREVIEW_W_KEY, PREVIEW_W_DEFAULT, PREVIEW_W_MIN, PREVIEW_W_MAX),
@@ -81,9 +90,10 @@ export default function ChatLabPreviewDock() {
   }, [artifactsPanel]);
 
   const previewTitle = useMemo(() => {
+    if (extension?.title) return extension.title;
     if (artifactsPanel) return t("chatLab.artifactsDockTitle");
     return session?.title || t("chatLab.previewDefaultTitle");
-  }, [artifactsPanel, session, t]);
+  }, [artifactsPanel, extension?.title, session, t]);
 
   const artifactError = artifactsPanel?.error
     ? mapArtifactError(artifactsPanel.error, t)
@@ -116,6 +126,9 @@ export default function ChatLabPreviewDock() {
         <h3 className="chat-lab-preview-dock__title min-w-0 flex-1 truncate text-[0.82rem] font-semibold leading-tight">
           {previewTitle}
         </h3>
+        {extension?.meta ? (
+          <span className="chat-lab-preview-dock__meta shrink-0 text-[0.76rem]">{extension.meta}</span>
+        ) : null}
         {session?.kind === "iframe" && session.externalUrl ? (
           <button
             type="button"
@@ -126,15 +139,17 @@ export default function ChatLabPreviewDock() {
             ↗
           </button>
         ) : null}
-        <button
-          type="button"
-          className="chat-lab-preview-dock__icon-btn"
-          onClick={api.close}
-          title={t("chatLab.previewClose")}
-          aria-label={t("chatLab.previewClose")}
-        >
-          ×
-        </button>
+        {!extension ? (
+          <button
+            type="button"
+            className="chat-lab-preview-dock__icon-btn"
+            onClick={api.close}
+            title={t("chatLab.previewClose")}
+            aria-label={t("chatLab.previewClose")}
+          >
+            ×
+          </button>
+        ) : null}
       </header>
 
       {artifactsPanel ? (
@@ -192,6 +207,10 @@ export default function ChatLabPreviewDock() {
             onViewModeChange={(mode) => api.setArtifactViewMode?.(mode)}
             iframeRef={api.iframeRef}
           />
+        </div>
+      ) : extension ? (
+        <div className="chat-lab-preview-dock__body chat-lab-preview-dock__body--orch min-h-0 flex-1 overflow-hidden">
+          {extension.body}
         </div>
       ) : (
         <div className="chat-lab-preview-dock__body min-h-0 flex-1">

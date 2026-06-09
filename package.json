@@ -22,6 +22,7 @@
     "verify:python-runtime:win": "node -e \"const fs=require('fs');const p='vendor/python-runtime-win/python.exe';if(!fs.existsSync(p)){console.error('[verify:python-runtime:win] missing '+p);process.exit(1)}console.log('[verify:python-runtime:win] ok:',p)\"",
     "start": "cross-env NODE_ENV=production electron .",
     "preview": "vite preview",
+    "test:orchestration": "node --test lib/orchestration/core.test.cjs",
     "openclaw": "openclaw",
     "windows:defender-exclude-openclaw-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-defender-exclude-openclaw-dev.ps1",
     "postinstall": "node scripts/apply-openclaw-memo.mjs && node scripts/patch-openclaw-chat-image-inline.mjs && node scripts/patch-openclaw-studio-lean-chat.mjs && node scripts/generate-openclaw-bundled-skills.mjs && node scripts/ensure-openclaw-weixin-plugin.mjs"
@@ -123,7 +124,7 @@
     "kysely": "^0.29.2",
     "lucide-react": "^1.17.0",
     "mermaid": "^11.15.0",
-    "openclaw": "^2026.5.2",
+    "openclaw": "^2026.6.1",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

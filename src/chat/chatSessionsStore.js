@@ -90,6 +90,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {ThreadContextState} [threadContext]
  * @property {import("../studio/orchestration.js").OrchestrationRun} [orchestration]
  * @property {boolean} [orchestrationMode]
+ * @property {boolean} [orchestrationFastMode]
  * @property {PersistedChatMessage[]} messages
  */
 
@@ -151,6 +152,7 @@ function parseSessionsFromStorage() {
         threadContext: sanitizeThreadContext(r.threadContext),
         orchestration: r.orchestration ? normalizeOrchestrationRun(r.orchestration) ?? undefined : undefined,
         orchestrationMode: Boolean(r.orchestrationMode),
+        orchestrationFastMode: Boolean(r.orchestrationFastMode),
         messages: sanitizeMessages(r.messages),
       }));
   } catch {
@@ -486,6 +488,10 @@ export function upsertSession(id, title, messages, opts = {}) {
       : prev?.orchestration;
   const nextOrchestrationMode =
     opts.orchestrationMode !== undefined ? Boolean(opts.orchestrationMode) : Boolean(prev?.orchestrationMode);
+  const nextOrchestrationFastMode =
+    opts.orchestrationFastMode !== undefined
+      ? Boolean(opts.orchestrationFastMode)
+      : Boolean(prev?.orchestrationFastMode);
   const nextThreadContext =
     opts.threadContext !== undefined
       ? sanitizeThreadContext(opts.threadContext)
@@ -502,6 +508,7 @@ export function upsertSession(id, title, messages, opts = {}) {
     ...(nextThreadContext ? { threadContext: nextThreadContext } : {}),
     ...(nextOrchestration ? { orchestration: nextOrchestration } : {}),
     ...(nextOrchestrationMode ? { orchestrationMode: true } : {}),
+    ...(nextOrchestrationFastMode ? { orchestrationFastMode: true } : {}),
     messages,
   });
   writeAll(all);
@@ -538,6 +545,25 @@ export function setSessionOrchestrationMode(conversationId, enabled) {
     participantIds: rec.participantIds,
     orchestration: rec.orchestration,
     orchestrationMode: enabled,
+    orchestrationFastMode: rec.orchestrationFastMode,
+  });
+}
+
+/**
+ * @param {string} conversationId
+ * @param {boolean} enabled
+ */
+export function setSessionOrchestrationFastMode(conversationId, enabled) {
+  const rec = getSession(conversationId);
+  if (!rec) return;
+  upsertSession(conversationId, rec.title || "…", rec.messages, {
+    channel: rec.channel,
+    channelPeerId: rec.channelPeerId,
+    gatewayConversationId: rec.gatewayConversationId,
+    participantIds: rec.participantIds,
+    orchestration: rec.orchestration,
+    orchestrationMode: rec.orchestrationMode,
+    orchestrationFastMode: enabled,
   });
 }
 

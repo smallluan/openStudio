@@ -51,6 +51,7 @@ const {
   restartOwnedGateway,
   resolveBundledOpenClawPackageMetaSync,
 } = require("./lib/openclaw-gateway-supervisor.cjs");
+const { OrchestrationService } = require("./lib/orchestration-service.cjs");
 const {
   resolveBundledSkillDirectorySync,
   resolveUserSkillDirectorySync,
@@ -626,6 +627,15 @@ app.whenReady().then(async () => {
 
   userConfigStore = createConfigStore(app.getPath("userData"));
   runOpenClawAgentSyncFromStudio("startup");
+
+  /** @type {import("./lib/orchestration-service.cjs").OrchestrationService} */
+  const orchestrationService = new OrchestrationService({
+    readConfig: () => userConfigStore.readRaw(),
+    syncAgentFromStudio: (reason) => runOpenClawAgentSyncFromStudio(reason),
+    acquireChatStreamSlot,
+    releaseChatStreamSlot,
+  });
+
   getSkillEnvironmentCached().catch((e) => {
     getStudioLog().warn("[skills] env probe failed:", /** @type {any} */ (e)?.message ?? e);
   });
@@ -1210,6 +1220,16 @@ app.whenReady().then(async () => {
     if (typeof streamId !== "string" || !chatStreamAbortControllers.has(streamId)) return { ok: false };
     chatStreamAbortControllers.get(streamId)?.abort();
     return { ok: true };
+  });
+
+  ipcMain.handle("studio:orchestrationCommand", async (event, payload) => {
+    try {
+      await orchestrationService.handleCommand(event.sender, payload && typeof payload === "object" ? payload : {});
+      return { ok: true };
+    } catch (e) {
+      getStudioLog().warn("[orchestration] command failed", { message: String(e?.message ?? e) });
+      return { ok: false, message: String(e?.message ?? e) };
+    }
   });
 
   ipcMain.handle("studio:wechatSendTyping", async (_event, payload) => {

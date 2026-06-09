@@ -77,9 +77,11 @@ export function I18nProvider({ children }) {
 
   const t = useCallback(
     (key, vars) => {
+      const fallback =
+        vars && typeof vars.defaultValue === "string" ? vars.defaultValue : undefined;
       const v = getPath(table, key.split("."));
       if (typeof v === "string") return interpolate(v, vars);
-      return key;
+      return fallback ?? key;
     },
     [table],
   );

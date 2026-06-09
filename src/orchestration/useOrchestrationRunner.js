@@ -1,130 +1,13 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   deriveTitleFromMessages,
   getSession,
   updateSessionOrchestration,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
-import {
-  recordAgentGatewaySync,
-  resolveAgentGatewayContext,
-} from "../chat/gatewayContext.js";
-import { ORCHESTRATION_TASK_CONCURRENCY, runOrchestrationTaskDag } from "./taskScheduler.js";
-import {
-  agentDisplayLabel,
-  groupAgentsInSession,
-  sessionKeyForAgent,
-  systemMessageForAgent,
-} from "../studio/agents.js";
-import {
-  OrchestrationRole,
-  agentsByOrchestrationRole,
-  orchestrationParticipantIds,
-  orchestrationRoleForAgent,
-} from "../studio/orchestrationRoles.js";
-import {
-  assignTaskOwners,
-  buildDevTaskPrompt,
-  buildOrchestrationTriagePrompt,
-  buildPlanRevisionPrompt,
-  buildPlanSynthesisPrompt,
-  buildPmResearchPrompt,
-  buildReviewPrompt,
-  buildRollupPrompt,
-  enforcePlanPhaseFormat,
-  formatOrchestrationTeamRoster,
-  newOrchestrationId,
-  orchestrationAssignOpts,
-  parsePlanFromResponse,
-  parseReviewFromResponse,
-  parseTriageFromResponse,
-  patchPlanTask,
-  pickExecutionOwner,
-  readyTasks,
-  resolveTriageNeedsPm,
-} from "../studio/orchestration.js";
-
-const ASSISTANT_TERMINAL_GRACE_MS = 520;
-const ASSISTANT_TERMINAL_TIMEOUT_MS = 180_000;
-
-/**
- * IPC `startChatStream` resolves before the renderer finalizes the assistant bubble — wait for content.
- * @param {string} assistantMessageId
- * @param {import("react").MutableRefObject<Array<Record<string, unknown>>>} messagesRef
- * @param {() => Array<Record<string, unknown>>} [readMessages]
- * @returns {Promise<string>}
- */
-function waitForAssistantTerminal(assistantMessageId, messagesRef, readMessages) {
-  const readRow = () => {
-    const list = readMessages ? readMessages() : messagesRef.current;
-    return list.find((m) => m.id === assistantMessageId) ?? null;
-  };
-
-  /** @returns {{ settled: boolean; text: string }} */
-  const readTerminal = () => {
-    const row = readRow();
-    if (!row || row.streaming) return { settled: false, text: "" };
-    return { settled: true, text: String(row.content ?? "").trim() };
-  };
-
-  const existing = readTerminal();
-  if (existing.settled) return Promise.resolve(existing.text);
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (text) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(text);
-    };
-    const fail = (err) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(err);
-    };
-
-    const timeout = setTimeout(() => fail(new Error("orchestration_stream_timeout")), ASSISTANT_TERMINAL_TIMEOUT_MS);
-    const poll = setInterval(() => {
-      const snap = readTerminal();
-      if (snap.settled) finish(snap.text);
-    }, 90);
-
-    /** @param {Event} e */
-    const onTerminal = (e) => {
-      const d = /** @type {CustomEvent} */ (e).detail;
-      if (!d || d.assistantMessageId !== assistantMessageId) return;
-      const kind = d.kind;
-      setTimeout(() => {
-        const snap = readTerminal();
-        const fallback = String(d.content ?? "").trim();
-        if (kind === "error") {
-          fail(new Error(String(d.message ?? "orchestration_stream_error")));
-          return;
-        }
-        if (snap.settled) finish(snap.text || fallback);
-        else if (kind === "done" || kind === "aborted") finish(fallback);
-      }, ASSISTANT_TERMINAL_GRACE_MS);
-    };
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      clearInterval(poll);
-      window.removeEventListener("openstudio-gateway-chat-terminal", onTerminal);
-    };
-
-    window.addEventListener("openstudio-gateway-chat-terminal", onTerminal);
-  });
-}
-
-/** @returns {string} */
-function newId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `m_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
-}
+import { agentDisplayLabel } from "../studio/agents.js";
+import { normalizeOrchestrationRun } from "../studio/orchestration.js";
+import { formatOrchestrationEvent } from "../studio/orchestrationEventLabel.js";
 
 /**
  * @param {import("../chat/chatSessionsStore.js").PersistedChatMessage[]} messages
@@ -136,6 +19,7 @@ function persistMessages(conversationId, messages, extra = {}) {
     participantIds: rec?.participantIds,
     orchestration: extra.orchestration ?? rec?.orchestration,
     orchestrationMode: extra.orchestrationMode ?? rec?.orchestrationMode,
+    orchestrationFastMode: extra.orchestrationFastMode ?? rec?.orchestrationFastMode,
   });
 }
 
@@ -148,14 +32,15 @@ function persistMessages(conversationId, messages, extra = {}) {
  *   agentById: Map<string, import("../studio/agents.js").LobsterAgent>;
  *   messagesRef: import("react").MutableRefObject<Array<Record<string, unknown>>>;
  *   setMessages: import("react").Dispatch<import("react").SetStateAction<Array<Record<string, unknown>>>>;
- *   bridge: { startChatStream?: Function; abortChatStream?: Function } | undefined;
+ *   bridge: { orchestrationCommand?: Function; onOrchestrationEvent?: Function } | undefined;
  *   beginGatewayStream: (args: { conversationId: string; streamId: string; assistantMessageId: string }) => void;
  *   resetGatewayStream: (streamId: string) => void;
+ *   flushAndResetGatewayStream?: (streamId: string) => void;
  *   finalizeAssistantById: (id: string, extra?: Record<string, unknown>) => void;
  *   abortAllActiveStreams: () => Promise<void>;
  *   activeStreamIdsRef: import("react").MutableRefObject<Set<string>>;
  *   assistantStreamIdsRef: import("react").MutableRefObject<Map<string, string>>;
- *   buildGatewayPayloadRows?: Function;
+ *   orchestrationFastMode?: boolean;
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  * }} deps
  */
@@ -163,7 +48,6 @@ export function useOrchestrationRunner(deps) {
   const pausedRef = useRef(false);
   const runningRef = useRef(false);
   const activeConversationRef = useRef(/** @type {string | null} */ (null));
-  const resumeWaitRef = useRef(/** @type {(() => void) | null} */ (null));
   const [runnerActivityTick, setRunnerActivityTick] = useState(0);
 
   const syncRunnerActivity = useCallback(() => {
@@ -174,11 +58,6 @@ export function useOrchestrationRunner(deps) {
     (conversationId) => conversationId === deps.conversationId,
     [deps.conversationId],
   );
-
-  const sessionMessagesFor = useCallback((conversationId) => {
-    const rec = getSession(conversationId);
-    return Array.isArray(rec?.messages) ? rec.messages : [];
-  }, []);
 
   const applyMessagesUpdate = useCallback(
     (conversationId, updater) => {
@@ -194,762 +73,222 @@ export function useOrchestrationRunner(deps) {
     [deps, isViewingConversation],
   );
 
-  const waitIfPaused = useCallback(async () => {
-    if (!pausedRef.current) return;
-    await new Promise((resolve) => {
-      resumeWaitRef.current = resolve;
-    });
+  const saveRun = useCallback((conversationId, run) => {
+    updateSessionOrchestration(conversationId, run);
   }, []);
 
-  const checkPaused = useCallback(() => {
-    if (pausedRef.current) throw new Error("orchestration_paused");
-  }, []);
-
-  const saveRun = useCallback(
-    (conversationId, run) => {
-      updateSessionOrchestration(conversationId, run);
+  const orchestrationPayloadBase = useCallback(
+    (conversationId, extra = {}) => {
+      const rec = getSession(conversationId);
+      const messages = isViewingConversation(conversationId)
+        ? deps.messagesRef.current
+        : rec?.messages ?? [];
+      return {
+        conversationId,
+        agents: deps.agents,
+        mainAgentId: deps.mainAgent?.id ?? "",
+        participantIds: rec?.participantIds ?? deps.participantIds,
+        messages,
+        systemPromptFallback: deps.t("chatLab.systemPrompt"),
+        run: rec?.orchestration ?? null,
+        fastMode: deps.orchestrationFastMode ?? Boolean(rec?.orchestrationFastMode),
+        ...extra,
+      };
     },
-    [],
+    [deps, isViewingConversation],
   );
 
-  const roleOptsForRun = useCallback(
-    (run) =>
-      orchestrationAssignOpts(deps.agents, {
-        mainAgent: deps.mainAgent,
-        participantIds: run?.participantIds ?? deps.participantIds,
-        mentionIds: run?.mentionIds ?? [],
-      }),
-    [deps.agents, deps.mainAgent, deps.participantIds],
-  );
-
-  const teamRosterForRun = useCallback(
-    (run) => formatOrchestrationTeamRoster(deps.agents, roleOptsForRun(run), deps.t),
-    [deps.agents, deps.t, roleOptsForRun],
-  );
-
-  const removeMessagesById = useCallback(
-    (conversationId, ids) => {
-      const drop = new Set(ids.filter(Boolean));
-      if (!drop.size) return;
-      applyMessagesUpdate(conversationId, (prev) => {
-        const next = prev.filter((m) => !drop.has(m.id));
-        persistMessages(conversationId, next.map(toPersistRow));
-        return next;
-      });
+  const sendCommand = useCallback(
+    async (payload) => {
+      if (!deps.bridge?.orchestrationCommand) throw new Error("orchestration_unavailable");
+      return deps.bridge.orchestrationCommand(payload);
     },
-    [applyMessagesUpdate],
+    [deps.bridge],
   );
 
-  const orchestrationRunMeta = useCallback((conversationId) => {
-    const runId = getSession(conversationId)?.orchestration?.runId;
-    return runId ? { orchestrationRunId: runId } : {};
-  }, []);
-
-  const appendEvent = useCallback(
-    (conversationId, content, agentId, meta = {}) => {
+  const appendEventFromKey = useCallback(
+    (conversationId, eventKey, agentId, extra = {}) => {
+      const vars = { ...extra };
+      if (typeof vars.agentLabel === "string") {
+        vars.agent = vars.agentLabel;
+      }
+      if (typeof vars.title === "string" && !vars.agent) {
+        /* task_start uses title + agentLabel */
+      }
+      const content = formatOrchestrationEvent(deps.t, eventKey, vars);
       const now = Date.now();
+      const runId =
+        (typeof extra.runId === "string" && extra.runId.trim()) ||
+        (typeof extra.orchestrationRunId === "string" && extra.orchestrationRunId.trim()) ||
+        getSession(conversationId)?.orchestration?.runId;
       const row = {
         id: newId(),
         role: /** @type {const} */ ("assistant"),
         messageKind: /** @type {const} */ ("orchestration_event"),
         content,
         createdAt: now,
-        ...orchestrationRunMeta(conversationId),
+        ...(runId ? { orchestrationRunId: runId } : {}),
         ...(agentId ? { agentId } : {}),
-        ...(meta.eventKey ? { orchestrationEventKey: meta.eventKey } : {}),
-        ...(meta.taskId ? { orchestrationTaskId: meta.taskId } : {}),
-        ...(meta.workerAgentId ? { orchestrationWorkerId: meta.workerAgentId } : {}),
+        orchestrationEventKey: eventKey,
+        ...(extra.taskId ? { orchestrationTaskId: extra.taskId } : {}),
+        ...(extra.workerAgentId ? { orchestrationWorkerId: extra.workerAgentId } : {}),
       };
       applyMessagesUpdate(conversationId, (prev) => {
         const next = [...prev, row];
         persistMessages(conversationId, next.map(toPersistRow));
         return next;
       });
-      return row.id;
-    },
-    [applyMessagesUpdate, orchestrationRunMeta],
-  );
-
-  const runAgentTurn = useCallback(
-    async (conversationId, agent, userPrompt, opts = {}) => {
-      await waitIfPaused();
-      checkPaused();
-      if (!deps.mainAgent || !deps.bridge?.startChatStream) throw new Error("orchestration_unavailable");
-
-      const now = Date.now();
-      const internal = Boolean(opts.internal);
-      const assistantMsg = {
-        id: newId(),
-        role: /** @type {const} */ ("assistant"),
-        content: "",
-        thinking: "",
-        streaming: true,
-        createdAt: now,
-        agentId: agent.id,
-        ...orchestrationRunMeta(conversationId),
-        ...(internal ? { messageKind: /** @type {const} */ ("orchestration_internal") } : {}),
-        ...(opts.orchestrationTaskId ? { orchestrationTaskId: opts.orchestrationTaskId } : {}),
-        ...(opts.orchestrationPhase ? { orchestrationPhase: opts.orchestrationPhase } : {}),
-      };
-      const streamId = newId();
-      const run = getSession(conversationId)?.orchestration;
-      const roleOpts = orchestrationAssignOpts(deps.agents, {
-        mainAgent: deps.mainAgent,
-        participantIds: run?.participantIds ?? deps.participantIds,
-        mentionIds: opts.mentionIds ?? run?.mentionIds ?? [],
-      });
-      const sessionParticipantIds = orchestrationParticipantIds(deps.agents, roleOpts);
-      if (!sessionParticipantIds.includes(agent.id)) sessionParticipantIds.push(agent.id);
-      const groupAgents = groupAgentsInSession({
-        agents: deps.agents,
-        mainAgent: deps.mainAgent,
-        participantIds: sessionParticipantIds,
-      });
-      const teamRoster = formatOrchestrationTeamRoster(deps.agents, roleOpts, deps.t);
-      const sysRow = systemMessageForAgent(agent, deps.t("chatLab.systemPrompt"), {
-        groupAgents,
-        orchestrationTeamRoster: teamRoster,
-      });
-      const storedRows = sessionMessagesFor(conversationId);
-      const historyBefore = (
-        isViewingConversation(conversationId) ? deps.messagesRef.current : storedRows
-      ).filter((m) => m.id !== assistantMsg.id);
-
-      const contextMode =
-        opts.contextMode ??
-        (opts.internal
-          ? "internal"
-          : opts.orchestrationTaskId || opts.orchestrationPhase
-            ? "task"
-            : "thread");
-      const ctx = resolveAgentGatewayContext({
-        conversationId,
-        agentId: agent.id,
-        historyMessages: historyBefore,
-        mode: contextMode,
-        agentById: deps.agentById,
-        mainAgentStudioId: deps.mainAgent?.id,
-        excludeMessageIds: [assistantMsg.id],
-      });
-      const tailUser = { role: "user", content: userPrompt };
-      const outgoing = [...(sysRow ? [sysRow] : []), ...ctx.priorRows, tailUser];
-
-      applyMessagesUpdate(conversationId, (prev) => [...prev, assistantMsg]);
-      // Register every orchestration stream so gateway deltas persist even when another thread is open.
-      deps.beginGatewayStream({ conversationId, streamId, assistantMessageId: assistantMsg.id });
-      deps.activeStreamIdsRef.current.add(streamId);
-      deps.assistantStreamIdsRef.current.set(assistantMsg.id, streamId);
-
-      const liveRows = isViewingConversation(conversationId)
-        ? deps.messagesRef.current
-        : [...storedRows, assistantMsg];
-      const persistable = liveRows
-        .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
-        .map(toPersistRow);
-      persistable.push({
-        id: assistantMsg.id,
-        role: "assistant",
-        content: "",
-        createdAt: assistantMsg.createdAt,
-        agentId: assistantMsg.agentId,
-        ...orchestrationRunMeta(conversationId),
-        ...(internal ? { messageKind: /** @type {const} */ ("orchestration_internal") } : {}),
-        ...(opts.orchestrationTaskId ? { orchestrationTaskId: opts.orchestrationTaskId } : {}),
-        ...(opts.orchestrationPhase ? { orchestrationPhase: opts.orchestrationPhase } : {}),
-      });
-      persistMessages(conversationId, persistable);
-
-      try {
-        await deps.bridge.startChatStream({
-          streamId,
-          conversationId,
-          messages: outgoing,
-          agentSessionKey: sessionKeyForAgent(agent),
-          gatewayAgentId: agent.gatewayAgentId,
-          concurrent: Boolean(opts.concurrent),
-          contextEmbedMode: ctx.contextEmbedMode,
-          ...(ctx.threadSummaryPrefix ? { threadSummaryPrefix: ctx.threadSummaryPrefix } : {}),
-        });
-        const text = await waitForAssistantTerminal(
-          assistantMsg.id,
-          deps.messagesRef,
-          isViewingConversation(conversationId)
-            ? undefined
-            : () => sessionMessagesFor(conversationId),
-        );
-        if (contextMode === "thread" && ctx.syncThroughMessageId) {
-          const syncRows = isViewingConversation(conversationId)
-            ? deps.messagesRef.current
-            : sessionMessagesFor(conversationId);
-          recordAgentGatewaySync(conversationId, agent.id, ctx.syncThroughMessageId, syncRows);
-        }
-        if (isViewingConversation(conversationId)) {
-          deps.finalizeAssistantById(assistantMsg.id, { content: text });
-        } else {
-          applyMessagesUpdate(conversationId, (prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id ? { ...m, content: text, streaming: false } : m,
-            ),
-          );
-        }
-        return { text, messageId: assistantMsg.id };
-      } catch (err) {
-        deps.resetGatewayStream(streamId);
-        deps.activeStreamIdsRef.current.delete(streamId);
-        deps.assistantStreamIdsRef.current.delete(assistantMsg.id);
-        if (isViewingConversation(conversationId)) {
-          deps.finalizeAssistantById(assistantMsg.id, {
-            error: String(err?.message ?? err),
-            streaming: false,
-          });
-        } else {
-          applyMessagesUpdate(conversationId, (prev) =>
-            prev.map((m) =>
-              m.id === assistantMsg.id
-                ? { ...m, error: String(err?.message ?? err), streaming: false }
-                : m,
-            ),
-          );
-        }
-        throw err;
-      } finally {
-        deps.activeStreamIdsRef.current.delete(streamId);
-        deps.assistantStreamIdsRef.current.delete(assistantMsg.id);
-      }
-    },
-    [checkPaused, deps, isViewingConversation, orchestrationRunMeta, sessionMessagesFor, applyMessagesUpdate, waitIfPaused],
-  );
-
-  const resolvePmAgents = useCallback(
-    (run) => {
-      const roleOpts = roleOptsForRun(run);
-      return agentsByOrchestrationRole(deps.agents, OrchestrationRole.PM, roleOpts).filter(
-        (a) => !a.isMain && orchestrationRoleForAgent(a) === OrchestrationRole.PM,
-      );
-    },
-    [deps.agents, roleOptsForRun],
-  );
-
-  const runPmPhase = useCallback(
-    async (conversationId, run) => {
-      const targets = resolvePmAgents(run);
-      if (!targets.length) {
-        appendEvent(conversationId, deps.t("orchestration.events.noPmAgents"), deps.mainAgent?.id, {
-          eventKey: "no_pm",
-        });
-        throw new Error("orchestration_no_pm_agents");
-      }
-
-      appendEvent(
-        conversationId,
-        deps.t("orchestration.events.pmDispatch", { count: targets.length }),
-        deps.mainAgent?.id,
-        { eventKey: "pm_dispatch" },
-      );
-
-      const roster = teamRosterForRun(run);
-      const parallel = targets.length > 1;
-      const results = await Promise.all(
-        targets.map(async (agent) => {
-          await waitIfPaused();
-          checkPaused();
-          appendEvent(
-            conversationId,
-            deps.t("orchestration.events.pmAgentStart", { agent: agentDisplayLabel(agent) }),
-            deps.mainAgent?.id,
-            { eventKey: "pm_start", workerAgentId: agent.id },
-          );
-          const { text: output } = await runAgentTurn(
-            conversationId,
-            agent,
-            buildPmResearchPrompt(run.userRequirement, agent, roster),
-            {
-              mentionIds: run.mentionIds,
-              orchestrationPhase: "pm_research",
-              concurrent: parallel,
-            },
-          );
-          if (!output.trim()) {
-            appendEvent(
-              conversationId,
-              deps.t("orchestration.events.pmAgentEmpty", { agent: agentDisplayLabel(agent) }),
-              deps.mainAgent?.id,
-              { eventKey: "pm_empty", workerAgentId: agent.id },
-            );
-          }
-          return { agent, output };
-        }),
-      );
-      return results;
-    },
-    [appendEvent, checkPaused, deps, resolvePmAgents, runAgentTurn, teamRosterForRun, waitIfPaused],
-  );
-
-  const synthesizePlan = useCallback(
-    async (conversationId, run, pmResults, planNotes = "") => {
-      if (!deps.mainAgent) throw new Error("no_main_agent");
-      const roleOpts = roleOptsForRun(run);
-      const roster = teamRosterForRun(run);
-      const { text: raw, messageId: synthesisMessageId } = await runAgentTurn(
-        conversationId,
-        deps.mainAgent,
-        buildPlanSynthesisPrompt(run.userRequirement, pmResults, roster, planNotes),
-        { internal: true, mentionIds: run.mentionIds },
-      );
-      let plan = parsePlanFromResponse(raw);
-      if (!plan) {
-        plan = {
-          version: 1,
-          summary: raw.slice(0, 600) || run.userRequirement,
-          feasibility: "",
-          tasks: [],
-        };
-      }
-      plan = enforcePlanPhaseFormat(assignTaskOwners(plan, deps.agents, roleOpts));
-      return { plan, synthesisMessageId };
-    },
-    [deps, roleOptsForRun, runAgentTurn, teamRosterForRun],
-  );
-
-  const executeDevelopment = useCallback(
-    async (conversationId, initialRun) => {
-      if (!initialRun.plan || !deps.mainAgent) return initialRun;
-      let run = { ...initialRun };
-      const maxReviewRounds = 3;
-      const roleOpts = roleOptsForRun(run);
-      /** @type {Record<string, { approved: boolean; findings: string[] }>} */
-      const reviewResults = { ...(run.reviewResults ?? {}) };
-
-      const executeTask = async (task, owner, planSnapshot) => {
-        const roster = teamRosterForRun(run);
-        const streamOpts = {
-          mentionIds: run.mentionIds,
-          orchestrationTaskId: task.id,
-          concurrent: true,
-          contextMode: /** @type {const} */ ("task"),
-        };
-
-        if (task.phase === "review") {
-          const devTask = planSnapshot.tasks.find(
-            (t) => t.phase === "development" && task.dependsOn.includes(t.id),
-          );
-          const devOutput = devTask?.output || "";
-          const reviewTurn = await runAgentTurn(
-            conversationId,
-            owner,
-            buildReviewPrompt(devTask || task, devOutput),
-            { ...streamOpts, orchestrationPhase: "review" },
-          );
-          const output = reviewTurn.text;
-          const review = parseReviewFromResponse(output) || {
-            approved: false,
-            findings: [output.slice(0, 400)],
-          };
-          reviewResults[task.id] = review;
-          /** @type {Array<{ taskId: string; patch: Record<string, unknown> }>} */
-          const planPatches = [];
-
-          if (review.approved) {
-            planPatches.push({
-              taskId: task.id,
-              patch: { status: "done", output: review.findings.join("\n") || "Approved" },
-            });
-            appendEvent(
-              conversationId,
-              deps.t("orchestration.events.reviewPassed", { title: task.title }),
-              deps.mainAgent?.id,
-              { eventKey: "review_passed", taskId: task.id },
-            );
-          } else {
-            const round = (task.reviewRound || 0) + 1;
-            if (round >= maxReviewRounds) {
-              planPatches.push({
-                taskId: task.id,
-                patch: { status: "blocked", output: review.findings.join("\n") },
-              });
-              appendEvent(
-                conversationId,
-                deps.t("orchestration.events.reviewBlocked", { title: task.title }),
-                deps.mainAgent?.id,
-                { eventKey: "review_blocked", taskId: task.id },
-              );
-            } else {
-              planPatches.push({ taskId: task.id, patch: { status: "todo", reviewRound: round } });
-              const devId = task.dependsOn.find((d) =>
-                planSnapshot.tasks.find((t) => t.id === d && t.phase === "development"),
-              );
-              if (devId) {
-                planPatches.push({ taskId: devId, patch: { status: "todo", output: undefined } });
-                const devAgent = planSnapshot.tasks.find((t) => t.id === devId);
-                const devOwner =
-                  (devAgent?.ownerAgentId && deps.agentById.get(devAgent.ownerAgentId)) || deps.mainAgent;
-                if (devOwner && devAgent) {
-                  appendEvent(
-                    conversationId,
-                    deps.t("orchestration.events.reviewRework", {
-                      title: devAgent.title,
-                      agent: agentDisplayLabel(devOwner),
-                    }),
-                    deps.mainAgent?.id,
-                    { eventKey: "review_rework", taskId: devId, workerAgentId: devOwner.id },
-                  );
-                }
-              }
-            }
-          }
-          return {
-            planPatches,
-            runPatch: { reviewResults: { ...reviewResults }, updatedAt: Date.now() },
-          };
-        }
-
-        const linkedReview = planSnapshot.tasks.find(
-          (t) => t.phase === "review" && t.dependsOn.includes(task.id),
-        );
-        const priorReview = linkedReview ? reviewResults[linkedReview.id] : null;
-        let devPrompt = buildDevTaskPrompt(task, run.userRequirement, planSnapshot, roster);
-        if (priorReview && !priorReview.approved && priorReview.findings?.length) {
-          devPrompt = [
-            devPrompt,
-            "",
-            "## Code review feedback — address these issues:",
-            priorReview.findings.map((f) => `- ${f}`).join("\n"),
-          ].join("\n");
-        }
-
-        const devTurn = await runAgentTurn(
-          conversationId,
-          owner,
-          devPrompt,
-          { ...streamOpts, orchestrationPhase: "development" },
-        );
-        appendEvent(
-          conversationId,
-          deps.t("orchestration.events.taskDone", { title: task.title }),
-          deps.mainAgent?.id,
-          { eventKey: "task_done", taskId: task.id, workerAgentId: owner.id },
-        );
-        return {
-          planPatches: [{ taskId: task.id, patch: { status: "done", output: devTurn.text } }],
-          runPatch: {},
-        };
-      };
-
-      const { plan, runPatch } = await runOrchestrationTaskDag(
-        run.plan,
-        {
-        pickOwner: (task, busyAgentIds, loadByAgent) =>
-          pickExecutionOwner(task, deps.agents, roleOpts, busyAgentIds, loadByAgent),
-        executeTask,
-        onTaskStart: (task, owner) => {
-          appendEvent(
-            conversationId,
-            deps.t("orchestration.events.taskStart", {
-              title: task.title,
-              agent: agentDisplayLabel(owner),
-            }),
-            deps.mainAgent?.id,
-            { eventKey: "task_start", taskId: task.id, workerAgentId: owner.id },
-          );
-        },
-        checkPaused,
-        waitIfPaused,
-        onPlanUpdate: async (nextPlan, patch) => {
-          run = {
-            ...run,
-            plan: nextPlan,
-            activeTaskId: null,
-            status: "running",
-            ...(patch.reviewResults
-              ? {
-                  reviewResults: /** @type {Record<string, { approved: boolean; findings: string[] }>} */ (
-                    patch.reviewResults
-                  ),
-                }
-              : {}),
-            updatedAt: Date.now(),
-          };
-          saveRun(conversationId, run);
-          const rows = isViewingConversation(conversationId)
-            ? deps.messagesRef.current
-            : sessionMessagesFor(conversationId);
-          persistMessages(conversationId, rows.map(toPersistRow), { orchestration: run });
-        },
-        resolveBlockedTasks: (readyTasks, currentPlan) => {
-          let next = currentPlan;
-          for (const task of readyTasks) {
-            const role = task.ownerRole || OrchestrationRole.FE;
-            const hasPool = agentsByOrchestrationRole(deps.agents, role, roleOpts).length > 0;
-            if (!hasPool) {
-              next = patchPlanTask(next, task.id, { status: "blocked" });
-            }
-          }
-          return next;
-        },
-      },
-        { maxConcurrency: ORCHESTRATION_TASK_CONCURRENCY },
-      );
-
-      return { ...run, plan, ...(runPatch.reviewResults ? { reviewResults: runPatch.reviewResults } : {}) };
-    },
-    [
-      appendEvent,
-      checkPaused,
-      deps,
-      isViewingConversation,
-      roleOptsForRun,
-      runAgentTurn,
-      saveRun,
-      sessionMessagesFor,
-      teamRosterForRun,
-      waitIfPaused,
-    ],
-  );
-
-  const runLoop = useCallback(
-    async (conversationId, run) => {
-      if (runningRef.current) return;
-      runningRef.current = true;
-      activeConversationRef.current = conversationId;
-      pausedRef.current = false;
       syncRunnerActivity();
-      try {
-        if (run.status === "planning" || run.status === "revising") {
-          let plan = run.plan;
-          /** @type {string | null} */
-          let hiddenMessageId = null;
-          if (run.status === "planning") {
-            saveRun(conversationId, { ...run, status: "planning", currentPhase: "triage", updatedAt: Date.now() });
-            appendEvent(conversationId, deps.t("orchestration.events.started"), deps.mainAgent?.id, {
-              eventKey: "started",
-            });
-            appendEvent(conversationId, deps.t("orchestration.events.analyzing"), deps.mainAgent?.id, {
-              eventKey: "analyzing",
-            });
-            const roster = teamRosterForRun(run);
-            const pmAgents = resolvePmAgents(run);
-            const triageTurn = await runAgentTurn(
-              conversationId,
-              deps.mainAgent,
-              buildOrchestrationTriagePrompt(run.userRequirement, roster, pmAgents.length > 0),
-              { internal: true, mentionIds: run.mentionIds, orchestrationPhase: "triage" },
-            );
-            hiddenMessageId = triageTurn.messageId;
-            const triageParsed = parseTriageFromResponse(triageTurn.text);
-            const triage = {
-              summary: triageParsed?.summary || triageTurn.text.slice(0, 600),
-              planNotes: triageParsed?.planNotes || triageParsed?.summary || "",
-              needsPmResearch: resolveTriageNeedsPm(
-                triageParsed,
-                run.userRequirement,
-                pmAgents.length > 0,
-              ),
-            };
-            /** @type {Array<{ agent: import("../studio/agents.js").LobsterAgent; output: string }>} */
-            let pmResults = [];
-            if (triage.needsPmResearch) {
-              if (pmAgents.length) {
-                saveRun(conversationId, {
-                  ...run,
-                  status: "planning",
-                  currentPhase: "pm_research",
-                  updatedAt: Date.now(),
-                });
-                pmResults = await runPmPhase(conversationId, run);
-              } else {
-                appendEvent(
-                  conversationId,
-                  deps.t("orchestration.events.pmSkipped"),
-                  deps.mainAgent?.id,
-                  { eventKey: "pm_skipped" },
-                );
-              }
-            }
-            checkPaused();
-            appendEvent(
-              conversationId,
-              deps.t("orchestration.events.synthesizingPlan"),
-              deps.mainAgent?.id,
-              { eventKey: "synthesizing_plan" },
-            );
-            const synthesized = await synthesizePlan(
-              conversationId,
-              run,
-              pmResults,
-              triage.planNotes || triage.summary,
-            );
-            plan = synthesized.plan;
-            const synthesisId = synthesized.synthesisMessageId;
-            if (hiddenMessageId && synthesisId !== hiddenMessageId) {
-              removeMessagesById(conversationId, [hiddenMessageId]);
-            }
-            hiddenMessageId = synthesisId;
-          } else if (run.plan && run.revisionNotes && deps.mainAgent) {
-            saveRun(conversationId, { ...run, currentPhase: "plan_revision", updatedAt: Date.now() });
-            const revisionTurn = await runAgentTurn(
-              conversationId,
-              deps.mainAgent,
-              buildPlanRevisionPrompt(run.plan, run.revisionNotes),
-              { internal: true, mentionIds: run.mentionIds },
-            );
-            hiddenMessageId = revisionTurn.messageId;
-            const revised = parsePlanFromResponse(revisionTurn.text);
-            if (revised) {
-              plan = enforcePlanPhaseFormat(
-                assignTaskOwners(revised, deps.agents, roleOptsForRun(run)),
-              );
-            }
-          }
+    },
+    [applyMessagesUpdate, deps.t, syncRunnerActivity],
+  );
 
-          if (!plan) throw new Error("orchestration_no_plan");
-          if (hiddenMessageId) removeMessagesById(conversationId, [hiddenMessageId]);
-          run = {
-            ...run,
-            plan,
-            status: "awaiting_approval",
-            currentPhase: "plan_approval",
-            updatedAt: Date.now(),
-          };
-          saveRun(conversationId, run);
-          appendEvent(conversationId, deps.t("orchestration.events.awaitingApproval"), deps.mainAgent?.id, {
-            eventKey: "awaiting_approval",
-          });
-          return;
+  useEffect(() => {
+    if (!deps.bridge?.onOrchestrationEvent) return undefined;
+    return deps.bridge.onOrchestrationEvent((evt) => {
+      if (!evt || typeof evt !== "object") return;
+      const conversationId = typeof evt.conversationId === "string" ? evt.conversationId : "";
+      if (!conversationId) return;
+
+      if (evt.type === "run_patch" && evt.run) {
+        const run = normalizeOrchestrationRun(evt.run) ?? evt.run;
+        saveRun(conversationId, run);
+        if (run.status === "planning" || run.status === "revising" || run.status === "running") {
+          runningRef.current = true;
+          activeConversationRef.current = conversationId;
         }
+        syncRunnerActivity();
+        return;
+      }
 
-        if (run.status === "running" && run.plan) {
-          run = await executeDevelopment(conversationId, run);
-          checkPaused();
-
-          if (deps.mainAgent) {
-            appendEvent(conversationId, deps.t("orchestration.events.rollup"), deps.mainAgent.id, {
-              eventKey: "rollup",
-            });
-            await runAgentTurn(
-              conversationId,
-              deps.mainAgent,
-              buildRollupPrompt(run.userRequirement, run.plan),
-              { mentionIds: run.mentionIds, orchestrationPhase: "rollup" },
-            );
-          }
-
-          run = { ...run, status: "completed", currentPhase: "done", updatedAt: Date.now() };
-          saveRun(conversationId, run);
-          appendEvent(conversationId, deps.t("orchestration.events.completed"), deps.mainAgent?.id, {
-            eventKey: "completed",
-          });
-        }
-      } catch (err) {
-        if (String(err?.message) === "orchestration_paused") {
-          const rec = getSession(conversationId);
-          const cur = rec?.orchestration;
-          if (cur) saveRun(conversationId, { ...cur, status: "paused", updatedAt: Date.now() });
-        } else {
-          const rec = getSession(conversationId);
-          const cur = rec?.orchestration;
-          if (cur) saveRun(conversationId, { ...cur, status: "failed", updatedAt: Date.now() });
-          appendEvent(
-            conversationId,
-            deps.t("orchestration.events.failed", { message: String(err?.message ?? err) }),
-            deps.mainAgent?.id,
-            { eventKey: "failed" },
-          );
-        }
-      } finally {
+      if (evt.type === "run_finished") {
         runningRef.current = false;
         activeConversationRef.current = null;
         syncRunnerActivity();
+        return;
       }
-    },
-    [
-      appendEvent,
-      checkPaused,
-      deps,
-      executeDevelopment,
-      removeMessagesById,
-      resolvePmAgents,
-      roleOptsForRun,
-      runPmPhase,
-      runAgentTurn,
-      saveRun,
-      syncRunnerActivity,
-      synthesizePlan,
-      teamRosterForRun,
-    ],
-  );
+
+      if (evt.type === "append_message" && evt.message) {
+        applyMessagesUpdate(conversationId, (prev) => [...prev, { ...evt.message }]);
+        syncRunnerActivity();
+        return;
+      }
+
+      if (evt.type === "remove_messages" && Array.isArray(evt.ids)) {
+        const drop = new Set(evt.ids);
+        applyMessagesUpdate(conversationId, (prev) => prev.filter((m) => !drop.has(m.id)));
+        return;
+      }
+
+      if (evt.type === "finalize_message" && evt.messageId) {
+        const patch = evt.patch && typeof evt.patch === "object" ? evt.patch : {};
+        if (isViewingConversation(conversationId)) {
+          deps.finalizeAssistantById(String(evt.messageId), patch);
+        } else {
+          applyMessagesUpdate(conversationId, (prev) =>
+            prev.map((m) => (m.id === evt.messageId ? { ...m, ...patch } : m)),
+          );
+        }
+        return;
+      }
+
+      if (evt.type === "stream_begin" && evt.streamId && evt.assistantMessageId) {
+        deps.beginGatewayStream({
+          conversationId,
+          streamId: String(evt.streamId),
+          assistantMessageId: String(evt.assistantMessageId),
+        });
+        deps.activeStreamIdsRef.current.add(String(evt.streamId));
+        deps.assistantStreamIdsRef.current.set(String(evt.assistantMessageId), String(evt.streamId));
+        return;
+      }
+
+      if (evt.type === "stream_end" && evt.streamId) {
+        const streamId = String(evt.streamId);
+        if (deps.flushAndResetGatewayStream) {
+          deps.flushAndResetGatewayStream(streamId);
+        } else {
+          deps.resetGatewayStream(streamId);
+        }
+        deps.activeStreamIdsRef.current.delete(streamId);
+        return;
+      }
+
+      if (evt.type === "orchestration_event" && evt.eventKey) {
+        const agentId = typeof evt.agentId === "string" ? evt.agentId : deps.mainAgent?.id;
+        const workerId = typeof evt.workerAgentId === "string" ? evt.workerAgentId : "";
+        const agentLabel =
+          workerId && deps.agentById.get(workerId)
+            ? agentDisplayLabel(deps.agentById.get(workerId))
+            : "";
+        appendEventFromKey(conversationId, String(evt.eventKey), agentId, {
+          runId: typeof evt.orchestrationRunId === "string" ? evt.orchestrationRunId : undefined,
+          taskId: evt.taskId,
+          workerAgentId: workerId,
+          agentLabel,
+          title: evt.title,
+          count: evt.count,
+          message: evt.message,
+        });
+      }
+    });
+  }, [
+    appendEventFromKey,
+    applyMessagesUpdate,
+    deps,
+    isViewingConversation,
+    saveRun,
+    syncRunnerActivity,
+  ]);
 
   const startOrchestration = useCallback(
     async (conversationId, userRequirement, mentionIds = []) => {
       if (!deps.mainAgent) return;
-      const rec = getSession(conversationId);
-      const sessionParticipants = Array.isArray(rec?.participantIds)
-        ? rec.participantIds.filter(Boolean)
-        : [...(deps.participantIds ?? []), ...(deps.mainAgent ? [deps.mainAgent.id] : [])];
-      const run = {
-        runId: newOrchestrationId(),
-        status: /** @type {const} */ ("planning"),
-        currentPhase: "triage",
-        userRequirement: userRequirement.trim(),
-        mentionIds: Array.isArray(mentionIds) ? mentionIds.filter(Boolean) : [],
-        participantIds: sessionParticipants,
-        plan: null,
-        activeTaskId: null,
-        reviewResults: {},
-        startedAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      saveRun(conversationId, run);
-      void runLoop(conversationId, run);
+      runningRef.current = true;
+      activeConversationRef.current = conversationId;
+      syncRunnerActivity();
+      await sendCommand(
+        orchestrationPayloadBase(conversationId, {
+          action: "start",
+          userRequirement: userRequirement.trim(),
+          mentionIds: Array.isArray(mentionIds) ? mentionIds.filter(Boolean) : [],
+        }),
+      );
     },
-    [deps, runLoop, saveRun],
+    [deps.mainAgent, orchestrationPayloadBase, sendCommand, syncRunnerActivity],
   );
 
   const approvePlan = useCallback(
-    (conversationId) => {
-      const rec = getSession(conversationId);
-      const run = rec?.orchestration;
+    async (conversationId) => {
+      const run = getSession(conversationId)?.orchestration;
       if (!run || run.status !== "awaiting_approval" || !run.plan) return;
-      const next = { ...run, status: /** @type {const} */ ("running"), currentPhase: "development", updatedAt: Date.now() };
-      saveRun(conversationId, next);
-      appendEvent(conversationId, deps.t("orchestration.events.planApproved"), deps.mainAgent?.id, {
-        eventKey: "plan_approved",
-      });
-      void runLoop(conversationId, next);
+      await sendCommand(orchestrationPayloadBase(conversationId, { action: "approve", run }));
     },
-    [appendEvent, deps, runLoop, saveRun],
+    [orchestrationPayloadBase, sendCommand],
   );
 
   const rejectPlan = useCallback(
-    (conversationId) => {
-      const rec = getSession(conversationId);
-      const run = rec?.orchestration;
+    async (conversationId) => {
+      const run = getSession(conversationId)?.orchestration;
       if (!run || run.status !== "awaiting_approval") return;
-      saveRun(conversationId, { ...run, status: "failed", updatedAt: Date.now() });
-      appendEvent(conversationId, deps.t("orchestration.events.planRejected"), deps.mainAgent?.id, {
-        eventKey: "plan_rejected",
-      });
+      await sendCommand(orchestrationPayloadBase(conversationId, { action: "reject", run }));
     },
-    [appendEvent, deps.mainAgent?.id, deps.t, saveRun],
+    [orchestrationPayloadBase, sendCommand],
   );
 
   const revisePlan = useCallback(
-    (conversationId, notes) => {
-      const rec = getSession(conversationId);
-      const run = rec?.orchestration;
+    async (conversationId, notes) => {
+      const run = getSession(conversationId)?.orchestration;
       if (!run || run.status !== "awaiting_approval") return;
-      const next = {
-        ...run,
-        status: /** @type {const} */ ("revising"),
-        revisionNotes: notes.trim(),
-        updatedAt: Date.now(),
-      };
-      saveRun(conversationId, next);
-      appendEvent(conversationId, deps.t("orchestration.events.planRevising"), deps.mainAgent?.id, {
-        eventKey: "plan_revising",
-      });
-      void runLoop(conversationId, next);
+      await sendCommand(
+        orchestrationPayloadBase(conversationId, {
+          action: "revise",
+          run,
+          revisionNotes: notes.trim(),
+        }),
+      );
     },
-    [appendEvent, deps, runLoop, saveRun],
+    [orchestrationPayloadBase, sendCommand],
   );
 
   const pauseOrchestration = useCallback(
@@ -957,45 +296,27 @@ export function useOrchestrationRunner(deps) {
       const cid = conversationId ?? activeConversationRef.current ?? deps.conversationId;
       pausedRef.current = true;
       await deps.abortAllActiveStreams();
-      const rec = getSession(cid);
-      const run = rec?.orchestration;
+      await sendCommand(orchestrationPayloadBase(cid, { action: "pause" }));
+      const run = getSession(cid)?.orchestration;
       if (run && (run.status === "running" || run.status === "planning" || run.status === "revising")) {
         saveRun(cid, { ...run, status: "paused", updatedAt: Date.now() });
       }
     },
-    [deps],
+    [deps, orchestrationPayloadBase, saveRun, sendCommand],
   );
 
   const resumeOrchestration = useCallback(
-    (conversationId) => {
+    async (conversationId) => {
       pausedRef.current = false;
-      if (resumeWaitRef.current) {
-        resumeWaitRef.current();
-        resumeWaitRef.current = null;
-      }
-      const rec = getSession(conversationId);
-      const run = rec?.orchestration;
+      const run = getSession(conversationId)?.orchestration;
       if (!run || run.status !== "paused") return;
-      const nextStatus =
-        run.plan && run.currentPhase === "plan_approval"
-          ? /** @type {const} */ ("awaiting_approval")
-          : run.plan
-            ? /** @type {const} */ ("running")
-            : /** @type {const} */ ("planning");
-      const next = { ...run, status: nextStatus, updatedAt: Date.now() };
-      saveRun(conversationId, next);
-      appendEvent(conversationId, deps.t("orchestration.events.resumed"), deps.mainAgent?.id, {
-        eventKey: "resumed",
-      });
-      if (nextStatus === "awaiting_approval") return;
-      void runLoop(conversationId, next);
+      await sendCommand(orchestrationPayloadBase(conversationId, { action: "resume", run }));
     },
-    [appendEvent, deps, runLoop, saveRun],
+    [orchestrationPayloadBase, sendCommand],
   );
 
-  /** Resume a run left mid-flight (e.g. after reload) when the runner is idle. */
   const recoverOrphanOrchestration = useCallback(
-    (conversationId) => {
+    async (conversationId) => {
       if (runningRef.current) return;
       const run = getSession(conversationId)?.orchestration;
       if (!run) return;
@@ -1003,17 +324,15 @@ export function useOrchestrationRunner(deps) {
         return;
       }
       if (run.status === "failed") return;
-      void runLoop(conversationId, run);
+      await sendCommand(orchestrationPayloadBase(conversationId, { action: "resume", run }));
     },
-    [runLoop],
+    [orchestrationPayloadBase, sendCommand],
   );
 
-  /** Runner loop is actively awaiting LLM / task work for this conversation. */
   const isOrchestrationRunnerActive = useCallback((conversationId) => {
     return runningRef.current && activeConversationRef.current === conversationId;
   }, []);
 
-  /** LLM streams in flight — show stop, disable plan actions. */
   const isOrchestrationStreamBusy = useCallback(
     (conversationId) => {
       if (
@@ -1025,12 +344,11 @@ export function useOrchestrationRunner(deps) {
       }
       const run = getSession(conversationId)?.orchestration;
       if (!run) return false;
-      return run.status === "planning" || run.status === "revising";
+      return run.status === "planning" || run.status === "revising" || run.status === "running";
     },
     [deps.activeStreamIdsRef],
   );
 
-  /** Blocks starting a second orchestration run in the same session. */
   const isOrchestrationInProgress = useCallback((conversationId) => {
     const run = getSession(conversationId)?.orchestration;
     if (!run) return false;
@@ -1052,6 +370,13 @@ export function useOrchestrationRunner(deps) {
     pausedRef,
     runningRef,
   };
+}
+
+function newId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `m_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
 }
 
 /** @param {Record<string, unknown>} m */

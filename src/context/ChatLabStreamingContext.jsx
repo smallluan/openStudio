@@ -146,17 +146,26 @@ export function ChatLabStreamingProvider({ children }) {
     (args) => {
       processingStreamIdsRef.current.add(args.streamId);
       setWechatReplyingSessionIdState((cur) => (cur === args.conversationId ? null : cur));
-      const next = {
-        conversationId: args.conversationId,
-        streamId: args.streamId,
-        assistantMessageId: args.assistantMessageId,
-        content: "",
-        thinking: "",
-        toolTrace: [],
-        activityLog: [],
-        assistantTimeline: [],
-        active: true,
-      };
+      const existing = slicesRef.current.get(args.streamId);
+      const next = existing
+        ? {
+            ...existing,
+            conversationId: args.conversationId,
+            streamId: args.streamId,
+            assistantMessageId: args.assistantMessageId,
+            active: true,
+          }
+        : {
+            conversationId: args.conversationId,
+            streamId: args.streamId,
+            assistantMessageId: args.assistantMessageId,
+            content: "",
+            thinking: "",
+            toolTrace: [],
+            activityLog: [],
+            assistantTimeline: [],
+            active: true,
+          };
       slicesRef.current.set(args.streamId, next);
       bumpSlices();
       syncStreamingSessionId();
@@ -332,6 +341,30 @@ export function ChatLabStreamingProvider({ children }) {
       doneGraceTimersRef.current.set(sid, timer);
     };
 
+    /** @param {string} streamId @param {Record<string, unknown>} evt */
+    const ensureSliceForStream = (streamId, evt) => {
+      const prev = getSlice(streamId);
+      if (prev) return prev;
+      const assistantMessageId =
+        typeof evt.assistantMessageId === "string" ? evt.assistantMessageId.trim() : "";
+      const conversationId = typeof evt.conversationId === "string" ? evt.conversationId.trim() : "";
+      if (!assistantMessageId || !conversationId) return null;
+      processingStreamIdsRef.current.add(streamId);
+      const created = {
+        conversationId,
+        streamId,
+        assistantMessageId,
+        content: "",
+        thinking: "",
+        toolTrace: [],
+        activityLog: [],
+        assistantTimeline: [],
+        active: true,
+      };
+      putSlice(streamId, created);
+      return created;
+    };
+
     const off = bridge.onChatStream((evt) => {
       if (!evt || typeof evt !== "object") return;
       if (!evt.streamId) return;
@@ -340,10 +373,10 @@ export function ChatLabStreamingProvider({ children }) {
       const terminalKind =
         evt.type === "done" || evt.type === "error" || evt.type === "aborted" ? evt.type : null;
       if (terminalKind) {
-        const cur = getSlice(streamId);
+        const cur = getSlice(streamId) ?? ensureSliceForStream(streamId, evt);
         if (!cur || cur.streamId !== streamId) return;
       } else if (!processingStreamIdsRef.current.has(streamId)) {
-        return;
+        if (!ensureSliceForStream(streamId, evt)) return;
       }
 
       switch (evt.type) {

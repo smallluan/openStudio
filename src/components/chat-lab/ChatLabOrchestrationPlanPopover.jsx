@@ -199,7 +199,7 @@ export default function ChatLabOrchestrationPlanPopover({
                 )}
               >
                 <div id={panelId} className="chat-lab__orch-plan-popover-inner">
-                  {total > 0 && plan ? (
+                  {plan && (total > 0 || run.status === "awaiting_approval") ? (
                     <ChatLabOrchestrationPlanStrip
                       plan={plan}
                       run={run}

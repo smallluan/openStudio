@@ -570,6 +570,12 @@
         "done": "完了"
       }
     },
+    "dock": {
+      "title": "調整",
+      "activeWorkers": "作業中のエージェント：{{count}}",
+      "empty": "アクティブなタスクはありません",
+      "viewFlow": "調整フローを表示"
+    },
     "planProgress": {
       "hint": "開発計画と進捗を表示",
       "awaitingHint": "計画ができました。承認・調整・却下を選んでください",
@@ -579,7 +585,8 @@
         "planning": "PM の調査と計画作成中です。完了すると確認ダイアログが開きます。",
         "revising": "フィードバックに基づき計画を調整中です…",
         "running": "実行中です。ここで各フェーズの進捗を確認できます。",
-        "paused": "一時停止中です。計画を確認して再開できます。"
+        "paused": "一時停止中です。計画を確認して再開できます。",
+        "awaiting_approval": "計画ができました。概要を確認し、承認・調整・却下を選んでください。"
       }
     },
     "planCard": {
@@ -587,6 +594,7 @@
       "title": "開発計画",
       "feasibility": "実現性",
       "depends": "依存 {{n}}",
+      "unstructuredHint": "構造化タスクリストに解析できませんでした — 以下はモデルの計画概要です。",
       "approve": "計画を承認",
       "reject": "拒否",
       "revise": "調整",
@@ -608,10 +616,22 @@
       "planRejected": "計画拒否 — 調度を停止しました。",
       "planRevising": "フィードバックに基づき計画を修正中。",
       "taskStart": "**{{title}}** を {{agent}} に割り当てました。",
-      "taskDone": "**{{title}}** を完了しました。",
-      "reviewPassed": "**{{title}}** のコードレビュー合格。",
-      "reviewRework": "**{{title}}** のレビュー差戻し — {{agent}} に修正依頼。",
-      "reviewBlocked": "**{{title}}** はレビュー上限に達しブロック。",
+      "taskDone": "**{{title}}** を完了しました（{{agent}}）。",
+      "task_start": "{{agent}} が **{{title}}** の実行を開始しました。",
+      "task_assigned": "**{{title}}** を {{agent}} に割り当てました。",
+      "task_done": "**{{title}}** を完了しました（{{agent}}）。",
+      "synthesizing_plan": "メインエージェントが開発計画をまとめています…",
+      "awaiting_approval": "計画ができました — 承認・調整・拒否を選んでください。",
+      "plan_approved": "計画承認 — 開発フェーズを開始します。",
+      "plan_rejected": "計画拒否 — 調度を停止しました。",
+      "plan_revising": "フィードバックに基づき計画を修正中。",
+      "pre_tasks_dispatch": "{{count}} 件の事前調査タスクを開始しました。",
+      "pre_task_start": "事前調査を **{{agent}}** に割り当てました",
+      "pre_task_running": "**{{agent}}** が事前調査を実行中です。",
+      "pre_task_done": "事前調査が完了しました（{{agent}}）。",
+      "review_passed": "**{{title}}** のコードレビュー合格。",
+      "review_rework": "**{{title}}** のレビュー差戻し — {{agent}} に修正依頼。",
+      "review_blocked": "**{{title}}** はレビュー上限に達しブロック。",
       "rollup": "リードエージェントが最終報告をまとめています。",
       "completed": "調度が完了しました。",
       "failed": "調度失敗：{{message}}",
