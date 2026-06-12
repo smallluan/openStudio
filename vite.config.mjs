@@ -8,6 +8,20 @@ import react from "@vitejs/plugin-react";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const bundledSkillsGenerated = path.resolve(__dirname, "src/skills/openclawBundledSkillManifest.json");
 const bundledSkillsStub = path.resolve(__dirname, "src/skills/openclawBundledSkillManifest.stub.json");
+const iconifyEmojiTestStub = path.resolve(__dirname, "scripts/iconify-emoji-test-stub.mjs");
+
+/** @iconify/utils barrel imports lib/emoji/test/*; Windows Defender often quarantines that folder. */
+function iconifyEmojiTestStubPlugin() {
+  return {
+    name: "open-studio-iconify-emoji-test-stub",
+    setup(build) {
+      build.onResolve({ filter: /[/\\]test[/\\]/ }, (args) => {
+        if (!args.importer.includes("@iconify" + path.sep + "utils")) return;
+        return { path: iconifyEmojiTestStub };
+      });
+    },
+  };
+}
 
 /** Until postinstall runs, resolve the generated manifest import to the committed stub. */
 function openclawBundledSkillsFallback() {
@@ -104,5 +118,10 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     open: false,
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      plugins: [iconifyEmojiTestStubPlugin()],
+    },
   },
 });
