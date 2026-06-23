@@ -22,13 +22,8 @@ import { useI18n } from "../context/I18nContext.jsx";
 import { startWechatTypingPulse } from "./wechatStreamTyping.js";
 import { isWechatPendingAssistantId } from "./useWechatSessionSync.js";
 import { isWechatNewChatCommand } from "./wechatSessionCommands.js";
-import { pickWechatOutboundMedia, filterExistingWechatMedia, composeWechatReplyText, wechatMediaToFileRefs } from "./wechatOutboundMedia.js";
+import { pickWechatOutboundMedia, filterExistingWechatMedia, composeWechatReplyText, wechatMediaToFileRefs, buildWechatStoredAssistantContent } from "./wechatOutboundMedia.js";
 import { wechatGatewayAssistantContent } from "./wechatGatewayHistory.js";
-import {
-  listWechatSealedTextSegments,
-  markWechatTextSegmentSent,
-  wasWechatTextSegmentSent,
-} from "./wechatIncrementalReply.js";
 
 
 
@@ -174,75 +169,61 @@ function finalizeWechatAssistantInStore(conversationId, assistantMessageId, extr
 }
 
 /**
- * @param {string} conversationId
- * @param {string} assistantMessageId
- */
-function wechatSegmentSendKey(conversationId, assistantMessageId) {
-  return `${conversationId}:${assistantMessageId}`;
-}
-
-/**
- * Push sealed timeline prose blocks to WeChat as they complete (tool/step gap follows).
- *
+ * @param {NonNullable<typeof window.studioBridge>} bridge
  * @param {{
- *   bridge: NonNullable<typeof window.studioBridge>;
  *   conversationId: string;
  *   peerId: string;
  *   assistantMessageId: string;
- *   timeline: import("./streamTimelineMerge.js").AssistantTimelineSegment[] | undefined;
- *   streamComplete: boolean;
- *   sentSegmentsRef: import("react").MutableRefObject<Map<string, Set<number>>>;
+ *   mediaItems: Array<{ path: string; label: string }>;
+ *   sentMediaRef: import("react").MutableRefObject<Set<string>>;
  * }} args
  */
-async function sendWechatSealedTextSegments({
-  bridge,
-  conversationId,
-  peerId,
-  assistantMessageId,
-  timeline,
-  streamComplete,
-  sentSegmentsRef,
-}) {
-  const segments = listWechatSealedTextSegments(timeline, streamComplete);
-  if (!segments.length || !bridge.wechatSendMessage) return;
+async function sendWechatOutboundMediaBatch({ bridge, conversationId, peerId, assistantMessageId, mediaItems, sentMediaRef }) {
+  if (!mediaItems.length || !bridge.wechatSendMedia) return;
 
-  const key = wechatSegmentSendKey(conversationId, assistantMessageId);
-  for (const seg of segments) {
-    if (wasWechatTextSegmentSent(sentSegmentsRef.current, key, seg.segmentIndex)) continue;
-    const text = String(seg.body ?? "").trim();
-    if (!text) continue;
+  const pending = mediaItems.filter((item) => {
+    const key = String(item.path ?? "").trim().toLowerCase();
+    return key && !sentMediaRef.current.has(key);
+  });
+  if (!pending.length) return;
 
-    const requestId = `wechat-assistant-chunk:${conversationId}:${assistantMessageId}:${seg.segmentIndex}`;
-    try {
-      const res = await bridge.wechatSendMessage({
-        requestId,
-        conversationId,
-        peerId,
-        text,
-        localMessageId: `wechat-local-assistant:${assistantMessageId}:${seg.segmentIndex}`,
-      });
-      if (res && res.ok === false) {
+  const existing = await filterExistingWechatMedia(bridge, pending);
+  await Promise.allSettled(
+    existing.map(async (item) => {
+      const key = String(item.path ?? "").trim().toLowerCase();
+      if (!key || sentMediaRef.current.has(key)) return;
+      const requestId = `wechat-media:${conversationId}:${assistantMessageId}:${key}`;
+      try {
+        const res = await bridge.wechatSendMedia({
+          requestId,
+          conversationId,
+          peerId,
+          mediaPath: item.path,
+          localMessageId: `wechat-local-media:${assistantMessageId}:${item.label}`,
+        });
+        if (res && res.ok === false) {
+          bridge.logRendererMessage?.({
+            level: "warn",
+            message: `[wechat] media send failed (${item.path}): ${String(res.message ?? "unknown")}`,
+          });
+          return;
+        }
+        sentMediaRef.current.add(key);
+      } catch (err) {
         bridge.logRendererMessage?.({
           level: "warn",
-          message: `[wechat] chunk send failed (${seg.segmentIndex}): ${String(res.message ?? "unknown")}`,
+          message: `[wechat] media send failed (${item.path}): ${String(err?.message ?? err)}`,
         });
-        continue;
       }
-      markWechatTextSegmentSent(sentSegmentsRef.current, key, seg.segmentIndex);
-    } catch (err) {
-      bridge.logRendererMessage?.({
-        level: "warn",
-        message: `[wechat] chunk send failed (${seg.segmentIndex}): ${String(err?.message ?? err)}`,
-      });
-    }
-  }
+    }),
+  );
 }
 
 /**
 
  * Always-mounted: run WeChat inbound auto-replies through the same renderer `startChatStream`
 
- * path as Chat Lab (gateway + tools), then push timeline prose blocks to WeChat as they seal.
+ * path as Chat Lab (gateway + tools), then push the final reply to WeChat when the stream ends.
 
  */
 
@@ -260,8 +241,6 @@ export function useWechatAutoReplyStream() {
 
     clearWechatReplyingSessionId,
 
-    gatewayStreamSlice,
-
   } = useChatLabStreaming();
 
   /** @type {import("react").MutableRefObject<Set<string>>} */
@@ -272,9 +251,9 @@ export function useWechatAutoReplyStream() {
 
   const sentWechatAssistantIdsRef = useRef(new Set());
 
-  /** @type {import("react").MutableRefObject<Map<string, Set<number>>>} */
+  /** @type {import("react").MutableRefObject<Set<string>>} */
 
-  const sentWechatTextSegmentsRef = useRef(new Map());
+  const sentWechatMediaPathsRef = useRef(new Set());
 
 
 
@@ -538,88 +517,47 @@ export function useWechatAutoReplyStream() {
         sentWechatAssistantIdsRef.current.add(assistantMessageId);
 
         void (async () => {
-          const timeline = Array.isArray(d.assistantTimeline) ? d.assistantTimeline : [];
-          const sealedOnDone = listWechatSealedTextSegments(timeline, true);
+          const textToSend = composeWechatReplyText(replyText, mediaItems);
+          const storedContent = buildWechatStoredAssistantContent(replyText, mediaItems);
+          const fileRefs = wechatMediaToFileRefs(mediaItems);
 
-          if (sealedOnDone.length > 0) {
-            await sendWechatSealedTextSegments({
-              bridge,
-              conversationId,
-              peerId,
-              assistantMessageId,
-              timeline,
-              streamComplete: true,
-              sentSegmentsRef: sentWechatTextSegmentsRef,
-            });
-          }
-
-          const mediaToSend = await filterExistingWechatMedia(bridge, mediaItems);
-          const segmentKey = wechatSegmentSendKey(conversationId, assistantMessageId);
-          const sentSegmentSet = sentWechatTextSegmentsRef.current.get(segmentKey);
-          const allTextSentIncrementally =
-            sealedOnDone.length > 0 &&
-            sealedOnDone.every((seg) => sentSegmentSet?.has(seg.segmentIndex));
-          const textToSend = allTextSentIncrementally
-            ? ""
-            : composeWechatReplyText(replyText, mediaToSend);
-          const fileRefs = wechatMediaToFileRefs(mediaToSend);
-
-          if (textToSend !== replyText || fileRefs.length > 0) {
-            finalizeWechatAssistantInStore(conversationId, assistantMessageId, {
-              ...terminalExtra,
-              content: textToSend || replyText,
-              ...(fileRefs.length ? { fileRefs } : {}),
-            });
-          }
-
-          if (mediaToSend.length && bridge.wechatSendMedia) {
-            for (const item of mediaToSend) {
-              const requestId = `wechat-media:${conversationId}:${assistantMessageId}:${item.path}`;
-              try {
-                const res = await bridge.wechatSendMedia({
-                  requestId,
-                  conversationId,
-                  peerId,
-                  mediaPath: item.path,
-                  localMessageId: `wechat-local-media:${assistantMessageId}:${item.label}`,
-                });
-                if (res && res.ok === false) {
-                  bridge.logRendererMessage?.({
-                    level: "warn",
-                    message: `[wechat] media send failed (${item.path}): ${String(res.message ?? "unknown")}`,
-                  });
-                }
-              } catch (err) {
-                bridge.logRendererMessage?.({
-                  level: "warn",
-                  message: `[wechat] media send failed (${item.path}): ${String(err?.message ?? err)}`,
-                });
-              }
-            }
-          } else if (mediaItems.length) {
-            bridge.logRendererMessage?.({
-              level: "warn",
-              message: `[wechat] media paths found but none exist on disk: ${mediaItems.map((x) => x.path).join("; ")}`,
-            });
-          }
+          finalizeWechatAssistantInStore(conversationId, assistantMessageId, {
+            ...terminalExtra,
+            content: storedContent || replyText,
+            ...(fileRefs.length ? { fileRefs } : {}),
+          });
 
           if (textToSend && bridge.wechatSendMessage) {
             const requestId = `wechat-assistant:${conversationId}:${assistantMessageId}`;
-            try {
-              await bridge.wechatSendMessage({
+            void bridge
+              .wechatSendMessage({
                 requestId,
                 conversationId,
                 peerId,
                 text: textToSend,
                 localMessageId: `wechat-local-assistant:${assistantMessageId}`,
+              })
+              .catch((err) => {
+                bridge.logRendererMessage?.({
+                  level: "warn",
+                  message: `[wechat] text send failed: ${String(err?.message ?? err)}`,
+                });
               });
-            } catch (err) {
-              bridge.logRendererMessage?.({
-                level: "warn",
-                message: `[wechat] text send failed: ${String(err?.message ?? err)}`,
-              });
-            }
           }
+
+          void sendWechatOutboundMediaBatch({
+            bridge,
+            conversationId,
+            peerId,
+            assistantMessageId,
+            mediaItems,
+            sentMediaRef: sentWechatMediaPathsRef,
+          }).catch((err) => {
+            bridge.logRendererMessage?.({
+              level: "warn",
+              message: `[wechat] media batch failed: ${String(err?.message ?? err)}`,
+            });
+          });
         })();
 
         return;
@@ -667,32 +605,6 @@ export function useWechatAutoReplyStream() {
     };
 
   }, [beginGatewayStream, clearWechatReplyingSessionId, resetGatewayStream, setWechatReplyingSessionId, t]);
-
-  useEffect(() => {
-    const slice = gatewayStreamSlice;
-    if (!slice?.active) return undefined;
-
-    const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
-    if (!bridge?.wechatSendMessage) return undefined;
-
-    const rec = getSession(slice.conversationId);
-    if (!rec || rec.channel !== CHAT_SESSION_CHANNEL_WECHAT) return undefined;
-
-    const peerId = String(rec.channelPeerId ?? "").trim();
-    if (!peerId) return undefined;
-
-    void sendWechatSealedTextSegments({
-      bridge,
-      conversationId: slice.conversationId,
-      peerId,
-      assistantMessageId: slice.assistantMessageId,
-      timeline: slice.assistantTimeline,
-      streamComplete: false,
-      sentSegmentsRef: sentWechatTextSegmentsRef,
-    });
-
-    return undefined;
-  }, [gatewayStreamSlice]);
 
 }
 

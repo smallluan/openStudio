@@ -3,6 +3,7 @@ import {
   scrapeArtifactPathsFromText,
 } from "./chatLabSessionArtifacts.js";
 import { extOfFilename } from "./chatLabArtifactPreviewKind.js";
+import { extractAllMarkdownImages, stripMarkdownImages } from "./chatLabMarkdownImageGrid.js";
 
 /** Max media attachments pushed to WeChat per assistant turn. */
 export const MAX_WECHAT_OUTBOUND_MEDIA = 6;
@@ -34,11 +35,117 @@ const TOOL_TRACE_ARG_KEYS = [
   "media_url",
 ];
 
+const BARE_HTTP_URL_RE = /https?:\/\/[^\s<>"')\]]+/gi;
+
+/** @param {string} url */
+function isLikelyRemoteImageUrl(url) {
+  const s = String(url ?? "").trim();
+  if (!/^https?:\/\//i.test(s)) return false;
+  const lower = s.toLowerCase();
+  const pathPart = s.split("?")[0].split("#")[0];
+  if (/\.(png|jpe?g|gif|webp|bmp|avif|svg|ico)(?:$|[?#])/i.test(pathPart)) return true;
+  if (/x-bce-process=image|\/pic\/|\/image\/|format,f_auto|thumbnail|photo|imgcdn|cdn.*\.(jpg|png)/i.test(lower)) {
+    return true;
+  }
+  if (/\/(?:img|images?|pics?|photos?|avatar|thumb)\//i.test(pathPart)) return true;
+  return false;
+}
+
+/** @param {string} path */
+function labelFromMediaPath(path) {
+  const s = String(path ?? "").trim();
+  if (!s) return "image.jpg";
+  if (/^https?:\/\//i.test(s)) {
+    try {
+      const base = new URL(s).pathname.split("/").pop()?.split("?")[0] || "image";
+      return base.includes(".") ? base : `${base.slice(0, 48) || "image"}.jpg`;
+    } catch {
+      return "image.jpg";
+    }
+  }
+  return s.replace(/\\/g, "/").split("/").pop()?.split("?")[0] || s;
+}
+
+/** @param {string} text @returns {string[]} */
+function scrapeBareImageUrlsFromText(text) {
+  const t = String(text ?? "");
+  if (!t.trim()) return [];
+  /** @type {Set<string>} */
+  const found = new Set();
+  BARE_HTTP_URL_RE.lastIndex = 0;
+  let m;
+  while ((m = BARE_HTTP_URL_RE.exec(t)) !== null) {
+    const url = String(m[0] ?? "").replace(/[),.，。；;]+$/g, "");
+    if (isLikelyRemoteImageUrl(url)) found.add(url);
+  }
+  return [...found];
+}
+
+/**
+ * Strip markdown / bare image URLs from assistant prose before WeChat text send.
+ * @param {string} text
+ */
+export function stripWechatReplyText(text) {
+  let out = stripMarkdownImages(text);
+  out = out
+    .split(/\r?\n/)
+    .map((line) => {
+      const trimmed = line.trim();
+      if (/^!\[[^\]]*\]\([^)]+\)\s*$/.test(trimmed)) return "";
+      if (/^!\S/.test(trimmed)) return "";
+      return line;
+    })
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      if (/^https?:\/\//i.test(trimmed) && isLikelyRemoteImageUrl(trimmed)) return false;
+      return true;
+    })
+    .join("\n");
+  out = out.replace(BARE_HTTP_URL_RE, (url) => (isLikelyRemoteImageUrl(url) ? "" : url));
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Split assistant reply into WeChat prose + remote/local media to push separately.
+ * @param {string} replyText
+ */
+export function prepareWechatReplyPayload(replyText) {
+  const raw = String(replyText ?? "");
+  /** @type {Array<{ path: string; label: string }>} */
+  const mediaItems = [];
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @param {string} path @param {string} [preferredLabel] */
+  const addMedia = (path, preferredLabel) => {
+    const p = String(path ?? "").trim();
+    if (!p || !isWechatSendablePath(p)) return;
+    const key = p.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    mediaItems.push({
+      path: p,
+      label: String(preferredLabel ?? "").trim() || labelFromMediaPath(p),
+    });
+  };
+
+  for (const img of extractAllMarkdownImages(raw)) addMedia(img.src, img.alt);
+  for (const url of scrapeBareImageUrlsFromText(raw)) addMedia(url);
+
+  return {
+    text: stripWechatReplyText(raw),
+    mediaItems: mediaItems.slice(0, MAX_WECHAT_OUTBOUND_MEDIA),
+  };
+}
+
 /** @param {string} p */
 function isWechatSendablePath(p) {
   const s = String(p ?? "").trim();
   if (!s) return false;
-  if (/^https?:\/\//i.test(s)) return SENDABLE_FILE_EXT.test(s.split("?")[0] || s);
+  if (/^https?:\/\//i.test(s)) {
+    if (isLikelyRemoteImageUrl(s)) return true;
+    return SENDABLE_FILE_EXT.test(s.split("?")[0] || s);
+  }
   return SENDABLE_FILE_EXT.test(s) || SENDABLE_FILE_EXT.test(extOfFilename(s) ? `x${extOfFilename(s)}` : s);
 }
 
@@ -55,12 +162,13 @@ function workspacePathScore(p) {
 /**
  * @param {Map<string, { path: string; label: string; score: number }>} byLabel
  * @param {string} rawPath
+ * @param {string} [preferredLabel]
  */
-function upsertMediaPath(byLabel, rawPath) {
+function upsertMediaPath(byLabel, rawPath, preferredLabel) {
   const path = String(rawPath ?? "").trim();
   if (!path || !isWechatSendablePath(path)) return;
-  const label = path.replace(/\\/g, "/").split("/").pop()?.split("?")[0] || path;
-  const key = label.toLowerCase();
+  const label = String(preferredLabel ?? "").trim() || labelFromMediaPath(path);
+  const key = /^https?:\/\//i.test(path) ? `url:${path.toLowerCase()}` : label.toLowerCase();
   const prev = byLabel.get(key);
   const next = { path, label, score: workspacePathScore(path) };
   if (!prev || next.score > prev.score) byLabel.set(key, next);
@@ -218,10 +326,45 @@ export function pickWechatOutboundMedia(assistantMessage) {
     upsertMediaPath(byLabel, name);
   }
 
+  const content = String(assistantMessage.content ?? "");
+  for (const img of extractAllMarkdownImages(content)) {
+    upsertMediaPath(byLabel, img.src, img.alt);
+  }
+  for (const url of scrapeBareImageUrlsFromText(content)) {
+    upsertMediaPath(byLabel, url);
+  }
+
   return [...byLabel.values()]
     .sort((a, b) => pathSortKey(a.path, b.path))
     .slice(0, MAX_WECHAT_OUTBOUND_MEDIA)
     .map(({ path, label }) => ({ path, label }));
+}
+
+/**
+ * Chat Lab stored body: short intro + markdown gallery (not sent as WeChat text).
+ * @param {string} replyText
+ * @param {Array<{ path: string; label: string }>} mediaItems
+ */
+export function buildWechatStoredAssistantContent(replyText, mediaItems) {
+  const intro = composeWechatReplyText(replyText, mediaItems) || stripWechatReplyText(replyText);
+  /** @type {string[]} */
+  const galleryLines = [];
+  /** @type {Set<string>} */
+  const seen = new Set();
+  for (const item of mediaItems) {
+    const path = String(item.path ?? "").trim();
+    if (!path) continue;
+    const key = path.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (/^https?:\/\//i.test(path)) {
+      const alt = String(item.label ?? "").trim() || "image";
+      galleryLines.push(`![${alt}](${path})`);
+    }
+  }
+  if (!galleryLines.length) return intro || String(replyText ?? "").trim();
+  const gallery = galleryLines.join("\n\n");
+  return intro ? `${intro}\n\n${gallery}` : gallery;
 }
 
 /**
@@ -230,7 +373,7 @@ export function pickWechatOutboundMedia(assistantMessage) {
  * @returns {string}
  */
 export function composeWechatReplyText(replyText, mediaToSend) {
-  const trimmed = String(replyText ?? "").trim();
+  let trimmed = stripWechatReplyText(replyText);
   if (!trimmed) return "";
   if (!mediaToSend.length) return trimmed;
 
@@ -248,7 +391,9 @@ export function composeWechatReplyText(replyText, mediaToSend) {
     return "";
   }
 
-  if (trimmed.length > 1200) return "";
+  if (mediaToSend.length > 0 && trimmed.length > 500) {
+    trimmed = trimmed.slice(0, 500).trim();
+  }
   return trimmed;
 }
 
