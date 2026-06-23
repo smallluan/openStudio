@@ -81,7 +81,7 @@ import {
   parseAgentDelegateMention,
   resolveReplyTargets,
 } from "../studio/agentMentions.js";
-import { composeChatLabSystemPrompt } from "../chat/chatLabSystemPrompt.js";
+import { composeChatLabSystemPrompt, composeChatLabStudioSuffix } from "../chat/chatLabSystemPrompt.js";
 import {
   agentAvatarGlyph,
   agentDisplayLabel,
@@ -336,7 +336,7 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
   return systemMessageForAgent(agent, t("chatLab.systemPrompt"), {
     groupAgents,
     groupDelegateHint,
-    studioSuffix: t("chatLab.imageDisplayPrompt"),
+    studioSuffix: composeChatLabStudioSuffix(t),
     ...extra,
   });
 }

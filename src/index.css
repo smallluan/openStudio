@@ -6836,6 +6836,36 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   vertical-align: middle;
 }
 
+.chat-lab__echarts-render {
+  padding: 0.45rem 0.65rem 0.55rem;
+  width: 100%;
+  min-height: 380px;
+  box-sizing: border-box;
+}
+
+.chat-lab__echarts-render__canvas {
+  width: 100%;
+  height: 380px;
+  min-height: 380px;
+}
+
+.chat-lab__code-block--chart .chat-lab__code-block-body {
+  max-height: min(75vh, 42rem);
+  overflow: auto;
+}
+
+.chat-lab__code-block--chart .chat-lab__code-block-body--dual {
+  min-height: 380px;
+}
+
+.chat-lab__code-block--visual-only .chat-lab__code-block-body {
+  overflow: visible;
+}
+
+.chat-lab__md-inferred-chart {
+  margin-top: 0.65rem;
+}
+
 
 .chat-lab__code-md-render {
   padding: 0.62rem 0.75rem;

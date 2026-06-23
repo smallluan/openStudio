@@ -27,11 +27,18 @@ import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light.js"
 import { CHAT_LAB_PRISM_LANGS } from "../../chat/chatLabPrismSetup.js";
 import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light.js";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js";
+import ChatLabEchartsFenceView from "./ChatLabEchartsFenceView.jsx";
 
 const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
 
 /** Fenced languages that support source / rendered toggle in the toolbar. */
-const RENDERABLE_FENCE_LANGS = new Set(["mermaid", "markdown", "md"]);
+const RENDERABLE_FENCE_LANGS = new Set(["mermaid", "markdown", "md", "chart", "echarts"]);
+
+/** Charts and flowcharts: render-only (no source pane or view toggle). */
+const VISUAL_ONLY_FENCE_LANGS = new Set(["mermaid", "chart", "echarts"]);
+
+/** Chart fences need a taller pane — do not lock body height to source scrollHeight. */
+const CHART_FENCE_LANGS = new Set(["chart", "echarts"]);
 
 /** @type {Map<string, string>} */
 const MERMAID_SVG_CACHE = new Map();
@@ -96,6 +103,8 @@ function snapshotDocTheme() {
 function useDocTheme() {
   return useSyncExternalStore(subscribeDocTheme, snapshotDocTheme, () => "light");
 }
+
+export { useDocTheme };
 
 /** Pull plain text from react-markdown cell children (often a `<p>` or inline mix). */
 export function chatMarkdownPlainText(node) {
@@ -349,9 +358,28 @@ function MarkdownFenceView({ code, t }) {
  *   t: (k: string) => string;
  * }} props
  */
-function FenceRenderedBody({ code, label, theme, t }) {
+/**
+ * @param {{
+ *   code: string;
+ *   label: string;
+ *   theme: "light" | "dark";
+ *   active?: boolean;
+ *   t: (k: string) => string;
+ * }} props
+ */
+function FenceRenderedBody({ code, label, theme, active = true, t }) {
   if (label === "mermaid") {
     return <MermaidFenceView code={code} theme={theme} />;
+  }
+  if (label === "chart" || label === "echarts") {
+    return (
+      <ChatLabEchartsFenceView
+        code={code}
+        label={label}
+        theme={theme}
+        active={active}
+      />
+    );
   }
   if (label === "markdown" || label === "md") {
     return <MarkdownFenceView code={code} t={t} />;
@@ -403,22 +431,45 @@ function CodeFenceSource({ code, prism, syntaxStyle, codeFont }) {
   );
 }
 
+function ChatMdVisualBlock({ code, label, displayLang, isChartFence, t }) {
+  const theme = useDocTheme();
+  return (
+    <div
+      className={cn(
+        "chat-lab__code-block",
+        "chat-lab__code-block--visual-only",
+        isChartFence && "chat-lab__code-block--chart",
+      )}
+      data-theme={theme}
+    >
+      <div className="chat-lab__code-block-toolbar">
+        <span className="chat-lab__code-lang" title={displayLang}>
+          {displayLang}
+        </span>
+        <div className="chat-lab__code-block-actions">
+          <CodeCopyBtn text={code} t={t} />
+        </div>
+      </div>
+      <div className="chat-lab__code-block-body">
+        <FenceRenderedBody code={code} label={label} theme={theme} active t={t} />
+      </div>
+    </div>
+  );
+}
+
 /**
  * @param {{
  *   code: string;
- *   fenceClassName?: string;
+ *   label: string;
+ *   prism: string;
+ *   displayLang: string;
  *   t: (k: string) => string;
  * }} props
  */
-function ChatMdCodeBlock({ code, fenceClassName, t }) {
+function ChatMdToggleableCodeBlock({ code, label, prism, displayLang, t }) {
   const theme = useDocTheme();
   const preview = useContext(ChatLabPreviewContext);
-  const { prism, label } = useMemo(
-    () => resolveFenceLang(fenceClassName),
-    [fenceClassName],
-  );
   const syntaxStyle = theme === "dark" ? vscDarkPlus : oneLight;
-  const displayLang = label || t("chatLab.codePlain");
   const codeFont = "0.8125rem";
   const canRender = RENDERABLE_FENCE_LANGS.has(label);
   const [viewMode, setViewMode] = useState(/** @type {"source" | "render"} */ ("source"));
@@ -447,6 +498,9 @@ function ChatMdCodeBlock({ code, fenceClassName, t }) {
       lockSourceBodyHeight();
       setHeightFrozen(true);
       setRenderPaneMounted(true);
+    } else {
+      setHeightFrozen(false);
+      setLockedBodyHeight(0);
     }
     setViewMode(mode);
   }, [lockSourceBodyHeight]);
@@ -455,6 +509,7 @@ function ChatMdCodeBlock({ code, fenceClassName, t }) {
     setLockedBodyHeight(0);
     setHeightFrozen(false);
     setRenderPaneMounted(false);
+    setViewMode("source");
   }, [code]);
 
   useLayoutEffect(() => {
@@ -534,7 +589,13 @@ function ChatMdCodeBlock({ code, fenceClassName, t }) {
                 )}
                 aria-hidden={viewMode !== "render"}
               >
-                <FenceRenderedBody code={code} label={label} theme={theme} t={t} />
+                <FenceRenderedBody
+                  code={code}
+                  label={label}
+                  theme={theme}
+                  active={viewMode === "render"}
+                  t={t}
+                />
               </div>
             ) : null}
           </>
@@ -548,6 +609,43 @@ function ChatMdCodeBlock({ code, fenceClassName, t }) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * @param {{
+ *   code: string;
+ *   fenceClassName?: string;
+ *   t: (k: string) => string;
+ * }} props
+ */
+function ChatMdCodeBlock({ code, fenceClassName, t }) {
+  const { prism, label } = useMemo(
+    () => resolveFenceLang(fenceClassName),
+    [fenceClassName],
+  );
+  const displayLang = label || t("chatLab.codePlain");
+
+  if (VISUAL_ONLY_FENCE_LANGS.has(label)) {
+    return (
+      <ChatMdVisualBlock
+        code={code}
+        label={label}
+        displayLang={displayLang}
+        isChartFence={CHART_FENCE_LANGS.has(label)}
+        t={t}
+      />
+    );
+  }
+
+  return (
+    <ChatMdToggleableCodeBlock
+      code={code}
+      label={label}
+      prism={prism}
+      displayLang={displayLang}
+      t={t}
+    />
   );
 }
 

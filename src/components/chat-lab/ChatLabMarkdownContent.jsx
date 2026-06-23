@@ -7,7 +7,13 @@ import {
   prepareChatLabMarkdownForRender,
   segmentMarkdownContentBlocks,
 } from "../../chat/chatLabMarkdownImageGrid.js";
+import {
+  inferChartFromMarkdownTables,
+  tableChartSpecToDsl,
+} from "../../chat/chatLabMarkdownTableChart.js";
 import { ChatLabImageGrid } from "./ChatLabImageGrid.jsx";
+import ChatLabEchartsFenceView from "./ChatLabEchartsFenceView.jsx";
+import { useDocTheme } from "./chatLabMarkdown.jsx";
 
 const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
 
@@ -21,7 +27,12 @@ export { ChatLabImageGrid };
  * }} props
  */
 export default function ChatLabMarkdownContent({ source, className, components }) {
+  const theme = useDocTheme();
   const blocks = useMemo(() => segmentMarkdownContentBlocks(source), [source]);
+  const inferredChartDsl = useMemo(() => {
+    const spec = inferChartFromMarkdownTables(source);
+    return spec ? tableChartSpecToDsl(spec) : "";
+  }, [source]);
 
   const mergedComponents = useMemo(
     () => ({
@@ -52,6 +63,11 @@ export default function ChatLabMarkdownContent({ source, className, components }
           </ReactMarkdown>
         );
       })}
+      {inferredChartDsl ? (
+        <div className="chat-lab__md-inferred-chart">
+          <ChatLabEchartsFenceView code={inferredChartDsl} label="chart" theme={theme} />
+        </div>
+      ) : null}
     </div>
   );
 }

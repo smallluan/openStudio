@@ -112,6 +112,21 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     reportCompressedSize: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes(`${path.sep}src${path.sep}assets${path.sep}geo${path.sep}`)) {
+            return "echarts-geo-china";
+          }
+          if (
+            id.includes(`${path.sep}node_modules${path.sep}echarts${path.sep}`)
+            || id.includes("chatLabEchartsRuntime")
+          ) {
+            return "echarts";
+          }
+        },
+      },
+    },
   },
   server: {
     host: "127.0.0.1",
