@@ -186,10 +186,12 @@ export default function ChatLabPreviewDock({ extension = null }) {
                           "chat-lab-preview-dock__tree-badge",
                           file.op === "created"
                             ? "chat-lab-preview-dock__tree-badge--created"
-                            : "chat-lab-preview-dock__tree-badge--modified",
+                            : file.op === "modified"
+                              ? "chat-lab-preview-dock__tree-badge--modified"
+                              : "chat-lab-preview-dock__tree-badge--viewed",
                         )}
                       >
-                        {file.op === "created" ? "+" : "~"}
+                        {file.op === "created" ? "+" : file.op === "modified" ? "~" : "↗"}
                       </span>
                       <span className="chat-lab-preview-dock__tree-name">{file.label}</span>
                     </button>

@@ -17,7 +17,10 @@ import { cn } from "../../ui/cn.js";
 import FluidTabBar from "../../ui/FluidTabBar.jsx";
 import { ChatLabPreviewContext } from "../../context/ChatLabPreviewContext.jsx";
 import { csvToHtmlDocument, svgToHtmlDocument, wrapLooseHtmlFragmentForSrcDoc } from "../../chat/chatLabDocumentPreview.js";
-import { getChatLabMermaidConfig } from "../../chat/chatLabMermaidTheme.js";
+import {
+  getChatLabMermaidConfig,
+  stylizeFlowchartSvg,
+} from "../../chat/chatLabMermaidTheme.js";
 import { prepareChatLabMarkdownForRender } from "../../chat/chatLabMarkdownImageGrid.js";
 import { CHAT_MD_REHYPE_PLUGINS } from "../../chat/chatLabRehypePlugins.js";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light.js";
@@ -34,7 +37,7 @@ const RENDERABLE_FENCE_LANGS = new Set(["mermaid", "markdown", "md"]);
 const MERMAID_SVG_CACHE = new Map();
 
 /** Bump when {@link getChatLabMermaidConfig} styling changes to invalidate cached SVG. */
-const MERMAID_CACHE_VERSION = 2;
+const MERMAID_CACHE_VERSION = 4;
 
 /** @param {"light" | "dark"} theme @param {string} code */
 function mermaidCacheKey(theme, code) {
@@ -288,8 +291,9 @@ function MermaidFenceView({ code, theme }) {
       })
       .then(({ svg: nextSvg }) => {
         if (cancelled) return;
-        MERMAID_SVG_CACHE.set(cacheKey, nextSvg);
-        setSvg(nextSvg);
+        const styledSvg = stylizeFlowchartSvg(nextSvg, theme);
+        MERMAID_SVG_CACHE.set(cacheKey, styledSvg);
+        setSvg(styledSvg);
       })
       .catch((err) => {
         if (!cancelled) {

@@ -88,6 +88,8 @@
   --muted: var(--os-text-muted);
   --accent: var(--os-accent);
   --accent-hover: var(--os-accent-hover);
+  --os-md-link: #38bdf8;
+  --os-md-link-hover: #0ea5e9;
   --rail-bg: var(--os-rail-surface);
 
   /** Settings nav column aligns with primary rail tone. */
@@ -193,6 +195,8 @@
   --muted: var(--os-text-muted);
   --accent: var(--os-accent);
   --accent-hover: var(--os-accent-hover);
+  --os-md-link: #7dd3fc;
+  --os-md-link-hover: #bae6fd;
   --rail-bg: var(--os-rail-surface);
 
   --os-settings-aside-bg: color-mix(in srgb, var(--os-bg-modal) 88%, transparent);

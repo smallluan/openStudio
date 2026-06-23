@@ -48,7 +48,7 @@ const DELIVERABLE_EXT = new Set([
 /** Often intermediate when a deliverable exists in the same session. */
 const TOOLING_EXT = new Set([".py", ".sh", ".bash", ".zsh", ".ps1", ".bat"]);
 
-/** @typedef {"created"|"modified"} ArtifactOp */
+/** @typedef {"created"|"modified"|"viewed"} ArtifactOp */
 
 /**
  * @typedef {{
@@ -114,6 +114,13 @@ function artifactOpFromTool(toolName) {
   if (/edit|patch|apply_patch|str_replace|replace|update|modify|rename|move/i.test(n)) return "modified";
   if (/write|save|create|output|export|dump|generate|new_file/i.test(n)) return "created";
   return "modified";
+}
+
+/** @param {ArtifactOp} prevOp @param {ArtifactOp} nextOp */
+function mergeArtifactOp(prevOp, nextOp) {
+  /** @type {Record<ArtifactOp, number>} */
+  const rank = { modified: 3, created: 2, viewed: 1 };
+  return rank[nextOp] >= rank[prevOp] ? nextOp : prevOp;
 }
 
 /** @param {string} toolName */
@@ -239,7 +246,7 @@ function upsertArtifact(byPath, p, meta) {
   const entry = {
     path,
     label: filenameHint(path),
-    op: prev && prev.op === "created" && meta.op === "modified" ? "modified" : meta.op,
+    op: prev ? mergeArtifactOp(prev.op, meta.op) : meta.op,
     messageId: meta.messageId,
     seq: meta.seq,
     previewKind: artifactPreviewKindFromPath(path),
@@ -283,7 +290,7 @@ export function collectSessionArtifacts(messages) {
       const isWrite = isFileMutatingTool(toolName);
       const isRead = isFileReadTool(toolName);
       if (!isWrite && !isRead) continue;
-      const op = isRead ? "modified" : artifactOpFromTool(toolName);
+      const op = isRead ? "viewed" : artifactOpFromTool(toolName);
       const seq = typeof row.seq === "number" ? row.seq : order;
       const args =
         row.args && typeof row.args === "object"
@@ -325,4 +332,22 @@ export function collectSessionArtifacts(messages) {
   const deduped = dedupeArtifactsByLabel(filtered);
 
   return deduped.map(({ order: _o, priority: _p, ...rest }) => rest);
+}
+
+/** @type {ArtifactOp[]} */
+export const ARTIFACT_OP_ORDER = ["created", "modified", "viewed"];
+
+/**
+ * Group session artifacts by operation for display (created → modified → viewed).
+ * @param {SessionArtifact[]} artifacts
+ */
+export function groupSessionArtifactsByOp(artifacts) {
+  if (!Array.isArray(artifacts) || !artifacts.length) return [];
+  /** @type {Map<ArtifactOp, SessionArtifact[]>} */
+  const buckets = new Map(ARTIFACT_OP_ORDER.map((op) => [op, []]));
+  for (const artifact of artifacts) {
+    const op = ARTIFACT_OP_ORDER.includes(artifact.op) ? artifact.op : "viewed";
+    buckets.get(op)?.push(artifact);
+  }
+  return ARTIFACT_OP_ORDER.map((op) => ({ op, items: buckets.get(op) ?? [] })).filter((g) => g.items.length > 0);
 }

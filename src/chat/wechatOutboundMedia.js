@@ -200,6 +200,7 @@ export function pickWechatOutboundMedia(assistantMessage) {
   const byLabel = new Map();
 
   for (const artifact of collectMessageArtifacts(assistantMessage)) {
+    if (artifact.op === "viewed") continue;
     upsertMediaPath(byLabel, artifact.path);
   }
 
