@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { composeChatLabSystemPrompt } from "./chatLabSystemPrompt.js";
 import {
 
   CHAT_SESSION_CHANNEL_WECHAT,
@@ -414,7 +415,7 @@ export function useWechatAutoReplyStream() {
 
       const outgoing = [
 
-        { role: "system", content: `${t("chatLab.systemPrompt")}\n\n${t("chatLab.wechatSystemPrompt")}` },
+        { role: "system", content: `${composeChatLabSystemPrompt(t)}\n\n${t("chatLab.wechatSystemPrompt")}` },
 
         ...historyForRequest,
 

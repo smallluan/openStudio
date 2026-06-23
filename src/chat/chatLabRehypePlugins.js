@@ -1,6 +1,7 @@
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeKatex from "rehype-katex";
+import { rehypeChatLabImageGrid } from "./rehypeChatLabImageGrid.js";
 
 const starAttrs = defaultSchema.attributes["*"] ?? [];
 
@@ -32,4 +33,5 @@ export const CHAT_MD_REHYPE_PLUGINS = [
   rehypeRaw,
   [rehypeSanitize, chatMarkdownSanitizeSchema],
   rehypeKatex,
+  rehypeChatLabImageGrid(),
 ];

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { composeChatLabSystemPrompt } from "../chat/chatLabSystemPrompt.js";
 import {
   deriveTitleFromMessages,
   getSession,
@@ -89,7 +90,7 @@ export function useOrchestrationRunner(deps) {
         mainAgentId: deps.mainAgent?.id ?? "",
         participantIds: rec?.participantIds ?? deps.participantIds,
         messages,
-        systemPromptFallback: deps.t("chatLab.systemPrompt"),
+        systemPromptFallback: composeChatLabSystemPrompt(deps.t),
         run: rec?.orchestration ?? null,
         fastMode: deps.orchestrationFastMode ?? Boolean(rec?.orchestrationFastMode),
         ...extra,

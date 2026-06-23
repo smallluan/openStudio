@@ -12,9 +12,6 @@ import {
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import {
   CONTEXT_WINDOW_APPROX_TOKENS,
@@ -37,7 +34,9 @@ import {
   parseAssistantQuickReplies,
 } from "../chat/assistantQuickReplyParse.js";
 import { preferLongerAssistantText, reconcileTimelineWithCanonicalText } from "../chat/streamTimelineMerge.js";
-import { normalizeLatexMathDelimitersForRemark } from "../chat/normalizeLatexMathDelimitersForRemark.js";
+import {
+  coalesceImageOnlyTextParts,
+} from "../chat/chatLabMarkdownImageGrid.js";
 import {
   agentSessionKeysForConversation,
   buildGatewayPayloadRows,
@@ -82,6 +81,7 @@ import {
   parseAgentDelegateMention,
   resolveReplyTargets,
 } from "../studio/agentMentions.js";
+import { composeChatLabSystemPrompt } from "../chat/chatLabSystemPrompt.js";
 import {
   agentAvatarGlyph,
   agentDisplayLabel,
@@ -137,13 +137,10 @@ import {
   messagesWithTerminalAssistantPayload,
   syncSkillCreatorResultToLibrary,
 } from "../skills/skillCreatorChatSync.js";
+import ChatLabMarkdownContent from "../components/chat-lab/ChatLabMarkdownContent.jsx";
 import { cn } from "../ui/cn.js";
 import Select from "../ui/Select.jsx";
 import Checkbox from "../ui/Checkbox.jsx";
-import { CHAT_MD_REHYPE_PLUGINS } from "../chat/chatLabRehypePlugins.js";
-
-/** Markdown pipelines for chat bubbles (GFM + LaTeX via KaTeX). */
-const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
 
 /** Below this count, skip virtual scroll — avoids row-height drift on some Electron/GPU setups. */
 const CHAT_LAB_PLAIN_MESSAGE_MAX = 48;
@@ -339,6 +336,7 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
   return systemMessageForAgent(agent, t("chatLab.systemPrompt"), {
     groupAgents,
     groupDelegateHint,
+    studioSuffix: t("chatLab.imageDisplayPrompt"),
     ...extra,
   });
 }
@@ -1920,7 +1918,7 @@ export default function ChatLabPage() {
       const editGroupAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
       const sysRow = mainAgent
         ? systemRowForGroupAgent(mainAgent, t, editGroupAgents)
-        : { role: "system", content: t("chatLab.systemPrompt") };
+        : { role: "system", content: composeChatLabSystemPrompt(t) };
       const outgoing = [
         ...(sysRow ? [sysRow] : []),
         ...priorRows,
@@ -2850,7 +2848,7 @@ export default function ChatLabPage() {
 
   const contextUsageApprox = useMemo(() => {
     const chars = estimateThreadCharBudget(messages, {
-      systemPromptLen: t("chatLab.systemPrompt").length,
+      systemPromptLen: composeChatLabSystemPrompt(t).length,
       inputLen: input.length,
       pendingImagePayloadChars: composerPendingImageChars,
     });
@@ -3741,7 +3739,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
       }
     }
     flushGap();
-    return out;
+    return coalesceImageOnlyTextParts(out);
   }, [timeline]);
 
   const lastGapPartIdx = useMemo(() => {
@@ -3775,16 +3773,9 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
               </div>
             );
           }
-          const src = normalizeLatexMathDelimitersForRemark(p.body);
           return (
             <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--text chat-lab__md">
-              <ReactMarkdown
-                remarkPlugins={CHAT_MD_REMARK_PLUGINS}
-                rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
-                components={mdComponents}
-              >
-                {src}
-              </ReactMarkdown>
+              <ChatLabMarkdownContent source={String(p.body ?? "")} components={mdComponents} />
             </div>
           );
         }
@@ -4664,10 +4655,7 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
   const innerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const [naturalH, setNaturalH] = useState(0);
 
-  const userMdSource = useMemo(
-    () => normalizeLatexMathDelimitersForRemark(String(message.content ?? "")),
-    [message.content],
-  );
+  const userMdSource = String(message.content ?? "");
 
   useLayoutEffect(() => {
     const el = innerRef.current;
@@ -4697,13 +4685,7 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
       <div ref={innerRef} className="chat-lab__user-body">
         {String(message.content ?? "").trim() ? (
           <div className="chat-lab__md chat-lab__user-md">
-            <ReactMarkdown
-              remarkPlugins={CHAT_MD_REMARK_PLUGINS}
-              rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
-              components={mdComponents}
-            >
-              {userMdSource}
-            </ReactMarkdown>
+            <ChatLabMarkdownContent source={userMdSource} components={mdComponents} />
           </div>
         ) : null}
         {Array.isArray(message.imageAttachments) && message.imageAttachments.length > 0 ? (
@@ -5190,13 +5172,14 @@ const MessageBubble = memo(function MessageBubble({
   const mdComponents = useMemo(
     () => ({
       ...createChatLabMarkdownComponents(t),
-      /** @param {import("react").AnchorHTMLAttributes<HTMLAnchorElement> & { children?: import("react").ReactNode }} props */
-      a: ({ href, children }) => {
+      /** @param {import("react").AnchorHTMLAttributes<HTMLAnchorElement> & { children?: import("react").ReactNode; node?: unknown }} props */
+      a: ({ href, children, className, node: _node, ...rest }) => {
         const kind = href ? previewKindFromHref(href) : null;
         const text = chatMarkdownPlainText(children);
+        const gridCell = String(className ?? "").includes("chat-lab__md-image-grid__cell");
         /** @param {import("react").MouseEvent<HTMLAnchorElement>} e */
         const onClick = (e) => {
-          if (!previewApi || !href || !kind) return;
+          if (gridCell || !previewApi || !href || !kind) return;
           if (e.button !== 0) return;
           if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
           if (previewApi.openFromMarkdownLink(href, text)) e.preventDefault();
@@ -5205,9 +5188,9 @@ const MessageBubble = memo(function MessageBubble({
           <a
             href={href ?? "#"}
             onClick={onClick}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="chat-lab__md-a"
+            target={gridCell ? "_blank" : "_blank"}
+            rel={gridCell ? "noreferrer noopener" : "noreferrer noopener"}
+            className={gridCell ? className : cn("chat-lab__md-a", className)}
           >
             {children}
           </a>
@@ -5225,11 +5208,6 @@ const MessageBubble = memo(function MessageBubble({
 
   const toolRows = Array.isArray(message.toolTrace) ? message.toolTrace : [];
   const activityRows = Array.isArray(message.activityLog) ? message.activityLog : [];
-
-  const assistantMdSource = useMemo(
-    () => normalizeLatexMathDelimitersForRemark(String(message.content ?? "")),
-    [message.content],
-  );
 
   const timeLabel =
     typeof message.createdAt === "number" ? formatMessageTimestamp(message.createdAt, locale) : "";
@@ -5523,13 +5501,7 @@ const MessageBubble = memo(function MessageBubble({
         ) : (
           <div className="chat-lab__md">
             {message.content ? (
-              <ReactMarkdown
-                remarkPlugins={CHAT_MD_REMARK_PLUGINS}
-                rehypePlugins={CHAT_MD_REHYPE_PLUGINS}
-                components={mdComponents}
-              >
-                {assistantMdSource}
-              </ReactMarkdown>
+              <ChatLabMarkdownContent source={String(message.content ?? "")} components={mdComponents} />
             ) : showTyping ? (
               <ChatStreamingIndicator label={t("chatLab.streaming")} />
             ) : !message.thinking &&

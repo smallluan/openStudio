@@ -117,7 +117,7 @@ export function groupAgentsInSession({ agents, mainAgent, participantIds }) {
  * OpenClaw loads IDENTITY.md (who) and SOUL.md (how) separately — keep both in the system row.
  * @param {LobsterAgent} agent
  * @param {string} [fallbackSystemPrompt]
- * @param {{ groupAgents?: LobsterAgent[]; orchestrationTeamRoster?: string; groupDelegateHint?: string }} [opts]
+ * @param {{ groupAgents?: LobsterAgent[]; orchestrationTeamRoster?: string; groupDelegateHint?: string; studioSuffix?: string }} [opts]
  * @returns {{ role: "system"; content: string } | null}
  */
 export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
@@ -152,20 +152,30 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
     "- `[You · …]` lines are **your** earlier messages in this thread.",
     "- If the latest `[群聊 · …]` line @mentions you, answer that request in your own voice.",
   ].join("\n");
+  const studioSuffix = String(opts.studioSuffix ?? "").trim();
+  /** @param {string} content */
+  const withStudioSuffix = (content) => (studioSuffix ? `${content}\n\n${studioSuffix}` : content);
   const soul = String(agent.soulMd ?? "").trim();
   if (soul) {
     return {
       role: "system",
-      content: `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}\n\n# SOUL.md\n\n${soul}`,
+      content: withStudioSuffix(
+        `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}\n\n# SOUL.md\n\n${soul}`,
+      ),
     };
   }
   if (agent.isMain && fallbackSystemPrompt?.trim()) {
     return {
       role: "system",
-      content: `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}\n\n${fallbackSystemPrompt.trim()}`,
+      content: withStudioSuffix(
+        `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}\n\n${fallbackSystemPrompt.trim()}`,
+      ),
     };
   }
-  return { role: "system", content: `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}` };
+  return {
+    role: "system",
+    content: withStudioSuffix(`${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}`),
+  };
 }
 
 /**

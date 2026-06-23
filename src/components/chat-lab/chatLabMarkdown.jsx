@@ -18,7 +18,7 @@ import FluidTabBar from "../../ui/FluidTabBar.jsx";
 import { ChatLabPreviewContext } from "../../context/ChatLabPreviewContext.jsx";
 import { csvToHtmlDocument, svgToHtmlDocument, wrapLooseHtmlFragmentForSrcDoc } from "../../chat/chatLabDocumentPreview.js";
 import { getChatLabMermaidConfig } from "../../chat/chatLabMermaidTheme.js";
-import { normalizeLatexMathDelimitersForRemark } from "../../chat/normalizeLatexMathDelimitersForRemark.js";
+import { prepareChatLabMarkdownForRender } from "../../chat/chatLabMarkdownImageGrid.js";
 import { CHAT_MD_REHYPE_PLUGINS } from "../../chat/chatLabRehypePlugins.js";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light.js";
 import { CHAT_LAB_PRISM_LANGS } from "../../chat/chatLabPrismSetup.js";
@@ -320,7 +320,7 @@ function MermaidFenceView({ code, theme }) {
  */
 function MarkdownFenceView({ code, t }) {
   const mdSource = useMemo(
-    () => normalizeLatexMathDelimitersForRemark(code),
+    () => prepareChatLabMarkdownForRender(code),
     [code],
   );
   const components = useMemo(() => createChatLabMarkdownComponents(t), [t]);
@@ -553,6 +553,26 @@ function ChatMdCodeBlock({ code, fenceClassName, t }) {
 export function createChatLabMarkdownComponents(t) {
   return {
     /**
+     * @param {import("react").ComponentPropsWithoutRef<"div"> & { node?: unknown }} props
+     */
+    div: ({ className, children, node: _node, ...props }) => (
+      <div className={className}>{children}</div>
+    ),
+    /**
+     * @param {import("react").ComponentPropsWithoutRef<"img"> & { node?: unknown }} props
+     */
+    img: ({ src, alt, className, node: _node, title, width, height }) => (
+      <img
+        src={typeof src === "string" ? src : undefined}
+        alt={alt ?? ""}
+        className={className}
+        title={title}
+        width={width}
+        height={height}
+        loading="lazy"
+      />
+    ),
+    /**
      * @param {import("react").ComponentPropsWithoutRef<"td"> & { children?: import("react").ReactNode }} props
      */
     td: ({ children, ...props }) => {
@@ -569,6 +589,26 @@ export function createChatLabMarkdownComponents(t) {
     },
     /** @param {import("react").ComponentPropsWithoutRef<"pre">} props */
     pre: ({ children }) => <>{children}</>,
+    /**
+     * Image grids from rehype should not sit inside an extra `<p>` (invalid HTML + full-width layout).
+     * @param {import("react").ComponentPropsWithoutRef<"p"> & { node?: unknown }} props
+     */
+    p: ({ children, className, node: _node, ...props }) => {
+      const kids = Array.isArray(children) ? children : [children];
+      const meaningful = kids.filter((c) => c != null && c !== false && c !== "");
+      if (meaningful.length === 1 && isValidElement(meaningful[0])) {
+        const cls = meaningful[0].props?.className;
+        const clsStr = Array.isArray(cls) ? cls.join(" ") : String(cls ?? "");
+        if (clsStr.includes("chat-lab__md-image-grid")) {
+          return meaningful[0];
+        }
+      }
+      return (
+        <p className={className} {...props}>
+          {children}
+        </p>
+      );
+    },
     /**
      * @param {{
      *   inline?: boolean;
