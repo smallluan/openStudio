@@ -19,12 +19,15 @@ contextBridge.exposeInMainWorld("openclawBridge", {
 const CHAT_STREAM_CHAN = "studio:chatStream";
 const ORCH_EVENT_CHAN = "studio:orchestration-event";
 const WECHAT_STATUS_CHAN = "studio:wechatStatus";
+const PREVIEW_URL_CHAN = "studio:openPreviewUrl";
 
 contextBridge.exposeInMainWorld("studioBridge", {
   getUserConfig: () => ipcRenderer.invoke("studio:getUserConfig"),
   setUserConfig: (patch) => ipcRenderer.invoke("studio:setUserConfig", patch),
   getPaths: () => ipcRenderer.invoke("studio:getPaths"),
   openLogsDirectory: () => ipcRenderer.invoke("studio:openLogsDirectory"),
+  openExternalUrl: (url) => ipcRenderer.invoke("studio:openExternalUrl", url),
+  saveImageFromUrl: (payload) => ipcRenderer.invoke("studio:saveImageFromUrl", payload),
   getSkillEnvironment: () => ipcRenderer.invoke("studio:getSkillEnvironment"),
   openSkillDirectory: (payload) => ipcRenderer.invoke("studio:openSkillDirectory", payload),
   logRendererMessage: (payload) =>
@@ -80,5 +83,10 @@ contextBridge.exposeInMainWorld("studioBridge", {
     const wrapped = (_e, data) => listener(data);
     ipcRenderer.on(WECHAT_STATUS_CHAN, wrapped);
     return () => ipcRenderer.removeListener(WECHAT_STATUS_CHAN, wrapped);
+  },
+  onOpenPreviewUrl: (listener) => {
+    const wrapped = (_e, data) => listener(data);
+    ipcRenderer.on(PREVIEW_URL_CHAN, wrapped);
+    return () => ipcRenderer.removeListener(PREVIEW_URL_CHAN, wrapped);
   },
 });

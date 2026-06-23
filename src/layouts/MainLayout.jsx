@@ -184,7 +184,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
 
         <button
           type="button"
-          className="rail-edge-toggle"
+          className={cn("rail-edge-toggle", railDragging && "rail-edge-toggle--dragging")}
           style={{
             left: railPx,
           }}

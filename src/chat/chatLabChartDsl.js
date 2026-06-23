@@ -1,6 +1,6 @@
 /** @typedef {"light" | "dark"} ChatLabDocTheme */
 
-import { getChatLabEchartsTheme } from "./chatLabEchartsTheme.js";
+import { getChatLabEchartsTheme, resolveChartBackgroundColor } from "./chatLabEchartsTheme.js";
 import { validateBuiltInMapSupport } from "./chatLabEchartsMaps.js";
 import { parseLenientEchartsJson, parseStreamingEchartsJson } from "./chatLabEchartsJson.js";
 import { unsupportedSeriesTypes } from "./chatLabEchartsChartRegistry.js";
@@ -560,6 +560,7 @@ export function mergeThemeIntoEchartsOption(option, theme) {
   return {
     ...themePack.base,
     ...option,
+    backgroundColor: resolveChartBackgroundColor(option.backgroundColor),
     textStyle: {
       ...themePack.base.textStyle,
       ...(option.textStyle && typeof option.textStyle === "object"

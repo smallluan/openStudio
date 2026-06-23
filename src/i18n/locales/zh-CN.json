@@ -85,6 +85,12 @@
       "system": "跟随系统",
       "reduced": "减少"
     },
+    "linkOpenModeShort": "链接打开方式",
+    "linkOpenModeAria": "聊天中链接的打开方式",
+    "linkOpenMode": {
+      "sidebar": "右侧边栏",
+      "external": "系统浏览器"
+    },
     "openLogsFolder": "打开日志目录",
     "openLogsAria": "在资源管理器中打开应用日志文件夹",
     "lang": {
@@ -125,11 +131,18 @@
     "previewPrevious": "上一张",
     "previewNext": "下一张",
     "previewCounter": "{{current}} / {{total}}",
-    "openInNewTab": "在新标签页打开"
+    "openInNewTab": "在新标签页打开",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "rotateLeft": "向左旋转",
+    "rotateRight": "向右旋转",
+    "resetView": "重置视图",
+    "saveImage": "保存图片"
   },
   "chart": {
     "generating": "图表生成中…",
-    "updating": "图表更新中…"
+    "updating": "图表更新中…",
+    "saveImage": "保存为图片"
   },
   "lobsterPage": {
     "title": "智能体管理",
@@ -340,6 +353,13 @@
     "previewDockAria": "文档预览",
     "previewDefaultTitle": "预览",
     "previewOpenExternal": "在浏览器中打开",
+    "previewDeviceDesktop": "桌面端",
+    "previewDeviceMobile": "手机端",
+    "previewDeviceModeAria": "预览设备模式",
+    "previewWebLoading": "正在加载页面…",
+    "previewWebLoadFailed": "页面加载失败。可点击 ↗ 在系统浏览器中打开。",
+    "previewMobileBack": "返回上一页",
+    "previewMobileAssistive": "悬浮球：拖动移动，点击返回",
     "previewClose": "关闭预览",
     "previewTitleHtml": "HTML 预览",
     "previewTitleCsv": "CSV 预览",

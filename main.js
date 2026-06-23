@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const { fileURLToPath } = require("url");
 const { createConfigStore } = require("./lib/config-store.cjs");
 const { dispatchOpenClawGatewayStream, probeOpenClawGateway } = require("./lib/openclaw-gateway-stream.cjs");
 const {
@@ -75,6 +76,7 @@ if (process.platform === "win32") {
 const CHAT_STREAM_CHAN = "studio:chatStream";
 const BOOTSTRAP_PROGRESS_CHAN = "studio:bootstrapProgress";
 const WECHAT_STATUS_CHAN = "studio:wechatStatus";
+const PREVIEW_URL_CHAN = "studio:openPreviewUrl";
 /** Overall budget for first-run gateway hydration (`tools.effective` can match first-chat prep cost). */
 const BOOTSTRAP_BUDGET_MS = 900_000;
 /** Background `#studio:` session prewarm (sequential RPCs; can be long with many threads). */
@@ -528,7 +530,16 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
+  });
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    const target = String(url ?? "").trim();
+    if (/^https?:\/\//i.test(target) && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(PREVIEW_URL_CHAN, { url: target });
+    }
+    return { action: "deny" };
   });
 
   win.removeMenu?.();
@@ -553,6 +564,17 @@ function createWindow() {
   });
 
   attachWebContentsDiagnostics(win.webContents);
+
+  win.webContents.on("did-attach-webview", (_event, guestContents) => {
+    attachWebContentsDiagnostics(guestContents);
+    guestContents.setWindowOpenHandler(({ url }) => {
+      const target = String(url ?? "").trim();
+      if (/^https?:\/\//i.test(target) && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(PREVIEW_URL_CHAN, { url: target });
+      }
+      return { action: "deny" };
+    });
+  });
 
   win.webContents.on("did-finish-load", () => {
     try {
@@ -734,6 +756,83 @@ app.whenReady().then(async () => {
     userData: app.getPath("userData"),
     logs: app.getPath("logs"),
   }));
+
+  ipcMain.handle("studio:openExternalUrl", async (_event, rawUrl) => {
+    const url = String(rawUrl ?? "").trim();
+    if (!/^https?:\/\//i.test(url)) {
+      return { ok: false, error: "invalid_url" };
+    }
+    try {
+      await shell.openExternal(url);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String(/** @type {any} */ (e)?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:saveImageFromUrl", async (_event, payload) => {
+    const url = String(payload?.url ?? "").trim();
+    if (!url) return { ok: false, error: "no_url" };
+
+    const suggestedRaw = String(payload?.suggestedName ?? "image").trim() || "image";
+    const suggested = suggestedRaw.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "_").slice(0, 120);
+
+    /** @type {Buffer | undefined} */
+    let buffer;
+    let ext = "png";
+    try {
+      if (url.startsWith("file://")) {
+        const filePath = fileURLToPath(url);
+        buffer = fs.readFileSync(filePath);
+        const dotExt = path.extname(filePath).slice(1);
+        if (dotExt) ext = dotExt;
+      } else if (url.startsWith("data:")) {
+        const match = url.match(/^data:image\/(\w+);base64,(.+)$/i);
+        if (match) {
+          ext = match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();
+          buffer = Buffer.from(match[2], "base64");
+        } else {
+          const res = await fetch(url);
+          if (!res.ok) return { ok: false, error: `fetch_${res.status}` };
+          buffer = Buffer.from(await res.arrayBuffer());
+        }
+      } else {
+        const res = await fetch(url);
+        if (!res.ok) return { ok: false, error: `fetch_${res.status}` };
+        buffer = Buffer.from(await res.arrayBuffer());
+        const ct = String(res.headers.get("content-type") ?? "").toLowerCase();
+        if (ct.includes("jpeg")) ext = "jpg";
+        else if (ct.includes("png")) ext = "png";
+        else if (ct.includes("webp")) ext = "webp";
+        else if (ct.includes("gif")) ext = "gif";
+        else if (ct.includes("svg")) ext = "svg";
+      }
+    } catch (e) {
+      return { ok: false, error: String(/** @type {any} */ (e)?.message ?? e) };
+    }
+
+    if (!buffer?.length) return { ok: false, error: "empty_image" };
+
+    const win = BrowserWindow.getFocusedWindow() || mainWindow;
+    const defaultName = /\.[a-z0-9]{2,5}$/i.test(suggested) ? suggested : `${suggested}.${ext}`;
+    const { filePath, canceled } = await dialog.showSaveDialog(win ?? undefined, {
+      defaultPath: defaultName,
+      filters: [
+        {
+          name: "Images",
+          extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp"],
+        },
+      ],
+    });
+    if (canceled || !filePath) return { ok: false, canceled: true };
+
+    try {
+      fs.writeFileSync(filePath, buffer);
+      return { ok: true, filePath };
+    } catch (e) {
+      return { ok: false, error: String(/** @type {any} */ (e)?.message ?? e) };
+    }
+  });
 
   ipcMain.handle("studio:openLogsDirectory", async () => {
     const logsDir = app.getPath("logs");

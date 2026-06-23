@@ -3,6 +3,22 @@
 const FONT_STACK =
   'ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
 
+/** Solid fill for chart block body + PNG export (canvas itself stays transparent). */
+/** @param {ChatLabDocTheme} theme */
+export function getChatLabChartBackgroundColor(theme) {
+  return theme === "dark" ? "#1a1f27" : "#ffffff";
+}
+
+/**
+ * @param {unknown} value
+ */
+export function resolveChartBackgroundColor(value) {
+  if (value == null || value === "") return "transparent";
+  const s = String(value).trim().toLowerCase();
+  if (s === "transparent" || s === "none") return "transparent";
+  return value;
+}
+
 /**
  * @param {ChatLabDocTheme} theme
  */

@@ -3,6 +3,11 @@ import { useI18n } from "../../context/I18nContext.jsx";
 import { useMotionPreference } from "../../context/MotionPreferenceContext.jsx";
 import { useTheme } from "../../context/ThemeContext.jsx";
 import { isLocaleId } from "../../i18n/messages.js";
+import {
+  normalizeLinkOpenMode,
+  readLinkOpenModeLocal,
+  writeLinkOpenModeLocal,
+} from "../../chat/chatLabLinkOpenPreference.js";
 import Select from "../../ui/Select.jsx";
 import Switch from "../../ui/Switch.jsx";
 import { cn } from "../../ui/cn.js";
@@ -34,6 +39,7 @@ export default function GeneralSettingsSection() {
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
 
   const [chatLabAutoTitle, setChatLabAutoTitle] = useState(false);
+  const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +48,11 @@ export default function GeneralSettingsSection() {
         const c = await bridge?.getUserConfig?.();
         if (!cancelled && c && typeof c === "object") {
           setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
+          if (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar") {
+            const mode = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
+            setLinkOpenMode(mode);
+            writeLinkOpenModeLocal(mode);
+          }
         }
       } catch {
         /* ignore */
@@ -62,6 +73,26 @@ export default function GeneralSettingsSection() {
         if (c && typeof c === "object") setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
       } catch {
         setChatLabAutoTitle(false);
+      }
+    }
+  };
+
+  const persistLinkOpenMode = async (next) => {
+    const mode = normalizeLinkOpenMode(next);
+    setLinkOpenMode(mode);
+    writeLinkOpenModeLocal(mode);
+    try {
+      await bridge?.setUserConfig?.({ chatLabLinkOpenMode: mode });
+    } catch {
+      try {
+        const c = await bridge?.getUserConfig?.();
+        if (c && typeof c === "object" && (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar")) {
+          const restored = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
+          setLinkOpenMode(restored);
+          writeLinkOpenModeLocal(restored);
+        }
+      } catch {
+        setLinkOpenMode(readLinkOpenModeLocal());
       }
     }
   };
@@ -89,6 +120,14 @@ export default function GeneralSettingsSection() {
       { value: "full", label: t("settings.uiMotion.full") },
       { value: "system", label: t("settings.uiMotion.system") },
       { value: "reduced", label: t("settings.uiMotion.reduced") },
+    ],
+    [t],
+  );
+
+  const linkOpenModeOptions = useMemo(
+    () => [
+      { value: "sidebar", label: t("settings.linkOpenMode.sidebar") },
+      { value: "external", label: t("settings.linkOpenMode.external") },
     ],
     [t],
   );
@@ -127,6 +166,17 @@ export default function GeneralSettingsSection() {
               if (v === "full" || v === "system" || v === "reduced") setUiMotion(v);
             }}
             options={uiMotionOptions}
+            className="min-w-[8.5rem]"
+          />
+        </GeneralSettingRow>
+
+        <GeneralSettingRow title={t("settings.linkOpenModeShort")}>
+          <Select
+            id="settings-link-open-mode"
+            ariaLabel={t("settings.linkOpenModeAria")}
+            value={linkOpenMode}
+            onChange={(v) => void persistLinkOpenMode(v)}
+            options={linkOpenModeOptions}
             className="min-w-[8.5rem]"
           />
         </GeneralSettingRow>

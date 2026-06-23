@@ -30,6 +30,7 @@ import { CHAT_LAB_PRISM_LANGS } from "../../chat/chatLabPrismSetup.js";
 import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light.js";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js";
 import ChatLabEchartsFenceView from "./ChatLabEchartsFenceView.jsx";
+import ChatLabChartBlock from "./ChatLabChartBlock.jsx";
 
 const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
 
@@ -436,12 +437,25 @@ function CodeFenceSource({ code, prism, syntaxStyle, codeFont }) {
 
 function ChatMdVisualBlock({ code, label, displayLang, isChartFence, streaming, t }) {
   const theme = useDocTheme();
+
+  if (isChartFence) {
+    return (
+      <ChatLabChartBlock
+        code={code}
+        label={label}
+        displayLang={displayLang}
+        theme={theme}
+        streaming={streaming}
+        t={t}
+      />
+    );
+  }
+
   return (
     <div
       className={cn(
         "chat-lab__code-block",
         "chat-lab__code-block--visual-only",
-        isChartFence && "chat-lab__code-block--chart",
       )}
       data-theme={theme}
     >
@@ -684,6 +698,24 @@ function parseMarkdownGridImages(node) {
   }
 }
 
+/** @param {import("react").AnchorHTMLAttributes<HTMLAnchorElement> & { children?: import("react").ReactNode; node?: unknown }} props */
+function ChatLabMarkdownLink({ href, children, className, node: _node, ...rest }) {
+  const previewApi = useContext(ChatLabPreviewContext);
+  const text = chatMarkdownPlainText(children);
+  /** @param {import("react").MouseEvent<HTMLAnchorElement>} e */
+  const onClick = (e) => {
+    if (!previewApi || !href) return;
+    if (e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (previewApi.openFromHref?.(href, text)) e.preventDefault();
+  };
+  return (
+    <a href={href ?? "#"} onClick={onClick} className={cn("chat-lab__md-a", className)} {...rest}>
+      {children}
+    </a>
+  );
+}
+
 /**
  * @param {(key: string, vars?: Record<string, string | number>) => string} t
  * @param {{ streaming?: boolean }} [opts]
@@ -691,6 +723,10 @@ function parseMarkdownGridImages(node) {
 export function createChatLabMarkdownComponents(t, opts = {}) {
   const streaming = Boolean(opts.streaming);
   return {
+    /**
+     * @param {import("react").AnchorHTMLAttributes<HTMLAnchorElement> & { children?: import("react").ReactNode; node?: unknown }} props
+     */
+    a: ChatLabMarkdownLink,
     /**
      * @param {import("react").ComponentPropsWithoutRef<"div"> & { node?: unknown }} props
      */

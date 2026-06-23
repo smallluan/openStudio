@@ -85,6 +85,12 @@
       "system": "Follow system",
       "reduced": "Reduced"
     },
+    "linkOpenModeShort": "Open links in",
+    "linkOpenModeAria": "How chat links are opened",
+    "linkOpenMode": {
+      "sidebar": "Side panel",
+      "external": "System browser"
+    },
     "openLogsFolder": "Open log folder",
     "openLogsAria": "Open the application log folder in the file manager",
     "lang": {
@@ -125,11 +131,18 @@
     "previewPrevious": "Previous image",
     "previewNext": "Next image",
     "previewCounter": "{{current}} / {{total}}",
-    "openInNewTab": "Open in new tab"
+    "openInNewTab": "Open in new tab",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "rotateLeft": "Rotate left",
+    "rotateRight": "Rotate right",
+    "resetView": "Reset view",
+    "saveImage": "Save image"
   },
   "chart": {
     "generating": "Generating chart…",
-    "updating": "Updating chart…"
+    "updating": "Updating chart…",
+    "saveImage": "Save as image"
   },
   "lobsterPage": {
     "title": "Agent management",
@@ -340,6 +353,13 @@
     "previewDockAria": "Document preview",
     "previewDefaultTitle": "Preview",
     "previewOpenExternal": "Open in browser",
+    "previewDeviceDesktop": "Desktop",
+    "previewDeviceMobile": "Mobile",
+    "previewDeviceModeAria": "Preview device mode",
+    "previewWebLoading": "Loading page…",
+    "previewWebLoadFailed": "Could not load this page. Use ↗ to open in your system browser.",
+    "previewMobileBack": "Go back",
+    "previewMobileAssistive": "Assistive ball: drag to move, tap to go back",
     "previewClose": "Close preview",
     "previewTitleHtml": "HTML preview",
     "previewTitleCsv": "CSV preview",

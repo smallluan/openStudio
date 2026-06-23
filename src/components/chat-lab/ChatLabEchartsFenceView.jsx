@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { resolveChartFenceOption } from "../../chat/chatLabChartDsl.js";
+import { getChatLabChartBackgroundColor } from "../../chat/chatLabEchartsTheme.js";
 import { ensureBuiltInMapsRegistered } from "../../chat/chatLabEchartsMaps.js";
 import { ensureChartsRegistered } from "../../chat/chatLabEchartsChartRegistry.js";
 import { cn } from "../../ui/cn.js";
@@ -21,21 +22,26 @@ function resizeChartWhenReady(instance) {
 }
 
 /**
+ * @typedef {{
+ *   download: () => void;
+ * }} ChatLabEchartsFenceHandle
+ */
+
+/**
  * @param {{
  *   code: string;
  *   label: string;
  *   theme: "light" | "dark";
  *   active?: boolean;
  *   streaming?: boolean;
+ *   onStatusChange?: (status: { canDownload: boolean }) => void;
  * }} props
+ * @param {import("react").Ref<ChatLabEchartsFenceHandle>} ref
  */
-export default function ChatLabEchartsFenceView({
-  code,
-  label,
-  theme,
-  active = true,
-  streaming = false,
-}) {
+function ChatLabEchartsFenceView(
+  { code, label, theme, active = true, streaming = false, onStatusChange },
+  ref,
+) {
   const { t } = useI18n();
   const debouncedCode = useDebouncedValue(code, streaming ? STREAM_DEBOUNCE_MS : 0);
   const containerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
@@ -45,6 +51,29 @@ export default function ChatLabEchartsFenceView({
   const [error, setError] = useState("");
   const [hasChart, setHasChart] = useState(false);
   const [busy, setBusy] = useState(true);
+
+  const handleDownload = useCallback(() => {
+    const instance = chartRef.current;
+    if (!instance) return;
+    try {
+      const url = instance.getDataURL({
+        type: "png",
+        pixelRatio: 2,
+        backgroundColor: getChatLabChartBackgroundColor(theme),
+      });
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "chart.png";
+      anchor.rel = "noreferrer";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
+
+  useImperativeHandle(ref, () => ({ download: handleDownload }), [handleDownload]);
 
   useEffect(() => {
     if (!active) return undefined;
@@ -135,6 +164,11 @@ export default function ChatLabEchartsFenceView({
   }, [active]);
 
   const showMask = busy || streaming || (!hasChart && !error);
+  const canDownload = hasChart && !showMask && !error;
+
+  useEffect(() => {
+    onStatusChange?.({ canDownload });
+  }, [canDownload, onStatusChange]);
 
   if (error) {
     return <p className="chat-lab__code-render-error">{error}</p>;
@@ -142,7 +176,9 @@ export default function ChatLabEchartsFenceView({
 
   return (
     <div className="chat-lab__echarts-render">
-      <div ref={containerRef} className="chat-lab__echarts-render__canvas" aria-hidden={false} />
+      <div className="chat-lab__echarts-render__stage">
+        <div ref={containerRef} className="chat-lab__echarts-render__canvas" aria-hidden={false} />
+      </div>
       {showMask ?
         <div
           className={cn(
@@ -161,3 +197,5 @@ export default function ChatLabEchartsFenceView({
     </div>
   );
 }
+
+export default forwardRef(ChatLabEchartsFenceView);

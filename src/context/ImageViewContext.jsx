@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import ImageView from "../ui/ImageView.jsx";
 
 /**
@@ -41,12 +42,15 @@ export function ImageViewProvider({ children }) {
   return (
     <ImageViewContext.Provider value={value}>
       {children}
-      {session ?
-        <ImageView
-          images={session.images}
-          initialIndex={session.initialIndex}
-          onClose={close}
-        />
+      {session && typeof document !== "undefined" ?
+        createPortal(
+          <ImageView
+            images={session.images}
+            initialIndex={session.initialIndex}
+            onClose={close}
+          />,
+          document.body,
+        )
       : null}
     </ImageViewContext.Provider>
   );

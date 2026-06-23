@@ -104,7 +104,7 @@ import {
   useChatLabStreaming,
   useGatewayStreamSlices,
 } from "../context/ChatLabStreamingContext.jsx";
-import { createChatLabMarkdownComponents, chatMarkdownPlainText } from "../components/chat-lab/chatLabMarkdown.jsx";
+import { createChatLabMarkdownComponents } from "../components/chat-lab/chatLabMarkdown.jsx";
 import ChatLabPreviewDock from "../components/chat-lab/ChatLabPreviewDock.jsx";
 import {
   ChatLabPreviewContext,
@@ -113,7 +113,7 @@ import {
 } from "../context/ChatLabPreviewContext.jsx";
 import { ImageViewProvider } from "../context/ImageViewContext.jsx";
 import Image from "../ui/Image.jsx";
-import { lastHtmlFenceAsSrcDocDocument, previewKindFromHref } from "../chat/chatLabDocumentPreview.js";
+import { lastHtmlFenceAsSrcDocDocument } from "../chat/chatLabDocumentPreview.js";
 import { collectSessionArtifacts } from "../chat/chatLabSessionArtifacts.js";
 import ChatLabArtifactsBar from "../components/chat-lab/ChatLabArtifactsBar.jsx";
 import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
@@ -5180,33 +5180,8 @@ const MessageBubble = memo(function MessageBubble({
   const previewApi = useContext(ChatLabPreviewContext);
 
   const mdComponents = useMemo(
-    () => ({
-      ...createChatLabMarkdownComponents(t, { streaming: Boolean(message.streaming) }),
-      /** @param {import("react").AnchorHTMLAttributes<HTMLAnchorElement> & { children?: import("react").ReactNode; node?: unknown }} props */
-      a: ({ href, children, className, node: _node, ...rest }) => {
-        const kind = href ? previewKindFromHref(href) : null;
-        const text = chatMarkdownPlainText(children);
-        /** @param {import("react").MouseEvent<HTMLAnchorElement>} e */
-        const onClick = (e) => {
-          if (!previewApi || !href || !kind) return;
-          if (e.button !== 0) return;
-          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-          if (previewApi.openFromMarkdownLink(href, text)) e.preventDefault();
-        };
-        return (
-          <a
-            href={href ?? "#"}
-            onClick={onClick}
-            target="_blank"
-            rel="noreferrer noopener"
-            className={cn("chat-lab__md-a", className)}
-          >
-            {children}
-          </a>
-        );
-      },
-    }),
-    [t, previewApi, message.streaming],
+    () => createChatLabMarkdownComponents(t, { streaming: Boolean(message.streaming) }),
+    [t, message.streaming],
   );
 
   const [thinkOpen, setThinkOpen] = useState(() => Boolean(message.streaming));

@@ -85,6 +85,12 @@
       "system": "跟隨系統",
       "reduced": "減少"
     },
+    "linkOpenModeShort": "連結開啟方式",
+    "linkOpenModeAria": "聊天中連結的開啟方式",
+    "linkOpenMode": {
+      "sidebar": "右側邊欄",
+      "external": "系統瀏覽器"
+    },
     "openLogsFolder": "開啟日誌資料夾",
     "openLogsAria": "在檔案總管中開啟應用程式日誌資料夾",
     "lang": {
@@ -125,11 +131,18 @@
     "previewPrevious": "上一張",
     "previewNext": "下一張",
     "previewCounter": "{{current}} / {{total}}",
-    "openInNewTab": "在新分頁中開啟"
+    "openInNewTab": "在新分頁中開啟",
+    "zoomIn": "放大",
+    "zoomOut": "縮小",
+    "rotateLeft": "向左旋轉",
+    "rotateRight": "向右旋轉",
+    "resetView": "重設檢視",
+    "saveImage": "儲存圖片"
   },
   "chart": {
     "generating": "圖表生成中…",
-    "updating": "圖表更新中…"
+    "updating": "圖表更新中…",
+    "saveImage": "儲存為圖片"
   },
   "lobsterPage": {
     "title": "智慧體管理",
@@ -337,6 +350,13 @@
     "previewDockAria": "文件預覽",
     "previewDefaultTitle": "預覽",
     "previewOpenExternal": "在瀏覽器開啟",
+    "previewDeviceDesktop": "桌面端",
+    "previewDeviceMobile": "手機端",
+    "previewDeviceModeAria": "預覽裝置模式",
+    "previewWebLoading": "正在載入頁面…",
+    "previewWebLoadFailed": "頁面載入失敗。可點 ↗ 在系統瀏覽器開啟。",
+    "previewMobileBack": "返回上一頁",
+    "previewMobileAssistive": "懸浮球：拖曳移動，點擊返回",
     "previewClose": "關閉預覽",
     "previewTitleHtml": "HTML 預覽",
     "previewTitleCsv": "CSV 預覽",

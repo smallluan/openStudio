@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Monitor, Smartphone } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
 import { cn } from "../../ui/cn.js";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import ChatLabArtifactPreviewPane from "./ChatLabArtifactPreviewPane.jsx";
+import ChatLabPreviewWebFrame from "./ChatLabPreviewWebFrame.jsx";
 
 const PREVIEW_W_KEY = "openstudio_chat_preview_px";
 const PREVIEW_W_DEFAULT = 520;
@@ -78,10 +80,27 @@ export default function ChatLabPreviewDock({ extension = null }) {
     const url = session.externalUrl;
     if (!url) return;
     try {
+      if (typeof window.__openStudioOpenExternal === "function") {
+        window.__openStudioOpenExternal(url);
+        return;
+      }
       window.open(url, "_blank", "noreferrer,noopener");
     } catch {
       /* ignore */
     }
+  }, [session]);
+
+  const onPreviewNavigate = useCallback(
+    (url) => {
+      api?.navigatePreviewTo?.(url);
+    },
+    [api],
+  );
+
+  const showDeviceToggle = useMemo(() => {
+    if (session?.kind !== "iframe") return false;
+    const url = session.externalUrl ?? session.src;
+    return Boolean(url && /^https?:\/\//i.test(url));
   }, [session]);
 
   const selectedArtifact = useMemo(() => {
@@ -129,12 +148,47 @@ export default function ChatLabPreviewDock({ extension = null }) {
         {extension?.meta ? (
           <span className="chat-lab-preview-dock__meta shrink-0 text-[0.76rem]">{extension.meta}</span>
         ) : null}
+        {showDeviceToggle ? (
+          <div
+            className="chat-lab-preview-dock__device-toggle flex shrink-0 items-center gap-0.5"
+            role="group"
+            aria-label={t("chatLab.previewDeviceModeAria")}
+          >
+            <button
+              type="button"
+              className={cn(
+                "chat-lab-preview-dock__icon-btn chat-lab-preview-dock__device-btn",
+                api?.deviceMode === "desktop" && "chat-lab-preview-dock__device-btn--active",
+              )}
+              onClick={() => api?.setDeviceMode?.("desktop")}
+              title={t("chatLab.previewDeviceDesktop")}
+              aria-label={t("chatLab.previewDeviceDesktop")}
+              aria-pressed={api?.deviceMode === "desktop"}
+            >
+              <Monitor size={15} strokeWidth={1.75} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "chat-lab-preview-dock__icon-btn chat-lab-preview-dock__device-btn",
+                api?.deviceMode === "mobile" && "chat-lab-preview-dock__device-btn--active",
+              )}
+              onClick={() => api?.setDeviceMode?.("mobile")}
+              title={t("chatLab.previewDeviceMobile")}
+              aria-label={t("chatLab.previewDeviceMobile")}
+              aria-pressed={api?.deviceMode === "mobile"}
+            >
+              <Smartphone size={15} strokeWidth={1.75} aria-hidden />
+            </button>
+          </div>
+        ) : null}
         {session?.kind === "iframe" && session.externalUrl ? (
           <button
             type="button"
             className="chat-lab-preview-dock__icon-btn"
             onClick={onOpenExternal}
             title={t("chatLab.previewOpenExternal")}
+            data-preview-bypass="true"
           >
             ↗
           </button>
@@ -220,6 +274,17 @@ export default function ChatLabPreviewDock({ extension = null }) {
             <div className="chat-lab-preview-dock__placeholder muted px-3 py-3 text-[0.82rem] leading-relaxed">
               {session.body}
             </div>
+          ) : session?.kind === "iframe" && session.useWebview ? (
+            <ChatLabPreviewWebFrame
+              src={session.src}
+              title={session.title || t("chatLab.previewDefaultTitle")}
+              frameKey={session.frameKey}
+              sandbox={session.sandbox}
+              useWebview
+              deviceMode={api?.deviceMode ?? "desktop"}
+              iframeRef={api.iframeRef}
+              onNavigate={onPreviewNavigate}
+            />
           ) : (
             <iframe
               ref={api.iframeRef}

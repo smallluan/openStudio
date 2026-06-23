@@ -13,10 +13,31 @@ import {
   officeEmbedViewerUrl,
   previewKindFromHref,
   absoluteHttpUrlMaybe,
+  isPreviewInterceptableHref,
 } from "../chat/chatLabDocumentPreview.js";
 import { artifactPayloadFromReadResult } from "../chat/chatLabArtifactFilePayload.js";
 import { useI18n } from "./I18nContext.jsx";
 import { artifactPreviewKindFromPath } from "../chat/chatLabArtifactPreviewKind.js";
+import {
+  LINK_OPEN_MODE_EVENT,
+  normalizeLinkOpenMode,
+  openChatLabExternalUrl,
+  readLinkOpenModeLocal,
+  writeLinkOpenModeLocal,
+} from "../chat/chatLabLinkOpenPreference.js";
+
+const PREVIEW_DEVICE_KEY = "openstudio_chat_preview_device";
+
+/** @returns {"desktop" | "mobile"} */
+function readPreviewDeviceMode() {
+  try {
+    const raw = window.localStorage.getItem(PREVIEW_DEVICE_KEY);
+    if (raw === "mobile" || raw === "desktop") return raw;
+  } catch {
+    /* ignore */
+  }
+  return "desktop";
+}
 
 /**
  * @typedef {{
@@ -26,6 +47,7 @@ import { artifactPreviewKindFromPath } from "../chat/chatLabArtifactPreviewKind.
  *   frameKey: string;
  *   sandbox?: string;
  *   externalUrl?: string | null;
+ *   useWebview?: boolean;
  * }} ChatLabPreviewIframe
  *
  * @typedef {{
@@ -62,11 +84,15 @@ import { artifactPreviewKindFromPath } from "../chat/chatLabArtifactPreviewKind.
  *   artifactsPanel: ArtifactsPanelState | null;
  *   iframeRef: import("react").RefObject<HTMLIFrameElement | null>;
  *   close: () => void;
- *   openIframe: (src: string, title: string, opts?: { externalUrl?: string | null; sandbox?: string }) => void;
+ *   openIframe: (src: string, title: string, opts?: { externalUrl?: string | null; sandbox?: string; useWebview?: boolean }) => void;
  *   openSrcDoc: (html: string, title: string, opts?: { sandbox?: string }) => void;
  *   openBlob: (blob: Blob, title: string) => void;
  *   openPlaceholder: (title: string, body: string) => void;
+ *   openFromHref: (href: string, linkLabel?: string) => boolean;
  *   openFromMarkdownLink: (href: string, linkLabel: string) => boolean;
+ *   navigatePreviewTo: (url: string, title?: string) => void;
+ *   deviceMode: "desktop" | "mobile";
+ *   setDeviceMode: (mode: "desktop" | "mobile") => void;
  *   openFromWorkspacePath: (inputPath: string, title?: string) => Promise<void>;
  *   openArtifactsPanel: (files: SessionArtifact[], selectPath?: string) => void;
  *   selectArtifact: (path: string) => void;
@@ -93,6 +119,49 @@ export function ChatLabPreviewProvider({ children }) {
 
   const [session, setSession] = useState(/** @type {ChatLabPreviewSession | null} */ (null));
   const [artifactsPanel, setArtifactsPanel] = useState(/** @type {ArtifactsPanelState | null} */ (null));
+  const [deviceMode, setDeviceModeState] = useState(readPreviewDeviceMode);
+  const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
+
+  useEffect(() => {
+    let cancelled = false;
+    const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+    (async () => {
+      try {
+        const c = await bridge?.getUserConfig?.();
+        if (cancelled || !c || typeof c !== "object") return;
+        if (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar") {
+          const mode = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
+          setLinkOpenMode(mode);
+          writeLinkOpenModeLocal(mode);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    /** @param {Event} e */
+    const onModeChange = (e) => {
+      const detail = /** @type {CustomEvent<{ mode?: string }>} */ (e).detail;
+      setLinkOpenMode(normalizeLinkOpenMode(detail?.mode));
+    };
+    window.addEventListener(LINK_OPEN_MODE_EVENT, onModeChange);
+    return () => window.removeEventListener(LINK_OPEN_MODE_EVENT, onModeChange);
+  }, []);
+
+  const setDeviceMode = useCallback((mode) => {
+    const next = mode === "mobile" ? "mobile" : "desktop";
+    setDeviceModeState(next);
+    try {
+      window.localStorage.setItem(PREVIEW_DEVICE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const revokeBlob = useCallback(() => {
     const u = blobRevokeRef.current;
@@ -273,7 +342,7 @@ export function ChatLabPreviewProvider({ children }) {
     /**
      * @param {string} src
      * @param {string} title
-     * @param {{ externalUrl?: string | null; sandbox?: string }} [opts]
+     * @param {{ externalUrl?: string | null; sandbox?: string; useWebview?: boolean }} [opts]
      */
     (src, title, opts = {}) => {
       revokeArtifactBlobs();
@@ -286,6 +355,7 @@ export function ChatLabPreviewProvider({ children }) {
         frameKey: newPreviewFrameKey(),
         sandbox: opts.sandbox,
         externalUrl: opts.externalUrl ?? src,
+        useWebview: Boolean(opts.useWebview),
       });
     },
     [revokeArtifactBlobs, revokeBlob],
@@ -351,8 +421,56 @@ export function ChatLabPreviewProvider({ children }) {
     [revokeArtifactBlobs, revokeBlob],
   );
 
-  const openFromMarkdownLink = useCallback(
+  const navigatePreviewTo = useCallback(
+    /**
+     * @param {string} url
+     * @param {string} [title]
+     */
+    (url, title) => {
+      const nextUrl = String(url ?? "").trim();
+      if (!nextUrl) return;
+      const label = String(title ?? nextUrl).trim() || nextUrl;
+      setSession((prev) => {
+        if (prev?.kind === "iframe" && prev.useWebview) {
+          return {
+            ...prev,
+            src: nextUrl,
+            externalUrl: nextUrl,
+            title: label,
+            frameKey: newPreviewFrameKey(),
+          };
+        }
+        return {
+          kind: "iframe",
+          src: nextUrl,
+          title: label,
+          frameKey: newPreviewFrameKey(),
+          sandbox:
+            "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals",
+          externalUrl: nextUrl,
+          useWebview: true,
+        };
+      });
+      revokeArtifactBlobs();
+      setArtifactsPanel(null);
+      revokeBlob();
+    },
+    [revokeArtifactBlobs, revokeBlob],
+  );
+
+  const openFromHref = useCallback(
+    /**
+     * @param {string} href
+     * @param {string} [linkLabel]
+     * @returns {boolean}
+     */
     (href, linkLabel) => {
+      if (!isPreviewInterceptableHref(href)) return false;
+
+      if (linkOpenMode === "external") {
+        return openChatLabExternalUrl(href);
+      }
+
       const kind = previewKindFromHref(href);
       if (!kind) return false;
       const title = String(linkLabel ?? "").trim() || href;
@@ -367,7 +485,10 @@ export function ChatLabPreviewProvider({ children }) {
         if (abs) {
           const viewer = officeEmbedViewerUrl(abs);
           if (viewer) {
-            openIframe(viewer, title, { externalUrl: abs, sandbox: "allow-scripts allow-same-origin allow-popups" });
+            openIframe(viewer, title, {
+              externalUrl: abs,
+              sandbox: "allow-scripts allow-same-origin allow-popups",
+            });
             return true;
           }
         }
@@ -383,13 +504,31 @@ export function ChatLabPreviewProvider({ children }) {
       }
 
       if (kind === "pdf" || kind === "html") {
-        openIframe(resolved, title, { externalUrl: resolved, sandbox: "allow-scripts allow-downloads allow-popups" });
+        openIframe(resolved, title, {
+          externalUrl: resolved,
+          sandbox: "allow-scripts allow-downloads allow-popups",
+        });
+        return true;
+      }
+
+      if (kind === "web") {
+        openIframe(resolved, title, {
+          externalUrl: resolved,
+          sandbox:
+            "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals",
+          useWebview: true,
+        });
         return true;
       }
 
       return false;
     },
-    [openIframe, openPlaceholder, t],
+    [linkOpenMode, openIframe, openPlaceholder, t],
+  );
+
+  const openFromMarkdownLink = useCallback(
+    (href, linkLabel) => openFromHref(href, linkLabel),
+    [openFromHref],
   );
 
   const openFromWorkspacePath = useCallback(
@@ -437,6 +576,62 @@ export function ChatLabPreviewProvider({ children }) {
   }, []);
 
   useEffect(() => {
+    /** @param {MouseEvent} e */
+    function onClickCapture(e) {
+      if (!(e.target instanceof Element)) return;
+      const anchor = e.target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      if (anchor.dataset.previewBypass === "true") return;
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const href = anchor.getAttribute("href");
+      if (!href || !openFromHref(href, anchor.textContent ?? "")) return;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    document.addEventListener("click", onClickCapture, true);
+    return () => document.removeEventListener("click", onClickCapture, true);
+  }, [openFromHref]);
+
+  useEffect(() => {
+    const originalOpen = window.open.bind(window);
+    window.open = function openInPreviewDock(url, target, features) {
+      if (typeof url === "string") {
+        const trimmed = url.trim();
+        if (linkOpenMode === "external" && /^https?:\/\//i.test(trimmed)) {
+          openChatLabExternalUrl(trimmed);
+          return null;
+        }
+        if (linkOpenMode === "sidebar" && openFromHref(trimmed, trimmed)) return null;
+      }
+      return originalOpen(url, target, features);
+    };
+    /** @param {string} url */
+    window.__openStudioOpenExternal = (url) => {
+      openChatLabExternalUrl(String(url));
+    };
+    return () => {
+      window.open = originalOpen;
+      delete window.__openStudioOpenExternal;
+    };
+  }, [linkOpenMode, openFromHref]);
+
+  useEffect(() => {
+    const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+    const subscribe =
+      bridge && typeof bridge.onOpenPreviewUrl === "function" ? bridge.onOpenPreviewUrl : undefined;
+    if (!subscribe) return undefined;
+    return subscribe((payload) => {
+      const url = String(payload?.url ?? "").trim();
+      if (!url) return;
+      if (linkOpenMode === "external") {
+        openChatLabExternalUrl(url);
+        return;
+      }
+      openFromHref(url, url);
+    });
+  }, [linkOpenMode, openFromHref]);
+
+  useEffect(() => {
     function onMessage(ev) {
       const data = ev.data;
       if (!data || typeof data !== "object") return;
@@ -466,7 +661,11 @@ export function ChatLabPreviewProvider({ children }) {
       openSrcDoc,
       openBlob,
       openPlaceholder,
+      openFromHref,
       openFromMarkdownLink,
+      navigatePreviewTo,
+      deviceMode,
+      setDeviceMode,
       openFromWorkspacePath,
       openArtifactsPanel,
       selectArtifact,
@@ -482,7 +681,11 @@ export function ChatLabPreviewProvider({ children }) {
       openSrcDoc,
       openBlob,
       openPlaceholder,
+      openFromHref,
       openFromMarkdownLink,
+      navigatePreviewTo,
+      deviceMode,
+      setDeviceMode,
       openFromWorkspacePath,
       openArtifactsPanel,
       selectArtifact,

@@ -8,9 +8,13 @@ export function newPreviewFrameKey() {
   return `pf_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`;
 }
 
+/** Mobile Safari UA for preview webview device emulation. */
+export const PREVIEW_MOBILE_USER_AGENT =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
+
 /**
  * @param {string} href
- * @returns {"pdf"|"html"|"sheet"|"slides"|"blob"|null}
+ * @returns {"pdf"|"html"|"sheet"|"slides"|"blob"|"web"|null}
  */
 export function previewKindFromHref(href) {
   const h = String(href ?? "").trim();
@@ -20,8 +24,11 @@ export function previewKindFromHref(href) {
   if (/^data:text\/html/i.test(h)) return "html";
 
   let pathname = h;
+  let protocol = "";
   try {
-    pathname = new URL(h, window.location.href).pathname;
+    const u = new URL(h, window.location.href);
+    pathname = u.pathname;
+    protocol = u.protocol;
   } catch {
     /* keep raw */
   }
@@ -30,7 +37,34 @@ export function previewKindFromHref(href) {
   if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
   if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) return "sheet";
   if (lower.endsWith(".pptx") || lower.endsWith(".ppt")) return "slides";
+  if (protocol === "http:" || protocol === "https:") return "web";
   return null;
+}
+
+/**
+ * @param {string} href
+ * @returns {boolean}
+ */
+export function isPreviewInterceptableHref(href) {
+  const h = String(href ?? "").trim();
+  if (!h || h.startsWith("#") || /^javascript:/i.test(h)) return false;
+  try {
+    const u = new URL(h, window.location.href);
+    if (u.origin === window.location.origin) {
+      const path = u.pathname.toLowerCase();
+      const inAppRoute =
+        path === "/" ||
+        path === "/chat" ||
+        path === "/studio" ||
+        path === "/lobster" ||
+        path === "/skills" ||
+        path.startsWith("/settings");
+      if (inAppRoute) return false;
+    }
+  } catch {
+    /* ignore */
+  }
+  return previewKindFromHref(h) != null;
 }
 
 /**
