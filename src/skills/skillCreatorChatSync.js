@@ -10,7 +10,7 @@ import { loadSkillLibrary, saveSkillLibrary } from "./skillsLocalStore.js";
  */
 function mergeAssistantTerminal(m, extra) {
   /** @type {*} */
-  const next = { ...m, streaming: false };
+  const next = { ...m, streaming: false, createdAt: Date.now() };
   if (typeof extra?.content === "string") {
     next.content = preferLongerAssistantText(String(m.content ?? ""), extra.content);
   }

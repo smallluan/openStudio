@@ -14,6 +14,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { cn } from "../../ui/cn.js";
+import Image from "../../ui/Image.jsx";
 import FluidTabBar from "../../ui/FluidTabBar.jsx";
 import { ChatLabPreviewContext } from "../../context/ChatLabPreviewContext.jsx";
 import { csvToHtmlDocument, svgToHtmlDocument, wrapLooseHtmlFragmentForSrcDoc } from "../../chat/chatLabDocumentPreview.js";
@@ -23,6 +24,7 @@ import {
 } from "../../chat/chatLabMermaidTheme.js";
 import { prepareChatLabMarkdownForRender } from "../../chat/chatLabMarkdownImageGrid.js";
 import { CHAT_MD_REHYPE_PLUGINS } from "../../chat/chatLabRehypePlugins.js";
+import { ChatLabImageGrid } from "./ChatLabImageGrid.jsx";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light.js";
 import { CHAT_LAB_PRISM_LANGS } from "../../chat/chatLabPrismSetup.js";
 import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light.js";
@@ -367,7 +369,7 @@ function MarkdownFenceView({ code, t }) {
  *   t: (k: string) => string;
  * }} props
  */
-function FenceRenderedBody({ code, label, theme, active = true, t }) {
+function FenceRenderedBody({ code, label, theme, active = true, streaming = false, t }) {
   if (label === "mermaid") {
     return <MermaidFenceView code={code} theme={theme} />;
   }
@@ -378,6 +380,7 @@ function FenceRenderedBody({ code, label, theme, active = true, t }) {
         label={label}
         theme={theme}
         active={active}
+        streaming={streaming}
       />
     );
   }
@@ -431,7 +434,7 @@ function CodeFenceSource({ code, prism, syntaxStyle, codeFont }) {
   );
 }
 
-function ChatMdVisualBlock({ code, label, displayLang, isChartFence, t }) {
+function ChatMdVisualBlock({ code, label, displayLang, isChartFence, streaming, t }) {
   const theme = useDocTheme();
   return (
     <div
@@ -451,7 +454,14 @@ function ChatMdVisualBlock({ code, label, displayLang, isChartFence, t }) {
         </div>
       </div>
       <div className="chat-lab__code-block-body">
-        <FenceRenderedBody code={code} label={label} theme={theme} active t={t} />
+        <FenceRenderedBody
+          code={code}
+          label={label}
+          theme={theme}
+          active
+          streaming={streaming}
+          t={t}
+        />
       </div>
     </div>
   );
@@ -466,7 +476,7 @@ function ChatMdVisualBlock({ code, label, displayLang, isChartFence, t }) {
  *   t: (k: string) => string;
  * }} props
  */
-function ChatMdToggleableCodeBlock({ code, label, prism, displayLang, t }) {
+function ChatMdToggleableCodeBlock({ code, label, prism, displayLang, streaming, t }) {
   const theme = useDocTheme();
   const preview = useContext(ChatLabPreviewContext);
   const syntaxStyle = theme === "dark" ? vscDarkPlus : oneLight;
@@ -594,6 +604,7 @@ function ChatMdToggleableCodeBlock({ code, label, prism, displayLang, t }) {
                   label={label}
                   theme={theme}
                   active={viewMode === "render"}
+                  streaming={streaming}
                   t={t}
                 />
               </div>
@@ -619,7 +630,7 @@ function ChatMdToggleableCodeBlock({ code, label, prism, displayLang, t }) {
  *   t: (k: string) => string;
  * }} props
  */
-function ChatMdCodeBlock({ code, fenceClassName, t }) {
+function ChatMdCodeBlock({ code, fenceClassName, streaming = false, t }) {
   const { prism, label } = useMemo(
     () => resolveFenceLang(fenceClassName),
     [fenceClassName],
@@ -633,6 +644,7 @@ function ChatMdCodeBlock({ code, fenceClassName, t }) {
         label={label}
         displayLang={displayLang}
         isChartFence={CHART_FENCE_LANGS.has(label)}
+        streaming={streaming}
         t={t}
       />
     );
@@ -644,34 +656,73 @@ function ChatMdCodeBlock({ code, fenceClassName, t }) {
       label={label}
       prism={prism}
       displayLang={displayLang}
+      streaming={streaming}
       t={t}
     />
   );
 }
 
 /**
- * @param {(key: string, vars?: Record<string, string | number>) => string} t
+ * @param {unknown} node
+ * @returns {{ src: string; alt: string }[] | null}
  */
-export function createChatLabMarkdownComponents(t) {
+function parseMarkdownGridImages(node) {
+  const props = /** @type {{ properties?: Record<string, unknown> }} */ (node)?.properties;
+  const raw = props?.dataImages ?? props?.["data-images"];
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed
+      .map((item) => ({
+        src: String(item?.src ?? "").trim(),
+        alt: String(item?.alt ?? ""),
+      }))
+      .filter((item) => item.src);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {(key: string, vars?: Record<string, string | number>) => string} t
+ * @param {{ streaming?: boolean }} [opts]
+ */
+export function createChatLabMarkdownComponents(t, opts = {}) {
+  const streaming = Boolean(opts.streaming);
   return {
     /**
      * @param {import("react").ComponentPropsWithoutRef<"div"> & { node?: unknown }} props
      */
-    div: ({ className, children, node: _node, ...props }) => (
-      <div className={className}>{children}</div>
-    ),
+    div: ({ className, children, node: _node, ...props }) => {
+      const clsStr = Array.isArray(className) ? className.join(" ") : String(className ?? "");
+      if (clsStr.includes("chat-lab__md-image-grid") && !clsStr.includes("__cell")) {
+        const images = parseMarkdownGridImages(_node);
+        if (images?.length) {
+          return <ChatLabImageGrid images={images} className={className} />;
+        }
+      }
+      return (
+        <div className={className} {...props}>
+          {children}
+        </div>
+      );
+    },
     /**
      * @param {import("react").ComponentPropsWithoutRef<"img"> & { node?: unknown }} props
      */
     img: ({ src, alt, className, node: _node, title, width, height }) => (
-      <img
+      <Image
         src={typeof src === "string" ? src : undefined}
         alt={alt ?? ""}
-        className={className}
+        imgClassName={className}
         title={title}
         width={width}
         height={height}
         loading="lazy"
+        fit="contain"
+        previewable
+        as="div"
       />
     ),
     /**
@@ -737,7 +788,7 @@ export function createChatLabMarkdownComponents(t) {
       if (soft) {
         return <SoftFenceBlock code={code} />;
       }
-      return <ChatMdCodeBlock code={code} fenceClassName={className} t={t} />;
+      return <ChatMdCodeBlock code={code} fenceClassName={className} streaming={streaming} t={t} />;
     },
   };
 }

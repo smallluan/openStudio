@@ -33,31 +33,12 @@ function imagesFromBlock(node) {
 
 /**
  * @param {HastElement} img
- * @returns {HastElement}
+ * @returns {{ src: string; alt: string }}
  */
-function gridCellFromImage(img) {
+function imageRefFromNode(img) {
   const src = typeof img.properties?.src === "string" ? img.properties.src : "";
-  return {
-    type: "element",
-    tagName: "a",
-    properties: {
-      href: src || undefined,
-      target: "_blank",
-      rel: "noreferrer noopener",
-      className: ["chat-lab__md-image-grid__cell"],
-    },
-    children: [
-      {
-        type: "element",
-        tagName: "img",
-        properties: {
-          ...img.properties,
-          className: ["chat-lab__md-image-grid__img"],
-        },
-        children: [],
-      },
-    ],
-  };
+  const alt = typeof img.properties?.alt === "string" ? img.properties.alt : "";
+  return { src, alt };
 }
 
 /**
@@ -94,14 +75,16 @@ function groupImageRuns(nodes) {
     }
 
     const count = Math.min(run.length, 9);
+    const images = run.slice(0, 9).map(imageRefFromNode);
     /** @type {HastElement} */
     const grid = {
       type: "element",
       tagName: "div",
       properties: {
         className: ["chat-lab__md-image-grid", `chat-lab__md-image-grid--count-${count}`],
+        dataImages: JSON.stringify(images),
       },
-      children: run.slice(0, 9).map(gridCellFromImage),
+      children: [],
     };
 
     nodes.splice(i, j - i, grid);

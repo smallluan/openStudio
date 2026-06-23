@@ -117,6 +117,20 @@
   "modalClose": {
     "close": "關閉"
   },
+  "image": {
+    "loadFailed": "圖片載入失敗",
+    "loading": "載入中",
+    "previewTitle": "圖片預覽",
+    "previewClose": "關閉預覽",
+    "previewPrevious": "上一張",
+    "previewNext": "下一張",
+    "previewCounter": "{{current}} / {{total}}",
+    "openInNewTab": "在新分頁中開啟"
+  },
+  "chart": {
+    "generating": "圖表生成中…",
+    "updating": "圖表更新中…"
+  },
   "lobsterPage": {
     "title": "智慧體管理",
     "desc": "建立並管理 OpenClaw 智慧體：名稱、頭像、soul.md 身份、工作區與技能。新建時會在閘道側初始化 workspace 並註冊到 agents.list。",

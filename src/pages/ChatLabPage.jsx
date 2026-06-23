@@ -111,6 +111,8 @@ import {
   ChatLabPreviewProvider,
   useChatLabPreview,
 } from "../context/ChatLabPreviewContext.jsx";
+import { ImageViewProvider } from "../context/ImageViewContext.jsx";
+import Image from "../ui/Image.jsx";
 import { lastHtmlFenceAsSrcDocDocument, previewKindFromHref } from "../chat/chatLabDocumentPreview.js";
 import { collectSessionArtifacts } from "../chat/chatLabSessionArtifacts.js";
 import ChatLabArtifactsBar from "../components/chat-lab/ChatLabArtifactsBar.jsx";
@@ -658,7 +660,7 @@ function isChatHttp404(raw) {
  */
 function mergeTerminalAssistantPayload(m, extra) {
   /** @type {*} */
-  const next = { ...m, streaming: false };
+  const next = { ...m, streaming: false, createdAt: Date.now() };
   if (typeof extra?.content === "string") {
     next.content = preferLongerAssistantText(String(m.content ?? ""), extra.content);
   }
@@ -3327,6 +3329,7 @@ export default function ChatLabPage() {
 
   return (
     <ChatLabPreviewProvider>
+      <ImageViewProvider>
       <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
       <div className="chat-lab__workspace relative">
         <div className="chat-lab__column">
@@ -3475,6 +3478,7 @@ export default function ChatLabPage() {
           }
         />
       </div>
+      </ImageViewProvider>
     </ChatLabPreviewProvider>
   );
 }
@@ -4691,15 +4695,21 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
         {Array.isArray(message.imageAttachments) && message.imageAttachments.length > 0 ? (
           <div className="chat-lab__user-images">
             {message.imageAttachments.map((att, idx) => (
-              <a
+              <Image
                 key={`${message.id}-img-${idx}`}
+                src={att.dataUrl}
+                alt=""
                 className="chat-lab__user-image-link"
-                href={att.dataUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <img src={att.dataUrl} alt="" className="chat-lab__user-image" />
-              </a>
+                imgClassName="chat-lab__user-image"
+                fit="contain"
+                loading="lazy"
+                previewable
+                previewGroup={message.imageAttachments.map((item) => ({
+                  src: item.dataUrl,
+                  alt: "",
+                }))}
+                previewIndex={idx}
+              />
             ))}
           </div>
         ) : null}
@@ -5171,15 +5181,14 @@ const MessageBubble = memo(function MessageBubble({
 
   const mdComponents = useMemo(
     () => ({
-      ...createChatLabMarkdownComponents(t),
+      ...createChatLabMarkdownComponents(t, { streaming: Boolean(message.streaming) }),
       /** @param {import("react").AnchorHTMLAttributes<HTMLAnchorElement> & { children?: import("react").ReactNode; node?: unknown }} props */
       a: ({ href, children, className, node: _node, ...rest }) => {
         const kind = href ? previewKindFromHref(href) : null;
         const text = chatMarkdownPlainText(children);
-        const gridCell = String(className ?? "").includes("chat-lab__md-image-grid__cell");
         /** @param {import("react").MouseEvent<HTMLAnchorElement>} e */
         const onClick = (e) => {
-          if (gridCell || !previewApi || !href || !kind) return;
+          if (!previewApi || !href || !kind) return;
           if (e.button !== 0) return;
           if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
           if (previewApi.openFromMarkdownLink(href, text)) e.preventDefault();
@@ -5188,16 +5197,16 @@ const MessageBubble = memo(function MessageBubble({
           <a
             href={href ?? "#"}
             onClick={onClick}
-            target={gridCell ? "_blank" : "_blank"}
-            rel={gridCell ? "noreferrer noopener" : "noreferrer noopener"}
-            className={gridCell ? className : cn("chat-lab__md-a", className)}
+            target="_blank"
+            rel="noreferrer noopener"
+            className={cn("chat-lab__md-a", className)}
           >
             {children}
           </a>
         );
       },
     }),
-    [t, previewApi],
+    [t, previewApi, message.streaming],
   );
 
   const [thinkOpen, setThinkOpen] = useState(() => Boolean(message.streaming));

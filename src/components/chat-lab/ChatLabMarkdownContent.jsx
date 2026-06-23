@@ -37,7 +37,6 @@ export default function ChatLabMarkdownContent({ source, className, components }
   const mergedComponents = useMemo(
     () => ({
       ...components,
-      img: () => null,
     }),
     [components],
   );

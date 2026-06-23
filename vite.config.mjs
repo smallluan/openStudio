@@ -12,15 +12,40 @@ const iconifyEmojiTestStub = path.resolve(__dirname, "scripts/iconify-emoji-test
 
 /** @iconify/utils barrel imports lib/emoji/test/*; Windows Defender often quarantines that folder. */
 function iconifyEmojiTestStubPlugin() {
-  return {
+  const stubPath = iconifyEmojiTestStub;
+  const isIconifyUtilsImporter = (importer) =>
+    typeof importer === "string" && importer.replace(/\\/g, "/").includes("@iconify/utils/");
+
+  const shouldStubIconifyTestImport = (source, importer) => {
+    if (!isIconifyUtilsImporter(importer)) return false;
+    const normalized = source.replace(/\\/g, "/");
+    const importerNorm = importer.replace(/\\/g, "/");
+    if (normalized.includes("emoji/test")) return true;
+    return /(^|[/])test[/]/.test(normalized) && importerNorm.includes("@iconify/utils/lib/emoji/");
+  };
+
+  /** Vite / Rollup (production build + dev module graph). */
+  const vitePlugin = {
     name: "open-studio-iconify-emoji-test-stub",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (!importer || !shouldStubIconifyTestImport(source, importer)) return null;
+      return stubPath;
+    },
+  };
+
+  /** esbuild (optimizeDeps prebundle only). */
+  const esbuildPlugin = {
+    name: "open-studio-iconify-emoji-test-stub-esbuild",
     setup(build) {
       build.onResolve({ filter: /[/\\]test[/\\]/ }, (args) => {
-        if (!args.importer.includes("@iconify" + path.sep + "utils")) return;
-        return { path: iconifyEmojiTestStub };
+        if (!shouldStubIconifyTestImport(args.path, args.importer)) return;
+        return { path: stubPath };
       });
     },
   };
+
+  return { vitePlugin, esbuildPlugin };
 }
 
 /** Until postinstall runs, resolve the generated manifest import to the committed stub. */
@@ -103,6 +128,7 @@ export default defineConfig({
   plugins: [
     openclawBundledSkillsFallback(),
     orchestrationCjsForBrowser(),
+    iconifyEmojiTestStubPlugin().vitePlugin,
     react(),
     tailwindcss(),
     stripIndexCrossorigin(),
@@ -136,7 +162,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     esbuildOptions: {
-      plugins: [iconifyEmojiTestStubPlugin()],
+      plugins: [iconifyEmojiTestStubPlugin().esbuildPlugin],
     },
   },
 });

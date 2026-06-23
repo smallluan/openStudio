@@ -117,6 +117,20 @@
   "modalClose": {
     "close": "关闭"
   },
+  "image": {
+    "loadFailed": "图片加载失败",
+    "loading": "加载中",
+    "previewTitle": "图片预览",
+    "previewClose": "关闭预览",
+    "previewPrevious": "上一张",
+    "previewNext": "下一张",
+    "previewCounter": "{{current}} / {{total}}",
+    "openInNewTab": "在新标签页打开"
+  },
+  "chart": {
+    "generating": "图表生成中…",
+    "updating": "图表更新中…"
+  },
   "lobsterPage": {
     "title": "智能体管理",
     "desc": "创建并管理 OpenClaw 智能体：名称、IDENTITY.md（我是谁）、SOUL.md（语气与人格）、工作区与技能。确认创建后会写入磁盘并重启网关。",

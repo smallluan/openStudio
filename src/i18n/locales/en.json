@@ -117,6 +117,20 @@
   "modalClose": {
     "close": "Close"
   },
+  "image": {
+    "loadFailed": "Failed to load image",
+    "loading": "Loading",
+    "previewTitle": "Image preview",
+    "previewClose": "Close preview",
+    "previewPrevious": "Previous image",
+    "previewNext": "Next image",
+    "previewCounter": "{{current}} / {{total}}",
+    "openInNewTab": "Open in new tab"
+  },
+  "chart": {
+    "generating": "Generating chart…",
+    "updating": "Updating chart…"
+  },
   "lobsterPage": {
     "title": "Agent management",
     "desc": "Create and manage OpenClaw agents: name, IDENTITY.md (who), SOUL.md (voice), workspace, and skills. Confirming create writes to disk and restarts the gateway.",

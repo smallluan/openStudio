@@ -105,19 +105,8 @@ function finalizeWechatAssistantInStore(conversationId, assistantMessageId, extr
 
   const existingFinal = prior.find((m) => m.id === finalId);
 
-  const existingPending = prior.find((m) => m.id === assistantMessageId);
-
   const ts =
-
-    typeof existingFinal?.createdAt === "number"
-
-      ? existingFinal.createdAt
-
-      : typeof existingPending?.createdAt === "number"
-
-        ? existingPending.createdAt
-
-        : Date.now();
+    typeof existingFinal?.createdAt === "number" ? existingFinal.createdAt : Date.now();
 
   const nextRow = {
 

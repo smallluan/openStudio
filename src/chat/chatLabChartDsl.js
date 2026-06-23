@@ -2,8 +2,10 @@
 
 import { getChatLabEchartsTheme } from "./chatLabEchartsTheme.js";
 import { validateBuiltInMapSupport } from "./chatLabEchartsMaps.js";
+import { parseLenientEchartsJson, parseStreamingEchartsJson } from "./chatLabEchartsJson.js";
+import { unsupportedSeriesTypes } from "./chatLabEchartsChartRegistry.js";
 
-/** @typedef {{ ok: true; option: Record<string, unknown> }} ChartParseOk */
+/** @typedef {{ ok: true; option: Record<string, unknown>; partial?: boolean }} ChartParseOk */
 /** @typedef {{ ok: false; error: string; pending?: boolean }} ChartParseErr */
 
 const CHART_TYPES = new Set(["bar", "line", "pie", "scatter"]);
@@ -87,6 +89,74 @@ function parseKeyValueLine(line) {
 }
 
 /**
+ * @param {string} line
+ */
+function isBareKeyName(line) {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed || trimmed.startsWith("#") || isListItemLine(line)) return false;
+  if (/^\s/.test(String(line ?? ""))) return false;
+  return /^[\w-]+$/.test(trimmed);
+}
+
+/**
+ * Read a scalar value that may start on the next line (common LLM output: `x` then `[Q1, Q2]`).
+ * @param {string[]} lines
+ * @param {number} startIdx
+ * @returns {{ text: string; nextIdx: number }}
+ */
+function collectValueFromLines(lines, startIdx) {
+  let i = startIdx;
+  while (i < lines.length && !String(lines[i] ?? "").trim()) i++;
+  if (i >= lines.length) return { text: "", nextIdx: i };
+
+  const first = String(lines[i] ?? "").trim();
+  if (!first.startsWith("[") && !first.startsWith("{")) {
+    return { text: first, nextIdx: i + 1 };
+  }
+
+  let text = "";
+  let braces = 0;
+  let brackets = 0;
+  let inString = false;
+  let escaped = false;
+
+  while (i < lines.length) {
+    const line = String(lines[i] ?? "");
+    text += (text ? "\n" : "") + line.trim();
+    for (let c = 0; c < line.length; c++) {
+      const ch = line[c];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === "{") braces++;
+      else if (ch === "}") braces--;
+      else if (ch === "[") brackets++;
+      else if (ch === "]") brackets--;
+    }
+    i++;
+    if (!inString && braces <= 0 && brackets <= 0) break;
+  }
+
+  return { text: text.trim(), nextIdx: i };
+}
+
+/** Keys whose value may continue on the following line when `key:` has no inline value. */
+const DEFERRED_SCALAR_KEYS = new Set(["x", "y", "labels", "values", "title"]);
+
+/**
  * @param {string[]} lines
  * @param {number} startIdx
  * @returns {{ items: Record<string, unknown>[]; nextIdx: number }}
@@ -139,6 +209,54 @@ function parseSeriesList(lines, startIdx) {
 }
 
 /**
+ * Parse `series:` / `data:` blocks: YAML list (`- …`) or deferred scalar/array on next line.
+ * @param {string[]} lines
+ * @param {number} startIdx
+ * @param {string} key
+ * @returns {{ ok: true; value: unknown; nextIdx: number } | ChartParseErr}
+ */
+function parseListOrDeferredValue(lines, startIdx, key) {
+  let i = startIdx;
+  while (i < lines.length && !String(lines[i] ?? "").trim()) i++;
+
+  if (i < lines.length && isListItemLine(lines[i])) {
+    const { items, nextIdx } = parseSeriesList(lines, i);
+    return { ok: true, value: items, nextIdx };
+  }
+
+  const { text, nextIdx } = collectValueFromLines(lines, i);
+  if (text) {
+    return { ok: true, value: parseScalar(text), nextIdx };
+  }
+
+  return { ok: false, error: `Missing value for chart key \`${key}\`` };
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {Record<string, unknown>[]}
+ */
+function seriesFromTopLevelData(raw, specName) {
+  if (raw == null) return [];
+
+  if (Array.isArray(raw) && raw.length && (typeof raw[0] !== "object" || raw[0] === null)) {
+    return [{ name: specName != null ? String(specName) : "", data: raw }];
+  }
+
+  const objs = asObjectArray(raw);
+  if (!objs.length) return [];
+
+  if (objs.every((o) => o.value != null && o.data == null && o.name == null)) {
+    return [{ name: specName != null ? String(specName) : "", data: objs.map((o) => o.value) }];
+  }
+
+  return objs.map((o) => ({
+    name: String(o.name ?? specName ?? ""),
+    data: Array.isArray(o.data) ? o.data : [o.value ?? o.y ?? 0],
+  }));
+}
+
+/**
  * @param {string} source
  * @returns {{ ok: true; spec: Record<string, unknown> } | ChartParseErr}
  */
@@ -184,9 +302,27 @@ export function parseChartDsl(source) {
 
     const topKv = parseKeyValueLine(trimmed);
     if (!topKv) {
+      if (isBareKeyName(trimmed)) {
+        const key = trimmed;
+        i++;
+        if (key === "series" || key === "data") {
+          const parsed = parseListOrDeferredValue(lines, i, key);
+          if (!parsed.ok) return parsed;
+          spec[key] = parsed.value;
+          i = parsed.nextIdx;
+          continue;
+        }
+        const { text, nextIdx } = collectValueFromLines(lines, i);
+        if (!text) {
+          return { ok: false, error: `Missing value for chart key \`${key}\`` };
+        }
+        spec[key] = parseScalar(text);
+        i = nextIdx;
+        continue;
+      }
       return {
         ok: false,
-        error: `Invalid chart line: ${trimmed} (use \`type: bar\`, not a lone \`type\` line)`,
+        error: `Invalid chart line: ${trimmed} (expected \`key: value\`, e.g. \`type: line\` or \`x: [Q1, Q2]\`)`,
       };
     }
 
@@ -200,8 +336,20 @@ export function parseChartDsl(source) {
 
     if (valPart === "" && (key === "series" || key === "data")) {
       i++;
-      const { items, nextIdx } = parseSeriesList(lines, i);
-      spec[key] = items;
+      const parsed = parseListOrDeferredValue(lines, i, key);
+      if (!parsed.ok) return parsed;
+      spec[key] = parsed.value;
+      i = parsed.nextIdx;
+      continue;
+    }
+
+    if (valPart === "" && DEFERRED_SCALAR_KEYS.has(key)) {
+      i++;
+      const { text, nextIdx } = collectValueFromLines(lines, i);
+      if (!text) {
+        return { ok: false, error: `Missing value for chart key \`${key}\`` };
+      }
+      spec[key] = parseScalar(text);
       i = nextIdx;
       continue;
     }
@@ -215,70 +363,19 @@ export function parseChartDsl(source) {
 }
 
 /**
- * @param {string} text
- */
-function looksLikeIncompleteJson(text) {
-  const t = String(text ?? "").trim();
-  if (!t) return true;
-  if (!t.startsWith("{") && !t.startsWith("[")) return false;
-
-  let braces = 0;
-  let brackets = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let idx = 0; idx < t.length; idx++) {
-    const ch = t[idx];
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (ch === "\\") {
-        escaped = true;
-        continue;
-      }
-      if (ch === '"') inString = false;
-      continue;
-    }
-    if (ch === '"') {
-      inString = true;
-      continue;
-    }
-    if (ch === "{") braces++;
-    else if (ch === "}") braces--;
-    else if (ch === "[") brackets++;
-    else if (ch === "]") brackets--;
-  }
-
-  return inString || braces > 0 || brackets > 0;
-}
-
-/**
  * @param {string} source
  * @returns {ChartParseOk | ChartParseErr}
  */
 export function parseEchartsJson(source) {
-  const text = String(source ?? "").trim();
-  if (!text) {
-    return { ok: false, error: "Empty chart option", pending: true };
+  const parsed = parseLenientEchartsJson(source);
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      error: parsed.error,
+      ...(parsed.pending ? { pending: true } : {}),
+    };
   }
-  if (looksLikeIncompleteJson(text)) {
-    return { ok: false, error: "Chart JSON is still loading…", pending: true };
-  }
-  try {
-    const option = JSON.parse(text);
-    if (!option || typeof option !== "object" || Array.isArray(option)) {
-      return { ok: false, error: "ECharts option must be a JSON object" };
-    }
-    return { ok: true, option: /** @type {Record<string, unknown>} */ (option) };
-  } catch (err) {
-    const message = String(err?.message ?? err ?? "Invalid JSON");
-    if (/unexpected end of json input|unterminated string/i.test(message)) {
-      return { ok: false, error: "Chart JSON is incomplete or truncated", pending: true };
-    }
-    return { ok: false, error: message };
-  }
+  return { ok: true, option: parsed.value };
 }
 
 /**
@@ -395,6 +492,9 @@ export function chartSpecToEchartsOption(spec, theme) {
   if (!seriesArr.length && Array.isArray(spec.values)) {
     seriesArr = [{ name: "", data: spec.values }];
   }
+  if (!seriesArr.length) {
+    seriesArr = seriesFromTopLevelData(spec.data, spec.name);
+  }
   if (
     type === "scatter"
     && !seriesArr.length
@@ -473,23 +573,42 @@ export function mergeThemeIntoEchartsOption(option, theme) {
  * @param {string} code
  * @param {string} label
  * @param {ChatLabDocTheme} theme
+ * @param {{ streaming?: boolean }} [opts]
  * @returns {ChartParseOk | ChartParseErr}
  */
-export function resolveChartFenceOption(code, label, theme) {
+export function resolveChartFenceOption(code, label, theme, opts = {}) {
+  const streaming = Boolean(opts.streaming);
   const lang = String(label ?? "").trim().toLowerCase();
   if (lang === "echarts") {
-    const parsed = parseEchartsJson(code);
+    const parsed = streaming
+      ? parseStreamingEchartsJson(code, { streaming: true })
+      : parseEchartsJson(code);
     if (!parsed.ok) return parsed;
     const mapErr = validateBuiltInMapSupport(parsed.option);
-    if (mapErr) return { ok: false, error: mapErr };
-    return { ok: true, option: mergeThemeIntoEchartsOption(parsed.option, theme) };
+    if (mapErr) {
+      return streaming ? { ok: false, pending: true, error: mapErr } : { ok: false, error: mapErr };
+    }
+    const missingTypes = unsupportedSeriesTypes(parsed.option);
+    if (missingTypes.length) {
+      const err = `暂不支持的图表类型：${missingTypes.join("、")}`;
+      return streaming ? { ok: false, pending: true, error: err } : { ok: false, error: err };
+    }
+    return {
+      ok: true,
+      option: mergeThemeIntoEchartsOption(parsed.option, theme),
+      ...(parsed.partial ? { partial: true } : {}),
+    };
   }
   if (lang === "chart") {
     const parsed = parseChartDsl(code);
-    if (!parsed.ok) return parsed;
+    if (!parsed.ok) {
+      return streaming ? { ok: false, pending: true, error: parsed.error } : parsed;
+    }
     const option = chartSpecToEchartsOption(parsed.spec, theme);
     const mapErr = validateBuiltInMapSupport(option);
-    if (mapErr) return { ok: false, error: mapErr };
+    if (mapErr) {
+      return streaming ? { ok: false, pending: true, error: mapErr } : { ok: false, error: mapErr };
+    }
     return { ok: true, option };
   }
   return { ok: false, error: `Unsupported chart fence: ${label}` };

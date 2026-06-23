@@ -1,5 +1,5 @@
 import { Settings } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useI18n } from "../../context/I18nContext.jsx";
 import NavIcon, { RAIL_ORB_ICON_SIZE, RAIL_ORB_ICON_STROKE } from "../../ui/NavIcon.jsx";
 import { cn } from "../../ui/cn.js";
@@ -9,10 +9,12 @@ import { cn } from "../../ui/cn.js";
  */
 export default function RailSettingsLink({ narrow = false }) {
   const { t } = useI18n();
+  const location = useLocation();
 
   return (
     <NavLink
       to="/settings"
+      state={{ backgroundLocation: location }}
       title={t("nav.settings")}
       aria-label={t("nav.settings")}
       className={({ isActive }) =>

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { createConfigStore } = require("./lib/config-store.cjs");
@@ -51,6 +51,7 @@ const {
   restartOwnedGateway,
   resolveBundledOpenClawPackageMetaSync,
 } = require("./lib/openclaw-gateway-supervisor.cjs");
+const { repairWindowsOpenClawUnpackedLayout, repairWindowsBundledExtensionsFromMirror } = require("./lib/win-bundled-resources.cjs");
 const { OrchestrationService } = require("./lib/orchestration-service.cjs");
 const {
   resolveBundledSkillDirectorySync,
@@ -512,6 +513,8 @@ function createWindow() {
     return mainWindow;
   }
 
+  const appIconPath = resolveAppIconPath();
+
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -520,6 +523,7 @@ function createWindow() {
     frame: false,
     backgroundColor: "#eef1f6",
     show: true,
+    ...(appIconPath ? { icon: appIconPath } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -562,17 +566,46 @@ function createWindow() {
   return win;
 }
 
-function getTrayIconPath() {
-  if (process.platform === "win32" && !isDev) return process.execPath;
-  return path.join(__dirname, "src", "assets", "images", "hero-avatar-light.png");
+function resolveAppIconPath() {
+  /** @type {string[]} */
+  const candidates = [
+    path.join(process.resourcesPath, "app-icon.png"),
+    path.join(__dirname, "build", "app-icon.ico"),
+    path.join(__dirname, "build", "app-icon.png"),
+    path.join(__dirname, "src", "assets", "images", "hero-avatar-light.png"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return "";
+}
+
+function loadTrayIcon() {
+  const iconPath = resolveAppIconPath();
+  if (!iconPath || !fs.existsSync(iconPath)) return null;
+
+  let image = nativeImage.createFromPath(iconPath);
+  if (image.isEmpty()) return null;
+
+  // Windows notification area expects a small bitmap; .exe icons do not work reliably.
+  if (process.platform === "win32") {
+    image = image.resize({ width: 16, height: 16 });
+  }
+  return image;
 }
 
 function createTray() {
   if (process.platform !== "win32") return;
   if (appTray && !appTray.isDestroyed?.()) return;
 
+  const trayIcon = loadTrayIcon();
+  if (!trayIcon) {
+    getStudioLog().warn("[tray] tray icon missing or unreadable:", resolveAppIconPath() || "(none)");
+    return;
+  }
+
   try {
-    appTray = new Tray(getTrayIconPath());
+    appTray = new Tray(trayIcon);
   } catch (e) {
     getStudioLog().warn("[tray] failed to create tray icon:", /** @type {any} */ (e)?.message ?? e);
     return;
@@ -613,6 +646,10 @@ app.whenReady().then(async () => {
 
   initStudioLogger(app, { isDev });
   attachProcessDiagnostics();
+
+  if (process.platform === "win32") {
+    app.setAppUserModelId("dev.openstudio.app");
+  }
   try {
     const py = enableBundledPythonRuntime({ app, log: getStudioLog() });
     if (!py.ok) {
@@ -642,6 +679,18 @@ app.whenReady().then(async () => {
 
   if (!isDev) {
     try {
+      if (
+        typeof process.resourcesPath === "string" &&
+        repairWindowsOpenClawUnpackedLayout(process.resourcesPath)
+      ) {
+        getStudioLog().info("[startup] repaired openclaw.asar.unpacked layout");
+      }
+      if (typeof process.resourcesPath === "string") {
+        const restored = repairWindowsBundledExtensionsFromMirror(process.resourcesPath);
+        if (restored > 0) {
+          getStudioLog().info("[startup] restored bundled extension files from mirror", { restored });
+        }
+      }
       getStudioLog().info("[startup] supervised gateway begin");
       const sup = await ensureLocalGatewayRunning(() => userConfigStore.readRaw(), {
         log: getStudioLog(),

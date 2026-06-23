@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { spawnSync } = require("child_process");
 const { resolveArch, optimizeTreeForPack } = require("./pack-tree-optimize.cjs");
 
 /**
@@ -14,6 +15,18 @@ const REQUIRED_TOP_LEVEL = ["brace-expansion", "balanced-match", "concat-map"];
 /** @param {import("electron-builder").BeforePackContext} context */
 module.exports = async function beforePack(context) {
   const root = context.packager.projectDir;
+  const appIconIco = path.join(root, "build", "app-icon.ico");
+  if (!fs.existsSync(appIconIco)) {
+    console.log("[before-pack] app icon missing, running sync-app-icon...");
+    const sync = spawnSync(process.execPath, [path.join(root, "scripts", "sync-app-icon.mjs")], {
+      cwd: root,
+      stdio: "inherit",
+    });
+    if (sync.status !== 0) {
+      throw new Error("[beforePack] sync-app-icon failed — cannot package without build/app-icon.ico");
+    }
+  }
+
   const missing = REQUIRED_TOP_LEVEL.filter(
     (name) => !fs.existsSync(path.join(root, "node_modules", name)),
   );

@@ -1,16 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useI18n } from "../../context/I18nContext.jsx";
 import { resolveChartFenceOption } from "../../chat/chatLabChartDsl.js";
 import { ensureBuiltInMapsRegistered } from "../../chat/chatLabEchartsMaps.js";
+import { ensureChartsRegistered } from "../../chat/chatLabEchartsChartRegistry.js";
+import { cn } from "../../ui/cn.js";
+import { useDebouncedValue } from "../../ui/useDebouncedValue.js";
 
-/** @type {Map<string, string>} */
-const CHART_ERROR_CACHE = new Map();
-
+const STREAM_DEBOUNCE_MS = 320;
 const MIN_RESIZE_HEIGHT_PX = 200;
-
-/** @param {"light" | "dark"} theme @param {string} label @param {string} code */
-function chartCacheKey(theme, label, code) {
-  return `${theme}\u0000${label}\u0000${code}`;
-}
 
 /**
  * @param {import("echarts").ECharts} instance
@@ -29,18 +26,25 @@ function resizeChartWhenReady(instance) {
  *   label: string;
  *   theme: "light" | "dark";
  *   active?: boolean;
+ *   streaming?: boolean;
  * }} props
  */
-export default function ChatLabEchartsFenceView({ code, label, theme, active = true }) {
+export default function ChatLabEchartsFenceView({
+  code,
+  label,
+  theme,
+  active = true,
+  streaming = false,
+}) {
+  const { t } = useI18n();
+  const debouncedCode = useDebouncedValue(code, streaming ? STREAM_DEBOUNCE_MS : 0);
   const containerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const chartRef = useRef(/** @type {import("echarts").ECharts | null} */ (null));
-  const cacheKey = useMemo(() => chartCacheKey(theme, label, code), [theme, label, code]);
-  const [error, setError] = useState(() => CHART_ERROR_CACHE.get(cacheKey) ?? "");
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-  }, [cacheKey]);
+  const echartsModuleRef = useRef(/** @type {import("echarts/core").EChartsType | null} */ (null));
+  const resizeObserverRef = useRef(/** @type {ResizeObserver | null} */ (null));
+  const [error, setError] = useState("");
+  const [hasChart, setHasChart] = useState(false);
+  const [busy, setBusy] = useState(true);
 
   useEffect(() => {
     if (!active) return undefined;
@@ -48,71 +52,81 @@ export default function ChatLabEchartsFenceView({ code, label, theme, active = t
     const container = containerRef.current;
     if (!container) return undefined;
 
-    const resolved = resolveChartFenceOption(code, label, theme);
-    if (!resolved.ok) {
-      if (resolved.pending) {
-        CHART_ERROR_CACHE.delete(cacheKey);
-        setError("");
-        setLoading(true);
-        return undefined;
-      }
-      CHART_ERROR_CACHE.set(cacheKey, resolved.error);
-      setError(resolved.error);
-      setLoading(false);
-      return undefined;
-    }
-
-    CHART_ERROR_CACHE.delete(cacheKey);
-    setError("");
-
     let cancelled = false;
-    let resizeObserver = /** @type {ResizeObserver | null} */ (null);
-    /** @type {import("echarts/core").EChartsType | null} */
-    let echartsModule = null;
 
-    void import("../../chat/chatLabEchartsRuntime.js")
-      .then(async (mod) => {
-        if (cancelled) return;
-        echartsModule = mod.default;
+    const render = async () => {
+      setBusy(true);
+
+      const resolved = resolveChartFenceOption(debouncedCode, label, theme, { streaming });
+
+      if (!resolved.ok) {
+        if (resolved.pending) {
+          setError("");
+          setBusy(false);
+          return;
+        }
+        setError(resolved.error);
+        setBusy(false);
+        return;
+      }
+
+      setError("");
+
+      try {
+        if (!echartsModuleRef.current) {
+          echartsModuleRef.current = (await import("../../chat/chatLabEchartsRuntime.js")).default;
+        }
+        const echartsModule = echartsModuleRef.current;
         await ensureBuiltInMapsRegistered(echartsModule, resolved.option);
+        await ensureChartsRegistered(echartsModule, resolved.option);
         if (cancelled) return;
-        if (chartRef.current) {
-          echartsModule.dispose(chartRef.current);
-          chartRef.current = null;
-        }
-        const instance = echartsModule.init(container, theme === "dark" ? "dark" : undefined, {
-          renderer: "canvas",
-        });
-        chartRef.current = instance;
-        instance.setOption(resolved.option, { notMerge: true, lazyUpdate: false });
-        setLoading(false);
-        resizeChartWhenReady(instance);
 
-        resizeObserver = new ResizeObserver((entries) => {
-          const rect = entries[0]?.contentRect;
-          if (!rect || rect.width < 20 || rect.height < MIN_RESIZE_HEIGHT_PX) return;
-          instance.resize();
-        });
-        resizeObserver.observe(container);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          const message = String(err?.message ?? err ?? "ECharts render failed");
-          CHART_ERROR_CACHE.set(cacheKey, message);
-          setError(message);
-          setLoading(false);
+        if (!chartRef.current) {
+          chartRef.current = echartsModule.init(container, theme === "dark" ? "dark" : undefined, {
+            renderer: "canvas",
+          });
+          resizeObserverRef.current?.disconnect();
+          resizeObserverRef.current = new ResizeObserver((entries) => {
+            const rect = entries[0]?.contentRect;
+            if (!rect || rect.width < 20 || rect.height < MIN_RESIZE_HEIGHT_PX) return;
+            chartRef.current?.resize();
+          });
+          resizeObserverRef.current.observe(container);
         }
-      });
+
+        chartRef.current.setOption(resolved.option, { notMerge: true, lazyUpdate: false });
+        setHasChart(true);
+        resizeChartWhenReady(chartRef.current);
+      } catch (err) {
+        if (cancelled) return;
+        const message = String(err?.message ?? err ?? "ECharts render failed");
+        if (streaming) {
+          setError("");
+        } else {
+          setError(message);
+        }
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    };
+
+    void render();
 
     return () => {
       cancelled = true;
-      resizeObserver?.disconnect();
-      if (chartRef.current && echartsModule) {
-        echartsModule.dispose(chartRef.current);
+    };
+  }, [active, debouncedCode, label, streaming, theme]);
+
+  useEffect(() => {
+    return () => {
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
+      if (chartRef.current && echartsModuleRef.current) {
+        echartsModuleRef.current.dispose(chartRef.current);
         chartRef.current = null;
       }
     };
-  }, [active, cacheKey, code, label, theme]);
+  }, []);
 
   useEffect(() => {
     if (!active || !chartRef.current) return undefined;
@@ -120,14 +134,30 @@ export default function ChatLabEchartsFenceView({ code, label, theme, active = t
     return undefined;
   }, [active]);
 
+  const showMask = busy || streaming || (!hasChart && !error);
+
   if (error) {
     return <p className="chat-lab__code-render-error">{error}</p>;
   }
 
   return (
     <div className="chat-lab__echarts-render">
-      {loading ? <div className="chat-lab__code-render-loading" aria-hidden /> : null}
       <div ref={containerRef} className="chat-lab__echarts-render__canvas" aria-hidden={false} />
+      {showMask ?
+        <div
+          className={cn(
+            "chat-lab__echarts-render__mask",
+            hasChart && "chat-lab__echarts-render__mask--overlay",
+          )}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="chat-lab__echarts-render__spinner" aria-hidden />
+          <span className="chat-lab__echarts-render__mask-label">
+            {hasChart ? t("chart.updating") : t("chart.generating")}
+          </span>
+        </div>
+      : null}
     </div>
   );
 }
