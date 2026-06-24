@@ -38,6 +38,7 @@ export const GATEWAY_SUMMARY_REFRESH_TURN_INTERVAL = 12;
  */
 export function isGatewayChatTurn(m) {
   if (!m || m.error) return false;
+  if (m.messageKind === "group_member_event") return true;
   if (m.role !== "user" && m.role !== "assistant") return false;
   if (m.messageKind === "orchestration_internal") return false;
   if (m.messageKind === "orchestration_event") return false;
@@ -74,7 +75,14 @@ export function sliceMessagesAfter(messages, afterMessageId) {
  * @param {Array<{ role?: string; content?: string; thinking?: string }>} messages
  */
 export function computeThreadSummary(messages) {
-  const turns = (messages ?? []).filter((m) => m.role === "user" || m.role === "assistant");
+  const turns = (messages ?? []).filter(
+    (m) =>
+      m.messageKind === "group_member_event" ||
+      ((m.role === "user" || m.role === "assistant") &&
+        m.messageKind !== "orchestration_internal" &&
+        m.messageKind !== "orchestration_event" &&
+        m.messageKind !== "orchestration_plan"),
+  );
   if (turns.length <= GATEWAY_BOOTSTRAP_RECENT_TURNS) return "";
   const older = turns.slice(0, Math.max(0, turns.length - GATEWAY_BOOTSTRAP_RECENT_TURNS));
   if (!older.length) return "";
@@ -82,6 +90,12 @@ export function computeThreadSummary(messages) {
   /** @type {string[]} */
   const lines = ["Prior thread summary (older turns):"];
   for (const m of older) {
+    if (m.messageKind === "group_member_event") {
+      const body = String(m.content ?? "").trim().replace(/\s+/g, " ");
+      if (!body) continue;
+      lines.push(`- [Group · system]: ${body.length > 220 ? `${body.slice(0, 219)}…` : body}`);
+      continue;
+    }
     const role = m.role === "user" ? "User" : "Assistant";
     const body = String(m.content ?? m.thinking ?? "").trim().replace(/\s+/g, " ");
     if (!body) continue;
@@ -116,6 +130,11 @@ export function buildGatewayPayloadRows(msgs, opts = {}) {
   return msgs
     .filter((m) => isGatewayChatTurn(m))
     .map((m) => {
+      if (m.messageKind === "group_member_event") {
+        const text = String(m.content ?? "").trim();
+        if (!text) return null;
+        return { role: "user", content: `[群聊 · 系统]: ${text}` };
+      }
       if (m.messageKind === "orchestration_plan") {
         return { role: "assistant", content: `[调度 · 计划]: ${String(m.content ?? "").slice(0, 400)}` };
       }

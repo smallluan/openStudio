@@ -66,7 +66,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string[]} [mentions] Studio agent ids @-mentioned on user or assistant turns
  * @property {boolean} [mentionDelegateReply] Auto-reply triggered by another agent's @mention
  * @property {string} [mentionDelegateFromAgentId] Studio agent id that @mentioned this reply
- * @property {'orchestration_event' | 'orchestration_plan' | 'orchestration_internal'} [messageKind]
+ * @property {'orchestration_event' | 'orchestration_plan' | 'orchestration_internal' | 'group_member_event'} [messageKind]
  * @property {import("../studio/orchestration.js").OrchestrationPlan} [orchestrationPlan]
  * @property {string} [orchestrationPhase]
  * @property {string} [orchestrationTaskId]
@@ -419,7 +419,12 @@ function sanitizeMessages(raw) {
       row.mentionDelegateFromAgentId = m.mentionDelegateFromAgentId.trim().slice(0, 96);
     }
     const mk = m.messageKind;
-    if (mk === "orchestration_event" || mk === "orchestration_plan" || mk === "orchestration_internal") {
+    if (
+      mk === "orchestration_event" ||
+      mk === "orchestration_plan" ||
+      mk === "orchestration_internal" ||
+      mk === "group_member_event"
+    ) {
       row.messageKind = mk;
     }
     if (m.orchestrationPlan && typeof m.orchestrationPlan === "object") {
@@ -639,17 +644,23 @@ export function getSession(id) {
 /**
  * @param {string} id
  * @param {string[]} participantIds
+ * @param {PersistedChatMessage[]} [appendMessages]
  */
-export function updateSessionParticipants(id, participantIds) {
+export function updateSessionParticipants(id, participantIds, appendMessages = []) {
   if (!id) return;
   const rec = getSession(id);
   if (!rec) return;
-  upsertSession(id, rec.title, rec.messages, {
+  const extra = appendMessages.length ? sanitizeMessages(appendMessages) : [];
+  const messages = extra.length ? [...rec.messages, ...extra] : rec.messages;
+  upsertSession(id, rec.title, messages, {
     channel: rec.channel,
     channelPeerId: rec.channelPeerId,
     gatewayConversationId: rec.gatewayConversationId,
     participantIds,
     threadContext: rec.threadContext,
+    orchestration: rec.orchestration,
+    orchestrationMode: rec.orchestrationMode,
+    orchestrationFastMode: rec.orchestrationFastMode,
   });
 }
 

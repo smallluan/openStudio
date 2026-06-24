@@ -5602,6 +5602,28 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   width: fit-content;
 }
 
+.chat-lab__msg--group-event {
+  align-self: stretch;
+  width: 100%;
+  align-items: center;
+  padding: 0.28rem 0.75rem 0.38rem;
+  margin: 0.08rem 0;
+}
+
+.chat-lab__group-event-text {
+  margin: 0;
+  max-width: min(30rem, 94%);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--os-text-muted) 92%, var(--os-text));
+  text-align: center;
+}
+
+:root[data-theme="dark"] .chat-lab__group-event-text {
+  color: color-mix(in srgb, var(--os-text-muted) 86%, var(--os-titlebar-text));
+}
+
 .chat-lab__msg-skill-pill {
   position: relative;
   isolation: isolate;

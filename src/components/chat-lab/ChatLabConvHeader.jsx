@@ -107,7 +107,11 @@ export default function ChatLabConvHeader({
   return (
     <>
       <header className="chat-lab__conv-header">
-        <h2 className="chat-lab__conv-title">{headerTitle}</h2>
+        {headerTitle ? (
+          <h2 className="chat-lab__conv-title">{headerTitle}</h2>
+        ) : (
+          <div className="chat-lab__conv-title chat-lab__conv-title--empty" aria-hidden />
+        )}
         <div className="chat-lab__header-actions">
           {showParticipants ? (
             <ChatLabParticipantBar

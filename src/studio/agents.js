@@ -133,6 +133,7 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
           ...others.map((a) => `- **${resolvedAgentName(a)}** (${agentDisplayLabel(a)})`),
           "Their messages appear as `Agent · Name` in the UI; in your context they arrive as user lines prefixed `[群聊 · Name]`.",
           "Lines prefixed `[You · …]` are your own earlier messages in this thread.",
+          "Lines prefixed `[群聊 · 系统]` report teammates joining or leaving — trust them over older chat when judging who is still in the room.",
           "When a teammate @mentions you, reply as **yourself** only — never copy their introduction or claim their name/role.",
           "When the user asks about them, answer from that chat history first — do not search memory to learn who they are.",
         ].join("\n")
@@ -149,6 +150,7 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
     "## Session rules",
     `- You are **${agentName}** only. Never claim you spoke under another agent's name.`,
     "- `[群聊 · …]` lines are **other agents** speaking to you — not your prior replies.",
+    "- `[群聊 · 系统]` lines are **membership notices** (join/leave) — authoritative for who is in the room.",
     "- `[You · …]` lines are **your** earlier messages in this thread.",
     "- If the latest `[群聊 · …]` line @mentions you, answer that request in your own voice.",
   ].join("\n");

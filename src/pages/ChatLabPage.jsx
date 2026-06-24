@@ -56,6 +56,7 @@ import {
   updateSessionParticipants,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
+import { buildGroupMemberChangeEvents } from "../chat/chatLabGroupMemberEvents.js";
 import { useOrchestrationRunner } from "../orchestration/useOrchestrationRunner.js";
 import ChatLabOrchestrationPlanPopover from "../components/chat-lab/ChatLabOrchestrationPlanPopover.jsx";
 import ChatLabOrchestrationSidePanel from "../components/chat-lab/ChatLabOrchestrationSidePanel.jsx";
@@ -316,6 +317,11 @@ function newId() {
   return `m_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
 }
 
+/** Draft threads stay in memory until the user sends their first message. */
+function sessionHasUserTurn(rows) {
+  return rows.some((m) => m && m.role === "user" && !m.error);
+}
+
 /** @typedef {import("../i18n/messages.js").LocaleId} LocaleId */
 
 /** @param {number} ts @param {LocaleId} locale */
@@ -364,7 +370,8 @@ function isDelegatableGroupAssistantMessage(msg, sessionAgentIds) {
     msg.messageKind === "orchestration_event" ||
     msg.messageKind === "orchestration_internal" ||
     msg.messageKind === "orchestration_plan" ||
-    msg.messageKind === "orchestration_anchor"
+    msg.messageKind === "orchestration_anchor" ||
+    msg.messageKind === "group_member_event"
   ) {
     return false;
   }
@@ -401,7 +408,8 @@ function toPersistedChatMessage(m) {
       : {}),
     ...(m.messageKind === "orchestration_event" ||
     m.messageKind === "orchestration_plan" ||
-    m.messageKind === "orchestration_internal"
+    m.messageKind === "orchestration_internal" ||
+    m.messageKind === "group_member_event"
       ? { messageKind: m.messageKind }
       : {}),
     ...(m.orchestrationPlan && typeof m.orchestrationPlan === "object"
@@ -1063,10 +1071,33 @@ export default function ChatLabPage() {
 
   const handleParticipantsChange = useCallback(
     (ids) => {
+      const prevNonMain = participantIds.filter((id) => id !== mainAgent?.id);
+      const nextNonMain = ids.filter((id) => id !== mainAgent?.id);
+      const memberEvents = buildGroupMemberChangeEvents(
+        prevNonMain,
+        nextNonMain,
+        agentById,
+        t,
+        t("chatLab.groupMemberActorYou"),
+      );
+
       const next = [...new Set([...(mainAgent ? [mainAgent.id] : []), ...ids])];
       setParticipantIds(ids.filter((id) => id !== mainAgent?.id));
+
+      if (memberEvents.length > 0) {
+        const uiEvents = memberEvents.map((m) => mapSessionMessageRow(m));
+        setMessages((prev) => [...prev, ...uiEvents]);
+        autoScrollRef.current = true;
+      }
+
       const sid = paramC || conversationId;
-      if (sid) updateSessionParticipants(sid, next);
+      const rec = sid ? getSession(sid) : null;
+      if (rec) {
+        updateSessionParticipants(sid, next, memberEvents);
+        if (memberEvents.length > 0) {
+          resetThreadGatewaySync(sid);
+        }
+      }
       if (isElectron && bridge?.prewarmStudioGatewaySessions && sid) {
         const participantAgents = next
           .map((id) => agentById.get(id))
@@ -1079,7 +1110,7 @@ export default function ChatLabPage() {
         }
       }
     },
-    [agentById, bridge, conversationId, isElectron, mainAgent, paramC],
+    [agentById, autoScrollRef, bridge, conversationId, isElectron, mainAgent, paramC, participantIds, t],
   );
 
   /** WeChat inbound / store updates: keep the open thread aligned with sidebar persistence (avoids race with auto-reply). */
@@ -1168,6 +1199,7 @@ export default function ChatLabPage() {
   useEffect(() => {
     if (!conversationId) return;
     if (messages.length === 0) return;
+    if (!sessionHasUserTurn(messages)) return;
     if (gatewayStreaming) return;
 
     const h = window.setTimeout(() => {
@@ -2822,7 +2854,7 @@ export default function ChatLabPage() {
     ],
   );
 
-  const isLanding = messages.length === 0;
+  const isLanding = !messages.some((m) => m.messageKind !== "group_member_event");
   const { landingRevealReady, playHeroTitleEntrance, shellPhase, progressFrac, progressExiting, gatePortalEl } =
     useBootstrapGate();
   const portalHeroRef = useRef(/** @type {HTMLDivElement | null} */ (null));
@@ -3407,7 +3439,7 @@ export default function ChatLabPage() {
             {isLanding ? (
               <>
                 <ChatLabConvHeader
-                  headerTitle={headerTitle || t("chatLab.chatUntitled")}
+                  headerTitle={headerTitle}
                   conversationId={conversationId}
                   messages={messages}
                   messagesScrollRef={messagesScrollRef}
@@ -3461,7 +3493,7 @@ export default function ChatLabPage() {
             ) : (
               <div className="chat-lab__thread-stack">
                 <ChatLabThreadNav
-                  headerTitle={headerTitle || t("chatLab.chatUntitled")}
+                  headerTitle={headerTitle}
                   conversationId={conversationId}
                   messages={messages}
                   messagesScrollRef={messagesScrollRef}
@@ -5228,6 +5260,13 @@ const MessageBubble = memo(function MessageBubble({
   onOpenOrchestrationFlow,
 }) {
   const isUser = message.role === "user";
+  if (message.messageKind === "group_member_event") {
+    return (
+      <div className="chat-lab__msg chat-lab__msg--group-event" data-message-id={message.id} role="status">
+        <p className="chat-lab__group-event-text">{message.content}</p>
+      </div>
+    );
+  }
   if (message.messageKind === "orchestration_internal") return null;
 
   const orchTimelineActive = Boolean(orchestrationRun?.status);
