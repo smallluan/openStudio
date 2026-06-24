@@ -129,6 +129,23 @@ function normalizeSeriesType(raw) {
 }
 
 /**
+ * @param {unknown} block
+ * @param {Set<string>} types
+ */
+function collectSeriesTypesFromOptionBlock(block, types) {
+  if (!block || typeof block !== "object") return;
+
+  const series = /** @type {{ series?: unknown }} */ (block).series;
+  if (!Array.isArray(series)) return;
+
+  for (const entry of series) {
+    if (!entry || typeof entry !== "object") continue;
+    const type = normalizeSeriesType(/** @type {{ type?: unknown }} */ (entry).type);
+    if (type) types.add(type);
+  }
+}
+
+/**
  * @param {unknown} option
  * @returns {Set<string>}
  */
@@ -137,14 +154,20 @@ export function collectSeriesTypesFromOption(option) {
   const types = new Set();
   if (!option || typeof option !== "object") return types;
 
-  const series = /** @type {{ series?: unknown }} */ (option).series;
-  if (!Array.isArray(series)) return types;
+  collectSeriesTypesFromOptionBlock(option, types);
 
-  for (const block of series) {
-    if (!block || typeof block !== "object") continue;
-    const type = normalizeSeriesType(/** @type {{ type?: unknown }} */ (block).type);
-    if (type) types.add(type);
+  const baseOption = /** @type {{ baseOption?: unknown }} */ (option).baseOption;
+  if (baseOption && typeof baseOption === "object") {
+    collectSeriesTypesFromOptionBlock(baseOption, types);
   }
+
+  const options = /** @type {{ options?: unknown }} */ (option).options;
+  if (Array.isArray(options)) {
+    for (const sub of options) {
+      collectSeriesTypesFromOptionBlock(sub, types);
+    }
+  }
+
   return types;
 }
 

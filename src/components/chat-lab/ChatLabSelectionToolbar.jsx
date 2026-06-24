@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy, MessageCircleQuestion, Search } from "lucide-react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Copy, ExternalLink, FolderOpen, MessageCircleQuestion, Search } from "lucide-react";
 import { openChatLabExternalUrl } from "../../chat/chatLabLinkOpenPreference.js";
 import {
   readChatTextSelection,
   resolveFollowUpFromSelection,
   selectionToolbarFlipFallbacks,
 } from "../../chat/chatLabFollowUp.js";
+import { classifySelectionAddress, openChatLabLocalPath } from "../../chat/chatLabSelectionAddress.js";
+import { ChatLabPreviewContext } from "../../context/ChatLabPreviewContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import ChatLabContextMenu from "./ChatLabContextMenu.jsx";
 
@@ -31,8 +33,12 @@ export default function ChatLabSelectionToolbar({
   followUpDisabled = false,
 }) {
   const { t } = useI18n();
+  const previewApi = useContext(ChatLabPreviewContext);
   const [open, setOpen] = useState(false);
   const selectedTextRef = useRef("");
+  const [selectionAddress, setSelectionAddress] = useState(
+    /** @type {ReturnType<typeof classifySelectionAddress>} */ (null),
+  );
   const [placement, setPlacement] = useState(
     /** @type {import("@floating-ui/react").Placement} */ ("bottom-end"),
   );
@@ -41,9 +47,11 @@ export default function ChatLabSelectionToolbar({
     const hit = readChatTextSelection();
     if (!hit) {
       setOpen(false);
+      setSelectionAddress(null);
       return;
     }
     selectedTextRef.current = hit.text;
+    setSelectionAddress(classifySelectionAddress(hit.text));
     setPlacement(hit.placement);
     setOpen(true);
   }, []);
@@ -158,8 +166,19 @@ export default function ChatLabSelectionToolbar({
     clearSelection();
   }, [close, clearSelection]);
 
-  const items = useMemo(
-    () => [
+  const handleOpenAddress = useCallback(() => {
+    if (!selectionAddress) return;
+    if (selectionAddress.kind === "url") {
+      openChatLabExternalUrl(selectionAddress.href);
+    } else {
+      openChatLabLocalPath(selectionAddress.path, previewApi);
+    }
+    close();
+    clearSelection();
+  }, [close, clearSelection, previewApi, selectionAddress]);
+
+  const items = useMemo(() => {
+    const base = [
       {
         id: "copy",
         label: t("chatLab.selectionCopy"),
@@ -181,9 +200,47 @@ export default function ChatLabSelectionToolbar({
         icon: <Search className="text-[var(--os-text-muted)]" size={15} strokeWidth={2} aria-hidden />,
         onClick: handleSearch,
       },
-    ],
-    [followUpDisabled, handleCopy, handleFollowUp, handleSearch, t],
-  );
+    ];
+
+    if (!selectionAddress) return base;
+
+    const isAbsoluteLocal =
+      selectionAddress.kind === "local" &&
+      /^(?:[a-zA-Z]:[\\/]|\\\\|file:|\/|~)/i.test(selectionAddress.path);
+    const canOpenLocal =
+      selectionAddress.kind === "local" &&
+      (isAbsoluteLocal
+        ? Boolean(typeof window !== "undefined" && window.studioBridge?.revealLocalPath)
+        : Boolean(previewApi?.openFromWorkspacePath));
+
+    if (selectionAddress.kind === "url" || canOpenLocal) {
+      base.push({
+        id: "open-address",
+        label:
+          selectionAddress.kind === "url"
+            ? t("chatLab.selectionOpenUrl")
+            : t("chatLab.selectionOpenFileLocation"),
+        icon:
+          selectionAddress.kind === "url" ? (
+            <ExternalLink className="text-[var(--os-text-muted)]" size={15} strokeWidth={2} aria-hidden />
+          ) : (
+            <FolderOpen className="text-[var(--os-text-muted)]" size={15} strokeWidth={2} aria-hidden />
+          ),
+        onClick: handleOpenAddress,
+      });
+    }
+
+    return base;
+  }, [
+    followUpDisabled,
+    handleCopy,
+    handleFollowUp,
+    handleOpenAddress,
+    handleSearch,
+    selectionAddress,
+    previewApi,
+    t,
+  ]);
 
   return (
     <ChatLabContextMenu

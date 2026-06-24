@@ -770,6 +770,37 @@ app.whenReady().then(async () => {
     }
   });
 
+  ipcMain.handle("studio:revealLocalPath", async (_event, rawPath) => {
+    const raw = String(rawPath ?? "").trim();
+    if (!raw) return { ok: false, error: "empty_path" };
+
+    let filePath = raw;
+    if (/^file:\/\//i.test(raw)) {
+      try {
+        filePath = fileURLToPath(raw);
+      } catch {
+        return { ok: false, error: "invalid_path" };
+      }
+    } else if (raw === "~") {
+      filePath = app.getPath("home");
+    } else if (raw.startsWith("~/") || raw.startsWith("~\\")) {
+      filePath = path.join(app.getPath("home"), raw.slice(2));
+    }
+
+    try {
+      const st = fs.statSync(filePath);
+      if (st.isDirectory()) {
+        const openErr = await shell.openPath(filePath);
+        if (String(openErr ?? "").trim()) return { ok: false, error: openErr };
+        return { ok: true };
+      }
+      shell.showItemInFolder(filePath);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String(/** @type {any} */ (e)?.message ?? e) };
+    }
+  });
+
   ipcMain.handle("studio:saveImageFromUrl", async (_event, payload) => {
     const url = String(payload?.url ?? "").trim();
     if (!url) return { ok: false, error: "no_url" };

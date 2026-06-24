@@ -1,6 +1,8 @@
 /** @typedef {{ title?: string; x: string[]; values: number[]; yLabel?: string }} TableChartSpec */
 
 const CHART_FENCE_RE = /```(?:chart|echarts)\b/i;
+const VISUALIZATION_INTENT_RE =
+  /(?:柱状图|折线图|饼图|散点图|图表|可视化|趋势图|对比图|占比图|条形图|统计图|bar chart|line chart|pie chart|plot|graph|visuali[sz])/i;
 const TABLE_ROW_RE = /^\s*\|(.+)\|\s*$/;
 const TABLE_SEP_RE = /^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?\s*$/;
 
@@ -46,7 +48,7 @@ function chartSpecFromTableRows(header, body) {
   }
 
   let valueCol = -1;
-  for (let col = 1; col < width; col++) {
+  for (let col = width - 1; col >= 1; col--) {
     if (numericCounts[col] >= Math.max(2, body.length - 1)) {
       valueCol = col;
       break;
@@ -72,7 +74,7 @@ function chartSpecFromTableRows(header, body) {
     x,
     values,
     yLabel,
-    title: yLabel ? `${yLabel} · 柱状图` : "数据柱状图",
+    title: yLabel || "数据概览",
   };
 }
 
@@ -107,7 +109,7 @@ function chartSpecFromMarkdownTableBlock(block) {
 }
 
 /**
- * When the model skips ```chart``` but includes a numeric markdown table, infer a bar chart.
+ * Infer a bar chart from numeric markdown tables (fallback only).
  * @param {string} source
  * @returns {TableChartSpec | null}
  */
@@ -147,6 +149,17 @@ export function inferChartFromMarkdownTables(source) {
     if (!best || spec.x.length > best.x.length) best = spec;
   }
   return best;
+}
+
+/**
+ * Only infer a chart when the reply already signals visualization intent and no chart fence exists.
+ * @param {string} source
+ */
+export function shouldInferChartFromMarkdownTables(source) {
+  const text = String(source ?? "");
+  if (CHART_FENCE_RE.test(text)) return false;
+  if (!VISUALIZATION_INTENT_RE.test(text)) return false;
+  return inferChartFromMarkdownTables(text) != null;
 }
 
 /**

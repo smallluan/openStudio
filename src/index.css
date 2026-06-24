@@ -5261,6 +5261,8 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   min-height: var(--os-titlebar-height);
   margin: 0 -1.25rem 0.65rem;
   padding: 0 1.25rem;
@@ -5288,6 +5290,8 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .chat-lab__header-actions {
@@ -5295,6 +5299,159 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   flex-wrap: wrap;
   gap: 0.45rem;
   align-items: center;
+  flex-shrink: 0;
+}
+
+.chat-lab__turn-nav-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted, var(--os-text-muted));
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.chat-lab__turn-nav-icon-btn:hover {
+  background: var(--os-bg-subtle);
+  color: var(--text, var(--os-text));
+}
+
+.chat-lab__turn-nav-icon-btn--open {
+  background: color-mix(in srgb, #2563eb 10%, var(--os-bg-panel));
+  border-color: color-mix(in srgb, #2563eb 24%, transparent);
+  color: #2563eb;
+}
+
+.chat-lab__turn-nav-popover-inner {
+  max-height: min(24rem, 56vh);
+  overflow: auto;
+  padding: 0.45rem 0.35rem;
+}
+
+.chat-lab__turn-nav-list {
+  --turn-nav-blue: #2563eb;
+  --turn-nav-gray: #9ca3af;
+  list-style: none;
+  margin: 0;
+  padding: 0.15rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.chat-lab__turn-nav-item {
+  margin: 0;
+  position: relative;
+}
+
+.chat-lab__turn-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.55rem 0.45rem 0.35rem;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text, var(--os-text));
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.chat-lab__turn-nav-row:hover {
+  background: color-mix(in srgb, var(--os-bg-subtle) 78%, transparent);
+}
+
+.chat-lab__turn-nav-row--active {
+  background: color-mix(in srgb, var(--turn-nav-blue) 8%, transparent);
+}
+
+.chat-lab__turn-nav-track {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  flex: 0 0 30px;
+}
+
+.chat-lab__turn-nav-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid var(--os-bg-modal);
+  box-sizing: border-box;
+}
+
+.chat-lab__turn-nav-dot--active {
+  background: var(--turn-nav-blue);
+  border-color: var(--os-bg-modal);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--turn-nav-blue) 20%, transparent);
+}
+
+.chat-lab__turn-nav-dot--idle {
+  background: var(--turn-nav-gray);
+  border-color: var(--os-bg-modal);
+}
+
+.chat-lab__turn-nav-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-lab__messages-stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chat-lab__scroll-jump {
+  position: absolute;
+  right: 0.35rem;
+  bottom: 0.75rem;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+
+.chat-lab__scroll-jump-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  background: color-mix(in srgb, var(--os-bg-panel) 92%, transparent);
+  color: var(--text, var(--os-text));
+  box-shadow: 0 4px 16px color-mix(in srgb, #000 10%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 0.15s ease, transform 0.12s ease, border-color 0.15s ease;
+}
+
+.chat-lab__scroll-jump-btn:hover {
+  background: var(--os-bg-subtle);
+  border-color: color-mix(in srgb, var(--os-accent) 24%, var(--border));
+}
+
+.chat-lab__scroll-jump-btn:active {
+  transform: scale(0.96);
 }
 
 .chat-lab__title {
@@ -5346,6 +5503,10 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   padding: 0.2rem 0 0.35rem;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.chat-lab__messages-stage > .chat-lab__messages {
+  width: 100%;
 }
 
 .chat-lab__messages--virtual {
@@ -6894,14 +7055,43 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
 
 .chat-lab__md-a {
   color: var(--os-md-link);
-  font-weight: 550;
-  text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--os-md-link) 40%, transparent);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--os-md-link) 32%, transparent);
+  text-underline-offset: 0.16em;
+  text-decoration-thickness: 1px;
+  transition: color 0.14s ease, text-decoration-color 0.14s ease;
 }
 
 .chat-lab__md-a:hover {
   color: var(--os-md-link-hover);
-  border-bottom-color: var(--os-md-link-hover);
+  text-decoration-color: color-mix(in srgb, var(--os-md-link-hover) 48%, transparent);
+}
+
+.chat-lab__md-local-path {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.9em;
+  color: var(--os-md-link);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--os-md-link) 28%, transparent);
+  text-underline-offset: 0.12em;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+  vertical-align: baseline;
+  text-align: left;
+  transition: color 0.14s ease, text-decoration-color 0.14s ease;
+}
+
+.chat-lab__md-local-path:hover {
+  color: var(--os-md-link-hover);
+  text-decoration-color: color-mix(in srgb, var(--os-md-link-hover) 44%, transparent);
 }
 
 /* WeChat-Moments-style image groups from consecutive `![](url)` lines */
@@ -7850,10 +8040,12 @@ button.os-image {
 
 .chat-lab__md a:not(.chat-lab__md-image-grid__cell) {
   color: var(--os-md-link);
+  text-decoration-color: color-mix(in srgb, var(--os-md-link) 32%, transparent);
 }
 
 .chat-lab__md a:not(.chat-lab__md-image-grid__cell):hover {
   color: var(--os-md-link-hover);
+  text-decoration-color: color-mix(in srgb, var(--os-md-link-hover) 48%, transparent);
 }
 
 /* Markdown tables: bordered grid + rounded frame (separate collapse for radius). */

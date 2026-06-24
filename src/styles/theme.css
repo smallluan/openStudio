@@ -88,8 +88,8 @@
   --muted: var(--os-text-muted);
   --accent: var(--os-accent);
   --accent-hover: var(--os-accent-hover);
-  --os-md-link: #38bdf8;
-  --os-md-link-hover: #0ea5e9;
+  --os-md-link: color-mix(in srgb, var(--os-text) 62%, var(--os-accent));
+  --os-md-link-hover: var(--os-accent);
   --rail-bg: var(--os-rail-surface);
 
   /** Settings nav column aligns with primary rail tone. */
@@ -195,8 +195,8 @@
   --muted: var(--os-text-muted);
   --accent: var(--os-accent);
   --accent-hover: var(--os-accent-hover);
-  --os-md-link: #7dd3fc;
-  --os-md-link-hover: #bae6fd;
+  --os-md-link: color-mix(in srgb, var(--os-text) 72%, var(--os-accent));
+  --os-md-link-hover: var(--os-accent-hover);
   --rail-bg: var(--os-rail-surface);
 
   --os-settings-aside-bg: color-mix(in srgb, var(--os-bg-modal) 88%, transparent);

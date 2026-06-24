@@ -143,6 +143,13 @@ import {
   syncSkillCreatorResultToLibrary,
 } from "../skills/skillCreatorChatSync.js";
 import ChatLabMarkdownContent from "../components/chat-lab/ChatLabMarkdownContent.jsx";
+import ChatLabThreadNav from "../components/chat-lab/ChatLabThreadNav.jsx";
+import {
+  findActiveUserMessageId,
+  findActiveUserMessageIdVirtual,
+  animateScrollTop,
+  scrollThreadToMessage,
+} from "../chat/chatLabThreadScroll.js";
 import { cn } from "../ui/cn.js";
 import Select from "../ui/Select.jsx";
 import Checkbox from "../ui/Checkbox.jsx";
@@ -873,6 +880,9 @@ export default function ChatLabPage() {
   const assistantStreamIdsRef = useRef(/** @type {Map<string, string>} */ (new Map()));
   const messagesRef = useRef(messages);
   const messagesScrollRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const threadScrollApiRef = useRef(
+    /** @type {import("../chat/chatLabThreadScroll.js").ChatLabThreadScrollApi | null} */ (null),
+  );
   const autoScrollRef = useRef(true);
 
   const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
@@ -3452,10 +3462,15 @@ export default function ChatLabPage() {
               </>
             ) : (
               <div className="chat-lab__thread-stack">
-                <header className="chat-lab__conv-header">
-                  <h2 className="chat-lab__conv-title">{headerTitle || t("chatLab.chatUntitled")}</h2>
-                </header>
-                <ChatLabMessageList
+                <ChatLabThreadNav
+                  headerTitle={headerTitle || t("chatLab.chatUntitled")}
+                  conversationId={conversationId}
+                  messages={messages}
+                  messagesScrollRef={messagesScrollRef}
+                  autoScrollRef={autoScrollRef}
+                  threadScrollApiRef={threadScrollApiRef}
+                >
+                  <ChatLabMessageList
                     key={conversationId}
                     conversationId={conversationId}
                     messages={messages}
@@ -3464,6 +3479,7 @@ export default function ChatLabPage() {
                     agents={agents}
                     messagesScrollRef={messagesScrollRef}
                     autoScrollRef={autoScrollRef}
+                    threadScrollApiRef={threadScrollApiRef}
                     gatewayStreaming={gatewayStreaming}
                     gatewayStreamSlices={gatewaySlicesForConv}
                     streamLocked={streamLocked}
@@ -3491,6 +3507,7 @@ export default function ChatLabPage() {
                     onRevisePlan={(notes) => orchestrationRunner.revisePlan(conversationId, notes)}
                     onOpenOrchestrationFlow={() => setOrchestrationSideMode("timeline")}
                   />
+                </ChatLabThreadNav>
                 <ChatLabSelectionToolbar
                   scrollContainerRef={messagesScrollRef}
                   onFollowUp={prefillComposerFollowUp}
@@ -5960,6 +5977,7 @@ function ChatLabPlainMessageList({
   agents = [],
   messagesScrollRef,
   autoScrollRef,
+  threadScrollApiRef,
   gatewayStreaming,
   gatewayStreamSlices = [],
   streamLocked,
@@ -6093,6 +6111,44 @@ function ChatLabPlainMessageList({
     },
     [],
   );
+
+  useLayoutEffect(() => {
+    if (!threadScrollApiRef) return undefined;
+    threadScrollApiRef.current = {
+      mode: "plain",
+      messageCount: messages.length,
+      scrollToIndex: (index, opts) => {
+        const msg = messages[index];
+        if (!msg) return;
+        scrollThreadToMessage({
+          messageId: String(msg.id ?? ""),
+          messageIndex: index,
+          scrollContainer: messagesScrollRef.current,
+          scrollApi: null,
+        });
+      },
+      pinToBottom: () => {
+        autoScrollRef.current = true;
+        forcePinChatScroll(messagesScrollRef.current);
+      },
+      scrollToBottom: ({ animated = true } = {}) => {
+        autoScrollRef.current = true;
+        const el = messagesScrollRef.current;
+        if (!el) return;
+        if (animated) {
+          el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+          return;
+        }
+        forcePinChatScroll(el);
+      },
+      getActiveUserMessageId: () => findActiveUserMessageId(messages, messagesScrollRef.current),
+    };
+    return () => {
+      if (threadScrollApiRef.current?.mode === "plain") {
+        threadScrollApiRef.current = null;
+      }
+    };
+  }, [messages, messagesScrollRef, threadScrollApiRef]);
 
   let orchestrationAnchorRendered = false;
 
@@ -6279,6 +6335,7 @@ function ChatLabVirtualMessageList({
   agents = [],
   messagesScrollRef,
   autoScrollRef,
+  threadScrollApiRef,
   gatewayStreaming,
   streamLocked,
   userBubbleEnterMessageId,
@@ -6578,6 +6635,46 @@ function ChatLabVirtualMessageList({
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
+
+  useLayoutEffect(() => {
+    if (!threadScrollApiRef) return undefined;
+    threadScrollApiRef.current = {
+      mode: "virtual",
+      messageCount: messages.length,
+      scrollToIndex: (index, opts) => {
+        vInstRef.current.scrollToIndex(index, {
+          align: opts?.align ?? "start",
+          behavior: opts?.behavior ?? "smooth",
+        });
+      },
+      pinToBottom: () => {
+        autoScrollRef.current = true;
+        forcePinVirtualToBottom();
+      },
+      scrollToBottom: ({ animated = true } = {}) => {
+        autoScrollRef.current = true;
+        if (messages.length === 0) return;
+        const el = messagesScrollRef.current;
+        vInstRef.current.measure();
+        if (!animated || !el) {
+          forcePinVirtualToBottom();
+          return;
+        }
+        vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
+        requestAnimationFrame(() => {
+          const target = Math.max(0, el.scrollHeight - el.clientHeight);
+          animateScrollTop(el, target);
+        });
+      },
+      getActiveUserMessageId: () =>
+        findActiveUserMessageIdVirtual(messages, messagesScrollRef.current, vInstRef.current),
+    };
+    return () => {
+      if (threadScrollApiRef.current?.mode === "virtual") {
+        threadScrollApiRef.current = null;
+      }
+    };
+  }, [messages, messagesScrollRef, threadScrollApiRef]);
 
   return (
     <>

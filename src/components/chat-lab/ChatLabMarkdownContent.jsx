@@ -9,6 +9,7 @@ import {
 } from "../../chat/chatLabMarkdownImageGrid.js";
 import {
   inferChartFromMarkdownTables,
+  shouldInferChartFromMarkdownTables,
   tableChartSpecToDsl,
 } from "../../chat/chatLabMarkdownTableChart.js";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -32,6 +33,7 @@ export default function ChatLabMarkdownContent({ source, className, components }
   const theme = useDocTheme();
   const blocks = useMemo(() => segmentMarkdownContentBlocks(source), [source]);
   const inferredChartDsl = useMemo(() => {
+    if (!shouldInferChartFromMarkdownTables(source)) return "";
     const spec = inferChartFromMarkdownTables(source);
     return spec ? tableChartSpecToDsl(spec) : "";
   }, [source]);

@@ -24,6 +24,7 @@ import {
 } from "../../chat/chatLabMermaidTheme.js";
 import { prepareChatLabMarkdownForRender } from "../../chat/chatLabMarkdownImageGrid.js";
 import { CHAT_MD_REHYPE_PLUGINS } from "../../chat/chatLabRehypePlugins.js";
+import { openChatLabLocalPath } from "../../chat/chatLabSelectionAddress.js";
 import { ChatLabImageGrid } from "./ChatLabImageGrid.jsx";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light.js";
 import { CHAT_LAB_PRISM_LANGS } from "../../chat/chatLabPrismSetup.js";
@@ -717,6 +718,54 @@ function ChatLabMarkdownLink({ href, children, className, node: _node, ...rest }
 }
 
 /**
+ * @param {import("react").ButtonHTMLAttributes<HTMLButtonElement> & {
+ *   children?: import("react").ReactNode;
+ *   node?: { properties?: Record<string, unknown> };
+ * }} props
+ */
+function ChatLabMarkdownLocalPathButton({ children, className, node, type, onClick, ...rest }) {
+  const previewApi = useContext(ChatLabPreviewContext);
+  const props = node?.properties ?? {};
+  const localPath =
+    typeof props.dataLocalPath === "string"
+      ? props.dataLocalPath
+      : typeof props["data-local-path"] === "string"
+        ? props["data-local-path"]
+        : "";
+  const cls = Array.isArray(className) ? className.join(" ") : String(className ?? "");
+  const isLocalPath = localPath && cls.includes("chat-lab__md-local-path");
+
+  if (!isLocalPath) {
+    return (
+      <button type={type ?? "button"} className={className} onClick={onClick} {...rest}>
+        {children}
+      </button>
+    );
+  }
+
+  /** @param {import("react").MouseEvent<HTMLButtonElement>} e */
+  const handleClick = (e) => {
+    if (e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openChatLabLocalPath(localPath, previewApi);
+  };
+
+  return (
+    <button
+      type="button"
+      className={cn("chat-lab__md-local-path", className)}
+      onClick={handleClick}
+      title={localPath}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
  * @param {(key: string, vars?: Record<string, string | number>) => string} t
  * @param {{ streaming?: boolean }} [opts]
  */
@@ -727,6 +776,13 @@ export function createChatLabMarkdownComponents(t, opts = {}) {
      * @param {import("react").AnchorHTMLAttributes<HTMLAnchorElement> & { children?: import("react").ReactNode; node?: unknown }} props
      */
     a: ChatLabMarkdownLink,
+    /**
+     * @param {import("react").ButtonHTMLAttributes<HTMLButtonElement> & {
+     *   children?: import("react").ReactNode;
+     *   node?: { properties?: Record<string, unknown> };
+     * }} props
+     */
+    button: ChatLabMarkdownLocalPathButton,
     /**
      * @param {import("react").ComponentPropsWithoutRef<"div"> & { node?: unknown }} props
      */

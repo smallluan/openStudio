@@ -452,6 +452,8 @@
     "selectionCopy": "コピー",
     "selectionFollowUp": "追問",
     "selectionSearch": "ブラウザで検索",
+    "selectionOpenUrl": "URLを開く",
+    "selectionOpenFileLocation": "ファイルの場所を開く",
     "followUpSourceUser": "ユーザー",
     "followUpChipClose": "追問引用を削除"
   },
