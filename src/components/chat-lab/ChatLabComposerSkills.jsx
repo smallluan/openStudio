@@ -317,8 +317,9 @@ export function ComposerSkillSlashPopover({
         ref={refs.setFloating}
         style={floatingStyles}
         className="outline-none z-[400] w-[min(100vw-2rem,300px)] max-w-[min(100vw-2rem,300px)]"
-        onMouseDown={(e) => e.preventDefault()}
         {...getFloatingProps()}
+        onMouseDownCapture={(e) => e.preventDefault()}
+        onPointerDownCapture={(e) => e.preventDefault()}
       >
         <FluidPopupAnimatedSurface
           key={surfaceKey}
@@ -353,6 +354,7 @@ export function ComposerSkillSlashPopover({
                   index === highlightIndex && "chat-lab__skill-popover-option--active",
                 )}
                 onMouseEnter={() => onHighlightIndexChange?.(index)}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onPick(row)}
               >
                 <span className="text-lg leading-none" aria-hidden>

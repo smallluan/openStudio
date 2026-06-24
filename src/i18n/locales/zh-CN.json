@@ -137,7 +137,10 @@
     "rotateLeft": "向左旋转",
     "rotateRight": "向右旋转",
     "resetView": "重置视图",
-    "saveImage": "保存图片"
+    "saveImage": "保存图片",
+    "viewImage": "查看图片",
+    "copyImage": "复制图片",
+    "contextMenuAria": "图片操作菜单"
   },
   "chart": {
     "generating": "图表生成中…",
@@ -447,7 +450,13 @@
     "questionnaireSubmit": "提交回复",
     "questionnaireAnswerPlaceholder": "填写回答…",
     "questionnaireUnanswered": "（未填写）",
-    "questionnaireReplyPreamble": "以下是我的补充信息："
+    "questionnaireReplyPreamble": "以下是我的补充信息：",
+    "selectionToolbarAria": "选中文本操作",
+    "selectionCopy": "复制",
+    "selectionFollowUp": "追问",
+    "selectionSearch": "浏览器搜索",
+    "followUpSourceUser": "用户",
+    "followUpChipClose": "移除追问引用"
   },
   "bootstrap": {
     "title": "Open Studio 正在就绪",

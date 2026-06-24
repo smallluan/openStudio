@@ -137,7 +137,10 @@
     "rotateLeft": "向左旋轉",
     "rotateRight": "向右旋轉",
     "resetView": "重設檢視",
-    "saveImage": "儲存圖片"
+    "saveImage": "儲存圖片",
+    "viewImage": "查看圖片",
+    "copyImage": "複製圖片",
+    "contextMenuAria": "圖片操作選單"
   },
   "chart": {
     "generating": "圖表生成中…",
@@ -443,7 +446,13 @@
     "questionnaireSubmit": "提交回覆",
     "questionnaireAnswerPlaceholder": "填寫回答…",
     "questionnaireUnanswered": "（未填寫）",
-    "questionnaireReplyPreamble": "以下是我的補充資訊："
+    "questionnaireReplyPreamble": "以下是我的補充資訊：",
+    "selectionToolbarAria": "選取文字操作",
+    "selectionCopy": "複製",
+    "selectionFollowUp": "追問",
+    "selectionSearch": "瀏覽器搜尋",
+    "followUpSourceUser": "使用者",
+    "followUpChipClose": "移除追問引用"
   },
   "bootstrap": {
     "title": "Open Studio 正在就緒",

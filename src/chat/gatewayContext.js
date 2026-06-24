@@ -7,6 +7,7 @@
  */
 
 import { agentDisplayLabel, sessionKeyForAgent } from "../studio/agents.js";
+import { appendFollowUpToGatewayBody } from "./chatLabFollowUp.js";
 import { gatewayUserMessageBodyWithRefs } from "./chatLabComposerFileRefs.js";
 import { openClawAttachmentsFromComposer } from "./chatLabComposerAttachments.js";
 import { getSession, updateSessionThreadContext } from "./chatSessionsStore.js";
@@ -121,7 +122,10 @@ export function buildGatewayPayloadRows(msgs, opts = {}) {
       if (m.role !== "assistant") {
         const row = {
           role: m.role,
-          content: gatewayUserMessageBodyWithRefs(m.content, m.imageAttachments, m.fileRefs),
+          content: appendFollowUpToGatewayBody(
+            gatewayUserMessageBodyWithRefs(m.content, m.imageAttachments, m.fileRefs),
+            m.followUpRef,
+          ),
         };
         if (includeImageAttachments) {
           const att = openClawAttachmentsFromComposer(m.imageAttachments);

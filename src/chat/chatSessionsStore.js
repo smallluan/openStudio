@@ -1,5 +1,6 @@
 /** Local persistence for chat conversations (sidebar history). */
 
+import { sanitizeFollowUpRef } from "./chatLabFollowUp.js";
 import { normalizeOrchestrationPlan, normalizeOrchestrationRun } from "../studio/orchestration.js";
 
 const STORAGE_KEY = "openstudio_chat_sessions_v1";
@@ -20,6 +21,16 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string} [userSkillId]
  * @property {string} label
  * @property {string} emoji
+ */
+
+/**
+ * Quote reference when the user follows up on prior chat text.
+ * @typedef {object} MessageFollowUpRef
+ * @property {string} sourceMessageId
+ * @property {'user' | 'assistant'} sourceRole
+ * @property {string} [sourceAgentId]
+ * @property {string} agentName
+ * @property {string} quoteText
  */
 
 /**
@@ -48,6 +59,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {import("./streamTimelineMerge.js").AssistantTimelineSegment[]} [assistantTimeline]
  * @property {number} [createdAt]
  * @property {MessageSkillMeta} [skillMeta]
+ * @property {MessageFollowUpRef} [followUpRef]
  * @property {PersistedImageAttachment[]} [imageAttachments]
  * @property {PersistedFileRef[]} [fileRefs]
  * @property {string} [agentId] Studio agent id (assistant bubbles)
@@ -301,6 +313,7 @@ function persistedMessagesEqual(a, b) {
     if (JSON.stringify(x.activityLog ?? null) !== JSON.stringify(y.activityLog ?? null)) return false;
     if (JSON.stringify(x.assistantTimeline ?? null) !== JSON.stringify(y.assistantTimeline ?? null)) return false;
     if (JSON.stringify(x.skillMeta ?? null) !== JSON.stringify(y.skillMeta ?? null)) return false;
+    if (JSON.stringify(x.followUpRef ?? null) !== JSON.stringify(y.followUpRef ?? null)) return false;
     if (JSON.stringify(x.imageAttachments ?? null) !== JSON.stringify(y.imageAttachments ?? null)) return false;
     if (JSON.stringify(x.fileRefs ?? null) !== JSON.stringify(y.fileRefs ?? null)) return false;
     if ((x.agentId ?? "") !== (y.agentId ?? "")) return false;
@@ -386,6 +399,8 @@ function sanitizeMessages(raw) {
         }
       }
     }
+    const fu = sanitizeFollowUpRef(m.followUpRef);
+    if (fu) row.followUpRef = fu;
     if (role === "user" && Array.isArray(m.imageAttachments) && m.imageAttachments.length > 0) {
       const ia = sanitizeImageAttachments(m.imageAttachments);
       if (ia?.length) row.imageAttachments = ia;

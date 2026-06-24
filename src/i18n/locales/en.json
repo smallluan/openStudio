@@ -137,7 +137,10 @@
     "rotateLeft": "Rotate left",
     "rotateRight": "Rotate right",
     "resetView": "Reset view",
-    "saveImage": "Save image"
+    "saveImage": "Save image",
+    "viewImage": "View image",
+    "copyImage": "Copy image",
+    "contextMenuAria": "Image actions"
   },
   "chart": {
     "generating": "Generating chart…",
@@ -446,7 +449,13 @@
     "questionnaireSubmit": "Send answers",
     "questionnaireAnswerPlaceholder": "Your answer…",
     "questionnaireUnanswered": "(No answer)",
-    "questionnaireReplyPreamble": "Here is the information:"
+    "questionnaireReplyPreamble": "Here is the information:",
+    "selectionToolbarAria": "Selected text actions",
+    "selectionCopy": "Copy",
+    "selectionFollowUp": "Follow up",
+    "selectionSearch": "Search in browser",
+    "followUpSourceUser": "You",
+    "followUpChipClose": "Remove follow-up quote"
   },
   "bootstrap": {
     "title": "Open Studio is getting ready",

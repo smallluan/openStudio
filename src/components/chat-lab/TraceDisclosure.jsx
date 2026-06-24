@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useId, useState } from "react";
+import { createContext, useCallback, useContext, useId, useRef, useState } from "react";
 import { cn } from "../../ui/cn.js";
 
 /** @type {import("react").Context<{ open: boolean }>} */
@@ -146,6 +146,13 @@ export function TraceDisclosure({
   );
 
   const summaryNode = typeof summary === "function" ? summary(expanded) : summary;
+  const pointerRef = useRef(/** @type {{ moved: boolean; x: number; y: number }} */ ({ moved: false, x: 0, y: 0 }));
+
+  const handleTriggerClick = useCallback(() => {
+    const sel = window.getSelection();
+    if (pointerRef.current.moved || (sel && !sel.isCollapsed && sel.toString().trim())) return;
+    setExpanded(!expanded);
+  }, [expanded, setExpanded]);
 
   if (!expandable) {
     return (
@@ -173,9 +180,10 @@ export function TraceDisclosure({
         className={cn("trace-disclosure", variant === "row" && "trace-disclosure--row", className)}
         data-open={expanded}
       >
-        <button
-          type="button"
+        <div
           id={`${panelId}-btn`}
+          role="button"
+          tabIndex={0}
           className={cn(
             "trace-disclosure__trigger",
             variant === "row" && "trace-disclosure__trigger--row",
@@ -184,11 +192,25 @@ export function TraceDisclosure({
           aria-label={triggerAriaLabel}
           aria-expanded={expanded}
           aria-controls={panelId}
-          onClick={() => setExpanded(!expanded)}
+          onPointerDown={(e) => {
+            pointerRef.current = { moved: false, x: e.clientX, y: e.clientY };
+          }}
+          onPointerMove={(e) => {
+            if (e.buttons === 0) return;
+            const dx = Math.abs(e.clientX - pointerRef.current.x);
+            const dy = Math.abs(e.clientY - pointerRef.current.y);
+            if (dx > 3 || dy > 3) pointerRef.current.moved = true;
+          }}
+          onClick={handleTriggerClick}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            setExpanded(!expanded);
+          }}
         >
           {chevronBefore ? <TraceDisclosureChevron className="chat-lab__tool-chain-chevron" /> : null}
           {summaryNode}
-        </button>
+        </div>
         <div
           id={panelId}
           role="region"

@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ImageOff } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Copy, Download, ExternalLink, Eye, ImageOff } from "lucide-react";
+import { copyImageToClipboard, openImageInNewTab, saveImage } from "../chat/imageActions.js";
+import ChatLabContextMenu from "../components/chat-lab/ChatLabContextMenu.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { useImageView } from "../context/ImageViewContext.jsx";
 import { cn } from "./cn.js";
@@ -25,6 +27,7 @@ import { cn } from "./cn.js";
  *   onError?: () => void;
  *   as?: "div" | "button";
  *   title?: string;
+ *   contextMenu?: boolean;
  * }} ImageProps
  */
 
@@ -49,10 +52,13 @@ export default function Image({
   onError,
   as,
   title,
+  contextMenu = true,
 }) {
   const { t } = useI18n();
   const imageView = useImageView();
   const [status, setStatus] = useState(/** @type {ImageStatus} */ ("idle"));
+  const [menuOpen, setMenuOpen] = useState(false);
+  const rootRef = useRef(/** @type {HTMLButtonElement | HTMLDivElement | null} */ (null));
   const prevSrcRef = useRef(src);
 
   useEffect(() => {
@@ -80,21 +86,84 @@ export default function Image({
     onError?.();
   }, [onError]);
 
+  const previewGroupResolved = useMemo(
+    () =>
+      previewGroup?.length ?
+        previewGroup.filter((item) => String(item?.src ?? "").trim())
+      : src ?
+        [{ src, alt }]
+      : [],
+    [previewGroup, src, alt],
+  );
+
+  const openPreview = useCallback(() => {
+    if (!previewable || !imageView || !src || !previewGroupResolved.length) return;
+    const idx = Math.max(0, Math.min(previewIndex, previewGroupResolved.length - 1));
+    imageView.open({ images: previewGroupResolved, initialIndex: idx });
+  }, [previewable, imageView, src, previewGroupResolved, previewIndex]);
+
   const handleClick = useCallback(
     (e) => {
+      if (menuOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       onClick?.(e);
       if (e.defaultPrevented) return;
-      if (!previewable || !imageView || !src) return;
-      const group =
-        previewGroup?.length ?
-          previewGroup.filter((item) => String(item?.src ?? "").trim())
-        : [{ src, alt }];
-      if (!group.length) return;
-      const idx = Math.max(0, Math.min(previewIndex, group.length - 1));
-      imageView.open({ images: group, initialIndex: idx });
+      openPreview();
     },
-    [onClick, previewable, imageView, src, alt, previewGroup, previewIndex],
+    [menuOpen, onClick, openPreview],
   );
+
+  const handleContextMenu = useCallback(
+    /** @param {import("react").MouseEvent} e */
+    (e) => {
+      if (!contextMenu || !src || status === "error") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setMenuOpen(true);
+    },
+    [contextMenu, src, status],
+  );
+
+  const contextMenuItems = useMemo(() => {
+    if (!src) return [];
+    /** @type {Array<{ id: string; label: string; icon?: import("react").ReactNode; onClick: () => void; dividerBefore?: boolean }>} */
+    const items = [];
+    if (previewable && imageView) {
+      items.push({
+        id: "view",
+        label: t("image.viewImage"),
+        icon: <Eye className="text-[var(--os-text-muted)]" size={15} strokeWidth={2} aria-hidden />,
+        onClick: openPreview,
+      });
+    }
+    items.push({
+      id: "copy",
+      label: t("image.copyImage"),
+      icon: <Copy className="text-[var(--os-text-muted)]" size={15} strokeWidth={2} aria-hidden />,
+      onClick: () => {
+        void copyImageToClipboard(src).catch(() => {});
+      },
+    });
+    items.push({
+      id: "save",
+      label: t("image.saveImage"),
+      icon: <Download className="text-[var(--os-text-muted)]" size={15} strokeWidth={2} aria-hidden />,
+      dividerBefore: items.length > 0,
+      onClick: () => {
+        void saveImage(src, alt).catch(() => {});
+      },
+    });
+    items.push({
+      id: "open",
+      label: t("image.openInNewTab"),
+      icon: <ExternalLink className="text-[var(--os-text-muted)]" size={15} strokeWidth={2} aria-hidden />,
+      onClick: () => openImageInNewTab(src),
+    });
+    return items;
+  }, [alt, imageView, openPreview, previewable, src, t]);
 
   const clickable = Boolean(onClick || (previewable && imageView && src));
   const Tag = as ?? (clickable ? "button" : "div");
@@ -112,6 +181,7 @@ export default function Image({
 
   return (
     <Tag
+      ref={rootRef}
       type={Tag === "button" ? "button" : undefined}
       className={cn(
         "os-image",
@@ -122,6 +192,7 @@ export default function Image({
         className,
       )}
       onClick={clickable ? handleClick : undefined}
+      onContextMenu={handleContextMenu}
       title={title}
       aria-label={Tag === "button" && alt ? alt : undefined}
       disabled={Tag === "button" && showError ? true : undefined}
@@ -155,6 +226,17 @@ export default function Image({
           )}
           onLoad={handleLoad}
           onError={handleError}
+        />
+      : null}
+
+      {contextMenu ?
+        <ChatLabContextMenu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          referenceRef={rootRef}
+          placement="right-start"
+          items={contextMenuItems}
+          ariaLabel={t("image.contextMenuAria")}
         />
       : null}
     </Tag>

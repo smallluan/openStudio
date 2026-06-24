@@ -10,6 +10,7 @@ import {
   ZoomOut,
   RefreshCw,
 } from "lucide-react";
+import { saveImage, suggestFilename } from "../chat/imageActions.js";
 import { useI18n } from "../context/I18nContext.jsx";
 import ModalCloseButton from "./ModalCloseButton.jsx";
 import { cn } from "./cn.js";
@@ -22,76 +23,6 @@ const MIN_SCALE = 0.25;
 const MAX_SCALE = 5;
 const ZOOM_STEP = 0.25;
 const ROTATE_STEP = 90;
-
-/** @param {string} src @param {string | undefined} alt */
-function suggestFilename(src, alt) {
-  try {
-    const u = new URL(src, window.location.href);
-    const base = u.pathname.split("/").pop() ?? "";
-    if (base && /\.[a-z0-9]{2,5}$/i.test(base)) return decodeURIComponent(base);
-  } catch {
-    /* ignore */
-  }
-  const safe =
-    String(alt ?? "image")
-      .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "_")
-      .trim()
-      .slice(0, 80) || "image";
-  if (/\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(safe)) return safe;
-  return `${safe}.png`;
-}
-
-/** @param {string} src */
-async function resolveSaveUrl(src) {
-  if (!src.startsWith("blob:")) return src;
-  const res = await fetch(src);
-  const blob = await res.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? src));
-    reader.onerror = () => reject(reader.error ?? new Error("read_failed"));
-    reader.readAsDataURL(blob);
-  });
-}
-
-/** @param {string} src @param {string | undefined} alt */
-async function saveImage(src, alt) {
-  const saveUrl = await resolveSaveUrl(src);
-  const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
-  if (bridge && typeof bridge.saveImageFromUrl === "function") {
-    const result = await bridge.saveImageFromUrl({
-      url: saveUrl,
-      suggestedName: suggestFilename(src, alt),
-    });
-    if (result?.ok || result?.canceled) return;
-  }
-
-  try {
-    const res = await fetch(saveUrl);
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = suggestFilename(src, alt);
-    anchor.rel = "noreferrer";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(objectUrl);
-    return;
-  } catch {
-    /* fall through */
-  }
-
-  const anchor = document.createElement("a");
-  anchor.href = saveUrl;
-  anchor.download = suggestFilename(src, alt);
-  anchor.target = "_blank";
-  anchor.rel = "noreferrer noopener";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-}
 
 /**
  * @param {{

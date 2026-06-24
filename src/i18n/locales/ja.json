@@ -137,7 +137,10 @@
     "rotateLeft": "左に回転",
     "rotateRight": "右に回転",
     "resetView": "表示をリセット",
-    "saveImage": "画像を保存"
+    "saveImage": "画像を保存",
+    "viewImage": "画像を表示",
+    "copyImage": "画像をコピー",
+    "contextMenuAria": "画像操作メニュー"
   },
   "chart": {
     "generating": "チャートを生成中…",
@@ -442,7 +445,13 @@
     "questionnaireSubmit": "回答を送信",
     "questionnaireAnswerPlaceholder": "回答を入力…",
     "questionnaireUnanswered": "（未回答）",
-    "questionnaireReplyPreamble": "補足情報は以下のとおりです。"
+    "questionnaireReplyPreamble": "補足情報は以下のとおりです。",
+    "selectionToolbarAria": "選択テキスト操作",
+    "selectionCopy": "コピー",
+    "selectionFollowUp": "追問",
+    "selectionSearch": "ブラウザで検索",
+    "followUpSourceUser": "ユーザー",
+    "followUpChipClose": "追問引用を削除"
   },
   "bootstrap": {
     "title": "Open Studio を準備しています",

@@ -93,6 +93,9 @@ import { useStudio } from "../context/StudioContext.jsx";
 import ChatLabParticipantBar from "../components/chat-lab/ChatLabParticipantBar.jsx";
 import ChatLabToolbarScroll from "../components/chat-lab/ChatLabToolbarScroll.jsx";
 import ChatLabAgentMentionPopover from "../components/chat-lab/ChatLabAgentMentionPopover.jsx";
+import { ComposerFollowUpChip, MessageFollowUpTag } from "../components/chat-lab/ChatLabFollowUpChip.jsx";
+import { navigateToFollowUpQuote } from "../chat/chatLabFollowUp.js";
+import ChatLabSelectionToolbar from "../components/chat-lab/ChatLabSelectionToolbar.jsx";
 import { startWechatTypingPulse } from "../chat/wechatStreamTyping.js";
 import { isWechatPendingAssistantId } from "../chat/useWechatSessionSync.js";
 import ChatLabHero from "../components/chat-lab/ChatLabHero.jsx";
@@ -379,6 +382,7 @@ function toPersistedChatMessage(m) {
       : {}),
     ...(typeof m.createdAt === "number" ? { createdAt: m.createdAt } : {}),
     ...(m.skillMeta ? { skillMeta: m.skillMeta } : {}),
+    ...(m.followUpRef ? { followUpRef: m.followUpRef } : {}),
     ...(Array.isArray(m.imageAttachments) && m.imageAttachments.length
       ? { imageAttachments: m.imageAttachments }
       : {}),
@@ -766,6 +770,9 @@ export default function ChatLabPage() {
     /** @type {import("../skills/skillRegistry.js").SkillPickRow | null} */ (null),
   );
   const [composerSkillRowLeaving, setComposerSkillRowLeaving] = useState(false);
+  const [composerFollowUpRef, setComposerFollowUpRef] = useState(
+    /** @type {import("../chat/chatSessionsStore.js").MessageFollowUpRef | null} */ (null),
+  );
   const [composerAttachmentsLeaving, setComposerAttachmentsLeaving] = useState(false);
   const [composerFileRefsLeaving, setComposerFileRefsLeaving] = useState(false);
   const textareaRef = useRef(/** @type {HTMLTextAreaElement | null} */ (null));
@@ -884,6 +891,7 @@ export default function ChatLabPage() {
     assistantStreamIdsRef.current.clear();
     setPendingEditMessageId(null);
     setComposerSkillRow(null);
+    setComposerFollowUpRef(null);
     setComposerAttachments([]);
     setComposerFileRefs([]);
     setComposerDragActive(false);
@@ -1835,6 +1843,8 @@ export default function ChatLabPage() {
       };
       if (skillSnap) editedUser.skillMeta = skillSnap;
       else delete editedUser.skillMeta;
+      if (composerFollowUpRef) editedUser.followUpRef = composerFollowUpRef;
+      else delete editedUser.followUpRef;
       const fileSnap =
         composerFileRefs.length > 0
           ? composerFileRefs.map(({ path, name, kind }) => ({ path, name, kind }))
@@ -2010,10 +2020,11 @@ export default function ChatLabPage() {
      *   imageAttachments?: { mime: string; dataUrl: string }[];
      *   fileRefs?: import("../chat/chatSessionsStore.js").PersistedFileRef[];
      *   skillPickRow: import("../skills/skillRegistry.js").SkillPickRow | null;
+     *   followUpRef?: import("../chat/chatSessionsStore.js").MessageFollowUpRef | null;
      *   onCommitted?: () => void;
      * }} args
      */
-    async ({ trimmed, imageAttachments, fileRefs, skillPickRow, onCommitted }) => {
+    async ({ trimmed, imageAttachments, fileRefs, skillPickRow, followUpRef, onCommitted }) => {
       if (orchestrationMode) return;
       if (!paramC) {
         setSearchParams({ c: conversationId }, { replace: true });
@@ -2045,6 +2056,7 @@ export default function ChatLabPage() {
         createdAt: now,
         ...(mentionIds.length ? { mentions: mentionIds } : {}),
         ...(skillSnap ? { skillMeta: skillSnap } : {}),
+        ...(followUpRef ? { followUpRef } : {}),
         ...(imageAttachments && imageAttachments.length ? { imageAttachments: imageAttachments } : {}),
         ...(fileRefs && fileRefs.length ? { fileRefs: fileRefs } : {}),
       };
@@ -2138,6 +2150,7 @@ export default function ChatLabPage() {
           createdAt: userMsg.createdAt,
           ...(userMsg.mentions?.length ? { mentions: userMsg.mentions } : {}),
           ...(userMsg.skillMeta ? { skillMeta: userMsg.skillMeta } : {}),
+          ...(userMsg.followUpRef ? { followUpRef: userMsg.followUpRef } : {}),
           ...(userMsg.imageAttachments ? { imageAttachments: userMsg.imageAttachments } : {}),
           ...(userMsg.fileRefs ? { fileRefs: userMsg.fileRefs } : {}),
         },
@@ -2527,9 +2540,11 @@ export default function ChatLabPage() {
       imageAttachments: attachmentSnap,
       fileRefs: fileRefsSnap,
       skillPickRow: effectiveSkillRow ?? null,
+      followUpRef: composerFollowUpRef,
       onCommitted: () => {
         setInput("");
         setComposerSkillRow(null);
+        setComposerFollowUpRef(null);
         setComposerAttachments([]);
         setComposerFileRefs([]);
       },
@@ -2965,9 +2980,51 @@ export default function ChatLabPage() {
         kind: r?.kind === "directory" ? /** @type {const} */ ("directory") : /** @type {const} */ ("file"),
       })).filter((r) => r.path && r.name),
     );
+    setComposerFollowUpRef(
+      typeof payload === "object" && payload && payload.followUpRef ? payload.followUpRef : null,
+    );
     setInput(content);
     autoScrollRef.current = true;
   }, [skillPickList]);
+
+  const prefillComposerFollowUp = useCallback(
+    /** @param {{ quoteText: string; sourceMessageId: string; sourceRole: "user" | "assistant"; sourceAgentId?: string | null }} payload */
+    (payload) => {
+      const quoteText = String(payload?.quoteText ?? "").trim();
+      if (!quoteText || !payload?.sourceMessageId) return;
+
+      let agentName = mainAgent ? agentDisplayLabel(mainAgent) : mainAgentLabel;
+      if (payload.sourceRole === "assistant" && payload.sourceAgentId && agentById.has(payload.sourceAgentId)) {
+        agentName = agentDisplayLabel(agentById.get(payload.sourceAgentId));
+      } else if (payload.sourceRole === "user") {
+        agentName = t("chatLab.followUpSourceUser");
+      }
+
+      setPendingEditMessageId(null);
+      setComposerFollowUpRef({
+        sourceMessageId: payload.sourceMessageId,
+        sourceRole: payload.sourceRole,
+        ...(payload.sourceAgentId ? { sourceAgentId: payload.sourceAgentId } : {}),
+        agentName,
+        quoteText,
+      });
+      autoScrollRef.current = true;
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    },
+    [agentById, mainAgent, mainAgentLabel, t],
+  );
+
+  const navigateFollowUpRef = useCallback(
+    /** @param {import("../chat/chatSessionsStore.js").MessageFollowUpRef} ref */
+    (ref) => {
+      navigateToFollowUpQuote({
+        sourceMessageId: ref.sourceMessageId,
+        quoteText: ref.quoteText,
+        scrollContainer: messagesScrollRef.current,
+      });
+    },
+    [messagesScrollRef],
+  );
 
   const composerResizeSnapHint =
     composerResizeDragging && composerTextareaPx >= composerSnapPx && !composerLongTextMode;
@@ -3078,7 +3135,8 @@ export default function ChatLabPage() {
             if (e.dataTransfer?.files?.length) void addComposerDroppedFiles(e.dataTransfer.files);
           }}
         >
-          {composerSkillRow ||
+          {composerFollowUpRef ||
+          composerSkillRow ||
           composerSkillRowLeaving ||
           composerFileRefs.length > 0 ||
           composerFileRefsLeaving ? (
@@ -3089,6 +3147,16 @@ export default function ChatLabPage() {
               )}
               aria-label={t("chatLab.composerRefsRowLabel")}
             >
+              {composerFollowUpRef ?
+                <ComposerFollowUpChip
+                  agentName={composerFollowUpRef.agentName}
+                  quoteText={composerFollowUpRef.quoteText}
+                  onNavigate={() => navigateFollowUpRef(composerFollowUpRef)}
+                  onClear={() => setComposerFollowUpRef(null)}
+                  disabled={composerInputLocked}
+                  clearLabel={t("chatLab.followUpChipClose")}
+                />
+              : null}
               {composerSkillRow ? (
                 <ComposerSkillChip
                   row={composerSkillRow}
@@ -3145,7 +3213,8 @@ export default function ChatLabPage() {
             ref={textareaRef}
             className={cn(
               "chat-lab__shell-textarea",
-              (composerSkillRow || composerFileRefs.length > 0) && "chat-lab__shell-textarea--with-chip",
+              (composerFollowUpRef || composerSkillRow || composerFileRefs.length > 0) &&
+                "chat-lab__shell-textarea--with-chip",
               composerAttachments.length > 0 && "chat-lab__shell-textarea--with-attachments",
             )}
             style={{
@@ -3401,6 +3470,7 @@ export default function ChatLabPage() {
                     userBubbleEnterMessageId={userBubbleEnterMessageId}
                     onUserBubbleEnterAnimEnd={clearUserBubbleEnterAnim}
                     onBeginUserEdit={beginComposerEdit}
+                    onFollowUpNavigate={navigateFollowUpRef}
                     onQuickReply={quickReplySend}
                     quickReplyDisabled={streamLocked || Boolean(pendingEditMessageId)}
                     remeasureKey={location.key}
@@ -3421,6 +3491,11 @@ export default function ChatLabPage() {
                     onRevisePlan={(notes) => orchestrationRunner.revisePlan(conversationId, notes)}
                     onOpenOrchestrationFlow={() => setOrchestrationSideMode("timeline")}
                   />
+                <ChatLabSelectionToolbar
+                  scrollContainerRef={messagesScrollRef}
+                  onFollowUp={prefillComposerFollowUp}
+                  followUpDisabled={streamLocked || Boolean(pendingEditMessageId)}
+                />
               </div>
             )}
           </div>
@@ -5097,8 +5172,10 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
  *     payload: {
  *       content: string;
  *       skillMeta?: { kind: "openclaw" | "user"; slug?: string; userSkillId?: string; label: string; emoji: string };
+ *       followUpRef?: import("../chat/chatSessionsStore.js").MessageFollowUpRef;
  *     },
  *   ) => void;
+ *   onFollowUpNavigate?: (ref: import("../chat/chatSessionsStore.js").MessageFollowUpRef) => void;
  * }} props
  */
 const MessageBubble = memo(function MessageBubble({
@@ -5112,6 +5189,7 @@ const MessageBubble = memo(function MessageBubble({
   quickReplyDisabled,
   onQuickReply,
   onBeginUserEdit,
+  onFollowUpNavigate,
   agentGlyph,
   agentName,
   mentionAgents = [],
@@ -5268,9 +5346,10 @@ const MessageBubble = memo(function MessageBubble({
     onBeginUserEdit(message.id, {
       content: String(message.content ?? ""),
       ...(message.skillMeta ? { skillMeta: message.skillMeta } : {}),
+      ...(message.followUpRef ? { followUpRef: message.followUpRef } : {}),
       ...(Array.isArray(message.fileRefs) && message.fileRefs.length ? { fileRefs: message.fileRefs } : {}),
     });
-  }, [message.content, message.fileRefs, message.id, message.skillMeta, onBeginUserEdit]);
+  }, [message.content, message.fileRefs, message.followUpRef, message.id, message.skillMeta, onBeginUserEdit]);
 
   const [userLongFoldable, setUserLongFoldable] = useState(false);
   const [userLongExpanded, setUserLongExpanded] = useState(false);
@@ -5359,16 +5438,31 @@ const MessageBubble = memo(function MessageBubble({
         orchestrationSidePanel && "chat-lab__msg--orch-side",
         shouldEnterAnim && "chat-lab__msg--user-enter chat-lab__reveal-enter",
       )}
+      data-message-id={message.id}
+      data-message-role={message.role}
+      {...(typeof message.agentId === "string" && message.agentId
+        ? { "data-message-agent-id": message.agentId }
+        : {})}
       onAnimationEnd={shouldEnterAnim ? handleUserEnterAnimEnd : undefined}
     >
-      {isUser && message.skillMeta ? (
-        <div className="chat-lab__msg-skill-pill" title={`${message.skillMeta.emoji} ${message.skillMeta.label}`}>
-          <span className="chat-lab__msg-skill-emoji" aria-hidden>
-            {message.skillMeta.emoji}
-          </span>
-          <span className="chat-lab__msg-skill-label">{message.skillMeta.label}</span>
+      {isUser && (message.followUpRef || message.skillMeta) ?
+        <div className="chat-lab__msg-meta-tags">
+          {message.followUpRef && onFollowUpNavigate ?
+            <MessageFollowUpTag
+              followUpRef={message.followUpRef}
+              onNavigate={() => onFollowUpNavigate(message.followUpRef)}
+            />
+          : null}
+          {message.skillMeta ?
+            <div className="chat-lab__msg-skill-pill" title={`${message.skillMeta.emoji} ${message.skillMeta.label}`}>
+              <span className="chat-lab__msg-skill-emoji" aria-hidden>
+                {message.skillMeta.emoji}
+              </span>
+              <span className="chat-lab__msg-skill-label">{message.skillMeta.label}</span>
+            </div>
+          : null}
         </div>
-      ) : null}
+      : null}
       {!isUser && agentName && !orchestrationSidePanel ? (
         <div className="chat-lab__msg-agent-head">
           {agentGlyph ? (
@@ -5872,6 +5966,7 @@ function ChatLabPlainMessageList({
   userBubbleEnterMessageId,
   onUserBubbleEnterAnimEnd,
   onBeginUserEdit,
+  onFollowUpNavigate,
   onQuickReply,
   quickReplyDisabled,
   t,
@@ -6038,6 +6133,7 @@ function ChatLabPlainMessageList({
                 quickReplyDisabled={quickReplyDisabled}
                 onQuickReply={onQuickReply}
                 onBeginUserEdit={onBeginUserEdit}
+                onFollowUpNavigate={onFollowUpNavigate}
                 agentGlyph={anchorAgent ? agentAvatarGlyph(anchorAgent) : undefined}
                 agentName={anchorAgent ? agentDisplayLabel(anchorAgent) : undefined}
                 mentionAgents={[]}
@@ -6073,6 +6169,7 @@ function ChatLabPlainMessageList({
             quickReplyDisabled={quickReplyDisabled}
             onQuickReply={onQuickReply}
             onBeginUserEdit={onBeginUserEdit}
+            onFollowUpNavigate={onFollowUpNavigate}
             agentGlyph={agent ? agentAvatarGlyph(agent) : undefined}
             agentName={agent ? agentDisplayLabel(agent) : undefined}
             mentionAgents={mentionAgentsForMessage(m, agentById, mainAgentLabel, mentionDisplayOpts)}
@@ -6105,6 +6202,7 @@ function ChatLabPlainMessageList({
           quickReplyDisabled={quickReplyDisabled}
           onQuickReply={onQuickReply}
           onBeginUserEdit={onBeginUserEdit}
+          onFollowUpNavigate={onFollowUpNavigate}
           agentGlyph={mainAgent ? agentAvatarGlyph(mainAgent) : undefined}
           agentName={mainAgent ? agentDisplayLabel(mainAgent) : undefined}
           mentionAgents={[]}
@@ -6186,6 +6284,7 @@ function ChatLabVirtualMessageList({
   userBubbleEnterMessageId,
   onUserBubbleEnterAnimEnd,
   onBeginUserEdit,
+  onFollowUpNavigate,
   onQuickReply,
   quickReplyDisabled,
   remeasureKey,
@@ -6226,7 +6325,7 @@ function ChatLabVirtualMessageList({
   const estimateSize = useCallback((index) => {
     const m = messagesEstRef.current[index];
     if (m?.role === "user") {
-      let h = m.skillMeta ? 118 : 96;
+      let h = m.skillMeta || m.followUpRef ? 118 : 96;
       const textLen = String(m.content ?? "").length;
       h += Math.min(480, Math.ceil(textLen / 3.2));
       const n = Array.isArray(m.imageAttachments) ? m.imageAttachments.length : 0;
@@ -6539,6 +6638,7 @@ function ChatLabVirtualMessageList({
                   quickReplyDisabled={quickReplyDisabled}
                   onQuickReply={onQuickReply}
                   onBeginUserEdit={onBeginUserEdit}
+                  onFollowUpNavigate={onFollowUpNavigate}
                   agentGlyph={
                     m.agentId && agentById?.has(m.agentId)
                       ? agentAvatarGlyph(agentById.get(m.agentId))
