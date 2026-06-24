@@ -3,7 +3,11 @@ const path = require("path");
 const fs = require("fs");
 const { fileURLToPath } = require("url");
 const { createConfigStore } = require("./lib/config-store.cjs");
-const { dispatchOpenClawGatewayStream, probeOpenClawGateway } = require("./lib/openclaw-gateway-stream.cjs");
+const {
+  dispatchOpenClawGatewayStream,
+  probeOpenClawGateway,
+  measureOutboundMessageParts,
+} = require("./lib/openclaw-gateway-stream.cjs");
 const {
   probeWechatCapability,
   startWechatQrAuth,
@@ -1309,18 +1313,43 @@ app.whenReady().then(async () => {
       }
       let terminalSent = false;
       let streamEventCount = 0;
+      const streamOptsBase = {
+        composerSkill,
+        channel,
+        wechatPeerId,
+        contextEmbedMode:
+          typeof payload?.contextEmbedMode === "string" ? payload.contextEmbedMode.trim() : "full",
+        ...(typeof payload?.threadSummaryPrefix === "string" && payload.threadSummaryPrefix
+          ? { threadSummaryPrefix: payload.threadSummaryPrefix }
+          : {}),
+        ...(agentSessionKey ? { agentSessionKey } : {}),
+      };
       if (tokenUsageStore) {
         const cfgForUsage = userConfigStore.readRaw();
-        tokenUsageStore.beginStream(
-          streamId,
-          buildStreamUsageContext(payload, resolveActiveModelMeta(cfgForUsage)),
-        );
+        const routedAgentIdForEstimate =
+          gatewayAgentId || (agentSessionKey ? parseAgentIdFromSessionKey(agentSessionKey) : "");
+        const bootstrapForEstimate = routedAgentIdForEstimate
+          ? readAgentBootstrapForChat(routedAgentIdForEstimate, cfgForUsage)
+          : "";
+        const estimateMessages = withAgentSoulSystem(messages, bootstrapForEstimate);
+        const outboundEstimate = measureOutboundMessageParts(estimateMessages, composerSkill, streamOptsBase);
+        tokenUsageStore.beginStream(streamId, {
+          ...buildStreamUsageContext(payload, resolveActiveModelMeta(cfgForUsage)),
+          usageBreakdown: outboundEstimate,
+        });
       }
       const trackStreamEvent = (evt) => {
         streamEventCount += 1;
         if (evt?.type === "usage" && evt.usage && tokenUsageStore) {
           if (evt.authoritative) tokenUsageStore.replaceStreamUsage(streamId, evt.usage);
           else tokenUsageStore.noteStreamUsage(streamId, evt.usage);
+          if (evt.usageBreakdown && typeof evt.usageBreakdown === "object") {
+            tokenUsageStore.patchStreamBreakdown(streamId, evt.usageBreakdown);
+          }
+        }
+        if (evt?.type === "tool_trace" && tokenUsageStore) {
+          const toolCallId = typeof evt.toolCallId === "string" ? evt.toolCallId.trim() : "";
+          if (toolCallId) tokenUsageStore.noteStreamToolCall(streamId, toolCallId);
         }
         if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
       };
@@ -1361,18 +1390,6 @@ app.whenReady().then(async () => {
           gatewayAgentId || (agentSessionKey ? parseAgentIdFromSessionKey(agentSessionKey) : "");
         const bootstrapFromDisk = routedAgentId ? readAgentBootstrapForChat(routedAgentId, cfg) : "";
         const outboundMessages = withAgentSoulSystem(messages, bootstrapFromDisk);
-        const contextEmbedMode =
-          typeof payload?.contextEmbedMode === "string" ? payload.contextEmbedMode.trim() : "full";
-        const threadSummaryPrefix =
-          typeof payload?.threadSummaryPrefix === "string" ? payload.threadSummaryPrefix : "";
-        const streamOptsBase = {
-          composerSkill,
-          channel,
-          wechatPeerId,
-          contextEmbedMode,
-          ...(threadSummaryPrefix ? { threadSummaryPrefix } : {}),
-          ...(agentSessionKey ? { agentSessionKey } : {}),
-        };
         await dispatchOpenClawGatewayStream(
           cfg,
           outboundMessages,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import echarts from "../../chat/chatLabEchartsRuntime.js";
 import { getChatLabEchartsTheme } from "../../chat/chatLabEchartsTheme.js";
 import {
@@ -51,9 +51,7 @@ function SegmentedControl({ options, value, onChange, ariaLabel }) {
   );
 }
 
-/**
- * @param {{ label: string; input: number; output: number; total: number }} props
- */
+/** @param {{ label: string; input: number; output: number; total: number }} props */
 function SummaryCard({ label, input, output, total }) {
   const { t } = useI18n();
   return (
@@ -259,6 +257,169 @@ function UsageChart({ stats, mode, theme }) {
   return <div ref={containerRef} className="h-[240px] w-full" aria-hidden="true" />;
 }
 
+/**
+ * @param {unknown} breakdown
+ * @param {(key: string, vars?: Record<string, unknown>) => string} t
+ */
+function hasUsageBreakdown(breakdown) {
+  if (!breakdown || typeof breakdown !== "object") return false;
+  const b = /** @type {Record<string, unknown>} */ (breakdown);
+  return (
+    Number(b.estSystemTokens) > 0 ||
+    Number(b.estHistoryTokens) > 0 ||
+    Number(b.estUserTokens) > 0 ||
+    Number(b.estGatewayOverheadTokens) > 0 ||
+    Number(b.llmCallCount) > 0 ||
+    Number(b.toolCallCount) > 0 ||
+    Number(b.cacheReadTokens) > 0 ||
+    Number(b.cacheWriteTokens) > 0
+  );
+}
+
+/** @param {string} mode @param {(key: string) => string} t */
+function embedModeLabel(mode, t) {
+  switch (mode) {
+    case "none":
+      return t("settings.usage.embedModeNone");
+    case "bootstrap":
+      return t("settings.usage.embedModeBootstrap");
+    case "incremental":
+      return t("settings.usage.embedModeIncremental");
+    case "full":
+      return t("settings.usage.embedModeFull");
+    default:
+      return mode || t("settings.usage.breakdownNone");
+  }
+}
+
+/**
+ * @param {{ breakdown: unknown; inputTokens: number; t: (key: string, vars?: Record<string, unknown>) => string }} props
+ */
+function UsageBreakdownPanel({ breakdown, inputTokens, t }) {
+  if (!hasUsageBreakdown(breakdown)) {
+    return (
+      <p className="text-[0.8125rem] text-[var(--os-text-muted)]">{t("settings.usage.breakdownNone")}</p>
+    );
+  }
+  const b = /** @type {Record<string, unknown>} */ (breakdown);
+  const num = (key) => {
+    const n = Number(b[key]);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const billed = Math.max(0, inputTokens);
+  const userVal = num("estUserTokens");
+  const sysVal = num("estSystemTokens");
+  const histVal = num("estHistoryTokens");
+  const studioSum = userVal + sysVal + histVal;
+  const gatewayVal =
+    num("estGatewayOverheadTokens") > 0
+      ? num("estGatewayOverheadTokens")
+      : Math.max(0, billed - Math.min(studioSum, billed));
+
+  const billedRows = [
+    { label: t("settings.usage.breakdownUser"), value: userVal, est: true },
+    { label: t("settings.usage.breakdownSystem"), value: sysVal, est: true },
+    { label: t("settings.usage.breakdownHistory"), value: histVal, est: true },
+    { label: t("settings.usage.breakdownGateway"), value: gatewayVal, est: false },
+  ].filter((r) => r.value > 0);
+
+  const cacheRead = num("cacheReadTokens");
+  const cacheWrite = num("cacheWriteTokens");
+  const maxBar = Math.max(billed, 1);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[0.75rem] leading-relaxed text-[var(--os-text-faint)]">
+        {t("settings.usage.breakdownHint")}
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {num("llmCallCount") > 0 ? (
+          <div className="rounded-lg bg-[color-mix(in_srgb,var(--os-bg-subtle)_80%,transparent)] px-3 py-2">
+            <p className="text-[0.72rem] text-[var(--os-text-faint)]">{t("settings.usage.breakdownLlmCalls")}</p>
+            <p className="text-[0.9375rem] font-semibold tabular-nums text-[var(--os-text)]">
+              {num("llmCallCount")}
+              {num("llmCallCount") > 1 && billed > 0
+                ? ` · ~${formatTokenCount(Math.round(billed / num("llmCallCount")))}/${t("settings.usage.breakdownPerCall")}`
+                : ""}
+            </p>
+          </div>
+        ) : null}
+        {num("toolCallCount") > 0 ? (
+          <div className="rounded-lg bg-[color-mix(in_srgb,var(--os-bg-subtle)_80%,transparent)] px-3 py-2">
+            <p className="text-[0.72rem] text-[var(--os-text-faint)]">{t("settings.usage.breakdownToolCalls")}</p>
+            <p className="text-[0.9375rem] font-semibold tabular-nums text-[var(--os-text)]">
+              {num("toolCallCount")}
+            </p>
+          </div>
+        ) : null}
+        {typeof b.contextEmbedMode === "string" && b.contextEmbedMode ? (
+          <div className="rounded-lg bg-[color-mix(in_srgb,var(--os-bg-subtle)_80%,transparent)] px-3 py-2">
+            <p className="text-[0.72rem] text-[var(--os-text-faint)]">{t("settings.usage.breakdownEmbedMode")}</p>
+            <p className="text-[0.875rem] font-medium text-[var(--os-text)]">
+              {embedModeLabel(String(b.contextEmbedMode), t)}
+              {num("priorTurnCount") > 0
+                ? ` · ${t("settings.usage.breakdownPriorTurns")} ${num("priorTurnCount")}`
+                : ""}
+            </p>
+          </div>
+        ) : null}
+      </div>
+
+      <div>
+        <p className="mb-2 text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[var(--os-text-faint)]">
+          {t("settings.usage.breakdownBilledTitle")} · {formatTokenCount(billed)}
+        </p>
+        <ul className="space-y-2">
+          {billedRows.map((row) => (
+            <li key={row.label}>
+              <div className="mb-1 flex items-center justify-between gap-2 text-[0.8125rem]">
+                <span className="text-[var(--os-text-muted)]">
+                  {row.label}
+                  {row.est ? " ~" : ""}
+                </span>
+                <span className="shrink-0 tabular-nums font-medium text-[var(--os-text)]">
+                  {formatTokenCount(row.value)}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--os-bg-subtle)_90%,transparent)]">
+                <div
+                  className="h-full rounded-full bg-[color-mix(in_srgb,var(--os-accent,_#6366f1)_72%,transparent)]"
+                  style={{ width: `${Math.min(100, Math.round((row.value / maxBar) * 100))}%` }}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {cacheRead > 0 || cacheWrite > 0 ? (
+        <div className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_65%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-subtle)_50%,transparent)] px-3 py-2.5">
+          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-[var(--os-text-faint)]">
+            {t("settings.usage.breakdownCacheTitle")}
+          </p>
+          <p className="mt-1 text-[0.75rem] leading-relaxed text-[var(--os-text-muted)]">
+            {t("settings.usage.breakdownCacheHint")}
+          </p>
+          <ul className="mt-2 space-y-1 text-[0.8125rem] tabular-nums text-[var(--os-text)]">
+            {cacheRead > 0 ? (
+              <li className="flex justify-between gap-2">
+                <span className="text-[var(--os-text-muted)]">{t("settings.usage.breakdownCacheRead")}</span>
+                <span>{formatTokenCount(cacheRead)}</span>
+              </li>
+            ) : null}
+            {cacheWrite > 0 ? (
+              <li className="flex justify-between gap-2">
+                <span className="text-[var(--os-text-muted)]">{t("settings.usage.breakdownCacheWrite")}</span>
+                <span>{formatTokenCount(cacheWrite)}</span>
+              </li>
+            ) : null}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function TokenUsageSettingsSection() {
   const { t } = useI18n();
   const { theme } = useTheme();
@@ -270,6 +431,7 @@ export default function TokenUsageSettingsSection() {
   const [records, setRecords] = useState(/** @type {unknown[]} */ ([]));
   const [loading, setLoading] = useState(true);
   const [selectedConversationId, setSelectedConversationId] = useState("");
+  const [expandedRecordId, setExpandedRecordId] = useState("");
 
   const reload = useCallback(async () => {
     if (!bridge?.getTokenUsageStats || !bridge?.getTokenUsageRecords) {
@@ -419,7 +581,7 @@ export default function TokenUsageSettingsSection() {
               {t("settings.usage.noRecords")}
             </p>
           ) : (
-            <table className="w-full min-w-[640px] border-collapse text-left text-[0.8125rem]">
+            <table className="w-full min-w-[720px] border-collapse text-left text-[0.8125rem]">
               <thead className="sticky top-0 z-[1] bg-[color-mix(in_srgb,var(--os-bg-elevated)_98%,var(--os-bg-subtle))]">
                 <tr className="text-[var(--os-text-faint)]">
                   <th className="px-4 py-2.5 font-medium sm:px-5">{t("settings.usage.colContent")}</th>
@@ -427,12 +589,14 @@ export default function TokenUsageSettingsSection() {
                   <th className="px-3 py-2.5 font-medium text-right tabular-nums">{t("settings.usage.input")}</th>
                   <th className="px-3 py-2.5 font-medium text-right tabular-nums">{t("settings.usage.output")}</th>
                   <th className="px-3 py-2.5 font-medium text-right tabular-nums">{t("settings.usage.total")}</th>
+                  <th className="px-3 py-2.5 font-medium">{t("settings.usage.colBreakdown")}</th>
                   <th className="px-4 py-2.5 font-medium sm:px-5">{t("settings.usage.colTime")}</th>
                 </tr>
               </thead>
               <tbody>
                 {records.map((row) => {
                   const r = /** @type {Record<string, unknown>} */ (row);
+                  const recordId = String(r.id ?? r.streamId ?? "");
                   const preview =
                     typeof r.userContentPreview === "string" && r.userContentPreview.trim()
                       ? r.userContentPreview.trim()
@@ -447,42 +611,83 @@ export default function TokenUsageSettingsSection() {
                         : "—";
                   const conversationId =
                     typeof r.conversationId === "string" ? r.conversationId : "";
+                  const inputTokens = Number(r.inputTokens) || 0;
+                  const breakdown = r.usageBreakdown;
+                  const breakdownAvailable = hasUsageBreakdown(breakdown);
+                  const expanded = expandedRecordId === recordId;
+                  const b = breakdown && typeof breakdown === "object" ? /** @type {Record<string, unknown>} */ (breakdown) : {};
+                  const callHint =
+                    Number(b.llmCallCount) > 1
+                      ? `${b.llmCallCount}×LLM`
+                      : Number(b.toolCallCount) > 0
+                        ? `${b.toolCallCount}×Tool`
+                        : "";
                   return (
-                    <tr
-                      key={String(r.id ?? r.streamId ?? preview)}
-                      className="border-t border-[color-mix(in_srgb,var(--os-border)_60%,transparent)] hover:bg-[color-mix(in_srgb,var(--os-bg-subtle)_70%,transparent)]"
-                    >
-                      <td className="max-w-[14rem] px-4 py-3 sm:px-5">
-                        <button
-                          type="button"
-                          onClick={() => conversationId && setSelectedConversationId(conversationId)}
-                          className={cn(
-                            "block w-full truncate text-left",
-                            conversationId
-                              ? "cursor-pointer text-[var(--os-text)] hover:underline"
-                              : "cursor-default text-[var(--os-text-muted)]",
+                    <Fragment key={recordId || preview}>
+                      <tr
+                        className="border-t border-[color-mix(in_srgb,var(--os-border)_60%,transparent)] hover:bg-[color-mix(in_srgb,var(--os-bg-subtle)_70%,transparent)]"
+                      >
+                        <td className="max-w-[14rem] px-4 py-3 sm:px-5">
+                          <button
+                            type="button"
+                            onClick={() => conversationId && setSelectedConversationId(conversationId)}
+                            className={cn(
+                              "block w-full truncate text-left",
+                              conversationId
+                                ? "cursor-pointer text-[var(--os-text)] hover:underline"
+                                : "cursor-default text-[var(--os-text-muted)]",
+                            )}
+                            title={preview}
+                          >
+                            {preview}
+                          </button>
+                        </td>
+                        <td className="max-w-[8rem] truncate px-3 py-3 text-[var(--os-text-muted)]" title={model}>
+                          {model}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-[var(--os-text-muted)]">
+                          {formatTokenCount(inputTokens)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-[var(--os-text-muted)]">
+                          {formatTokenCount(Number(r.outputTokens) || 0)}
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums font-medium text-[var(--os-text)]">
+                          {formatTokenCount(Number(r.totalTokens) || 0)}
+                        </td>
+                        <td className="px-3 py-3">
+                          {breakdownAvailable ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedRecordId(expanded ? "" : recordId)
+                              }
+                              className="rounded-md px-2 py-1 text-[0.75rem] font-medium text-[var(--os-accent,_#6366f1)] hover:bg-[color-mix(in_srgb,var(--os-bg-subtle)_80%,transparent)]"
+                              aria-expanded={expanded}
+                            >
+                              {callHint || (expanded ? t("settings.usage.breakdownCollapse") : t("settings.usage.breakdownExpand"))}
+                            </button>
+                          ) : (
+                            <span className="text-[var(--os-text-faint)]">{t("settings.usage.breakdownNone")}</span>
                           )}
-                          title={preview}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-[var(--os-text-faint)] sm:px-5">
+                          {formatUsageTimestamp(Number(r.timestamp) || 0)}
+                        </td>
+                      </tr>
+                      {expanded && breakdownAvailable ? (
+                        <tr
+                          key={`${recordId}-breakdown`}
+                          className="border-t border-[color-mix(in_srgb,var(--os-border)_40%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-subtle)_55%,transparent)]"
                         >
-                          {preview}
-                        </button>
-                      </td>
-                      <td className="max-w-[8rem] truncate px-3 py-3 text-[var(--os-text-muted)]" title={model}>
-                        {model}
-                      </td>
-                      <td className="px-3 py-3 text-right tabular-nums text-[var(--os-text-muted)]">
-                        {formatTokenCount(Number(r.inputTokens) || 0)}
-                      </td>
-                      <td className="px-3 py-3 text-right tabular-nums text-[var(--os-text-muted)]">
-                        {formatTokenCount(Number(r.outputTokens) || 0)}
-                      </td>
-                      <td className="px-3 py-3 text-right tabular-nums font-medium text-[var(--os-text)]">
-                        {formatTokenCount(Number(r.totalTokens) || 0)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[var(--os-text-faint)] sm:px-5">
-                        {formatUsageTimestamp(Number(r.timestamp) || 0)}
-                      </td>
-                    </tr>
+                          <td colSpan={7} className="px-4 py-4 sm:px-5">
+                            <p className="mb-2 text-[0.8125rem] font-semibold text-[var(--os-text)]">
+                              {t("settings.usage.breakdownTitle")}
+                            </p>
+                            <UsageBreakdownPanel breakdown={breakdown} inputTokens={inputTokens} t={t} />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   );
                 })}
               </tbody>
