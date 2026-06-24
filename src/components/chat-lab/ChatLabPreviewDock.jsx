@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Monitor, Smartphone } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
 import { cn } from "../../ui/cn.js";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import ChatLabArtifactPreviewPane from "./ChatLabArtifactPreviewPane.jsx";
+import ChatLabPreviewFileTree from "./ChatLabPreviewFileTree.jsx";
 import ChatLabPreviewWebFrame from "./ChatLabPreviewWebFrame.jsx";
 
 const PREVIEW_W_KEY = "openstudio_chat_preview_px";
@@ -50,30 +51,57 @@ export default function ChatLabPreviewDock({ extension = null }) {
   const artifactsPanel = api?.artifactsPanel ?? null;
   const open = Boolean(session || artifactsPanel || extension);
 
+  const asideRef = useRef(/** @type {HTMLElement | null} */ (null));
+  const treeRef = useRef(/** @type {HTMLElement | null} */ (null));
+
   const [panelWidth, setPanelWidth] = useState(() =>
     readStoredWidth(PREVIEW_W_KEY, PREVIEW_W_DEFAULT, PREVIEW_W_MIN, PREVIEW_W_MAX),
   );
   const [treeWidth, setTreeWidth] = useState(() =>
     readStoredWidth(TREE_W_KEY, TREE_W_DEFAULT, TREE_W_MIN, TREE_W_MAX),
   );
+  const panelWidthLive = useRef(panelWidth);
+  const treeWidthLive = useRef(treeWidth);
+  panelWidthLive.current = panelWidth;
+  treeWidthLive.current = treeWidth;
+
   const [panelDragging, setPanelDragging] = useState(false);
   const [treeDragging, setTreeDragging] = useState(false);
+  const isResizing = panelDragging || treeDragging;
 
-  useEffect(() => {
+  const persistWidth = useCallback((key, value) => {
     try {
-      window.localStorage.setItem(PREVIEW_W_KEY, String(panelWidth));
+      window.localStorage.setItem(key, String(value));
     } catch {
       /* ignore */
     }
-  }, [panelWidth]);
+  }, []);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(TREE_W_KEY, String(treeWidth));
-    } catch {
-      /* ignore */
-    }
-  }, [treeWidth]);
+  const onPanelLiveResize = useCallback((w) => {
+    panelWidthLive.current = w;
+    if (asideRef.current) asideRef.current.style.width = `${w}px`;
+  }, []);
+
+  const onPanelResizeCommit = useCallback(
+    (w) => {
+      setPanelWidth(w);
+      persistWidth(PREVIEW_W_KEY, w);
+    },
+    [persistWidth],
+  );
+
+  const onTreeLiveResize = useCallback((w) => {
+    treeWidthLive.current = w;
+    if (treeRef.current) treeRef.current.style.width = `${w}px`;
+  }, []);
+
+  const onTreeResizeCommit = useCallback(
+    (w) => {
+      setTreeWidth(w);
+      persistWidth(TREE_W_KEY, w);
+    },
+    [persistWidth],
+  );
 
   const onOpenExternal = useCallback(() => {
     if (!session || session.kind !== "iframe") return;
@@ -108,6 +136,16 @@ export default function ChatLabPreviewDock({ extension = null }) {
     return artifactsPanel.files.find((f) => f.path === artifactsPanel.selectedPath) ?? null;
   }, [artifactsPanel]);
 
+  const artifactOps = useMemo(() => {
+    /** @type {Map<string, import("../../chat/chatLabSessionArtifacts.js").ArtifactOp>} */
+    const map = new Map();
+    for (const f of artifactsPanel?.files ?? []) {
+      const key = String(f.path ?? "").replace(/\\/g, "/").toLowerCase();
+      if (key) map.set(key, f.op);
+    }
+    return map;
+  }, [artifactsPanel?.files]);
+
   const previewTitle = useMemo(() => {
     if (extension?.title) return extension.title;
     if (artifactsPanel) return t("chatLab.artifactsDockTitle");
@@ -118,13 +156,18 @@ export default function ChatLabPreviewDock({ extension = null }) {
     ? mapArtifactError(artifactsPanel.error, t)
     : null;
 
+  const showArtifactTree = Boolean(
+    artifactsPanel && artifactsPanel.treeMode !== "file-only",
+  );
+
   if (!api || !open) return null;
 
   return (
     <aside
+      ref={asideRef}
       className={cn(
         "chat-lab-preview-dock relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l",
-        (panelDragging || treeDragging) && "chat-lab-preview-dock--resizing",
+        isResizing && "chat-lab-preview-dock--resizing",
       )}
       style={{
         width: panelWidth,
@@ -138,7 +181,8 @@ export default function ChatLabPreviewDock({ extension = null }) {
         value={panelWidth}
         min={PREVIEW_W_MIN}
         max={PREVIEW_W_MAX}
-        onChange={setPanelWidth}
+        onChange={onPanelLiveResize}
+        onCommit={onPanelResizeCommit}
         onActiveChange={setPanelDragging}
       />
       <header className="chat-lab-preview-dock__head flex shrink-0 items-center gap-2 border-b px-2.5 py-2 pr-3">
@@ -207,53 +251,66 @@ export default function ChatLabPreviewDock({ extension = null }) {
       </header>
 
       {artifactsPanel ? (
-        <div className="chat-lab-preview-dock__split flex min-h-0 flex-1">
-          <nav
-            className="chat-lab-preview-dock__tree relative flex min-h-0 shrink-0 flex-col border-r"
-            style={{ width: treeWidth }}
-            aria-label={t("chatLab.artifactsFileListAria")}
-          >
-            <ResizableEdge
-              side="right"
-              value={treeWidth}
-              min={TREE_W_MIN}
-              max={TREE_W_MAX}
-              onChange={setTreeWidth}
-              onActiveChange={setTreeDragging}
-            />
-            <ul className="chat-lab-preview-dock__tree-list min-h-0 flex-1 overflow-auto py-1">
-              {artifactsPanel.files.map((file) => {
-                const active = file.path === artifactsPanel.selectedPath;
-                return (
-                  <li key={file.path}>
-                    <button
-                      type="button"
-                      className={cn(
-                        "chat-lab-preview-dock__tree-item",
-                        active && "chat-lab-preview-dock__tree-item--active",
-                      )}
-                      onClick={() => api.selectArtifact?.(file.path)}
-                      title={file.path}
-                    >
-                      <span
-                        className={cn(
-                          "chat-lab-preview-dock__tree-badge",
-                          file.op === "created"
-                            ? "chat-lab-preview-dock__tree-badge--created"
-                            : file.op === "modified"
-                              ? "chat-lab-preview-dock__tree-badge--modified"
-                              : "chat-lab-preview-dock__tree-badge--viewed",
-                        )}
-                      >
-                        {file.op === "created" ? "+" : file.op === "modified" ? "~" : "↗"}
-                      </span>
-                      <span className="chat-lab-preview-dock__tree-name">{file.label}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
+        <div className="chat-lab-preview-dock__split flex min-h-0 min-w-0 flex-1">
+          {showArtifactTree ? (
+            <nav
+              ref={treeRef}
+              className="chat-lab-preview-dock__tree relative flex min-h-0 shrink-0 flex-col border-r"
+              style={{ width: treeWidth }}
+              aria-label={t("chatLab.artifactsFileListAria")}
+            >
+              <ResizableEdge
+                side="right"
+                value={treeWidth}
+                min={TREE_W_MIN}
+                max={TREE_W_MAX}
+                onChange={onTreeLiveResize}
+                onCommit={onTreeResizeCommit}
+                onActiveChange={setTreeDragging}
+              />
+              {artifactsPanel.tree?.length ? (
+                <ChatLabPreviewFileTree
+                  nodes={artifactsPanel.tree}
+                  selectedPath={artifactsPanel.selectedPath}
+                  artifactOps={artifactOps}
+                  onSelectFile={(path) => api.selectArtifact?.(path)}
+                />
+              ) : (
+                <ul className="chat-lab-preview-dock__tree-list min-h-0 flex-1 overflow-auto py-1">
+                  {artifactsPanel.files.map((file) => {
+                    const active = file.path === artifactsPanel.selectedPath;
+                    return (
+                      <li key={file.path}>
+                        <button
+                          type="button"
+                          className={cn(
+                            "chat-lab-preview-dock__tree-item",
+                            active && "chat-lab-preview-dock__tree-item--active",
+                          )}
+                          onClick={() => api.selectArtifact?.(file.path)}
+                          title={file.path}
+                        >
+                          <span
+                            className={cn(
+                              "chat-lab-preview-dock__tree-badge",
+                              file.op === "created"
+                                ? "chat-lab-preview-dock__tree-badge--created"
+                                : file.op === "modified"
+                                  ? "chat-lab-preview-dock__tree-badge--modified"
+                                  : "chat-lab-preview-dock__tree-badge--viewed",
+                            )}
+                          >
+                            {file.op === "created" ? "+" : file.op === "modified" ? "~" : "↗"}
+                          </span>
+                          <span className="chat-lab-preview-dock__tree-name">{file.label}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </nav>
+          ) : null}
           <ChatLabArtifactPreviewPane
             label={selectedArtifact?.label ?? artifactsPanel.selectedPath ?? ""}
             payload={artifactsPanel.payload}
@@ -262,6 +319,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             viewMode={artifactsPanel.viewMode}
             onViewModeChange={(mode) => api.setArtifactViewMode?.(mode)}
             iframeRef={api.iframeRef}
+            isResizing={isResizing}
           />
         </div>
       ) : extension ? (

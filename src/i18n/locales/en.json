@@ -387,6 +387,8 @@
     "artifactsBarAria": "Files touched in this conversation",
     "artifactsFileListAria": "Artifact file list",
     "artifactsLoading": "Loading file…",
+    "previewLargeFilePlain": "Large file — showing plain text with virtual scroll for speed",
+    "previewFileTruncated": "Showing first {{shown}} of {{total}} lines",
     "artifactsSelectFile": "Select a file on the left to preview",
     "messageCopy": "Copy message",
     "messageCopied": "Copied",

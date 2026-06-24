@@ -40,5 +40,5 @@ export function artifactPreviewKindFromPath(filenameOrPath) {
  * @returns {boolean}
  */
 export function artifactKindSupportsRenderToggle(kind) {
-  return kind === "markdown" || kind === "html" || kind === "csv" || kind === "svg";
+  return kind === "markdown" || kind === "html";
 }

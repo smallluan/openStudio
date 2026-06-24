@@ -384,6 +384,8 @@
     "artifactsBarAria": "本會話涉及的檔案",
     "artifactsFileListAria": "產物檔案列表",
     "artifactsLoading": "正在載入檔案…",
+    "previewLargeFilePlain": "檔案較大，已改為純文字虛擬捲動以提升效能",
+    "previewFileTruncated": "僅顯示前 {{shown}} 行（共 {{total}} 行）",
     "artifactsSelectFile": "從左側選擇檔案以預覽",
     "messageCopy": "複製此則",
     "messageCopied": "已複製",

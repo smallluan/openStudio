@@ -384,6 +384,8 @@
     "artifactsBarAria": "この会話で触れたファイル",
     "artifactsFileListAria": "成果物ファイル一覧",
     "artifactsLoading": "ファイルを読み込み中…",
+    "previewLargeFilePlain": "大きなファイルのため、高速化のためプレーンテキストの仮想スクロールを使用しています",
+    "previewFileTruncated": "先頭 {{shown}} 行のみ表示（全 {{total}} 行）",
     "artifactsSelectFile": "左からファイルを選んでプレビュー",
     "messageCopy": "メッセージをコピー",
     "messageCopied": "コピーしました",

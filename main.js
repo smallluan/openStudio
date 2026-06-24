@@ -42,7 +42,7 @@ const {
   newWechatChannelSessionId,
   WECHAT_NEW_CHAT_ACK_TEXT,
 } = require("./lib/wechat-session-commands.cjs");
-const { readWorkspacePreviewFile, resolveWorkspacePreviewTarget } = require("./lib/chatlab-read-workspace-preview.cjs");
+const { readWorkspacePreviewFile, resolveWorkspacePreviewTarget, listWorkspacePreviewDirectory } = require("./lib/chatlab-read-workspace-preview.cjs");
 const { initStudioLogger, getStudioLog } = require("./lib/studio-logger.cjs");
 const { enableBundledPythonRuntime } = require("./lib/bundled-python-runtime.cjs");
 const {
@@ -883,6 +883,12 @@ app.whenReady().then(async () => {
     if (!userConfigStore) return { ok: false, message: "config_unready" };
     const cfg = userConfigStore.readRaw();
     return readWorkspacePreviewFile(cfg, rawPath);
+  });
+
+  ipcMain.handle("studio:listWorkspacePreviewDirectory", (_event, rawPath, opts) => {
+    if (!userConfigStore) return { ok: false, message: "config_unready" };
+    const cfg = userConfigStore.readRaw();
+    return listWorkspacePreviewDirectory(cfg, rawPath, opts && typeof opts === "object" ? opts : {});
   });
 
   ipcMain.handle("studio:statLocalPath", (_event, rawPath) => {

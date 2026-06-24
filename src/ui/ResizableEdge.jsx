@@ -4,6 +4,9 @@ import { cn } from "./cn.js";
 /**
  * Vertical resize handle. `side="right"` adds width when dragging right (typical left sidebar).
  * `side="left"` is for a right-side panel: dragging the handle left widens the panel.
+ *
+ * During drag, `onChange` may fire every animation frame; pass `onCommit` to persist width
+ * without triggering heavy child re-renders on every pointer move.
  */
 export default function ResizableEdge({
   side = "right",
@@ -17,6 +20,8 @@ export default function ResizableEdge({
   onCommit,
 }) {
   const dragging = useRef(false);
+  const rafId = useRef(/** @type {number | null} */ (null));
+  const pendingWidth = useRef(value);
 
   const onPointerDown = useCallback(
     (e) => {
@@ -29,6 +34,13 @@ export default function ResizableEdge({
       const target = e.currentTarget;
       target.setPointerCapture(e.pointerId);
       let last = startW;
+      pendingWidth.current = startW;
+
+      const flush = () => {
+        rafId.current = null;
+        if (!dragging.current) return;
+        onChange(pendingWidth.current);
+      };
 
       const move = (ev) => {
         if (!dragging.current) return;
@@ -36,11 +48,19 @@ export default function ResizableEdge({
         const delta = side === "right" ? dx : -dx;
         const next = Math.round(Math.min(max, Math.max(min, startW + delta)));
         last = next;
-        onChange(next);
+        pendingWidth.current = next;
+        if (rafId.current == null) {
+          rafId.current = window.requestAnimationFrame(flush);
+        }
       };
 
       const up = () => {
         dragging.current = false;
+        if (rafId.current != null) {
+          window.cancelAnimationFrame(rafId.current);
+          rafId.current = null;
+        }
+        onChange(last);
         onCommit?.(last);
         onActiveChange?.(false);
         window.removeEventListener("pointermove", move);

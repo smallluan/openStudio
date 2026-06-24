@@ -2020,6 +2020,67 @@ code {
   user-select: none;
 }
 
+.chat-lab-preview-dock--resizing .chat-lab-artifact-preview__body,
+.chat-lab-preview-dock--resizing .chat-lab-preview-dock__frame {
+  pointer-events: none;
+  content-visibility: auto;
+}
+
+.chat-lab-artifact-preview__body--resizing {
+  contain: strict;
+}
+
+.chat-lab-artifact-code-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chat-lab-artifact-code-wrap__body {
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-lab-artifact-code-wrap--pending,
+.chat-lab-artifact-code--pending {
+  opacity: 0.72;
+}
+
+.chat-lab-artifact-source-stack {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.chat-lab-artifact-source__trunc-note {
+  border-top: 1px solid color-mix(in srgb, var(--os-border) 55%, transparent);
+}
+
+.chat-lab-artifact-source__perf-note {
+  border-color: color-mix(in srgb, var(--os-border) 55%, transparent);
+}
+
+.chat-lab-artifact-source--virtual {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  contain: strict;
+}
+
+.chat-lab-artifact-source--virtual .chat-lab-artifact-source__row {
+  white-space: nowrap;
+}
+
+.chat-lab-artifact-source--virtual .chat-lab-artifact-source__line {
+  white-space: pre;
+  overflow: visible;
+}
+
 .chat-lab-preview-dock__head {
   border-color: color-mix(in srgb, var(--os-border) 55%, transparent);
   background: color-mix(in srgb, var(--os-bg-subtle) 40%, var(--os-bg-elevated));
@@ -2207,6 +2268,66 @@ code {
   min-width: 0;
 }
 
+.chat-lab-artifact-preview {
+  min-width: 0;
+  width: 100%;
+}
+
+.chat-lab-artifact-preview__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat-lab-artifact-preview__scroll {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.chat-lab-artifact-code {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.chat-lab-artifact-code pre {
+  margin: 0 !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  overflow-x: hidden !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+.chat-lab-artifact-code__code {
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+.chat-lab-artifact-code pre code,
+.chat-lab-artifact-code pre .token-line,
+.chat-lab-artifact-code pre span {
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+.chat-lab-artifact-source--virtual {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
 .chat-lab-preview-dock__tree {
   border-color: color-mix(in srgb, var(--os-border) 55%, transparent);
   background: color-mix(in srgb, var(--os-bg-subtle) 35%, var(--os-bg-elevated));
@@ -2216,6 +2337,32 @@ code {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.chat-lab-preview-dock__tree-list--nested {
+  padding-left: 0;
+}
+
+.chat-lab-preview-dock__tree-node {
+  list-style: none;
+}
+
+.chat-lab-preview-dock__tree-chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 0.95rem;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--os-text-muted, var(--muted)) 85%, transparent);
+}
+
+.chat-lab-preview-dock__tree-chevron--spacer {
+  visibility: hidden;
+}
+
+.chat-lab-preview-dock__tree-icon {
+  flex-shrink: 0;
+  opacity: 0.72;
 }
 
 .chat-lab-preview-dock__tree-item {
@@ -2298,6 +2445,55 @@ code {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.chat-lab-artifact-source {
+  margin: 0;
+  font-family: var(--os-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--os-text, var(--text));
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.chat-lab-artifact-source__table {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.chat-lab-artifact-source__row {
+  display: flex;
+  gap: 0.65rem;
+  min-height: 1.55em;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.chat-lab-artifact-source__ln {
+  flex-shrink: 0;
+  width: 2.4rem;
+  text-align: right;
+  user-select: none;
+  color: color-mix(in srgb, var(--os-text-muted, var(--muted)) 78%, transparent);
+}
+
+.chat-lab-artifact-source__line {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .chat-lab-artifact-preview__image {

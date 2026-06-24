@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld("studioBridge", {
   logRendererMessage: (payload) =>
     ipcRenderer.invoke("studio:logRendererMessage", payload && typeof payload === "object" ? payload : { message: String(payload) }),
   readWorkspacePreviewFile: (rawPath) => ipcRenderer.invoke("studio:readWorkspacePreviewFile", rawPath),
+  listWorkspacePreviewDirectory: (rawPath, opts) =>
+    ipcRenderer.invoke("studio:listWorkspacePreviewDirectory", rawPath, opts),
   getPathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file);

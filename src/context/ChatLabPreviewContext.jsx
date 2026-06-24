@@ -16,6 +16,7 @@ import {
   isPreviewInterceptableHref,
 } from "../chat/chatLabDocumentPreview.js";
 import { artifactPayloadFromReadResult } from "../chat/chatLabArtifactFilePayload.js";
+import { mergeArtifactsIntoPreviewTree, buildArtifactSidebarTree, resolvePreviewTreeMode, defaultArtifactViewMode } from "../chat/chatLabPreviewFileTree.js";
 import { useI18n } from "./I18nContext.jsx";
 import { artifactPreviewKindFromPath } from "../chat/chatLabArtifactPreviewKind.js";
 import {
@@ -76,6 +77,8 @@ function readPreviewDeviceMode() {
  *   loading: boolean;
  *   error: string | null;
  *   payload: import("../chat/chatLabArtifactFilePayload.js").ArtifactFilePayload | null;
+ *   tree: import("../chat/chatLabPreviewFileTree.js").PreviewTreeNode[];
+ *   treeMode: import("../chat/chatLabPreviewFileTree.js").PreviewTreeMode;
  * }} ArtifactsPanelState
  */
 
@@ -94,7 +97,7 @@ function readPreviewDeviceMode() {
  *   deviceMode: "desktop" | "mobile";
  *   setDeviceMode: (mode: "desktop" | "mobile") => void;
  *   openFromWorkspacePath: (inputPath: string, title?: string) => Promise<void>;
- *   openArtifactsPanel: (files: SessionArtifact[], selectPath?: string) => void;
+ *   openArtifactsPanel: (files: SessionArtifact[], selectPath?: string, opts?: { treeMode?: import("../chat/chatLabPreviewFileTree.js").PreviewTreeMode }) => void;
  *   selectArtifact: (path: string) => void;
  *   setArtifactViewMode: (mode: "render" | "source") => void;
  *   postToPreview: (payload: unknown, targetOrigin?: string) => void;
@@ -193,15 +196,45 @@ export function ChatLabPreviewProvider({ children }) {
     setArtifactsPanel(null);
   }, [revokeArtifactBlobs, revokeBlob]);
 
+  const fetchPreviewTree = useCallback(async (anchorPath, files) => {
+    const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+    const listDir =
+      bridge && typeof bridge.listWorkspacePreviewDirectory === "function"
+        ? bridge.listWorkspacePreviewDirectory
+        : undefined;
+    if (!listDir) return mergeArtifactsIntoPreviewTree(files, []);
+    try {
+      const r = await listDir(anchorPath, { maxDepth: 4 });
+      if (r && r.ok && Array.isArray(r.entries)) {
+        return mergeArtifactsIntoPreviewTree(files, r.entries);
+      }
+    } catch {
+      /* ignore */
+    }
+    return mergeArtifactsIntoPreviewTree(files, []);
+  }, []);
+
+  const resolvePanelTree = useCallback(
+    async (path, files, existingTree, treeMode) => {
+      if (existingTree.length) return existingTree;
+      if (treeMode === "directory") return fetchPreviewTree(path, files);
+      return buildArtifactSidebarTree(files, treeMode);
+    },
+    [fetchPreviewTree],
+  );
+
   const loadArtifactAtPath = useCallback(
     /**
      * @param {string} inputPath
      * @param {SessionArtifact[]} files
      * @param {"render"|"source"} viewMode
+     * @param {import("../chat/chatLabPreviewFileTree.js").PreviewTreeNode[]} [existingTree]
+     * @param {import("../chat/chatLabPreviewFileTree.js").PreviewTreeMode} [treeMode]
      */
-    async (inputPath, files, viewMode) => {
+    async (inputPath, files, viewMode, existingTree = [], treeMode = "file-only") => {
       const path = String(inputPath ?? "").trim();
       const gen = ++artifactLoadGenRef.current;
+      const initialTree = existingTree.length ? existingTree : buildArtifactSidebarTree(files, treeMode);
       setArtifactsPanel({
         files,
         selectedPath: path,
@@ -209,6 +242,8 @@ export function ChatLabPreviewProvider({ children }) {
         loading: true,
         error: null,
         payload: null,
+        tree: initialTree,
+        treeMode,
       });
       setSession(null);
       revokeBlob();
@@ -225,6 +260,8 @@ export function ChatLabPreviewProvider({ children }) {
 
       if (!read && !maybeOpenOffice) {
         if (gen !== artifactLoadGenRef.current) return;
+        const tree = await resolvePanelTree(path, files, existingTree, treeMode);
+        if (gen !== artifactLoadGenRef.current) return;
         setArtifactsPanel({
           files,
           selectedPath: path,
@@ -232,6 +269,8 @@ export function ChatLabPreviewProvider({ children }) {
           loading: false,
           error: "workspace_needs_app",
           payload: null,
+          tree,
+          treeMode,
         });
         return;
       }
@@ -251,6 +290,8 @@ export function ChatLabPreviewProvider({ children }) {
 
       if (!read) {
         if (gen !== artifactLoadGenRef.current) return;
+        const tree = await resolvePanelTree(path, files, existingTree, treeMode);
+        if (gen !== artifactLoadGenRef.current) return;
         setArtifactsPanel({
           files,
           selectedPath: path,
@@ -258,6 +299,8 @@ export function ChatLabPreviewProvider({ children }) {
           loading: false,
           error: "workspace_needs_app",
           payload: null,
+          tree,
+          treeMode,
         });
         return;
       }
@@ -268,6 +311,8 @@ export function ChatLabPreviewProvider({ children }) {
       } catch (e) {
         if (gen !== artifactLoadGenRef.current) return;
         const msg = String(e?.message ?? e);
+        const tree = await resolvePanelTree(path, files, existingTree, treeMode);
+        if (gen !== artifactLoadGenRef.current) return;
         setArtifactsPanel({
           files,
           selectedPath: path,
@@ -275,10 +320,14 @@ export function ChatLabPreviewProvider({ children }) {
           loading: false,
           error: /No handler registered/i.test(msg) ? "ipc_missing" : msg,
           payload: null,
+          tree,
+          treeMode,
         });
         return;
       }
 
+      if (gen !== artifactLoadGenRef.current) return;
+      const tree = await resolvePanelTree(path, files, existingTree, treeMode);
       if (gen !== artifactLoadGenRef.current) return;
       revokeArtifactBlobs();
       const built = artifactPayloadFromReadResult(path, r);
@@ -290,6 +339,8 @@ export function ChatLabPreviewProvider({ children }) {
           loading: false,
           error: built.error,
           payload: null,
+          tree,
+          treeMode,
         });
         return;
       }
@@ -305,31 +356,57 @@ export function ChatLabPreviewProvider({ children }) {
         loading: false,
         error: null,
         payload: built,
+        tree,
+        treeMode,
       });
     },
-    [close, revokeArtifactBlobs, revokeBlob],
+    [close, resolvePanelTree, revokeArtifactBlobs, revokeBlob],
   );
 
   const openArtifactsPanel = useCallback(
     /**
      * @param {SessionArtifact[]} files
      * @param {string} [selectPath]
+     * @param {{ treeMode?: import("../chat/chatLabPreviewFileTree.js").PreviewTreeMode }} [opts]
      */
-    (files, selectPath) => {
+    (files, selectPath, opts) => {
       const list = Array.isArray(files) ? files.filter((f) => f?.path) : [];
       if (!list.length) return;
+      const treeMode = resolvePreviewTreeMode(list, opts?.treeMode);
       const pick =
         selectPath && list.some((f) => f.path === selectPath) ? selectPath : list[list.length - 1].path;
-      void loadArtifactAtPath(pick, list, "render");
+      const viewMode = defaultArtifactViewMode(pick);
+      const tree = treeMode === "directory" ? [] : buildArtifactSidebarTree(list, treeMode);
+      void loadArtifactAtPath(pick, list, viewMode, tree, treeMode);
     },
     [loadArtifactAtPath],
   );
 
   const selectArtifact = useCallback(
     (path) => {
-      if (!artifactsPanel?.files?.length) return;
+      if (!artifactsPanel) return;
+      const pick = String(path ?? "").trim();
+      if (!pick) return;
       const viewMode = artifactsPanel.viewMode;
-      void loadArtifactAtPath(path, artifactsPanel.files, viewMode);
+      const tree = artifactsPanel.tree ?? [];
+      const treeMode = artifactsPanel.treeMode ?? "file-only";
+      const norm = (p) => String(p ?? "").replace(/\\/g, "/").toLowerCase();
+      const hasFile = artifactsPanel.files.some((f) => norm(f.path) === norm(pick));
+      if (!hasFile && treeMode !== "directory") return;
+      const files = hasFile
+        ? artifactsPanel.files
+        : [
+            ...artifactsPanel.files,
+            {
+              path: pick,
+              label: pick.split(/[/\\]/).pop() || pick,
+              op: /** @type {const} */ ("viewed"),
+              messageId: "",
+              seq: 0,
+              previewKind: artifactPreviewKindFromPath(pick),
+            },
+          ];
+      void loadArtifactAtPath(pick, files, viewMode, tree, treeMode);
     },
     [artifactsPanel, loadArtifactAtPath],
   );
@@ -551,6 +628,7 @@ export function ChatLabPreviewProvider({ children }) {
           },
         ],
         path,
+        { treeMode: "file-only" },
       );
     },
     [openArtifactsPanel],

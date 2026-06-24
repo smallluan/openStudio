@@ -1,9 +1,7 @@
 import { useMemo } from "react";
-import "../../chat/chatLabPrismSetup.js";
 import ChatLabMarkdownBody from "./ChatLabMarkdownBody.jsx";
-import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light.js";
-import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light.js";
-import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js";
+import ChatLabArtifactCodeView from "./ChatLabArtifactCodeView.jsx";
+import ChatLabArtifactSourceView from "./ChatLabArtifactSourceView.jsx";
 import { artifactKindSupportsRenderToggle } from "../../chat/chatLabArtifactPreviewKind.js";
 import { prismLangFromFilename } from "../../chat/chatLabSyntaxLang.js";
 import {
@@ -11,7 +9,6 @@ import {
   svgToHtmlDocument,
   wrapLooseHtmlFragmentForSrcDoc,
 } from "../../chat/chatLabDocumentPreview.js";
-import { useTheme } from "../../context/ThemeContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
 
@@ -24,6 +21,7 @@ import { cn } from "../../ui/cn.js";
  *   viewMode: "render" | "source";
  *   onViewModeChange: (mode: "render" | "source") => void;
  *   iframeRef?: import("react").RefObject<HTMLIFrameElement | null>;
+ *   isResizing?: boolean;
  * }} props
  */
 export default function ChatLabArtifactPreviewPane({
@@ -34,10 +32,9 @@ export default function ChatLabArtifactPreviewPane({
   viewMode,
   onViewModeChange,
   iframeRef,
+  isResizing = false,
 }) {
   const { t } = useI18n();
-  const { theme } = useTheme();
-  const syntaxStyle = theme === "dark" ? vscDarkPlus : oneLight;
 
   const previewKind = payload?.previewKind ?? "text";
   const showToggle = payload && artifactKindSupportsRenderToggle(previewKind);
@@ -80,8 +77,10 @@ export default function ChatLabArtifactPreviewPane({
     );
   }
 
+  const showSource = viewMode === "source" || !artifactKindSupportsRenderToggle(previewKind);
+
   return (
-    <div className="chat-lab-artifact-preview flex min-h-0 flex-1 flex-col">
+    <div className="chat-lab-artifact-preview flex min-h-0 min-w-0 flex-1 flex-col">
       {showToggle ? (
         <div className="chat-lab-artifact-preview__toolbar flex shrink-0 items-center gap-1 border-b px-2 py-1.5">
           <button
@@ -107,50 +106,41 @@ export default function ChatLabArtifactPreviewPane({
         </div>
       ) : null}
 
-      <div className="chat-lab-artifact-preview__body min-h-0 flex-1 overflow-auto">
+      <div
+        className={cn(
+          "chat-lab-artifact-preview__body min-h-0 min-w-0 flex-1 overflow-hidden",
+          isResizing && "chat-lab-artifact-preview__body--resizing",
+        )}
+      >
         {previewKind === "office" ? (
           <p className="muted px-3 py-3 text-[0.82rem] leading-relaxed">{t("chatLab.previewOfficeLocalBinary")}</p>
         ) : previewKind === "image" && payload.blobUrl ? (
-          <div className="chat-lab-artifact-preview__image-wrap p-3">
+          <div className="chat-lab-artifact-preview__image-wrap h-full overflow-auto p-3">
             <img src={payload.blobUrl} alt={label} className="chat-lab-artifact-preview__image max-w-full" />
           </div>
         ) : previewKind === "pdf" && payload.blobUrl ? (
           <iframe
             ref={iframeRef}
-            className="chat-lab-artifact-preview__frame h-full min-h-[12rem] w-full border-0"
+            className="chat-lab-artifact-preview__frame h-full w-full border-0"
             title={label}
             src={payload.blobUrl}
             sandbox="allow-scripts allow-downloads"
           />
-        ) : viewMode === "source" || !artifactKindSupportsRenderToggle(previewKind) ? (
-          <div className="chat-lab-artifact-preview__source p-2">
-            {prismLang ? (
-              <SyntaxHighlighter
-                language={prismLang}
-                style={syntaxStyle}
-                showLineNumbers
-                customStyle={{
-                  margin: 0,
-                  padding: "0.75rem",
-                  fontSize: "0.78rem",
-                  borderRadius: "8px",
-                  background: "transparent",
-                }}
-              >
-                {sourceText || (payload.kind === "bytes" ? "" : "")}
-              </SyntaxHighlighter>
-            ) : (
-              <pre className="chat-lab-artifact-preview__plain text-[0.78rem] leading-relaxed">
-                <code>{sourceText}</code>
-              </pre>
-            )}
-          </div>
+        ) : showSource ? (
+          <ChatLabArtifactCodeView
+            key={payload.path ?? label}
+            text={sourceText || (payload.kind === "bytes" ? "" : "")}
+            language={prismLang}
+            className="chat-lab-artifact-preview__source"
+          />
         ) : previewKind === "markdown" ? (
-          <ChatLabMarkdownBody source={sourceText} className="chat-lab-artifact-preview__md px-3 py-2" />
+          <div className="chat-lab-artifact-preview__scroll h-full overflow-auto">
+            <ChatLabMarkdownBody source={sourceText} className="chat-lab-artifact-preview__md px-3 py-2" />
+          </div>
         ) : previewKind === "html" ? (
           <iframe
             ref={iframeRef}
-            className="chat-lab-artifact-preview__frame h-full min-h-[12rem] w-full border-0"
+            className="chat-lab-artifact-preview__frame h-full w-full border-0"
             title={label}
             srcDoc={wrapLooseHtmlFragmentForSrcDoc(sourceText)}
             sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals"
@@ -158,23 +148,22 @@ export default function ChatLabArtifactPreviewPane({
         ) : previewKind === "csv" ? (
           <iframe
             ref={iframeRef}
-            className="chat-lab-artifact-preview__frame h-full min-h-[12rem] w-full border-0"
+            className="chat-lab-artifact-preview__frame h-full w-full border-0"
             title={label}
             srcDoc={csvToHtmlDocument(sourceText)}
           />
         ) : previewKind === "svg" ? (
           <iframe
             ref={iframeRef}
-            className="chat-lab-artifact-preview__frame h-full min-h-[12rem] w-full border-0"
+            className="chat-lab-artifact-preview__frame h-full w-full border-0"
             title={label}
             srcDoc={svgToHtmlDocument(sourceText)}
           />
         ) : (
-          <div className="chat-lab-artifact-preview__source p-2">
-            <pre className="chat-lab-artifact-preview__plain text-[0.78rem] leading-relaxed">
-              <code>{sourceText}</code>
-            </pre>
-          </div>
+          <ChatLabArtifactSourceView
+            text={sourceText}
+            className="chat-lab-artifact-preview__source p-2"
+          />
         )}
       </div>
     </div>
