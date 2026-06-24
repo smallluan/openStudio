@@ -1,8 +1,9 @@
-import { Cpu, Radio, Settings } from "lucide-react";
+import { BarChart3, Cpu, Radio, Settings } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import ChannelSettingsSection from "../components/settings/ChannelSettingsSection.jsx";
 import GeneralSettingsSection from "../components/settings/GeneralSettingsSection.jsx";
+import TokenUsageSettingsSection from "../components/settings/TokenUsageSettingsSection.jsx";
 import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
 import ModelProfilesPanel from "../components/shell/ModelProfilesPanel.jsx";
 import { SETTINGS_SECTION_IDS } from "../components/settings/settingsSectionIds.js";
@@ -15,6 +16,7 @@ import { cn } from "../ui/cn.js";
 const SETTINGS_SECTION_ICONS = {
   general: Settings,
   channels: Radio,
+  usage: BarChart3,
   model: Cpu,
 };
 
@@ -85,6 +87,12 @@ export default function SettingsPage() {
             {section === "channels" ? (
               <div className="mx-auto flex w-full max-w-lg flex-col px-1 py-2 sm:px-2">
                 <ChannelSettingsSection />
+              </div>
+            ) : null}
+
+            {section === "usage" ? (
+              <div className="mx-auto flex w-full max-w-3xl flex-col px-1 py-2 sm:px-2">
+                <TokenUsageSettingsSection />
               </div>
             ) : null}
 

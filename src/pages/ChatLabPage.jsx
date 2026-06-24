@@ -22,6 +22,7 @@ import {
   imageAttachmentsContextChars,
   readImageFileAsComposerAttachment,
 } from "../chat/chatLabComposerAttachments.js";
+import { buildStreamUsageMeta } from "../chat/chatStreamUsageMeta.js";
 import {
   emojiForFileRefKind,
   gatewayUserMessageBodyWithRefs,
@@ -1987,7 +1988,7 @@ export default function ChatLabPage() {
         bridge?.generateChatTitle &&
         config?.credentials?.hasProviderApiKey
       ) {
-        void bridge.generateChatTitle({ userText: trimmed }).then((r) => {
+        void bridge.generateChatTitle({ userText: trimmed, conversationId }).then((r) => {
           if (!r?.ok || typeof r.title !== "string" || !r.title.trim()) return;
           const rec = getSession(conversationId);
           if (!rec) return;
@@ -2010,6 +2011,13 @@ export default function ChatLabPage() {
                 gatewayAgentId: mainAgent.gatewayAgentId,
               }
             : {}),
+          usageMeta: buildStreamUsageMeta({
+            conversationTitle: getSession(conversationId)?.title,
+            assistantMessageId: assistantMsg.id,
+            userMessageId: messageId,
+            userContentPreview: trimmed,
+            agentId: mainAgent?.id,
+          }),
         });
       } catch (err) {
         resetGatewayStream(streamId);
@@ -2244,6 +2252,13 @@ export default function ChatLabPage() {
             concurrent: true,
             contextEmbedMode: job.contextEmbedMode,
             ...(job.threadSummaryPrefix ? { threadSummaryPrefix: job.threadSummaryPrefix } : {}),
+            usageMeta: buildStreamUsageMeta({
+              conversationTitle: getSession(conversationId)?.title,
+              assistantMessageId: job.assistantMsg.id,
+              userMessageId: userMsg.id,
+              userContentPreview: effectiveText,
+              agentId: job.target.id,
+            }),
           });
         } catch (err) {
           resetGatewayStream(job.streamId);
@@ -2379,6 +2394,12 @@ export default function ChatLabPage() {
       assistantStreamIdsRef.current.set(assistantMsg.id, streamId);
 
       const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
+      const lastTurnPreview = [...historyMessages]
+        .reverse()
+        .find(
+          (m) =>
+            (m.role === "user" || m.role === "assistant") && String(m.content ?? "").trim().length > 0,
+        );
       try {
         await bridge.startChatStream({
           streamId,
@@ -2390,6 +2411,12 @@ export default function ChatLabPage() {
           concurrent: true,
           contextEmbedMode: ctx.contextEmbedMode,
           ...(ctx.threadSummaryPrefix ? { threadSummaryPrefix: ctx.threadSummaryPrefix } : {}),
+          usageMeta: buildStreamUsageMeta({
+            conversationTitle: getSession(conversationId)?.title,
+            assistantMessageId: assistantMsg.id,
+            userContentPreview: String(lastTurnPreview?.content ?? "").trim(),
+            agentId: target.id,
+          }),
         });
       } catch (err) {
         resetGatewayStream(streamId);

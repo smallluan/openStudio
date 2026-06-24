@@ -18,6 +18,7 @@ import {
 import { useChatLabStreaming } from "../context/ChatLabStreamingContext.jsx";
 
 import { useI18n } from "../context/I18nContext.jsx";
+import { buildStreamUsageMeta } from "./chatStreamUsageMeta.js";
 
 import { startWechatTypingPulse } from "./wechatStreamTyping.js";
 import { isWechatPendingAssistantId } from "./useWechatSessionSync.js";
@@ -408,6 +409,18 @@ export function useWechatAutoReplyStream() {
           channel: "wechat",
 
           wechatPeerId: peerId,
+
+          usageMeta: buildStreamUsageMeta({
+
+            conversationTitle: title,
+
+            assistantMessageId: assistantId,
+
+            userMessageId: messageId,
+
+            userContentPreview: String(userRow.content ?? ""),
+
+          }),
 
         });
 

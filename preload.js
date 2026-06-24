@@ -71,6 +71,9 @@ contextBridge.exposeInMainWorld("studioBridge", {
     ipcRenderer.on(ORCH_EVENT_CHAN, wrapped);
     return () => ipcRenderer.removeListener(ORCH_EVENT_CHAN, wrapped);
   },
+  resetTokenUsageStats: () => ipcRenderer.invoke("studio:resetTokenUsageStats"),
+  getTokenUsageStats: (opts) => ipcRenderer.invoke("studio:getTokenUsageStats", opts),
+  getTokenUsageRecords: (opts) => ipcRenderer.invoke("studio:getTokenUsageRecords", opts),
   generateChatTitle: (payload) => ipcRenderer.invoke("studio:generateChatTitle", payload),
   onChatStream: (listener) => {
     const wrapped = (_e, data) => listener(data);

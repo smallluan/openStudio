@@ -16,6 +16,7 @@ const {
 } = require("./lib/openclaw-gateway-wechat.cjs");
 const { resolveGateway } = require("./lib/openclaw-gateway-ws.cjs");
 const { generateConversationTitle } = require("./lib/llm-chat-title.cjs");
+const { createTokenUsageStore } = require("./lib/token-usage-store.cjs");
 const {
   runGatewayBootstrapReadiness,
   invalidateGatewaySession,
@@ -215,8 +216,48 @@ function studioInvalidateGatewaySession() {
   gatewayWarmState.reset();
 }
 
+/** @param {import("./lib/config-store.cjs").UserConfig} cfg */
+function resolveActiveModelMeta(cfg) {
+  const profiles = Array.isArray(cfg?.modelProfiles) ? cfg.modelProfiles : [];
+  const activeId =
+    (typeof cfg?.activeModelProfileId === "string" && cfg.activeModelProfileId.trim()) ||
+    (Array.isArray(cfg?.enabledModelProfileIds) && cfg.enabledModelProfileIds[0]) ||
+    profiles[0]?.id ||
+    "";
+  const profile = profiles.find((p) => p && p.id === activeId) ?? profiles[0];
+  if (!profile) return null;
+  return {
+    modelProfileId: profile.id,
+    modelLabel: profile.label || profile.modelId || profile.id,
+    provider: profile.provider,
+    modelId: profile.modelId,
+  };
+}
+
+/** @param {unknown} payload @param {ReturnType<typeof resolveActiveModelMeta>} modelMeta */
+function buildStreamUsageContext(payload, modelMeta) {
+  const meta = payload?.usageMeta && typeof payload.usageMeta === "object" ? payload.usageMeta : {};
+  return {
+    conversationId: typeof payload?.conversationId === "string" ? payload.conversationId.trim() : "",
+    conversationTitle:
+      typeof meta.conversationTitle === "string" ? meta.conversationTitle.trim().slice(0, 160) : "",
+    assistantMessageId:
+      typeof meta.assistantMessageId === "string" ? meta.assistantMessageId.trim() : "",
+    userMessageId: typeof meta.userMessageId === "string" ? meta.userMessageId.trim() : "",
+    userContentPreview:
+      typeof meta.userContentPreview === "string" ? meta.userContentPreview.trim().slice(0, 240) : "",
+    agentId: typeof meta.agentId === "string" ? meta.agentId.trim() : "",
+    gatewayAgentId: typeof payload?.gatewayAgentId === "string" ? payload.gatewayAgentId.trim() : "",
+    channel: payload?.channel === "wechat" ? "wechat" : "internal",
+    source: "gateway",
+    ...(modelMeta ?? {}),
+  };
+}
+
 /** @type {ReturnType<typeof createConfigStore> | null} */
 let userConfigStore = null;
+/** @type {ReturnType<typeof createTokenUsageStore> | null} */
+let tokenUsageStore = null;
 
 /** @type {Map<string, AbortController>} */
 const chatStreamAbortControllers = new Map();
@@ -685,6 +726,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
   userConfigStore = createConfigStore(app.getPath("userData"));
+  tokenUsageStore = createTokenUsageStore(app.getPath("userData"));
   runOpenClawAgentSyncFromStudio("startup");
 
   /** @type {import("./lib/orchestration-service.cjs").OrchestrationService} */
@@ -1267,8 +1309,19 @@ app.whenReady().then(async () => {
       }
       let terminalSent = false;
       let streamEventCount = 0;
+      if (tokenUsageStore) {
+        const cfgForUsage = userConfigStore.readRaw();
+        tokenUsageStore.beginStream(
+          streamId,
+          buildStreamUsageContext(payload, resolveActiveModelMeta(cfgForUsage)),
+        );
+      }
       const trackStreamEvent = (evt) => {
         streamEventCount += 1;
+        if (evt?.type === "usage" && evt.usage && tokenUsageStore) {
+          if (evt.authoritative) tokenUsageStore.replaceStreamUsage(streamId, evt.usage);
+          else tokenUsageStore.noteStreamUsage(streamId, evt.usage);
+        }
         if (!wc.isDestroyed()) wc.send(CHAT_STREAM_CHAN, { streamId, ...evt });
       };
       try {
@@ -1349,6 +1402,7 @@ app.whenReady().then(async () => {
       } finally {
         releaseChatStreamSlot();
         chatStreamAbortControllers.delete(streamId);
+        if (tokenUsageStore) tokenUsageStore.finalizeStream(streamId);
         if (conversationId) {
           if (allowConcurrent) {
             const set = chatStreamsByConversationId.get(conversationId);
@@ -1566,6 +1620,30 @@ app.whenReady().then(async () => {
     }
   });
 
+  ipcMain.handle("studio:getTokenUsageStats", (_event, opts) => {
+    if (!tokenUsageStore) return { ok: false, error: "store_unavailable" };
+    const range = opts?.range === "7d" || opts?.range === "30d" ? opts.range : "all";
+    return { ok: true, stats: tokenUsageStore.queryStats({ range }) };
+  });
+
+  ipcMain.handle("studio:getTokenUsageRecords", (_event, opts) => {
+    if (!tokenUsageStore) return { ok: false, error: "store_unavailable" };
+    const conversationId =
+      typeof opts?.conversationId === "string" ? opts.conversationId.trim() : undefined;
+    const limit = typeof opts?.limit === "number" ? opts.limit : undefined;
+    const offset = typeof opts?.offset === "number" ? opts.offset : undefined;
+    return {
+      ok: true,
+      ...tokenUsageStore.queryRecords({ conversationId, limit, offset }),
+    };
+  });
+
+  ipcMain.handle("studio:resetTokenUsageStats", () => {
+    if (!tokenUsageStore) return { ok: false, error: "store_unavailable" };
+    tokenUsageStore.resetAll();
+    return { ok: true };
+  });
+
   ipcMain.handle("studio:generateChatTitle", async (_event, payload) => {
     const text = typeof payload?.userText === "string" ? payload.userText.trim() : "";
     if (!text) return { ok: false, error: "empty_user_text" };
@@ -1574,8 +1652,24 @@ app.whenReady().then(async () => {
       const ac = new AbortController();
       const tid = setTimeout(() => ac.abort(), 28_000);
       try {
-        const title = await generateConversationTitle(cfg, text, ac.signal);
-        return { ok: true, title };
+        const result = await generateConversationTitle(cfg, text, ac.signal);
+        if (result.usage && tokenUsageStore) {
+          const modelMeta = resolveActiveModelMeta(cfg);
+          tokenUsageStore.recordImmediate({
+            conversationId:
+              typeof payload?.conversationId === "string" ? payload.conversationId.trim() : "",
+            userContentPreview: text.slice(0, 240),
+            source: "title",
+            channel: "internal",
+            ...(modelMeta ?? {}),
+            inputTokens: result.usage.inputTokens ?? 0,
+            outputTokens: result.usage.outputTokens ?? 0,
+            totalTokens:
+              result.usage.totalTokens ??
+              (result.usage.inputTokens ?? 0) + (result.usage.outputTokens ?? 0),
+          });
+        }
+        return { ok: true, title: result.title };
       } finally {
         clearTimeout(tid);
       }

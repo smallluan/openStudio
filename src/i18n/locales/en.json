@@ -115,7 +115,37 @@
       "memoryBoost": "Memory boost (placeholder)"
     },
     "advancedFeatures": "Advanced",
-    "sectionBuilding": "The “{{label}}” section is under construction."
+    "sectionBuilding": "The “{{label}}” section is under construction.",
+    "usage": {
+      "today": "Today",
+      "month": "This month",
+      "total": "Range total",
+      "input": "Input",
+      "output": "Output",
+      "inOut": "In {{input}} · Out {{output}}",
+      "range7d": "7 days",
+      "range30d": "30 days",
+      "rangeAll": "All",
+      "rangeAria": "Statistics time range",
+      "chartTitle": "Usage overview",
+      "chartTrend": "Trend",
+      "chartDaily": "Daily",
+      "chartModel": "Model",
+      "chartConversation": "Chat",
+      "chartAria": "Chart type",
+      "loading": "Loading…",
+      "noData": "No usage data yet",
+      "recordsTitle": "Conversation details",
+      "recordsHint": "One row per API call; click content to filter a conversation",
+      "noRecords": "No records yet. Real token usage appears here after you chat.",
+      "colContent": "Content",
+      "colModel": "Model",
+      "colTime": "Time",
+      "untitledTurn": "Untitled turn",
+      "clearFilter": "Clear filter",
+      "reset": "Clear stats",
+      "resetConfirm": "Clear all token usage statistics? This cannot be undone."
+    }
   },
   "modal": {
     "closeDialog": "Close dialog"

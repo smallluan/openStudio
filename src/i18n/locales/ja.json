@@ -115,7 +115,37 @@
       "memoryBoost": "記憶強化（プレースホルダー）"
     },
     "advancedFeatures": "高度な機能",
-    "sectionBuilding": "「{{label}}」は準備中です。"
+    "sectionBuilding": "「{{label}}」は準備中です。",
+    "usage": {
+      "today": "今日",
+      "month": "今月",
+      "total": "期間合計",
+      "input": "入力",
+      "output": "出力",
+      "inOut": "入力 {{input}} · 出力 {{output}}",
+      "range7d": "7 日",
+      "range30d": "30 日",
+      "rangeAll": "すべて",
+      "rangeAria": "集計期間",
+      "chartTitle": "利用量",
+      "chartTrend": "推移",
+      "chartDaily": "日次",
+      "chartModel": "モデル",
+      "chartConversation": "会話",
+      "chartAria": "グラフ種類",
+      "loading": "読み込み中…",
+      "noData": "利用データがありません",
+      "recordsTitle": "会話の詳細",
+      "recordsHint": "API 呼び出しごとに記録。内容をクリックすると同一会話を絞り込み",
+      "noRecords": "まだ記録がありません。チャット後に実際の token 利用量が表示されます。",
+      "colContent": "内容",
+      "colModel": "モデル",
+      "colTime": "時刻",
+      "untitledTurn": "無題",
+      "clearFilter": "絞り込み解除",
+      "reset": "統計を消去",
+      "resetConfirm": "すべての token 利用統計を消去しますか？元に戻せません。"
+    }
   },
   "modal": {
     "closeDialog": "ダイアログを閉じる"

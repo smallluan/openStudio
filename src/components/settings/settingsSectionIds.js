@@ -2,6 +2,7 @@
 export const SETTINGS_SECTION_IDS = /** @type {const} */ ([
   "general",
   "channels",
+  "usage",
   "model",
 ]);
 

@@ -115,7 +115,37 @@
       "memoryBoost": "記憶增強（暫位）"
     },
     "advancedFeatures": "進階功能設定",
-    "sectionBuilding": "「{{label}}」頁面建置中。"
+    "sectionBuilding": "「{{label}}」頁面建置中。",
+    "usage": {
+      "today": "今日",
+      "month": "本月",
+      "total": "區間總計",
+      "input": "輸入",
+      "output": "輸出",
+      "inOut": "輸入 {{input}} · 輸出 {{output}}",
+      "range7d": "7 天",
+      "range30d": "30 天",
+      "rangeAll": "全部",
+      "rangeAria": "統計時間範圍",
+      "chartTitle": "用量趨勢",
+      "chartTrend": "趨勢",
+      "chartDaily": "每日",
+      "chartModel": "模型",
+      "chartConversation": "對話",
+      "chartAria": "圖表類型",
+      "loading": "載入中…",
+      "noData": "暫無用量資料",
+      "recordsTitle": "對話明細",
+      "recordsHint": "按每次 API 呼叫記錄，點擊內容可篩選同一会話",
+      "noRecords": "還沒有記錄。發起對話後，真實 token 用量會顯示在這裡。",
+      "colContent": "對話內容",
+      "colModel": "模型",
+      "colTime": "時間",
+      "untitledTurn": "未命名對話",
+      "clearFilter": "清除篩選",
+      "reset": "清空統計",
+      "resetConfirm": "確定清空所有 token 用量統計？此操作不可撤銷。"
+    }
   },
   "modal": {
     "closeDialog": "關閉對話框"
