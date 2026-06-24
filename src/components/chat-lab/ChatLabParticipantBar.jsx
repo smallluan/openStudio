@@ -11,6 +11,7 @@ import {
   useInteractions,
   useRole,
 } from "@floating-ui/react";
+import { Users } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { agentAvatarGlyph, agentDisplayLabel } from "../../studio/agents.js";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -39,9 +40,10 @@ function MembersChevron({ open }) {
  *   participantIds: string[];
  *   onChange: (ids: string[]) => void;
  *   disabled?: boolean;
+ *   variant?: "pill" | "icon";
  * }} props
  */
-export default function ChatLabParticipantBar({ agents, participantIds, onChange, disabled }) {
+export default function ChatLabParticipantBar({ agents, participantIds, onChange, disabled, variant = "pill" }) {
   const { t } = useI18n();
   const autoId = useId();
   const panelId = `${autoId}-members`;
@@ -88,13 +90,15 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
     setAddOpen(false);
   };
 
+  const iconVariant = variant === "icon";
+
   const { refs, floatingStyles, context } = useFloating({
     open: present,
     onOpenChange: (next) => {
       setOpen(next);
       if (!next) setAddOpen(false);
     },
-    placement: "top-end",
+    placement: iconVariant ? "bottom-end" : "top-end",
     strategy: "fixed",
     middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
@@ -110,7 +114,11 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
       <button
         ref={refs.setReference}
         type="button"
-        className={cn("chat-lab__pill-btn chat-lab__members-pill", present && "chat-lab__members-pill--open")}
+        className={cn(
+          iconVariant
+            ? cn("chat-lab__turn-nav-icon-btn", present && "chat-lab__turn-nav-icon-btn--open")
+            : cn("chat-lab__pill-btn chat-lab__members-pill", present && "chat-lab__members-pill--open"),
+        )}
         disabled={disabled}
         title={t("chatLab.participantsLabel")}
         aria-label={t("chatLab.participantsAria")}
@@ -119,13 +127,19 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
         aria-controls={present ? panelId : undefined}
         {...getReferenceProps()}
       >
-        <span className="chat-lab__members-pill-label">{t("chatLab.participantsLabel")}</span>
-        {participants.length > 0 ? (
-          <span className="chat-lab__members-pill-count" aria-hidden>
-            {participants.length}
-          </span>
-        ) : null}
-        <MembersChevron open={present} />
+        {iconVariant ? (
+          <Users size={16} strokeWidth={2.1} aria-hidden />
+        ) : (
+          <>
+            <span className="chat-lab__members-pill-label">{t("chatLab.participantsLabel")}</span>
+            {participants.length > 0 ? (
+              <span className="chat-lab__members-pill-count" aria-hidden>
+                {participants.length}
+              </span>
+            ) : null}
+            <MembersChevron open={present} />
+          </>
+        )}
       </button>
 
       {present ? (

@@ -90,7 +90,6 @@ import {
   systemMessageForAgent,
 } from "../studio/agents.js";
 import { useStudio } from "../context/StudioContext.jsx";
-import ChatLabParticipantBar from "../components/chat-lab/ChatLabParticipantBar.jsx";
 import ChatLabToolbarScroll from "../components/chat-lab/ChatLabToolbarScroll.jsx";
 import ChatLabAgentMentionPopover from "../components/chat-lab/ChatLabAgentMentionPopover.jsx";
 import { ComposerFollowUpChip, MessageFollowUpTag } from "../components/chat-lab/ChatLabFollowUpChip.jsx";
@@ -123,7 +122,6 @@ import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/
 import {
   ComposerSkillChip,
   ComposerSkillSlashPopover,
-  ComposerSkillToolbarPicker,
   isSlashOnlyComposerDraft,
   stripSlashPickerPrefix,
 } from "../components/chat-lab/ChatLabComposerSkills.jsx";
@@ -144,6 +142,7 @@ import {
 } from "../skills/skillCreatorChatSync.js";
 import ChatLabMarkdownContent from "../components/chat-lab/ChatLabMarkdownContent.jsx";
 import ChatLabThreadNav from "../components/chat-lab/ChatLabThreadNav.jsx";
+import ChatLabConvHeader from "../components/chat-lab/ChatLabConvHeader.jsx";
 import {
   findActiveUserMessageId,
   findActiveUserMessageIdVirtual,
@@ -3296,22 +3295,6 @@ export default function ChatLabPage() {
               }
               className="chat-lab__pill-model"
             />
-            <ComposerSkillToolbarPicker
-              skills={skillPickList}
-              selected={composerSkillRow}
-              onSelect={(row) => setComposerSkillRow(row)}
-              disabled={composerSkillUiLocked}
-              t={t}
-            />
-            <ChatLabParticipantBar
-              agents={agents}
-              participantIds={[
-                ...(mainAgent ? [mainAgent.id] : []),
-                ...participantIds.filter((id) => id !== mainAgent?.id),
-              ]}
-              onChange={handleParticipantsChange}
-              disabled={composerInputLocked || gatewayStreaming}
-            />
             <Checkbox
               id="chat-toolbar-orch-toggle"
               className="chat-lab__orch-check"
@@ -3423,6 +3406,21 @@ export default function ChatLabPage() {
           >
             {isLanding ? (
               <>
+                <ChatLabConvHeader
+                  headerTitle={headerTitle || t("chatLab.chatUntitled")}
+                  conversationId={conversationId}
+                  messages={messages}
+                  messagesScrollRef={messagesScrollRef}
+                  autoScrollRef={autoScrollRef}
+                  threadScrollApiRef={threadScrollApiRef}
+                  agents={agents}
+                  participantIds={[
+                    ...(mainAgent ? [mainAgent.id] : []),
+                    ...participantIds.filter((id) => id !== mainAgent?.id),
+                  ]}
+                  onParticipantsChange={handleParticipantsChange}
+                  participantsDisabled={composerInputLocked || gatewayStreaming}
+                />
                 {showPortalChrome && gatePortalTarget
                   ? createPortal(
                       <div className="bootstrap-gate-chrome__stack">
@@ -3469,6 +3467,13 @@ export default function ChatLabPage() {
                   messagesScrollRef={messagesScrollRef}
                   autoScrollRef={autoScrollRef}
                   threadScrollApiRef={threadScrollApiRef}
+                  agents={agents}
+                  participantIds={[
+                    ...(mainAgent ? [mainAgent.id] : []),
+                    ...participantIds.filter((id) => id !== mainAgent?.id),
+                  ]}
+                  onParticipantsChange={handleParticipantsChange}
+                  participantsDisabled={composerInputLocked || gatewayStreaming}
                 >
                   <ChatLabMessageList
                     key={conversationId}

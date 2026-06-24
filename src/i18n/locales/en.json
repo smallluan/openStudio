@@ -464,7 +464,8 @@
     "scrollToBottom": "Scroll to bottom",
     "turnNavToggle": "Turn nav",
     "turnNavToggleHint": "Jump to a user turn",
-    "turnNavAria": "Conversation turn navigation"
+    "turnNavAria": "Conversation turn navigation",
+    "turnNavEmpty": "No conversation turns yet. They will appear here after you send messages."
   },
   "bootstrap": {
     "title": "Open Studio is getting ready",

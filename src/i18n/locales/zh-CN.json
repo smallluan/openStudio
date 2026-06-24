@@ -465,7 +465,8 @@
     "scrollToBottom": "回到底部",
     "turnNavToggle": "对话导航",
     "turnNavToggleHint": "按轮次快速跳转",
-    "turnNavAria": "对话轮次导航"
+    "turnNavAria": "对话轮次导航",
+    "turnNavEmpty": "暂无对话轮次，发送消息后将在此显示"
   },
   "bootstrap": {
     "title": "Open Studio 正在就绪",

@@ -70,6 +70,7 @@ export function classifySelectionAddress(text) {
   return null;
 }
 
+/**
  * @param {string} text
  * @returns {{ start: number; end: number; path: string }[]}
  */
