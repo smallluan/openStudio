@@ -364,7 +364,7 @@
     "keyMissing": "API key not set",
     "providerMissing": "Vendor not chosen",
     "modelIdMissing": "Model ID missing",
-    "baseUrlMissing": "OpenAI-compatible needs Base URL",
+    "baseUrlMissing": "Custom compatible provider needs Base URL",
     "modelNeedConfig": "Please configure model",
     "electronOnly": "Streaming chat requires the Open Studio desktop app (Electron preload IPC). Pure browser preview cannot reach the model securely.",
     "roleUser": "You",
@@ -585,7 +585,8 @@
       "minimax": "MiniMax",
       "moonshot": "Moonshot (Kimi)",
       "qwen": "Qwen (DashScope)",
-      "openai-compatible": "OpenAI-compatible (custom base URL)"
+      "openai-compatible": "OpenAI-compatible (custom base URL)",
+      "anthropic-compatible": "Anthropic-compatible (custom base URL)"
     },
     "modelId": "Model ID",
     "modelIdPlaceholder": "gpt-4o …",

@@ -361,7 +361,7 @@
     "keyMissing": "未設定 API Key",
     "providerMissing": "未選擇廠商",
     "modelIdMissing": "未填寫模型 ID",
-    "baseUrlMissing": "OpenAI 相容需填寫 Base URL",
+    "baseUrlMissing": "OpenAI / Anthropic 相容需填寫 Base URL",
     "modelNeedConfig": "請先配置模型",
     "electronOnly": "串流對話需在 Open Studio 桌面應用程式（Electron）中執行；純瀏覽器預覽無法載入預載與安全通道。",
     "roleUser": "你",
@@ -573,7 +573,8 @@
       "minimax": "MiniMax",
       "moonshot": "Moonshot (Kimi)",
       "qwen": "Qwen (DashScope)",
-      "openai-compatible": "OpenAI 相容（自訂 Base URL）"
+      "openai-compatible": "OpenAI 相容（自訂 Base URL）",
+      "anthropic-compatible": "Anthropic 相容（自訂 Base URL）"
     },
     "modelId": "模型 ID",
     "modelIdPlaceholder": "gpt-4o …",

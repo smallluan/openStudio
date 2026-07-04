@@ -77,7 +77,7 @@ export default function ModelProfileEditorForm({ profile, mode, hasKey, apiKey, 
         </div>
       : null}
 
-      {profile.provider === "openai-compatible" ?
+      {profile.provider === "openai-compatible" || profile.provider === "anthropic-compatible" ?
         <label className="flex flex-col gap-1">
           <span className="text-[0.75rem] text-[var(--os-text-muted)]">{t("userConfig.baseUrl")}</span>
           <TextField

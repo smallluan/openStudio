@@ -361,7 +361,7 @@
     "keyMissing": "API キーが未設定",
     "providerMissing": "ベンダーが未選択",
     "modelIdMissing": "モデル ID がありません",
-    "baseUrlMissing": "OpenAI 互換には Base URL が必要です",
+    "baseUrlMissing": "OpenAI / Anthropic 互換には Base URL が必要です",
     "modelNeedConfig": "モデルを設定してください",
     "electronOnly": "ストリーミングチャットは Open Studio デスクトップ（Electron preload IPC）が必要です。ブラウザのプレビューだけでは安全にモデルへ接続できません。",
     "roleUser": "あなた",
@@ -572,7 +572,8 @@
       "minimax": "MiniMax",
       "moonshot": "Moonshot (Kimi)",
       "qwen": "Qwen (DashScope)",
-      "openai-compatible": "OpenAI 互換（Base URL を指定）"
+      "openai-compatible": "OpenAI 互換（Base URL を指定）",
+      "anthropic-compatible": "Anthropic 互換（Base URL を指定）"
     },
     "modelId": "モデル ID",
     "modelIdPlaceholder": "gpt-4o …",

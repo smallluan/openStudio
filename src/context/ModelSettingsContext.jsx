@@ -22,6 +22,7 @@ const MODEL_PROVIDER_IDS = /** @type {const} */ ([
   "moonshot",
   "qwen",
   "openai-compatible",
+  "anthropic-compatible",
 ]);
 
 /** @typedef {typeof MODEL_PROVIDER_IDS[number]} ModelProviderId */
@@ -90,7 +91,8 @@ export function ModelSettingsProvider({ children }) {
           label,
           provider: MODEL_PROVIDER_IDS.includes(/** @type {*} */ (provider)) ? provider : "",
           modelId: modelId.trim(),
-          baseUrl: provider === "openai-compatible" ? baseUrl.trim() : "",
+          baseUrl:
+            provider === "openai-compatible" || provider === "anthropic-compatible" ? baseUrl.trim() : "",
         };
         if (provider === "minimax") {
           row.minimaxRegion = minimaxRegion === "intl" ? "intl" : minimaxRegion === "cn" ? "cn" : "cn";
