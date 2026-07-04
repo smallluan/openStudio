@@ -468,6 +468,7 @@ function computeOpenClawSyncFingerprint(cfg) {
       enabledModelProfileIds: /** @type {any} */ (cfg).enabledModelProfileIds,
       activeModelProfileId: /** @type {any} */ (cfg).activeModelProfileId,
       credentials: /** @type {any} */ (cfg).credentials,
+      chatLabLinkOpenMode: /** @type {any} */ (cfg).chatLabLinkOpenMode,
     });
   } catch {
     return "";
@@ -512,6 +513,11 @@ function runOpenClawAgentSyncFromStudio(reason) {
     ) {
       console.warn(
         "[openclaw-sync] openclaw.json model updated — restart the gateway process if it was already running so it picks up the new default model.",
+      );
+    }
+    if (isDev && r?.browserHeadlessPatched) {
+      console.warn(
+        "[openclaw-sync] openclaw.json browser settings updated for link open mode — restart the OpenClaw gateway so the browser plugin allowlist takes effect.",
       );
     }
     lastOpenClawSyncFingerprint = computeOpenClawSyncFingerprint(userConfigStore.readRaw());
@@ -803,14 +809,24 @@ app.whenReady().then(async () => {
     logs: app.getPath("logs"),
   }));
 
-  ipcMain.handle("studio:openExternalUrl", async (_event, rawUrl) => {
+  ipcMain.handle("studio:openExternalUrl", async (_event, rawUrl, opts) => {
     const url = String(rawUrl ?? "").trim();
     if (!/^https?:\/\//i.test(url)) {
       return { ok: false, error: "invalid_url" };
     }
+    const forceExternal =
+      opts && typeof opts === "object" && !Array.isArray(opts) && opts.forceExternal === true;
+    if (!forceExternal && userConfigStore) {
+      const cfg = userConfigStore.readRaw();
+      const mode = cfg?.chatLabLinkOpenMode === "external" ? "external" : "sidebar";
+      if (mode === "sidebar" && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(PREVIEW_URL_CHAN, { url });
+        return { ok: true, opened: "sidebar" };
+      }
+    }
     try {
       await shell.openExternal(url);
-      return { ok: true };
+      return { ok: true, opened: "external" };
     } catch (e) {
       return { ok: false, error: String(/** @type {any} */ (e)?.message ?? e) };
     }

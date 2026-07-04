@@ -83,6 +83,7 @@ import {
   parseAgentDelegateMention,
   resolveReplyTargets,
 } from "../studio/agentMentions.js";
+import { extractFirstWebMarkdownLink, readLinkOpenModeLocal } from "../chat/chatLabLinkOpenPreference.js";
 import { composeChatLabSystemPrompt, composeChatLabStudioSuffix } from "../chat/chatLabSystemPrompt.js";
 import {
   agentAvatarGlyph,
@@ -3452,6 +3453,7 @@ export default function ChatLabPage() {
     <ChatLabPreviewProvider>
       <ImageViewProvider>
       <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
+      <ChatLabAutoLinkPreview conversationId={conversationId} messages={messages} />
       <div className="chat-lab__workspace relative">
         <div className="chat-lab__column">
           <div
@@ -3663,6 +3665,34 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
     if (!doc) return;
     preview.openSrcDoc(doc, t("chatLab.previewTitleHtml"));
   }, [messages, preview, t]);
+
+  return null;
+}
+
+/**
+ * When link open mode is sidebar, auto-load the first https link in a finished assistant reply.
+ * @param {{ conversationId: string; messages: Array<{ id: string; role: string; content?: string; streaming?: boolean; error?: string }> }} props
+ */
+function ChatLabAutoLinkPreview({ conversationId, messages }) {
+  const preview = useChatLabPreview();
+  const handledTailIdRef = useRef(/** @type {string | null} */ (null));
+
+  useEffect(() => {
+    handledTailIdRef.current = null;
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!preview?.openFromHref) return;
+    if (readLinkOpenModeLocal() === "external") return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || last.streaming || last.error) return;
+    if (handledTailIdRef.current === last.id) return;
+    handledTailIdRef.current = last.id;
+    if (lastHtmlFenceAsSrcDocDocument(String(last.content ?? ""))) return;
+    const url = extractFirstWebMarkdownLink(String(last.content ?? ""));
+    if (!url) return;
+    preview.openFromHref(url, url);
+  }, [messages, preview]);
 
   return null;
 }

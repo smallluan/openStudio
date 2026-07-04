@@ -16,6 +16,8 @@ const TREE_W_KEY = "openstudio_chat_preview_tree_px";
 const TREE_W_DEFAULT = 148;
 const TREE_W_MIN = 112;
 const TREE_W_MAX = 240;
+/** Keep in sync with `.chat-lab-preview-dock` width transition in index.css */
+const PREVIEW_DOCK_ANIM_MS = 260;
 
 function readStoredWidth(key, fallback, min, max) {
   try {
@@ -26,6 +28,11 @@ function readStoredWidth(key, fallback, min, max) {
     /* ignore */
   }
   return fallback;
+}
+
+function previewDockAnimMs() {
+  if (typeof document === "undefined") return PREVIEW_DOCK_ANIM_MS;
+  return document.documentElement.dataset.osMotion === "reduced" ? 0 : PREVIEW_DOCK_ANIM_MS;
 }
 
 /** @param {string} code @param {(k: string, vars?: Record<string, string | number>) => string} t */
@@ -49,7 +56,65 @@ export default function ChatLabPreviewDock({ extension = null }) {
   const api = useChatLabPreview();
   const session = api?.session ?? null;
   const artifactsPanel = api?.artifactsPanel ?? null;
-  const open = Boolean(session || artifactsPanel || extension);
+  const wantsOpen = Boolean(session || artifactsPanel || extension);
+
+  const snapshotRef = useRef(
+    /** @type {{ session: typeof session; artifactsPanel: typeof artifactsPanel; extension: typeof extension } | null} */ (
+      null
+    ),
+  );
+  if (wantsOpen) {
+    snapshotRef.current = { session, artifactsPanel, extension };
+  }
+
+  const [present, setPresent] = useState(wantsOpen);
+  const [expanded, setExpanded] = useState(wantsOpen);
+  const [contentReady, setContentReady] = useState(() => wantsOpen && previewDockAnimMs() === 0);
+
+  useEffect(() => {
+    if (wantsOpen) {
+      setPresent(true);
+      let outer = 0;
+      let inner = 0;
+      outer = requestAnimationFrame(() => {
+        inner = requestAnimationFrame(() => setExpanded(true));
+      });
+      return () => {
+        cancelAnimationFrame(outer);
+        cancelAnimationFrame(inner);
+      };
+    }
+    setExpanded(false);
+    setContentReady(false);
+    return undefined;
+  }, [wantsOpen]);
+
+  useEffect(() => {
+    if (!expanded) return undefined;
+    const ms = previewDockAnimMs();
+    if (ms <= 0) {
+      setContentReady(true);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setContentReady(true), ms);
+    return () => window.clearTimeout(timer);
+  }, [expanded]);
+
+  useEffect(() => {
+    if (expanded || !present) return undefined;
+    const ms = previewDockAnimMs();
+    if (ms <= 0) {
+      setPresent(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setPresent(false), ms);
+    return () => window.clearTimeout(timer);
+  }, [expanded, present]);
+
+  const snap = snapshotRef.current;
+  const viewSession = wantsOpen ? session : snap?.session ?? null;
+  const viewArtifacts = wantsOpen ? artifactsPanel : snap?.artifactsPanel ?? null;
+  const viewExtension = wantsOpen ? extension : snap?.extension ?? null;
 
   const asideRef = useRef(/** @type {HTMLElement | null} */ (null));
   const treeRef = useRef(/** @type {HTMLElement | null} */ (null));
@@ -68,6 +133,8 @@ export default function ChatLabPreviewDock({ extension = null }) {
   const [panelDragging, setPanelDragging] = useState(false);
   const [treeDragging, setTreeDragging] = useState(false);
   const isResizing = panelDragging || treeDragging;
+
+  const dockWidth = expanded ? panelWidth : 0;
 
   const persistWidth = useCallback((key, value) => {
     try {
@@ -104,8 +171,8 @@ export default function ChatLabPreviewDock({ extension = null }) {
   );
 
   const onOpenExternal = useCallback(() => {
-    if (!session || session.kind !== "iframe") return;
-    const url = session.externalUrl;
+    if (!viewSession || viewSession.kind !== "iframe") return;
+    const url = viewSession.externalUrl;
     if (!url) return;
     try {
       if (typeof window.__openStudioOpenExternal === "function") {
@@ -116,7 +183,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
     } catch {
       /* ignore */
     }
-  }, [session]);
+  }, [viewSession]);
 
   const onPreviewNavigate = useCallback(
     (url) => {
@@ -126,55 +193,57 @@ export default function ChatLabPreviewDock({ extension = null }) {
   );
 
   const showDeviceToggle = useMemo(() => {
-    if (session?.kind !== "iframe") return false;
-    const url = session.externalUrl ?? session.src;
+    if (viewSession?.kind !== "iframe") return false;
+    const url = viewSession.externalUrl ?? viewSession.src;
     return Boolean(url && /^https?:\/\//i.test(url));
-  }, [session]);
+  }, [viewSession]);
 
   const selectedArtifact = useMemo(() => {
-    if (!artifactsPanel?.selectedPath) return null;
-    return artifactsPanel.files.find((f) => f.path === artifactsPanel.selectedPath) ?? null;
-  }, [artifactsPanel]);
+    if (!viewArtifacts?.selectedPath) return null;
+    return viewArtifacts.files.find((f) => f.path === viewArtifacts.selectedPath) ?? null;
+  }, [viewArtifacts]);
 
   const artifactOps = useMemo(() => {
     /** @type {Map<string, import("../../chat/chatLabSessionArtifacts.js").ArtifactOp>} */
     const map = new Map();
-    for (const f of artifactsPanel?.files ?? []) {
+    for (const f of viewArtifacts?.files ?? []) {
       const key = String(f.path ?? "").replace(/\\/g, "/").toLowerCase();
       if (key) map.set(key, f.op);
     }
     return map;
-  }, [artifactsPanel?.files]);
+  }, [viewArtifacts?.files]);
 
   const previewTitle = useMemo(() => {
-    if (extension?.title) return extension.title;
-    if (artifactsPanel) return t("chatLab.artifactsDockTitle");
-    return session?.title || t("chatLab.previewDefaultTitle");
-  }, [artifactsPanel, extension?.title, session, t]);
+    if (viewExtension?.title) return viewExtension.title;
+    if (viewArtifacts) return t("chatLab.artifactsDockTitle");
+    return viewSession?.title || t("chatLab.previewDefaultTitle");
+  }, [viewArtifacts, viewExtension?.title, viewSession, t]);
 
-  const artifactError = artifactsPanel?.error
-    ? mapArtifactError(artifactsPanel.error, t)
+  const artifactError = viewArtifacts?.error
+    ? mapArtifactError(viewArtifacts.error, t)
     : null;
 
   const showArtifactTree = Boolean(
-    artifactsPanel && artifactsPanel.treeMode !== "file-only",
+    viewArtifacts && viewArtifacts.treeMode !== "file-only",
   );
 
-  if (!api || !open) return null;
+  if (!api || !present) return null;
 
   return (
     <aside
       ref={asideRef}
       className={cn(
         "chat-lab-preview-dock relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l",
+        !expanded && "chat-lab-preview-dock--collapsed",
         isResizing && "chat-lab-preview-dock--resizing",
       )}
       style={{
-        width: panelWidth,
+        width: dockWidth,
         borderColor: "color-mix(in srgb, var(--os-border) 55%, transparent)",
         background: "var(--os-bg-elevated)",
       }}
       aria-label={t("chatLab.previewDockAria")}
+      aria-hidden={!wantsOpen && !expanded}
     >
       <ResizableEdge
         side="left"
@@ -189,8 +258,8 @@ export default function ChatLabPreviewDock({ extension = null }) {
         <h3 className="chat-lab-preview-dock__title min-w-0 flex-1 truncate text-[0.82rem] font-semibold leading-tight">
           {previewTitle}
         </h3>
-        {extension?.meta ? (
-          <span className="chat-lab-preview-dock__meta shrink-0 text-[0.76rem]">{extension.meta}</span>
+        {viewExtension?.meta ? (
+          <span className="chat-lab-preview-dock__meta shrink-0 text-[0.76rem]">{viewExtension.meta}</span>
         ) : null}
         {showDeviceToggle ? (
           <div
@@ -226,7 +295,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             </button>
           </div>
         ) : null}
-        {session?.kind === "iframe" && session.externalUrl ? (
+        {viewSession?.kind === "iframe" && viewSession.externalUrl ? (
           <button
             type="button"
             className="chat-lab-preview-dock__icon-btn"
@@ -237,7 +306,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             ↗
           </button>
         ) : null}
-        {!extension ? (
+        {!viewExtension ? (
           <button
             type="button"
             className="chat-lab-preview-dock__icon-btn"
@@ -250,7 +319,9 @@ export default function ChatLabPreviewDock({ extension = null }) {
         ) : null}
       </header>
 
-      {artifactsPanel ? (
+      {!contentReady ? (
+        <div className="chat-lab-preview-dock__body min-h-0 flex-1" aria-hidden />
+      ) : viewArtifacts ? (
         <div className="chat-lab-preview-dock__split flex min-h-0 min-w-0 flex-1">
           {showArtifactTree ? (
             <nav
@@ -268,17 +339,17 @@ export default function ChatLabPreviewDock({ extension = null }) {
                 onCommit={onTreeResizeCommit}
                 onActiveChange={setTreeDragging}
               />
-              {artifactsPanel.tree?.length ? (
+              {viewArtifacts.tree?.length ? (
                 <ChatLabPreviewFileTree
-                  nodes={artifactsPanel.tree}
-                  selectedPath={artifactsPanel.selectedPath}
+                  nodes={viewArtifacts.tree}
+                  selectedPath={viewArtifacts.selectedPath}
                   artifactOps={artifactOps}
                   onSelectFile={(path) => api.selectArtifact?.(path)}
                 />
               ) : (
                 <ul className="chat-lab-preview-dock__tree-list min-h-0 flex-1 overflow-auto py-1">
-                  {artifactsPanel.files.map((file) => {
-                    const active = file.path === artifactsPanel.selectedPath;
+                  {viewArtifacts.files.map((file) => {
+                    const active = file.path === viewArtifacts.selectedPath;
                     return (
                       <li key={file.path}>
                         <button
@@ -312,32 +383,32 @@ export default function ChatLabPreviewDock({ extension = null }) {
             </nav>
           ) : null}
           <ChatLabArtifactPreviewPane
-            label={selectedArtifact?.label ?? artifactsPanel.selectedPath ?? ""}
-            payload={artifactsPanel.payload}
+            label={selectedArtifact?.label ?? viewArtifacts.selectedPath ?? ""}
+            payload={viewArtifacts.payload}
             error={artifactError}
-            loading={artifactsPanel.loading}
-            viewMode={artifactsPanel.viewMode}
+            loading={viewArtifacts.loading}
+            viewMode={viewArtifacts.viewMode}
             onViewModeChange={(mode) => api.setArtifactViewMode?.(mode)}
             iframeRef={api.iframeRef}
             isResizing={isResizing}
           />
         </div>
-      ) : extension ? (
+      ) : viewExtension ? (
         <div className="chat-lab-preview-dock__body chat-lab-preview-dock__body--orch min-h-0 flex-1 overflow-hidden">
-          {extension.body}
+          {viewExtension.body}
         </div>
       ) : (
         <div className="chat-lab-preview-dock__body min-h-0 flex-1">
-          {session?.kind === "placeholder" ? (
+          {viewSession?.kind === "placeholder" ? (
             <div className="chat-lab-preview-dock__placeholder muted px-3 py-3 text-[0.82rem] leading-relaxed">
-              {session.body}
+              {viewSession.body}
             </div>
-          ) : session?.kind === "iframe" && session.useWebview ? (
+          ) : viewSession?.kind === "iframe" && viewSession.useWebview ? (
             <ChatLabPreviewWebFrame
-              src={session.src}
-              title={session.title || t("chatLab.previewDefaultTitle")}
-              frameKey={session.frameKey}
-              sandbox={session.sandbox}
+              src={viewSession.src}
+              title={viewSession.title || t("chatLab.previewDefaultTitle")}
+              frameKey={viewSession.frameKey}
+              sandbox={viewSession.sandbox}
               useWebview
               deviceMode={api?.deviceMode ?? "desktop"}
               iframeRef={api.iframeRef}
@@ -347,12 +418,12 @@ export default function ChatLabPreviewDock({ extension = null }) {
             <iframe
               ref={api.iframeRef}
               className="chat-lab-preview-dock__frame h-full w-full border-0"
-              title={session?.title || t("chatLab.previewDefaultTitle")}
-              key={session?.frameKey}
-              {...(session?.kind === "srcdoc"
-                ? { srcDoc: session.html }
-                : { src: session?.src ?? "" })}
-              {...(session?.sandbox ? { sandbox: session.sandbox } : {})}
+              title={viewSession?.title || t("chatLab.previewDefaultTitle")}
+              key={viewSession?.frameKey}
+              {...(viewSession?.kind === "srcdoc"
+                ? { srcDoc: viewSession.html }
+                : { src: viewSession?.src ?? "" })}
+              {...(viewSession?.sandbox ? { sandbox: viewSession.sandbox } : {})}
             />
           )}
         </div>

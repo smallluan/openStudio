@@ -685,7 +685,7 @@ export function ChatLabPreviewProvider({ children }) {
     };
     /** @param {string} url */
     window.__openStudioOpenExternal = (url) => {
-      openChatLabExternalUrl(String(url));
+      openChatLabExternalUrl(String(url), { forceExternal: true });
     };
     return () => {
       window.open = originalOpen;

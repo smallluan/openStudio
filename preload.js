@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld("studioBridge", {
   setUserConfig: (patch) => ipcRenderer.invoke("studio:setUserConfig", patch),
   getPaths: () => ipcRenderer.invoke("studio:getPaths"),
   openLogsDirectory: () => ipcRenderer.invoke("studio:openLogsDirectory"),
-  openExternalUrl: (url) => ipcRenderer.invoke("studio:openExternalUrl", url),
+  openExternalUrl: (url, opts) => ipcRenderer.invoke("studio:openExternalUrl", url, opts),
   revealLocalPath: (rawPath) => ipcRenderer.invoke("studio:revealLocalPath", rawPath),
   saveImageFromUrl: (payload) => ipcRenderer.invoke("studio:saveImageFromUrl", payload),
   getSkillEnvironment: () => ipcRenderer.invoke("studio:getSkillEnvironment"),

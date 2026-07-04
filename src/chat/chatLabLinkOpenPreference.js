@@ -35,8 +35,12 @@ export function writeLinkOpenModeLocal(mode) {
   return next;
 }
 
-/** @param {string} href @returns {boolean} */
-export function openChatLabExternalUrl(href) {
+/**
+ * @param {string} href
+ * @param {{ forceExternal?: boolean }} [opts]
+ * @returns {boolean}
+ */
+export function openChatLabExternalUrl(href, opts = {}) {
   const h = String(href ?? "").trim();
   if (!h) return false;
   let resolved;
@@ -47,9 +51,34 @@ export function openChatLabExternalUrl(href) {
   }
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
   if (bridge && typeof bridge.openExternalUrl === "function") {
-    void bridge.openExternalUrl(resolved);
+    void bridge.openExternalUrl(resolved, opts.forceExternal ? { forceExternal: true } : undefined);
     return true;
   }
   window.open(resolved, "_blank", "noreferrer,noopener");
   return true;
+}
+
+/** @param {string} href @returns {boolean} */
+export function openChatLabPreferredUrl(href) {
+  const h = String(href ?? "").trim();
+  if (!h) return false;
+  if (readLinkOpenModeLocal() === "external") {
+    return openChatLabExternalUrl(h);
+  }
+  if (/^https?:\/\//i.test(h)) {
+    window.open(h, "_blank", "noreferrer,noopener");
+    return true;
+  }
+  return openChatLabExternalUrl(h);
+}
+
+/**
+ * @param {string} text @returns {string | null}
+ */
+export function extractFirstWebMarkdownLink(text) {
+  const md = String(text ?? "");
+  const mdMatch = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/i.exec(md);
+  if (mdMatch?.[2]) return mdMatch[2].trim();
+  const bareMatch = /(?:^|\s)(https?:\/\/[^\s<>"')\]]+)/i.exec(md);
+  return bareMatch?.[1]?.trim() || null;
 }

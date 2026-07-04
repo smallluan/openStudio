@@ -1,4 +1,4 @@
-import { openChatLabExternalUrl } from "./chatLabLinkOpenPreference.js";
+import { openChatLabPreferredUrl } from "./chatLabLinkOpenPreference.js";
 
 /** @param {string} src @param {string | undefined} alt */
 export function suggestFilename(src, alt) {
@@ -85,5 +85,5 @@ export async function copyImageToClipboard(src) {
 export function openImageInNewTab(src) {
   const h = String(src ?? "").trim();
   if (!h) return;
-  openChatLabExternalUrl(h);
+  openChatLabPreferredUrl(h);
 }

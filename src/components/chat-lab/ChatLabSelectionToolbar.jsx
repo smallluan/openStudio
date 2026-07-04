@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, ExternalLink, FolderOpen, MessageCircleQuestion, Search } from "lucide-react";
-import { openChatLabExternalUrl } from "../../chat/chatLabLinkOpenPreference.js";
+import { openChatLabPreferredUrl } from "../../chat/chatLabLinkOpenPreference.js";
 import {
   readChatTextSelection,
   resolveFollowUpFromSelection,
@@ -161,7 +161,7 @@ export default function ChatLabSelectionToolbar({
   const handleSearch = useCallback(() => {
     const text = selectedTextRef.current;
     if (!text) return;
-    openChatLabExternalUrl(`https://www.google.com/search?q=${encodeURIComponent(text)}`);
+    openChatLabPreferredUrl(`https://www.google.com/search?q=${encodeURIComponent(text)}`);
     close();
     clearSelection();
   }, [close, clearSelection]);
@@ -169,7 +169,12 @@ export default function ChatLabSelectionToolbar({
   const handleOpenAddress = useCallback(() => {
     if (!selectionAddress) return;
     if (selectionAddress.kind === "url") {
-      openChatLabExternalUrl(selectionAddress.href);
+      if (previewApi?.openFromHref?.(selectionAddress.href, selectionAddress.href)) {
+        close();
+        clearSelection();
+        return;
+      }
+      openChatLabPreferredUrl(selectionAddress.href);
     } else {
       openChatLabLocalPath(selectionAddress.path, previewApi);
     }
