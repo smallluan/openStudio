@@ -32,6 +32,8 @@ import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light.j
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js";
 import ChatLabEchartsFenceView from "./ChatLabEchartsFenceView.jsx";
 import ChatLabChartBlock from "./ChatLabChartBlock.jsx";
+import ChatLabDirectoryTree from "./ChatLabDirectoryTree.jsx";
+import { looksLikeAsciiTreeText, normalizeAsciiTreeLine, parseAsciiTree } from "../../chat/chatLabAsciiTree.js";
 
 const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
 
@@ -870,12 +872,20 @@ export function createChatLabMarkdownComponents(t, opts = {}) {
         );
       }
       const code = String(children ?? "").replace(/\n$/, "");
+      const treeCode = code
+        .split(/\r?\n/)
+        .map((line) => normalizeAsciiTreeLine(line))
+        .join("\n");
       const m = /\blanguage-([^\s]+)/i.exec(className ?? "");
       const fenceLang = (m?.[1] ?? "").trim().toLowerCase();
       const soft = !fenceLang || SOFT_FENCE_LANGS.has(fenceLang);
       const singleLine = !/\r?\n/.test(code);
       if (soft && singleLine && code.length <= SOFT_FENCE_INLINE_MAX_CHARS) {
         return <span className="chat-lab__md-soft-inline">{code}</span>;
+      }
+      if (soft && looksLikeAsciiTreeText(treeCode)) {
+        const tree = parseAsciiTree(treeCode);
+        if (tree) return <ChatLabDirectoryTree root={tree} />;
       }
       if (soft) {
         return <SoftFenceBlock code={code} />;

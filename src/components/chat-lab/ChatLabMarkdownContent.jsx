@@ -15,6 +15,7 @@ import {
 import { useI18n } from "../../context/I18nContext.jsx";
 import { ChatLabImageGrid } from "./ChatLabImageGrid.jsx";
 import ChatLabChartBlock from "./ChatLabChartBlock.jsx";
+import ChatLabDirectoryTree from "./ChatLabDirectoryTree.jsx";
 import { useDocTheme } from "./chatLabMarkdown.jsx";
 
 const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
@@ -52,6 +53,9 @@ export default function ChatLabMarkdownContent({ source, className, components }
       {blocks.map((block, idx) => {
         if (block.kind === "gallery") {
           return <ChatLabImageGrid key={`gallery-${idx}`} images={block.images} />;
+        }
+        if (block.kind === "tree") {
+          return <ChatLabDirectoryTree key={`tree-${idx}`} root={block.tree} />;
         }
         const md = prepareChatLabMarkdownForRender(block.body);
         if (!String(md ?? "").trim()) return null;

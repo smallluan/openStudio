@@ -8370,6 +8370,100 @@ button.os-image {
   word-break: inherit;
 }
 
+.chat-lab__md-tree {
+  margin: 0.35em 0 0.5em;
+  padding: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.chat-lab__md-tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-lab__md-tree-list--nested {
+  padding-left: 0;
+}
+
+.chat-lab__md-tree-node {
+  list-style: none;
+}
+
+.chat-lab__md-tree-chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--os-text-muted, var(--muted)) 70%, transparent);
+}
+
+.chat-lab__md-tree-chevron--spacer {
+  visibility: hidden;
+}
+
+.chat-lab__md-tree-emoji {
+  flex-shrink: 0;
+  font-size: 0.95em;
+  line-height: 1;
+}
+
+.chat-lab__md-tree-item {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.28rem 0.35rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 0.14rem 0;
+  font-size: inherit;
+  line-height: inherit;
+  color: var(--os-text, var(--text));
+}
+
+.chat-lab__md-tree-item--dir {
+  cursor: pointer;
+}
+
+.chat-lab__md-tree-item--dir:hover .chat-lab__md-tree-name {
+  color: var(--os-accent, var(--accent));
+}
+
+.chat-lab__md-tree-item--leaf,
+.chat-lab__md-tree-item--file {
+  cursor: default;
+}
+
+.chat-lab__md-tree-item--leaf:hover .chat-lab__md-tree-name {
+  color: inherit;
+}
+
+.chat-lab__md-tree-item--root {
+  font-weight: 600;
+}
+
+.chat-lab__md-tree-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  word-break: break-all;
+}
+
+.chat-lab__md-tree-comment {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: color-mix(in srgb, var(--os-text-muted, var(--muted)) 88%, transparent);
+  font-size: 0.92em;
+  font-family: inherit;
+}
+
+.chat-lab__md-tree-comment::before {
+  content: "— ";
+  opacity: 0.55;
+}
+
 .chat-lab__md code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 0.86em;

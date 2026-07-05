@@ -1,6 +1,16 @@
 /** @typedef {{ alt: string; src: string }} MarkdownImageRef */
+/** @typedef {import("./chatLabAsciiTree.js").AsciiTreeNode} AsciiTreeNode */
 
 import { normalizeLatexMathDelimitersForRemark } from "./normalizeLatexMathDelimitersForRemark.js";
+import {
+  isAsciiTreeLine,
+  isBlankOrBlockquoteSeparator,
+  isMarkdownBlockquoteLine,
+  looksLikeAsciiTreeText,
+  normalizeAsciiTreeLine,
+  parseAsciiTree,
+  stripMarkdownBlockquotePrefix,
+} from "./chatLabAsciiTree.js";
 
 const IMAGE_LINE_RE = /^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$/;
 const MARKDOWN_IMAGE_INLINE_RE = /!\[([^\]]*)\]\(\s*([^)\s]+(?:\([^)]*\))?[^)\s]*)\s*(?:\s+"[^"]*")?\s*\)/g;
@@ -72,7 +82,17 @@ export function stripMarkdownImages(source) {
 }
 
 /**
- * @typedef {{ kind: "prose"; body: string } | { kind: "gallery"; images: MarkdownImageRef[] }} MarkdownContentBlock
+ * @typedef {{
+ *   kind: "prose";
+ *   body: string;
+ * } | {
+ *   kind: "gallery";
+ *   images: MarkdownImageRef[];
+ * } | {
+ *   kind: "tree";
+ *   body: string;
+ *   tree: AsciiTreeNode;
+ * }} MarkdownContentBlock
  */
 
 /**
@@ -127,10 +147,130 @@ function mergeAdjacentGalleryBlocks(blocks) {
 }
 
 /**
- * Split one markdown blob into alternating prose + image gallery blocks (order preserved).
- * @param {string} source
- * @returns {MarkdownContentBlock[]}
+ * @param {string[]} lines
+ * @param {number} fromIdx
  */
+function nextAsciiTreeLine(lines, fromIdx) {
+  for (let i = fromIdx; i < lines.length; i++) {
+    const raw = lines[i];
+    if (!String(raw ?? "").trim()) continue;
+    if (isAsciiTreeLine(raw)) return raw;
+    return null;
+  }
+  return null;
+}
+
+/**
+ * @param {string} line
+ * @param {string | null} openDelim
+ * @returns {{ nextDelim: string | null; isFenceLine: boolean }}
+ */
+function stepFenceState(line, openDelim) {
+  const trimmed = String(line ?? "").trim();
+  const m = /^(`{3,}|~{3,})(.*)$/.exec(trimmed);
+  if (!m) return { nextDelim: openDelim, isFenceLine: false };
+
+  const delim = m[1];
+  const info = (m[2] ?? "").trim();
+
+  if (!openDelim) {
+    return { nextDelim: delim, isFenceLine: true };
+  }
+
+  if (delim[0] !== openDelim[0] || delim.length < openDelim.length || info !== "") {
+    return { nextDelim: openDelim, isFenceLine: false };
+  }
+
+  return { nextDelim: null, isFenceLine: true };
+}
+
+/**
+ * @param {string} line
+ */
+function spilloverBlockquoteContent(line) {
+  if (!isMarkdownBlockquoteLine(line)) return "";
+  return stripMarkdownBlockquotePrefix(line).trim();
+}
+
+/**
+ * @param {string} content
+ */
+function isSpilloverBlockquoteContent(content) {
+  if (!content) return false;
+  return (
+    /^#{1,6}\s/.test(content) ||
+    /^---+$/.test(content) ||
+    /^[-*+]\s/.test(content) ||
+    /^\d+\.\s/.test(content)
+  );
+}
+
+/**
+ * @param {string} body
+ */
+function proseBlockStartsWithSpilloverBlockquote(body) {
+  const lines = String(body ?? "").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = String(line ?? "").trim();
+    if (!trimmed) continue;
+    if (!isMarkdownBlockquoteLine(line)) return false;
+    return isSpilloverBlockquoteContent(spilloverBlockquoteContent(line));
+  }
+  return false;
+}
+
+/**
+ * @param {string} body
+ */
+function unwrapSpilloverBlockquoteBody(body) {
+  const lines = String(body ?? "").split(/\r?\n/);
+  let consecutiveNormal = 0;
+  /** @type {string[]} */
+  const out = [];
+
+  for (const line of lines) {
+    const raw = String(line ?? "");
+    const trimmed = raw.trim();
+
+    if (consecutiveNormal >= 2) {
+      out.push(raw);
+      continue;
+    }
+
+    if (isMarkdownBlockquoteLine(raw)) {
+      consecutiveNormal = 0;
+      out.push(trimmed === ">" ? "" : stripMarkdownBlockquotePrefix(raw));
+      continue;
+    }
+
+    out.push(raw);
+    if (trimmed) consecutiveNormal += 1;
+  }
+
+  return out.join("\n");
+}
+
+/**
+ * @param {MarkdownContentBlock[]} blocks
+ */
+function postProcessMarkdownBlocks(blocks) {
+  let afterTree = false;
+
+  for (const block of blocks) {
+    if (block.kind === "tree") {
+      afterTree = true;
+      continue;
+    }
+    if (block.kind !== "prose") continue;
+
+    if (afterTree || proseBlockStartsWithSpilloverBlockquote(block.body)) {
+      block.body = unwrapSpilloverBlockquoteBody(block.body);
+    }
+  }
+
+  return blocks;
+}
+
 export function segmentMarkdownContentBlocks(source) {
   const lines = String(source ?? "").split(/\r?\n/);
   /** @type {MarkdownContentBlock[]} */
@@ -139,6 +279,15 @@ export function segmentMarkdownContentBlocks(source) {
   let proseBuf = [];
   /** @type {MarkdownImageRef[]} */
   let imageBuf = [];
+  /** @type {string[]} */
+  let treeBuf = [];
+  /** @type {string | null} */
+  let fenceDelim = null;
+
+  /** @param {string} line */
+  const pushProseLine = (line) => {
+    proseBuf.push(line);
+  };
 
   const flushProse = () => {
     const body = proseBuf.join("\n").trim();
@@ -149,16 +298,57 @@ export function segmentMarkdownContentBlocks(source) {
     if (imageBuf.length) blocks.push({ kind: "gallery", images: [...imageBuf] });
     imageBuf = [];
   };
+  const flushTree = () => {
+    if (!treeBuf.length) return;
+    const treeLines = [...treeBuf];
+    treeBuf = [];
+    const body = treeLines.join("\n").trim();
+    if (!body) return;
+    if (!looksLikeAsciiTreeText(body)) {
+      for (const line of treeLines) pushProseLine(line);
+      return;
+    }
+    const tree = parseAsciiTree(body);
+    if (tree) blocks.push({ kind: "tree", body, tree });
+    else for (const line of treeLines) pushProseLine(line);
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const fenceStep = stepFenceState(line, fenceDelim);
+    if (fenceStep.isFenceLine) {
+      if (treeBuf.length) flushTree();
+      pushProseLine(line);
+      fenceDelim = fenceStep.nextDelim;
+      continue;
+    }
+    if (fenceDelim) {
+      pushProseLine(line);
+      continue;
+    }
+    if (isAsciiTreeLine(line)) {
+      flushProse();
+      flushImages();
+      treeBuf.push(normalizeAsciiTreeLine(line));
+      continue;
+    }
+    if (treeBuf.length) {
+      if (isBlankOrBlockquoteSeparator(line)) {
+        const nextTree = nextAsciiTreeLine(lines, i + 1);
+        if (nextTree) continue;
+        flushTree();
+        if (!String(line ?? "").trim()) pushProseLine(line);
+        continue;
+      }
+      flushTree();
+    }
     if (!String(line ?? "").trim()) {
       if (imageBuf.length) {
         const nextLine = nextNonEmptyLine(lines, i + 1);
         if (nextLine && isImageOnlyLine(nextLine)) continue;
         flushImages();
       } else {
-        proseBuf.push(line);
+        pushProseLine(line);
       }
       continue;
     }
@@ -175,12 +365,13 @@ export function segmentMarkdownContentBlocks(source) {
       continue;
     }
     flushImages();
-    proseBuf.push(line);
+    pushProseLine(line);
   }
 
   flushProse();
   flushImages();
-  return mergeAdjacentGalleryBlocks(blocks);
+  flushTree();
+  return mergeAdjacentGalleryBlocks(postProcessMarkdownBlocks(blocks));
 }
 
 /**
