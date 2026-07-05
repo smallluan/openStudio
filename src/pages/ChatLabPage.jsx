@@ -84,7 +84,7 @@ import {
   resolveReplyTargets,
 } from "../studio/agentMentions.js";
 import { extractFirstWebMarkdownLink, readLinkOpenModeLocal } from "../chat/chatLabLinkOpenPreference.js";
-import { composeChatLabSystemPrompt, composeChatLabStudioSuffix } from "../chat/chatLabSystemPrompt.js";
+import { composeChatLabSystemPrompt, composeChatLabStudioSuffix, fetchChatLabWorkspaceContextBlock } from "../chat/chatLabSystemPrompt.js";
 import {
   agentAvatarGlyph,
   agentDisplayLabel,
@@ -111,6 +111,11 @@ import {
 } from "../context/ChatLabStreamingContext.jsx";
 import { createChatLabMarkdownComponents } from "../components/chat-lab/chatLabMarkdown.jsx";
 import ChatLabPreviewDock from "../components/chat-lab/ChatLabPreviewDock.jsx";
+import ChatLabContextBar from "../components/chat-lab/ChatLabContextBar.jsx";
+import ChatLabComposerSlot from "../components/chat-lab/ChatLabComposerSlot.jsx";
+import ChatLabSessionScopeReset from "../components/chat-lab/ChatLabSessionScopeReset.jsx";
+import ChatLabWorkspaceActiveRootBridge from "../components/chat-lab/ChatLabWorkspaceActiveRootBridge.jsx";
+import { ChatLabWorkspaceProvider } from "../context/ChatLabWorkspaceContext.jsx";
 import {
   ChatLabPreviewContext,
   ChatLabPreviewProvider,
@@ -342,7 +347,7 @@ function formatMessageTimestamp(ts, locale) {
  * @param {import("../studio/agents.js").LobsterAgent} agent
  * @param {(key: string) => string} t
  * @param {import("../studio/agents.js").LobsterAgent[]} groupAgents
- * @param {{ orchestrationTeamRoster?: string }} [extra]
+ * @param {{ orchestrationTeamRoster?: string; mentionDelegateReply?: boolean; workspaceContext?: string }} [extra]
  */
 function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
   const others = groupAgents.filter((a) => a.id !== agent.id);
@@ -352,10 +357,12 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
         ? t("chatLab.groupDelegateReplyHint")
         : t("chatLab.groupDelegateHint")
       : "";
+  const workspaceBlock = String(extra.workspaceContext ?? "").trim();
+  const studioSuffix = [workspaceBlock, composeChatLabStudioSuffix(t)].filter(Boolean).join("\n\n");
   return systemMessageForAgent(agent, t("chatLab.systemPrompt"), {
     groupAgents,
     groupDelegateHint,
-    studioSuffix: composeChatLabStudioSuffix(t),
+    studioSuffix,
     ...extra,
   });
 }
@@ -733,6 +740,10 @@ function buildStudioGatewayPrewarmIds(currentConversationId, max) {
 
 
 export default function ChatLabPage() {
+  return <ChatLabPageMain />;
+}
+
+function ChatLabPageMain() {
   const { theme } = useTheme();
   const { t, locale } = useI18n();
   const location = useLocation();
@@ -748,8 +759,14 @@ export default function ChatLabPage() {
   }
   const conversationId = paramC || draftIdRef.current;
 
+  const activeRootRef = useRef(/** @type {string | null} */ (null));
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
   const isElectron = Boolean(bridge?.startChatStream);
+
+  const resolveWorkspaceContextBlock = useCallback(
+    () => fetchChatLabWorkspaceContextBlock(bridge, activeRootRef.current, t),
+    [bridge, t],
+  );
   const { agents, agentById, mainAgent } = useStudio();
   const skillEnv = useSkillEnvironment();
   const skillPickEnv = useMemo(
@@ -1971,9 +1988,10 @@ export default function ChatLabPage() {
       assistantStreamIdsRef.current.set(assistantMsg.id, streamId);
 
       const editGroupAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
+      const workspaceContext = await resolveWorkspaceContextBlock();
       const sysRow = mainAgent
-        ? systemRowForGroupAgent(mainAgent, t, editGroupAgents)
-        : { role: "system", content: composeChatLabSystemPrompt(t) };
+        ? systemRowForGroupAgent(mainAgent, t, editGroupAgents, { workspaceContext })
+        : { role: "system", content: composeChatLabSystemPrompt(t, { workspaceContext }) };
       const outgoing = [
         ...(sysRow ? [sysRow] : []),
         ...priorRows,
@@ -2058,6 +2076,7 @@ export default function ChatLabPage() {
       paramC,
       mainAgent,
       resetGatewayStream,
+      resolveWorkspaceContextBlock,
       setSearchParams,
       t,
     ],
@@ -2146,6 +2165,7 @@ export default function ChatLabPage() {
 
       const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
       const groupAgents = groupAgentsInSession({ agents, mainAgent, participantIds: sessionParticipantIds });
+      const workspaceContext = await resolveWorkspaceContextBlock();
 
       const parallelReply = replyTargets.length > 1;
       const historyBeforeUser = messagesRef.current.filter((m) => m.id !== userMsg.id);
@@ -2170,7 +2190,7 @@ export default function ChatLabPage() {
           createdAt: now + i + 1,
           agentId: target.id,
         };
-        const sysRow = systemRowForGroupAgent(target, t, groupAgents);
+        const sysRow = systemRowForGroupAgent(target, t, groupAgents, { workspaceContext });
         const ctx = resolveAgentGatewayContext({
           conversationId,
           agentId: target.id,
@@ -2311,6 +2331,7 @@ export default function ChatLabPage() {
       mentionEveryoneLabel,
       participantIds,
       resetGatewayStream,
+      resolveWorkspaceContextBlock,
       setProbeRestartKey,
       setSearchParams,
       setMessages,
@@ -2341,7 +2362,11 @@ export default function ChatLabPage() {
         mainAgent,
         participantIds: sessionParticipantIds,
       });
-      const sysRow = systemRowForGroupAgent(target, t, groupAgents, { mentionDelegateReply: true });
+      const workspaceContext = await resolveWorkspaceContextBlock();
+      const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
+        mentionDelegateReply: true,
+        workspaceContext,
+      });
       const ctx = resolveAgentGatewayContext({
         conversationId,
         agentId: target.id,
@@ -2449,6 +2474,7 @@ export default function ChatLabPage() {
       mainAgent,
       participantIds,
       resetGatewayStream,
+      resolveWorkspaceContextBlock,
       setProbeRestartKey,
       setMessages,
       t,
@@ -3450,10 +3476,13 @@ export default function ChatLabPage() {
   );
 
   return (
+    <ChatLabWorkspaceProvider conversationId={conversationId} isEmptySession={isLanding}>
     <ChatLabPreviewProvider>
       <ImageViewProvider>
+      <ChatLabWorkspaceActiveRootBridge activeRootRef={activeRootRef} />
       <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
       <ChatLabAutoLinkPreview conversationId={conversationId} messages={messages} />
+      <ChatLabSessionScopeReset conversationId={conversationId} isEmptySession={isLanding} />
       <div className="chat-lab__workspace relative">
         <div className="chat-lab__column">
           <div
@@ -3581,14 +3610,12 @@ export default function ChatLabPage() {
                 />
               </div>
             )}
-          </div>
-          <div
-            className={cn(
-              "chat-lab__composer-slot",
-              gatePending && "chat-lab__composer-slot--gate-pending",
-            )}
-          >
-            {composer}
+            <ChatLabComposerSlot
+              className={gatePending ? "chat-lab__composer-slot--gate-pending" : undefined}
+            >
+              <ChatLabContextBar />
+              {composer}
+            </ChatLabComposerSlot>
           </div>
         </div>
         <ChatLabPreviewDock
@@ -3638,6 +3665,7 @@ export default function ChatLabPage() {
       </div>
       </ImageViewProvider>
     </ChatLabPreviewProvider>
+    </ChatLabWorkspaceProvider>
   );
 }
 

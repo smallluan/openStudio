@@ -48,6 +48,13 @@ const {
   WECHAT_NEW_CHAT_ACK_TEXT,
 } = require("./lib/wechat-session-commands.cjs");
 const { readWorkspacePreviewFile, resolveWorkspacePreviewTarget, listWorkspacePreviewDirectory } = require("./lib/chatlab-read-workspace-preview.cjs");
+const {
+  getWorkspaceContext,
+  searchWorkspaceFiles,
+  checkoutGitBranch,
+  resolveWorkspaceRoot,
+  describeWorkspaceProject,
+} = require("./lib/chatlab-workspace-context.cjs");
 const { initStudioLogger, getStudioLog } = require("./lib/studio-logger.cjs");
 const { enableBundledPythonRuntime } = require("./lib/bundled-python-runtime.cjs");
 const {
@@ -982,6 +989,52 @@ app.whenReady().then(async () => {
     if (!userConfigStore) return { ok: false, message: "config_unready" };
     const cfg = userConfigStore.readRaw();
     return listWorkspacePreviewDirectory(cfg, rawPath, opts && typeof opts === "object" ? opts : {});
+  });
+
+  ipcMain.handle("studio:getWorkspaceContext", (_event, payload) => {
+    if (!userConfigStore) return { ok: false, message: "config_unready" };
+    const cfg = userConfigStore.readRaw();
+    const userRoot = typeof payload?.root === "string" ? payload.root : "";
+    const ctx = getWorkspaceContext(cfg, userRoot);
+    if (!ctx.ok) return ctx;
+    return { ok: true, root: ctx.root, label: ctx.label, git: ctx.git };
+  });
+
+  ipcMain.handle("studio:searchWorkspaceFiles", (_event, payload) => {
+    if (!userConfigStore) return { ok: false, message: "config_unready" };
+    const cfg = userConfigStore.readRaw();
+    const userRoot = typeof payload?.root === "string" ? payload.root : "";
+    const query = typeof payload?.query === "string" ? payload.query : "";
+    const root = resolveWorkspaceRoot(cfg, userRoot);
+    return searchWorkspaceFiles(root, query);
+  });
+
+  ipcMain.handle("studio:checkoutGitBranch", (_event, payload) => {
+    if (!userConfigStore) return { ok: false, message: "config_unready" };
+    const cfg = userConfigStore.readRaw();
+    const userRoot = typeof payload?.root === "string" ? payload.root : "";
+    const branch = typeof payload?.branch === "string" ? payload.branch : "";
+    const root = resolveWorkspaceRoot(cfg, userRoot);
+    const result = checkoutGitBranch(root, branch);
+    if (!result.ok) return result;
+    const ctx = getWorkspaceContext(cfg, root);
+    if (!ctx.ok) return ctx;
+    return { ok: true, root: ctx.root, label: ctx.label, git: ctx.git };
+  });
+
+  ipcMain.handle("studio:describeWorkspaceProject", (_event, payload) => {
+    const userRoot = typeof payload?.root === "string" ? payload.root : "";
+    if (!userRoot.trim()) return { ok: false, message: "empty_path" };
+    return describeWorkspaceProject(userRoot);
+  });
+
+  ipcMain.handle("studio:pickWorkspaceFolder", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const { canceled, filePaths } = await dialog.showOpenDialog(win ?? undefined, {
+      properties: ["openDirectory"],
+    });
+    if (canceled || !filePaths?.[0]) return { ok: false, canceled: true };
+    return { ok: true, path: filePaths[0] };
   });
 
   ipcMain.handle("studio:statLocalPath", (_event, rawPath) => {

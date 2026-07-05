@@ -36,6 +36,11 @@ contextBridge.exposeInMainWorld("studioBridge", {
   readWorkspacePreviewFile: (rawPath) => ipcRenderer.invoke("studio:readWorkspacePreviewFile", rawPath),
   listWorkspacePreviewDirectory: (rawPath, opts) =>
     ipcRenderer.invoke("studio:listWorkspacePreviewDirectory", rawPath, opts),
+  getWorkspaceContext: (payload) => ipcRenderer.invoke("studio:getWorkspaceContext", payload),
+  searchWorkspaceFiles: (payload) => ipcRenderer.invoke("studio:searchWorkspaceFiles", payload),
+  checkoutGitBranch: (payload) => ipcRenderer.invoke("studio:checkoutGitBranch", payload),
+  describeWorkspaceProject: (payload) => ipcRenderer.invoke("studio:describeWorkspaceProject", payload),
+  pickWorkspaceFolder: () => ipcRenderer.invoke("studio:pickWorkspaceFolder"),
   getPathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file);
