@@ -8,6 +8,19 @@
     "cancel": "取消",
     "closeAria": "关闭对话框"
   },
+  "transfer": {
+    "dialogTitle": "选择项目",
+    "sourceTitle": "可选",
+    "targetTitle": "已选",
+    "searchPlaceholder": "搜索…",
+    "emptySource": "暂无可选项",
+    "emptyTarget": "暂无已选项",
+    "actionsAria": "穿梭操作",
+    "moveSelectedRight": "移入选中项",
+    "moveAllRight": "全部移入",
+    "moveSelectedLeft": "移出选中项",
+    "moveAllLeft": "全部移出"
+  },
   "nav": {
     "newChat": "新增对话",
     "studio": "工作室",
@@ -336,6 +349,12 @@
     "participantsLabel": "聊天成员",
     "participantsAria": "当前对话中的智能体",
     "participantsAdd": "拉入智能体",
+    "participantsTransferTitle": "管理对话成员",
+    "participantsTransferSource": "可选智能体",
+    "participantsTransferTarget": "已加入",
+    "participantsTransferSearch": "搜索智能体…",
+    "participantsTransferEmptySource": "没有可加入的智能体",
+    "participantsTransferEmptyTarget": "尚未拉入其他智能体",
     "groupMemberActorYou": "你",
     "groupMemberInvited": "{{actor}}邀请了{{target}}进入群聊",
     "groupMemberRemoved": "{{actor}}将{{target}}移出群聊",

@@ -9,9 +9,9 @@ export default function LogoMarkIcon({ className }) {
     <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
       <defs>
         <linearGradient id={gid} x1="5" y1="4" x2="19" y2="21" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#f4a078" />
-          <stop offset="0.45" stopColor="#d67248" />
-          <stop offset="1" stopColor="#b54f28" />
+          <stop stopColor="#8eabff" />
+          <stop offset="0.45" stopColor="#366ef4" />
+          <stop offset="1" stopColor="#0052d9" />
         </linearGradient>
       </defs>
       <path

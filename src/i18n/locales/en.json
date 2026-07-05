@@ -8,6 +8,19 @@
     "cancel": "Cancel",
     "closeAria": "Close dialog"
   },
+  "transfer": {
+    "dialogTitle": "Select items",
+    "sourceTitle": "Available",
+    "targetTitle": "Selected",
+    "searchPlaceholder": "Search…",
+    "emptySource": "Nothing available",
+    "emptyTarget": "Nothing selected",
+    "actionsAria": "Transfer actions",
+    "moveSelectedRight": "Move selected right",
+    "moveAllRight": "Move all right",
+    "moveSelectedLeft": "Move selected left",
+    "moveAllLeft": "Move all left"
+  },
   "nav": {
     "newChat": "New chat",
     "studio": "Studio",
@@ -336,6 +349,12 @@
     "participantsLabel": "Chat members",
     "participantsAria": "Agents in this conversation",
     "participantsAdd": "Add agent",
+    "participantsTransferTitle": "Manage chat members",
+    "participantsTransferSource": "Available agents",
+    "participantsTransferTarget": "In this chat",
+    "participantsTransferSearch": "Search agents…",
+    "participantsTransferEmptySource": "No agents available to add",
+    "participantsTransferEmptyTarget": "No other agents in this chat yet",
     "groupMemberActorYou": "You",
     "groupMemberInvited": "{{actor}} invited {{target}} to the group",
     "groupMemberRemoved": "{{actor}} removed {{target}} from the group",

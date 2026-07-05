@@ -8,6 +8,19 @@
     "cancel": "キャンセル",
     "closeAria": "ダイアログを閉じる"
   },
+  "transfer": {
+    "dialogTitle": "項目を選択",
+    "sourceTitle": "候補",
+    "targetTitle": "選択済み",
+    "searchPlaceholder": "検索…",
+    "emptySource": "候補がありません",
+    "emptyTarget": "選択されていません",
+    "actionsAria": "転送操作",
+    "moveSelectedRight": "選択項目を右へ",
+    "moveAllRight": "すべて右へ",
+    "moveSelectedLeft": "選択項目を左へ",
+    "moveAllLeft": "すべて左へ"
+  },
   "nav": {
     "newChat": "新規チャット",
     "studio": "スタジオ",
@@ -336,6 +349,12 @@
     "participantsLabel": "チャットメンバー",
     "participantsAria": "この会話にいるエージェント",
     "participantsAdd": "エージェントを追加",
+    "participantsTransferTitle": "チャットメンバーを管理",
+    "participantsTransferSource": "追加可能",
+    "participantsTransferTarget": "参加中",
+    "participantsTransferSearch": "エージェントを検索…",
+    "participantsTransferEmptySource": "追加できるエージェントがありません",
+    "participantsTransferEmptyTarget": "他のエージェントはまだいません",
     "participantRemove": "{{name}} を会話から外す",
     "mentionPickerAria": "@ メンションするエージェントを選択",
     "mentionEmpty": "@ できるエージェントがありません",

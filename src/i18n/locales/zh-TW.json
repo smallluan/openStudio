@@ -8,6 +8,19 @@
     "cancel": "取消",
     "closeAria": "關閉對話框"
   },
+  "transfer": {
+    "dialogTitle": "選擇項目",
+    "sourceTitle": "可選",
+    "targetTitle": "已選",
+    "searchPlaceholder": "搜尋…",
+    "emptySource": "暫無可選項",
+    "emptyTarget": "暫無已選項",
+    "actionsAria": "穿梭操作",
+    "moveSelectedRight": "移入選中項",
+    "moveAllRight": "全部移入",
+    "moveSelectedLeft": "移出選中項",
+    "moveAllLeft": "全部移出"
+  },
   "nav": {
     "newChat": "新對話",
     "studio": "工作室",
@@ -336,6 +349,12 @@
     "participantsLabel": "聊天成員",
     "participantsAria": "目前對話中的智慧體",
     "participantsAdd": "拉入智慧體",
+    "participantsTransferTitle": "管理對話成員",
+    "participantsTransferSource": "可選智慧體",
+    "participantsTransferTarget": "已加入",
+    "participantsTransferSearch": "搜尋智慧體…",
+    "participantsTransferEmptySource": "沒有可加入的智慧體",
+    "participantsTransferEmptyTarget": "尚未拉入其他智慧體",
     "participantRemove": "將 {{name}} 移出對話",
     "mentionPickerAria": "選擇要 @ 的智慧體",
     "mentionEmpty": "沒有可 @ 的智慧體",

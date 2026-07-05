@@ -62,6 +62,7 @@ function layoutRelativeTo(node, root) {
  *   onCancel?: () => void;
  *   danger?: boolean;
  *   morphBr?: string;
+ *   size?: "default" | "wide";
  * }} props
  */
 export default function FluidConfirmDialog({
@@ -75,6 +76,7 @@ export default function FluidConfirmDialog({
   onCancel,
   danger = false,
   morphBr = "14px",
+  size = "default",
 }) {
   const { t } = useI18n();
   const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
@@ -213,6 +215,7 @@ export default function FluidConfirmDialog({
           morphBr={morphBr}
           className={cn(
             "fluid-dialog__liquid-shell pointer-events-auto flex max-h-[min(72vh,calc(100vh-2rem))] min-w-0 flex-col overflow-hidden",
+            size === "wide" && "fluid-dialog__liquid-shell--wide",
           )}
           surfaceProps={{
             role: "dialog",

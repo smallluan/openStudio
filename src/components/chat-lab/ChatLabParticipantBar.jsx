@@ -16,6 +16,7 @@ import { useId, useMemo, useState } from "react";
 import { agentAvatarGlyph, agentDisplayLabel } from "../../studio/agents.js";
 import { useI18n } from "../../context/I18nContext.jsx";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
+import TransferDialog from "../../ui/TransferDialog.jsx";
 import { cn } from "../../ui/cn.js";
 import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 
@@ -47,9 +48,8 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
   const { t } = useI18n();
   const autoId = useId();
   const panelId = `${autoId}-members`;
-  const addListId = `${autoId}-members-add`;
   const [open, setOpen] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
 
   const main = useMemo(() => agents.find((a) => a.isMain) ?? agents[0] ?? null, [agents]);
@@ -69,10 +69,19 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
     return out;
   }, [byId, main, participantIds]);
 
-  const addable = useMemo(
-    () => agents.filter((a) => !participants.some((p) => p.id === a.id)),
-    [agents, participants],
+  const transferItems = useMemo(
+    () =>
+      agents.map((a) => ({
+        key: a.id,
+        label: agentDisplayLabel(a),
+        searchText: agentDisplayLabel(a),
+        icon: agentAvatarGlyph(a),
+        locked: Boolean(a.isMain),
+      })),
+    [agents],
   );
+
+  const transferTargetKeys = useMemo(() => participants.map((a) => a.id), [participants]);
 
   const removeAgent = (agentId) => {
     const agent = byId.get(agentId);
@@ -80,24 +89,16 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
     onChange(participantIds.filter((id) => id !== agentId));
   };
 
-  const addAgent = (agentId) => {
-    const agent = byId.get(agentId);
-    if (!agent || agent.isMain) return;
-    const set = new Set(participantIds);
-    set.add(agentId);
-    if (main) set.add(main.id);
-    onChange([...set]);
-    setAddOpen(false);
+  const handleTransferConfirm = (keys) => {
+    const nonMain = keys.filter((id) => id !== main?.id);
+    onChange(nonMain);
   };
 
   const iconVariant = variant === "icon";
 
   const { refs, floatingStyles, context } = useFloating({
     open: present,
-    onOpenChange: (next) => {
-      setOpen(next);
-      if (!next) setAddOpen(false);
-    },
+    onOpenChange: setOpen,
     placement: iconVariant ? "bottom-end" : "top-end",
     strategy: "fixed",
     middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
@@ -197,33 +198,14 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
                   <div className="chat-lab__members-add-section">
                     <button
                       type="button"
-                      className={cn("chat-lab__participants-add", addOpen && "chat-lab__participants-add--open")}
-                      disabled={disabled || addable.length === 0}
-                      aria-expanded={addOpen}
-                      aria-controls={addOpen ? addListId : undefined}
-                      onClick={() => setAddOpen((v) => !v)}
+                      className={cn("chat-lab__participants-add", transferOpen && "chat-lab__participants-add--open")}
+                      disabled={disabled}
+                      aria-haspopup="dialog"
+                      aria-expanded={transferOpen}
+                      onClick={() => setTransferOpen(true)}
                     >
                       {t("chatLab.participantsAdd")}
                     </button>
-                    {addOpen && addable.length > 0 ? (
-                      <ul id={addListId} className="chat-lab__members-add-list" role="listbox">
-                        {addable.map((a) => (
-                          <li key={a.id}>
-                            <button
-                              type="button"
-                              className="chat-lab__participants-menu-item"
-                              role="option"
-                              onClick={() => addAgent(a.id)}
-                            >
-                              <span className="chat-lab__participant-avatar" aria-hidden>
-                                {agentAvatarGlyph(a)}
-                              </span>
-                              <span>{agentDisplayLabel(a)}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
                   </div>
                 </div>
               </FluidPopupAnimatedSurface>
@@ -231,6 +213,21 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
           </FloatingFocusManager>
         </FloatingPortal>
       ) : null}
+
+      <TransferDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        title={t("chatLab.participantsTransferTitle")}
+        items={transferItems}
+        targetKeys={transferTargetKeys}
+        lockedKeys={main ? [main.id] : []}
+        sourceTitle={t("chatLab.participantsTransferSource")}
+        targetTitle={t("chatLab.participantsTransferTarget")}
+        searchPlaceholder={t("chatLab.participantsTransferSearch")}
+        emptySource={t("chatLab.participantsTransferEmptySource")}
+        emptyTarget={t("chatLab.participantsTransferEmptyTarget")}
+        onConfirm={handleTransferConfirm}
+      />
     </>
   );
 }
