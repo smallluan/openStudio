@@ -8,8 +8,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const REQUIRED_PREFIXES = ["safe-open-sync-"];
-const OPTIONAL_PREFIXES = ["boundary-path-"];
+const REQUIRED_PREFIXES = ["pinned-open-"];
+const OPTIONAL_PREFIXES = ["boundary-path-", "root-path-", "path-"];
 
 function normWin(p) {
   if (process.platform !== "win32") return p;
@@ -233,6 +233,88 @@ function patchPublicSurfaceLoaderSource(source) {
   return { source: next, changed: next !== source };
 }
 
+function patchRootPathSource(source) {
+  if (source.includes("isElectronAsarVirtualFilePath(targetPath)")) {
+    return { source, changed: false };
+  }
+
+  const regionNeedle = "//#region node_modules/@openclaw/fs-safe/dist/root-path.js";
+  if (!source.includes(regionNeedle)) {
+    return { source, changed: false, reason: "root-path-region-missing" };
+  }
+
+  const ancestorSyncNeedle = "function resolvePathViaExistingAncestorSync(targetPath) {";
+  const ancestorSyncReplacement = [
+    isElectronAsarVirtualFilePathHelperBlock(),
+    "function resolvePathViaExistingAncestorSync(targetPath) {",
+    "\tif (isElectronAsarVirtualFilePath(targetPath) || /\\.asar$/i.test(path.resolve(targetPath))) {",
+    "\t\treturn path.resolve(targetPath);",
+    "\t}",
+  ].join("\n");
+
+  if (!source.includes(ancestorSyncNeedle)) {
+    return { source, changed: false, reason: "root-path-ancestor-sync-missing" };
+  }
+
+  let next = source.replace(regionNeedle, `${regionNeedle}\n${isElectronAsarVirtualFilePathHelperBlock()}`);
+  next = next.replace(
+    ancestorSyncNeedle,
+    ancestorSyncReplacement.replace(`${isElectronAsarVirtualFilePathHelperBlock()}\n`, ""),
+  );
+  return { source: next, changed: next !== source };
+}
+
+function patchPathIsInsideSource(source) {
+  if (source.includes("isElectronAsarVirtualFilePath(root)")) {
+    return { source, changed: false };
+  }
+
+  const regionNeedle = "//#region node_modules/@openclaw/fs-safe/dist/path.js";
+  if (!source.includes(regionNeedle)) {
+    return { source, changed: false, reason: "path-region-missing" };
+  }
+
+  const isPathInsideNeedle = "function isPathInside(root, target) {";
+  const isPathInsideReplacement = [
+    "function isPathInside(root, target) {",
+    "\tif (isElectronAsarVirtualFilePath(root) || isElectronAsarVirtualFilePath(target) || /\\.asar$/i.test(String(root))) {",
+    '\t\tconst rootResolved = path.resolve(root).replace(/\\\\/g, "/");',
+    '\t\tconst targetResolved = path.resolve(target).replace(/\\\\/g, "/");',
+    '\t\tconst rootBase = rootResolved.match(/^(.+\\.asar)/i)?.[1];',
+    '\t\tconst targetBase = targetResolved.match(/^(.+\\.asar)/i)?.[1];',
+    "\t\tif (rootBase && targetBase && rootBase.toLowerCase() === targetBase.toLowerCase()) {",
+    '\t\t\tconst rootLogical = rootResolved.includes(".asar/") ? rootResolved : `${rootBase}/`;',
+    '\t\t\tconst rel = path.relative(rootLogical, targetResolved).replace(/\\\\/g, "/");',
+    '\t\t\treturn rel === "" || !rel.startsWith("..") && !path.isAbsolute(rel);',
+    "\t\t}",
+    "\t}",
+  ].join("\n");
+
+  if (!source.includes(isPathInsideNeedle)) {
+    return { source, changed: false, reason: "path-isPathInside-missing" };
+  }
+
+  let next = source.replace(regionNeedle, `${regionNeedle}\n${isElectronAsarVirtualFilePathHelperBlock()}`);
+  next = next.replace(isPathInsideNeedle, isPathInsideReplacement);
+  return { source: next, changed: next !== source };
+}
+
+function patchChunkSource(source, prefix) {
+  if (prefix.startsWith("pinned-open-") || prefix.startsWith("safe-open-sync-")) {
+    return patchSafeOpenSyncSource(source);
+  }
+  if (prefix.startsWith("boundary-path-")) {
+    return patchBoundaryPathSource(source);
+  }
+  if (prefix.startsWith("root-path-")) {
+    return patchRootPathSource(source);
+  }
+  if (prefix.startsWith("path-")) {
+    return patchPathIsInsideSource(source);
+  }
+  return { source, changed: false };
+}
+
 function patchOpenclawAsarDist(bundleRootDir) {
   const root = path.resolve(bundleRootDir);
   const distDir = path.join(root, "dist");
@@ -249,9 +331,7 @@ function patchOpenclawAsarDist(bundleRootDir) {
       foundPrefixes.add(prefix);
       const abs = path.join(root, rel);
       let source = fs.readFileSync(normWin(abs), "utf8");
-      const result = prefix.startsWith("safe-open-sync-")
-        ? patchSafeOpenSyncSource(source)
-        : patchBoundaryPathSource(source);
+      const result = patchChunkSource(source, prefix);
 
       if (result.reason && !result.changed) {
         console.warn(`[openclaw-asar-patch] skip ${rel}: ${result.reason}`);
@@ -290,10 +370,16 @@ function patchOpenclawAsarDist(bundleRootDir) {
   }
   return {
     changed,
-    requiredOk: true,
+    requiredOk,
     patchedFiles,
     reason: requiredOk ? undefined : "required-chunks-missing",
   };
 }
 
-module.exports = { patchOpenclawAsarDist, patchSafeOpenSyncSource, patchBoundaryPathSource };
+module.exports = {
+  patchOpenclawAsarDist,
+  patchSafeOpenSyncSource,
+  patchBoundaryPathSource,
+  patchRootPathSource,
+  patchPathIsInsideSource,
+};

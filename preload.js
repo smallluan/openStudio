@@ -79,6 +79,11 @@ contextBridge.exposeInMainWorld("studioBridge", {
   resetTokenUsageStats: () => ipcRenderer.invoke("studio:resetTokenUsageStats"),
   getTokenUsageStats: (opts) => ipcRenderer.invoke("studio:getTokenUsageStats", opts),
   getTokenUsageRecords: (opts) => ipcRenderer.invoke("studio:getTokenUsageRecords", opts),
+  chatSessionsLoadAll: () => ipcRenderer.invoke("studio:chatSessionsLoadAll"),
+  chatSessionsUpsert: (session) => ipcRenderer.invoke("studio:chatSessionsUpsert", session),
+  chatSessionsDelete: (id) => ipcRenderer.invoke("studio:chatSessionsDelete", id),
+  chatSessionsDeleteMany: (ids) => ipcRenderer.invoke("studio:chatSessionsDeleteMany", ids),
+  chatSessionsImportLegacy: (sessions) => ipcRenderer.invoke("studio:chatSessionsImportLegacy", sessions),
   generateChatTitle: (payload) => ipcRenderer.invoke("studio:generateChatTitle", payload),
   onChatStream: (listener) => {
     const wrapped = (_e, data) => listener(data);

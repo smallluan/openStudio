@@ -20,6 +20,13 @@ const DEFAULT_SKIP_DIR_NAMES = new Set([
   "scripts",
   "src",
   "tmp-pack",
+  "vendor",
+]);
+
+const PRUNE_TOP_LEVEL_PACKAGES = new Set([
+  "typescript",
+  "playwright-core",
+  "@playwright/test",
 ]);
 
 function resolveArch(archEnum) {
@@ -30,7 +37,7 @@ function cleanupUnnecessaryFiles(dir, skipDirNames = null) {
   let removedCount = 0;
   const skipDirs = skipDirNames || null;
   const REMOVE_DIRS = new Set(["test", "tests", "__tests__", ".github", "examples", "example"]);
-  const REMOVE_FILE_EXTS = [".d.ts", ".d.ts.map", ".js.map", ".mjs.map", ".ts.map"];
+  const REMOVE_FILE_EXTS = [".d.ts", ".d.ts.map", ".d.mts", ".d.cts", ".js.map", ".mjs.map", ".ts.map"];
   const REMOVE_FILE_NAMES = new Set([
     ".DS_Store",
     "README.md",
@@ -202,8 +209,43 @@ function patchAllLruCacheInstancesUnderRoot(rootDir) {
   return lruCount;
 }
 
+function prunePackagingArtifacts(rootDir) {
+  let removed = 0;
+  try {
+    for (const name of readdirSync(normWin(rootDir), { withFileTypes: true })) {
+      if (!name.isDirectory()) continue;
+      if (!/^tmp-eb-/i.test(name.name)) continue;
+      try {
+        rmSync(join(rootDir, name.name), { recursive: true, force: true });
+        removed++;
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const nodeModules = join(rootDir, "node_modules");
+  if (existsSync(normWin(nodeModules))) {
+    for (const pkgName of PRUNE_TOP_LEVEL_PACKAGES) {
+      const pkgDir = join(nodeModules, pkgName);
+      if (!existsSync(normWin(pkgDir))) continue;
+      try {
+        rmSync(pkgDir, { recursive: true, force: true });
+        removed++;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  return removed;
+}
+
 function optimizeTreeForPack(rootDir, platform, arch, { skipDirNames = DEFAULT_SKIP_DIR_NAMES } = {}) {
-  let changeCount = patchAllLruCacheInstancesUnderRoot(rootDir);
+  let changeCount = prunePackagingArtifacts(rootDir);
+  changeCount += patchAllLruCacheInstancesUnderRoot(rootDir);
   changeCount += cleanupUnnecessaryFiles(rootDir, skipDirNames);
 
   const nodeModules = join(rootDir, "node_modules");

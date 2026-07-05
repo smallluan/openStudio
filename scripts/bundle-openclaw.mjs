@@ -135,17 +135,27 @@ function collectTransitiveDeps() {
   return collected;
 }
 
+function resolveRealDir(dir) {
+  try {
+    return fs.realpathSync.native?.(dir) || fs.realpathSync(dir);
+  } catch {
+    return dir;
+  }
+}
+
 function copyOpenClawRoot() {
   if (fs.existsSync(normWin(OUTPUT))) {
     fs.rmSync(normWin(OUTPUT), { recursive: true, force: true });
   }
-  fs.mkdirSync(normWin(OUTPUT), { recursive: true });
 
-  fs.cpSync(normWin(OPENCLAW_SRC), normWin(OUTPUT), {
+  const src = resolveRealDir(OPENCLAW_SRC);
+  // Do not mkdir OUTPUT first — on Windows, cpSync from a pnpm junction into an
+  // empty pre-created folder throws "Cannot overwrite directory with non-directory".
+  fs.cpSync(normWin(src), normWin(OUTPUT), {
     recursive: true,
     dereference: true,
-    filter: (src) => {
-      const rel = path.relative(OPENCLAW_SRC, src);
+    filter: (srcPath) => {
+      const rel = path.relative(src, srcPath);
       if (rel === "node_modules" || rel.startsWith(`node_modules${path.sep}`)) return false;
       return true;
     },
@@ -159,11 +169,13 @@ function copyFlattenedDeps(collected) {
   for (const [realPath, pkgName] of collected) {
     if (pkgName === "openclaw") continue;
     const dest = path.join(OUTPUT_NM, pkgName);
-    fs.mkdirSync(normWin(path.dirname(dest)), { recursive: true });
+    const destParent = path.dirname(dest);
+    fs.mkdirSync(normWin(destParent), { recursive: true });
     if (fs.existsSync(normWin(dest))) {
       fs.rmSync(normWin(dest), { recursive: true, force: true });
     }
-    fs.cpSync(normWin(realPath), normWin(dest), { recursive: true, dereference: true });
+    const src = resolveRealDir(realPath);
+    fs.cpSync(normWin(src), normWin(dest), { recursive: true, dereference: true });
     copied++;
   }
 
@@ -211,6 +223,10 @@ async function main() {
     console.warn(
       `[bundle-openclaw] no ASAR dist chunks patched (${patchResult.reason ?? "openclaw version may use different dist layout"})`,
     );
+  }
+  if (!patchResult.requiredOk) {
+    console.error("[bundle-openclaw] required ASAR dist patches missing — gateway will fail in packaged builds");
+    process.exit(1);
   }
 
   const entryExists = fs.existsSync(path.join(OUTPUT, "openclaw.mjs"));

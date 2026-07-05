@@ -3,8 +3,8 @@
 import { sanitizeFollowUpRef } from "./chatLabFollowUp.js";
 import { normalizeOrchestrationPlan, normalizeOrchestrationRun } from "../studio/orchestration.js";
 
-const STORAGE_KEY = "openstudio_chat_sessions_v1";
-const MAX_SESSIONS = 50;
+const LEGACY_STORAGE_KEY = "openstudio_chat_sessions_v1";
+const PERSIST_DEBOUNCE_MS = 400;
 export const CHAT_SESSION_CHANNEL_INTERNAL = "internal";
 export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
 
@@ -127,9 +127,169 @@ function normalizeSessionChannel(raw) {
   return raw === CHAT_SESSION_CHANNEL_WECHAT ? CHAT_SESSION_CHANNEL_WECHAT : CHAT_SESSION_CHANNEL_INTERNAL;
 }
 
-/** Parsed sessions mirrored from localStorage; refreshed whenever `writeAll` runs. */
+/** Parsed sessions mirrored from storage; refreshed whenever cache commits. */
 /** @type {ChatSessionRecord[] | null} */
 let sessionsLoadCache = null;
+let diskPersistenceEnabled = false;
+/** @type {Promise<void> | null} */
+let initPromise = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let persistTimer = null;
+/** @type {ChatSessionRecord | null} */
+let pendingUpsert = null;
+/** @type {Promise<void>} */
+let flushChain = Promise.resolve();
+
+function getBridge() {
+  return typeof window !== "undefined" ? window.studioBridge : undefined;
+}
+
+/** @param {unknown} r @returns {ChatSessionRecord | null} */
+function normalizeSessionRow(r) {
+  if (!r || typeof r !== "object") return null;
+  const row = /** @type {Record<string, unknown>} */ (r);
+  if (typeof row.id !== "string" || !Array.isArray(row.messages)) return null;
+  return {
+    id: row.id,
+    title: typeof row.title === "string" ? row.title : "",
+    titleIsCustom: Boolean(row.titleIsCustom),
+    updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : 0,
+    channel: normalizeSessionChannel(row.channel),
+    channelPeerId: typeof row.channelPeerId === "string" ? row.channelPeerId.trim().slice(0, 180) : "",
+    gatewayConversationId:
+      typeof row.gatewayConversationId === "string" ? row.gatewayConversationId.trim().slice(0, 96) : "",
+    participantIds: sanitizeParticipantIds(row.participantIds),
+    threadContext: sanitizeThreadContext(row.threadContext),
+    orchestration: row.orchestration ? normalizeOrchestrationRun(row.orchestration) ?? undefined : undefined,
+    orchestrationMode: Boolean(row.orchestrationMode),
+    orchestrationFastMode: Boolean(row.orchestrationFastMode),
+    messages: sanitizeMessages(row.messages),
+  };
+}
+
+/** @returns {ChatSessionRecord[]} */
+function readLegacyLocalStorage() {
+  try {
+    const raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeSessionRow).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function clearLegacyLocalStorage() {
+  try {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function notifySessionsChanged() {
+  try {
+    window.dispatchEvent(new CustomEvent("openstudio-chat-sessions-changed"));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** @param {ChatSessionRecord[]} rows */
+function applyCacheSorted(rows) {
+  sessionsLoadCache = [...rows].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** @param {ChatSessionRecord[]} rows */
+function commitCache(rows) {
+  applyCacheSorted(rows);
+  notifySessionsChanged();
+}
+
+/** @param {ChatSessionRecord} session */
+function scheduleDiskUpsert(session) {
+  pendingUpsert = session;
+  if (persistTimer) window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(() => {
+    persistTimer = null;
+    const snap = pendingUpsert;
+    pendingUpsert = null;
+    if (!snap) return;
+    flushChain = flushChain.then(() => flushDiskUpsert(snap));
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+/** @param {ChatSessionRecord} session */
+function flushDiskUpsertNow(session) {
+  pendingUpsert = null;
+  if (persistTimer) {
+    window.clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  flushChain = flushChain.then(() => flushDiskUpsert(session));
+}
+
+/** @param {ChatSessionRecord} session */
+async function flushDiskUpsert(session) {
+  const bridge = getBridge();
+  if (!bridge?.chatSessionsUpsert) return;
+  try {
+    await bridge.chatSessionsUpsert(session);
+  } catch {
+    /* ignore disk errors */
+  }
+}
+
+/** Flush debounced chat session writes (e.g. before navigation). */
+export async function flushChatSessionsPersist() {
+  if (!diskPersistenceEnabled) return;
+  if (persistTimer) {
+    window.clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  const snap = pendingUpsert;
+  pendingUpsert = null;
+  if (snap) {
+    flushChain = flushChain.then(() => flushDiskUpsert(snap));
+  }
+  await flushChain;
+}
+
+/** Load chat sessions from JSONL (Electron) or legacy localStorage. */
+export async function initChatSessionsStore() {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    const bridge = getBridge();
+    if (bridge?.chatSessionsLoadAll && bridge?.chatSessionsUpsert) {
+      diskPersistenceEnabled = true;
+      const res = await bridge.chatSessionsLoadAll();
+      let fromDisk =
+        res?.ok && Array.isArray(res.sessions)
+          ? res.sessions.map(normalizeSessionRow).filter(Boolean)
+          : [];
+
+      const legacy = readLegacyLocalStorage();
+      if (legacy.length > 0 && fromDisk.length === 0 && bridge.chatSessionsImportLegacy) {
+        await bridge.chatSessionsImportLegacy(legacy);
+        clearLegacyLocalStorage();
+        const migrated = await bridge.chatSessionsLoadAll();
+        fromDisk =
+          migrated?.ok && Array.isArray(migrated.sessions)
+            ? migrated.sessions.map(normalizeSessionRow).filter(Boolean)
+            : legacy;
+      } else if (legacy.length > 0) {
+        clearLegacyLocalStorage();
+      }
+
+      sessionsLoadCache = fromDisk;
+    } else {
+      sessionsLoadCache = readLegacyLocalStorage();
+    }
+    notifySessionsChanged();
+  })();
+  return initPromise;
+}
 
 /** Drop parse cache (e.g. after external storage mutation). Next `loadAllSessions` reads disk again. */
 export function invalidateChatSessionsCache() {
@@ -138,38 +298,7 @@ export function invalidateChatSessionsCache() {
 
 /** @returns {ChatSessionRecord[]} */
 function parseSessionsFromStorage() {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (r) =>
-          r &&
-          typeof r === "object" &&
-          typeof r.id === "string" &&
-          Array.isArray(r.messages),
-      )
-      .map((r) => ({
-        id: r.id,
-        title: typeof r.title === "string" ? r.title : "",
-        titleIsCustom: Boolean(r.titleIsCustom),
-        updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : 0,
-        channel: normalizeSessionChannel(r.channel),
-        channelPeerId: typeof r.channelPeerId === "string" ? r.channelPeerId.trim().slice(0, 180) : "",
-        gatewayConversationId:
-          typeof r.gatewayConversationId === "string" ? r.gatewayConversationId.trim().slice(0, 96) : "",
-        participantIds: sanitizeParticipantIds(r.participantIds),
-        threadContext: sanitizeThreadContext(r.threadContext),
-        orchestration: r.orchestration ? normalizeOrchestrationRun(r.orchestration) ?? undefined : undefined,
-        orchestrationMode: Boolean(r.orchestrationMode),
-        orchestrationFastMode: Boolean(r.orchestrationFastMode),
-        messages: sanitizeMessages(r.messages),
-      }));
-  } catch {
-    return [];
-  }
+  return readLegacyLocalStorage();
 }
 
 /** @param {unknown} raw @returns {ThreadContextState | undefined} */
@@ -451,19 +580,17 @@ function sanitizeMessages(raw) {
   return out;
 }
 
-/** @param {ChatSessionRecord[]} rows */
-function writeAll(rows) {
-  const sorted = [...rows].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_SESSIONS);
-  sessionsLoadCache = sorted;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
-  } catch {
-    /* ignore quota */
+/** @param {ChatSessionRecord[]} rows @param {ChatSessionRecord} [persistSession] */
+function writeAll(rows, persistSession) {
+  commitCache(rows);
+  if (diskPersistenceEnabled) {
+    if (persistSession) scheduleDiskUpsert(persistSession);
+    return;
   }
   try {
-    window.dispatchEvent(new CustomEvent("openstudio-chat-sessions-changed"));
+    window.localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(sessionsLoadCache));
   } catch {
-    /* ignore */
+    /* ignore quota */
   }
 }
 
@@ -516,7 +643,7 @@ export function upsertSession(id, title, messages, opts = {}) {
     opts.threadContext !== undefined
       ? sanitizeThreadContext(opts.threadContext)
       : sanitizeThreadContext(prev?.threadContext);
-  all.push({
+  const sessionRecord = {
     id,
     title: resolvedTitle,
     titleIsCustom,
@@ -530,8 +657,9 @@ export function upsertSession(id, title, messages, opts = {}) {
     ...(nextOrchestrationMode ? { orchestrationMode: true } : {}),
     ...(nextOrchestrationFastMode ? { orchestrationFastMode: true } : {}),
     messages,
-  });
-  writeAll(all);
+  };
+  all.push(sessionRecord);
+  writeAll(all, sessionRecord);
 }
 
 /**
@@ -616,23 +744,54 @@ export function renameSession(id, nextTitle) {
   const t = String(nextTitle ?? "").trim().slice(0, 200);
   if (!id || !t) return;
   const all = loadAllSessions();
-  if (!all.some((s) => s.id === id)) return;
-  writeAll(
-    all.map((s) => (s.id === id ? { ...s, title: t, titleIsCustom: true, updatedAt: Date.now() } : s)),
-  );
+  const target = all.find((s) => s.id === id);
+  if (!target) return;
+  const next = all.map((s) => (s.id === id ? { ...s, title: t, titleIsCustom: true, updatedAt: Date.now() } : s));
+  const updated = next.find((s) => s.id === id);
+  if (!updated) return;
+  commitCache(next);
+  if (diskPersistenceEnabled) {
+    flushDiskUpsertNow(updated);
+    return;
+  }
+  try {
+    window.localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(sessionsLoadCache));
+  } catch {
+    /* ignore quota */
+  }
 }
 
 /** @param {string} id */
 export function deleteSession(id) {
   if (!id) return;
-  writeAll(loadAllSessions().filter((s) => s.id !== id));
+  const next = loadAllSessions().filter((s) => s.id !== id);
+  commitCache(next);
+  if (diskPersistenceEnabled) {
+    void flushChatSessionsPersist().then(() => getBridge()?.chatSessionsDelete?.(id));
+    return;
+  }
+  try {
+    window.localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(sessionsLoadCache));
+  } catch {
+    /* ignore quota */
+  }
 }
 
 /** @param {string[]} ids */
 export function deleteSessionsByIds(ids) {
   const set = new Set((ids ?? []).filter((id) => typeof id === "string" && id.length > 0));
   if (set.size === 0) return;
-  writeAll(loadAllSessions().filter((s) => !set.has(s.id)));
+  const next = loadAllSessions().filter((s) => !set.has(s.id));
+  commitCache(next);
+  if (diskPersistenceEnabled) {
+    void flushChatSessionsPersist().then(() => getBridge()?.chatSessionsDeleteMany?.([...set]));
+    return;
+  }
+  try {
+    window.localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(sessionsLoadCache));
+  } catch {
+    /* ignore quota */
+  }
 }
 
 /** @param {string} id @returns {ChatSessionRecord | null} */

@@ -24,6 +24,26 @@ fs.mkdirSync(publicDir, { recursive: true });
 const buildPng = path.join(buildDir, "app-icon.png");
 const publicPng = path.join(publicDir, "app-icon.png");
 const buildIco = path.join(buildDir, "app-icon.ico");
+const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function replaceFileWithRetry(tmp, output) {
+  let lastError;
+  for (let i = 0; i < 8; i++) {
+    try {
+      fs.rmSync(output, { force: true });
+      fs.renameSync(tmp, output);
+      return;
+    } catch (err) {
+      lastError = err;
+      await sleep(120 * (i + 1));
+    }
+  }
+  throw lastError;
+}
 
 /**
  * @param {string} input
@@ -31,19 +51,36 @@ const buildIco = path.join(buildDir, "app-icon.ico");
  * @param {number} size
  */
 async function writeSquarePng(input, output, size) {
+  const tmp = path.join(path.dirname(output), `.${path.basename(output)}.${process.pid}.${Date.now()}.tmp.png`);
   await sharp(input)
     .resize(size, size, {
       fit: "contain",
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     })
     .png()
-    .toFile(output);
+    .toFile(tmp);
+  await replaceFileWithRetry(tmp, output);
 }
 
 await writeSquarePng(source, buildPng, 512);
 await writeSquarePng(source, publicPng, 256);
 
-const icoBuffer = await pngToIco(buildPng);
+/** @type {string[]} */
+const icoPngPaths = [];
+for (const size of ICO_SIZES) {
+  const tmp = path.join(buildDir, `.app-icon-${size}.png`);
+  await writeSquarePng(source, tmp, size);
+  icoPngPaths.push(tmp);
+}
+
+const icoBuffer = await pngToIco(icoPngPaths);
 fs.writeFileSync(buildIco, icoBuffer);
+for (const tmp of icoPngPaths) {
+  try {
+    fs.unlinkSync(tmp);
+  } catch {
+    /* ignore */
+  }
+}
 
 console.log("[sync-app-icon] synced hero avatar → build/app-icon.{png,ico}, public/app-icon.png");

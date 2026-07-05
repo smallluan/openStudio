@@ -21,6 +21,7 @@ const {
 const { resolveGateway } = require("./lib/openclaw-gateway-ws.cjs");
 const { generateConversationTitle } = require("./lib/llm-chat-title.cjs");
 const { createTokenUsageStore } = require("./lib/token-usage-store.cjs");
+const { createChatSessionsStore } = require("./lib/chat-sessions-store.cjs");
 const {
   runGatewayBootstrapReadiness,
   invalidateGatewaySession,
@@ -65,6 +66,11 @@ const {
   resolveBundledOpenClawPackageMetaSync,
 } = require("./lib/openclaw-gateway-supervisor.cjs");
 const { repairWindowsOpenClawUnpackedLayout, repairWindowsBundledExtensionsFromMirror } = require("./lib/win-bundled-resources.cjs");
+const {
+  registerRendererSchemePrivileges,
+  registerRendererProtocol,
+  getProductionRendererUrl,
+} = require("./lib/renderer-protocol.cjs");
 const { OrchestrationService } = require("./lib/orchestration-service.cjs");
 const {
   resolveBundledSkillDirectorySync,
@@ -77,12 +83,27 @@ const OPEN_EXTERNALLY_SIDE_PREVIEW_EXT = new Set([".pptx", ".ppt", ".xlsx", ".xl
 
 const isDev = process.env.NODE_ENV === "development";
 
+registerRendererSchemePrivileges();
+
 /* Windows: Fluent/overlay scrollbars often ignore ::-webkit-scrollbar — disable so rail CSS applies. */
 if (process.platform === "win32") {
   app.commandLine.appendSwitch(
     "disable-features",
     ["FluentOverlayScrollbars", "WindowsFluentScrollbar", "FluentScrollbars"].join(","),
   );
+  // CSSBackdropFilter + UseSkiaRenderer = 稳定高斯模糊所需的组合
+  // CanvasOopRasterization 确保合成层正确光栅化
+  app.commandLine.appendSwitch(
+    "enable-features",
+    "CSSBackdropFilter,UseSkiaRenderer,CanvasOopRasterization",
+  );
+  if (!isDev) {
+    app.commandLine.appendSwitch("ignore-gpu-blocklist");
+    app.commandLine.appendSwitch("enable-accelerated-2d-canvas");
+    app.commandLine.appendSwitch("enable-gpu-rasterization");
+    // 注意: enable-zero-copy 在 Windows 上与 Intel/AMD GPU 驱动存在兼容性问题,
+    // 会导致 backdrop-filter / 高斯模糊渲染失效, 因此移除此 flag。
+  }
 }
 
 const CHAT_STREAM_CHAN = "studio:chatStream";
@@ -269,6 +290,8 @@ function buildStreamUsageContext(payload, modelMeta) {
 let userConfigStore = null;
 /** @type {ReturnType<typeof createTokenUsageStore> | null} */
 let tokenUsageStore = null;
+/** @type {ReturnType<typeof createChatSessionsStore> | null} */
+let chatSessionsStore = null;
 
 /** @type {Map<string, AbortController>} */
 const chatStreamAbortControllers = new Map();
@@ -606,7 +629,7 @@ function createWindow() {
     win.loadURL("http://127.0.0.1:5173");
     win.webContents.openDevTools({ mode: "detach" });
   } else {
-    win.loadFile(path.join(__dirname, "dist", "index.html"));
+    win.loadURL(getProductionRendererUrl());
   }
 
   win.on("close", (event) => {
@@ -727,6 +750,15 @@ app.whenReady().then(async () => {
   initStudioLogger(app, { isDev });
   attachProcessDiagnostics();
 
+  if (!isDev) {
+    try {
+      registerRendererProtocol(__dirname);
+      getStudioLog().info("[startup] renderer protocol registered", { url: getProductionRendererUrl() });
+    } catch (e) {
+      getStudioLog().error("[startup] renderer protocol failed:", /** @type {any} */ (e)?.message ?? e);
+    }
+  }
+
   if (process.platform === "win32") {
     app.setAppUserModelId("dev.openstudio.app");
   }
@@ -744,6 +776,7 @@ app.whenReady().then(async () => {
 
   userConfigStore = createConfigStore(app.getPath("userData"));
   tokenUsageStore = createTokenUsageStore(app.getPath("userData"));
+  chatSessionsStore = createChatSessionsStore(app.getPath("userData"));
   runOpenClawAgentSyncFromStudio("startup");
 
   /** @type {import("./lib/orchestration-service.cjs").OrchestrationService} */
@@ -1728,6 +1761,53 @@ app.whenReady().then(async () => {
     if (!tokenUsageStore) return { ok: false, error: "store_unavailable" };
     tokenUsageStore.resetAll();
     return { ok: true };
+  });
+
+  ipcMain.handle("studio:chatSessionsLoadAll", () => {
+    if (!chatSessionsStore) return { ok: false, error: "store_unavailable", sessions: [] };
+    try {
+      return { ok: true, sessions: chatSessionsStore.loadAll() };
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e), sessions: [] };
+    }
+  });
+
+  ipcMain.handle("studio:chatSessionsUpsert", (_event, session) => {
+    if (!chatSessionsStore) return { ok: false, error: "store_unavailable" };
+    try {
+      return chatSessionsStore.upsert(session && typeof session === "object" ? session : {});
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:chatSessionsDelete", (_event, id) => {
+    if (!chatSessionsStore) return { ok: false, error: "store_unavailable" };
+    try {
+      return chatSessionsStore.deleteOne(typeof id === "string" ? id : "");
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:chatSessionsDeleteMany", (_event, ids) => {
+    if (!chatSessionsStore) return { ok: false, error: "store_unavailable" };
+    try {
+      const list = Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : [];
+      return chatSessionsStore.deleteMany(list);
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:chatSessionsImportLegacy", (_event, sessions) => {
+    if (!chatSessionsStore) return { ok: false, error: "store_unavailable" };
+    try {
+      const list = Array.isArray(sessions) ? sessions : [];
+      return chatSessionsStore.importLegacy(list);
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
   });
 
   ipcMain.handle("studio:generateChatTitle", async (_event, payload) => {

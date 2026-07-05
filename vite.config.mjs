@@ -124,6 +124,28 @@ function stripIndexCrossorigin() {
   };
 }
 
+/**
+ * Tailwind v4 / Lightning CSS can emit only `-webkit-backdrop-filter` in production.
+ * Modern Chromium/Electron ignores the prefixed property, so blur appears fully broken.
+ */
+function restoreBackdropFilterUnprefixed() {
+  return {
+    name: "open-studio-restore-backdrop-filter",
+    apply: "build",
+    enforce: "post",
+    generateBundle(_options, bundle) {
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type !== "asset" || !chunk.fileName.endsWith(".css")) continue;
+        const css = typeof chunk.source === "string" ? chunk.source : Buffer.from(chunk.source).toString("utf8");
+        chunk.source = css.replace(
+          /-webkit-backdrop-filter\s*:\s*([^;{}]+)(?=\s*[;}])/g,
+          "backdrop-filter:$1;-webkit-backdrop-filter:$1",
+        );
+      }
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     openclawBundledSkillsFallback(),
@@ -132,6 +154,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     stripIndexCrossorigin(),
+    restoreBackdropFilterUnprefixed(),
   ],
   base: "./",
   build: {

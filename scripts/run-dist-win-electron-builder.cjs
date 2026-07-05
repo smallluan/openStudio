@@ -204,7 +204,11 @@ if (cachedElectronDist && fs.existsSync(cachedElectronDist)) {
 const eb = spawnSync(process.execPath, ebArgs, {
   cwd: root,
   stdio: "inherit",
-  env: process.env,
+  env: {
+    ...process.env,
+    // Avoid auto-discovered certs + winCodeSign extraction (symlink privilege errors on Windows).
+    CSC_IDENTITY_AUTO_DISCOVERY: "false",
+  },
 });
 
 if (eb.status !== 0) {

@@ -16,15 +16,13 @@ const REQUIRED_TOP_LEVEL = ["brace-expansion", "balanced-match", "concat-map"];
 module.exports = async function beforePack(context) {
   const root = context.packager.projectDir;
   const appIconIco = path.join(root, "build", "app-icon.ico");
-  if (!fs.existsSync(appIconIco)) {
-    console.log("[before-pack] app icon missing, running sync-app-icon...");
-    const sync = spawnSync(process.execPath, [path.join(root, "scripts", "sync-app-icon.mjs")], {
-      cwd: root,
-      stdio: "inherit",
-    });
-    if (sync.status !== 0) {
-      throw new Error("[beforePack] sync-app-icon failed — cannot package without build/app-icon.ico");
-    }
+  console.log("[before-pack] syncing app icon...");
+  const sync = spawnSync(process.execPath, [path.join(root, "scripts", "sync-app-icon.mjs")], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  if (sync.status !== 0 || !fs.existsSync(appIconIco)) {
+    throw new Error("[beforePack] sync-app-icon failed - cannot package without build/app-icon.ico");
   }
 
   const missing = REQUIRED_TOP_LEVEL.filter(

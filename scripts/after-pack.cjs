@@ -17,6 +17,7 @@ const { join } = require("path");
 const asar = require("@electron/asar");
 
 const { applyWindowsPackLayout } = require("./win-pack-layout.cjs");
+const { embedWinExeIcon } = require("./embed-win-exe-icon.cjs");
 
 const { normWin, rmWithRetry, replaceFileWithRetry, sleepSync } = require("./win-fs-retry.cjs");
 
@@ -254,7 +255,12 @@ module.exports = async function afterPack(context) {
 
   await optimizeAppAsar(resourcesDir, platform, arch);
 
-
+  if (platform === "win32") {
+    const exeName = `${context.packager.appInfo.productFilename}.exe`;
+    const exePath = join(appOutDir, exeName);
+    const icoPath = join(__dirname, "..", "build", "app-icon.ico");
+    embedWinExeIcon(exePath, icoPath);
+  }
 
   for (const unpackedDir of ["app.asar.unpacked", "openclaw.asar.unpacked"]) {
 
