@@ -105,4 +105,5 @@ contextBridge.exposeInMainWorld("studioBridge", {
     ipcRenderer.on(PREVIEW_URL_CHAN, wrapped);
     return () => ipcRenderer.removeListener(PREVIEW_URL_CHAN, wrapped);
   },
+  showSystemNotification: (payload) => ipcRenderer.invoke("studio:showSystemNotification", payload),
 });

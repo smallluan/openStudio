@@ -1753,6 +1753,18 @@ function ChatLabPageMain() {
           }
           setMessages(mapped);
         }
+        // Trigger system notification for wechat channel replies too
+        if (d.kind === "done") {
+          try {
+            if (bridge?.showSystemNotification && typeof document !== "undefined" && !document.hasFocus()) {
+              const title = sessionRec?.title?.trim() || "Open Studio";
+              const body = String(d.content ?? "").trim().slice(0, 100) || "Reply completed";
+              void bridge.showSystemNotification({ title, body });
+            }
+          } catch {
+            // Notification failure should not block the stream
+          }
+        }
         return;
       }
 
@@ -1826,6 +1838,20 @@ function ChatLabPageMain() {
             }
           }
           delegateAfterAgentReplyRef.current?.(d.assistantMessageId, merged);
+          // Trigger system notification when reply completes (if window is not focused)
+          try {
+            if (bridge?.showSystemNotification && typeof document !== "undefined" && !document.hasFocus()) {
+              const assistantMsg = merged.find((m) => m.id === d.assistantMessageId);
+              const replyPreview = String(assistantMsg?.content ?? "").trim().slice(0, 100);
+              const title = sessionRec?.title?.trim() || "Open Studio";
+              void bridge.showSystemNotification({
+                title,
+                body: replyPreview || "Reply completed",
+              });
+            }
+          } catch {
+            // Notification failure should not block the stream
+          }
         }
       }
     };

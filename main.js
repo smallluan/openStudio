@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, dialog, Notification } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { fileURLToPath } = require("url");
@@ -992,6 +992,26 @@ app.whenReady().then(async () => {
       return { ok: false, path: logsDir, message: String(errMsg) };
     }
     return { ok: true, path: logsDir };
+  });
+
+  ipcMain.handle("studio:showSystemNotification", async (_event, payload) => {
+    try {
+      const title = String(payload?.title ?? "Open Studio").trim() || "Open Studio";
+      const body = String(payload?.body ?? "").trim();
+      if (!body) {
+        return { ok: false, error: "empty_body" };
+      }
+      const notification = new Notification({
+        title,
+        body,
+        silent: payload?.silent === true,
+      });
+      notification.show();
+      return { ok: true };
+    } catch (e) {
+      getStudioLog().error("[notification] Failed to show notification:", e);
+      return { ok: false, error: String(e?.message ?? e) };
+    }
   });
 
   ipcMain.handle("studio:getSkillEnvironment", async () => {

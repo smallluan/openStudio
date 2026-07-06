@@ -166,6 +166,20 @@ export function useOrchestrationRunner(deps) {
         runningRef.current = false;
         activeConversationRef.current = null;
         syncRunnerActivity();
+
+        // 发送系统通知（仅在窗口不在前台时）
+        if (typeof document !== "undefined" && !document.hasFocus()) {
+          try {
+            window.studioBridge?.showSystemNotification?.({
+              title: "Open Studio",
+              body: "任务回复已完成",
+              silent: false,
+            });
+          } catch (e) {
+            // 忽略通知错误
+          }
+        }
+
         return;
       }
 
@@ -212,6 +226,20 @@ export function useOrchestrationRunner(deps) {
           deps.resetGatewayStream(streamId);
         }
         deps.activeStreamIdsRef.current.delete(streamId);
+
+        // 发送系统通知（仅在窗口不在前台时）
+        if (typeof document !== "undefined" && !document.hasFocus()) {
+          try {
+            window.studioBridge?.showSystemNotification?.({
+              title: "Open Studio",
+              body: "消息回复已完成",
+              silent: false,
+            });
+          } catch (e) {
+            // 忽略通知错误
+          }
+        }
+
         return;
       }
 
