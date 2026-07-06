@@ -3526,6 +3526,14 @@ html[data-os-motion="reduced"] .chat-lab__context-trigger {
   transition: width 0.5s ease-out;
 }
 
+.chat-lab__gate-progress-step {
+  margin: 0.72rem 0 0;
+  text-align: center;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  color: var(--os-text-muted);
+}
+
 @keyframes hero-title-entrance {
   0% {
     opacity: 0;
@@ -7303,6 +7311,18 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   background: color-mix(in srgb, #2e9c55 12%, transparent);
 }
 
+.chat-lab__msg-action-btn--toggle {
+  width: auto;
+  gap: 0.24rem;
+  padding: 0 0.46rem;
+  font-size: 0.68rem;
+  line-height: 1.1;
+}
+
+.chat-lab__msg-action-text {
+  white-space: nowrap;
+}
+
 .chat-lab__user-text {
   font-size: 0.905rem;
   line-height: 1.52;
@@ -7511,6 +7531,12 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
 
 .chat-lab__timeline-block--gap-chain .chat-lab__tool-chain {
   margin-bottom: 0;
+}
+
+.chat-lab__timeline-collapsed-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .chat-lab__timeline-block--pending {

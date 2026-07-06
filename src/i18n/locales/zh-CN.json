@@ -469,6 +469,9 @@
     "artifactsSelectFile": "从左侧选择文件以预览",
     "messageCopy": "复制本条",
     "messageCopied": "已复制",
+    "timelineExpand": "展开过程",
+    "timelineCollapse": "收起过程",
+    "timelineCollapsedSummary": "已收起上方 {{count}} 段过程",
     "messageEdit": "编辑并重发",
     "userMessageExpand": "展开消息",
     "userMessageCollapse": "收起",
@@ -575,7 +578,13 @@
     "retry": "重试",
     "openSettings": "打开设置",
     "skipEnter": "跳过",
-    "unknownError": "启动失败"
+    "unknownError": "启动失败",
+    "stepStarting": "正在初始化启动环境…",
+    "stepSyncConfig": "正在同步配置…",
+    "stepConnectingGateway": "正在连接网关…",
+    "stepPreparingTools": "正在准备会话与工具…",
+    "stepReady": "网关已就绪，正在进入对话…",
+    "stepRetrying": "网关暂不可用，正在自动重试…"
   },
   "studio": {
     "chat": {

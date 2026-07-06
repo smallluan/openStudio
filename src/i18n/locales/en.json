@@ -469,6 +469,9 @@
     "artifactsSelectFile": "Select a file on the left to preview",
     "messageCopy": "Copy message",
     "messageCopied": "Copied",
+    "timelineExpand": "Expand trace",
+    "timelineCollapse": "Collapse trace",
+    "timelineCollapsedSummary": "{{count}} earlier timeline block(s) hidden",
     "messageEdit": "Edit message",
     "userMessageExpand": "Expand message",
     "userMessageCollapse": "Collapse",
@@ -574,7 +577,13 @@
     "retry": "Retry",
     "openSettings": "Open settings",
     "skipEnter": "Skip",
-    "unknownError": "Startup failed"
+    "unknownError": "Startup failed",
+    "stepStarting": "Initializing startup environment…",
+    "stepSyncConfig": "Syncing configuration…",
+    "stepConnectingGateway": "Connecting to gateway…",
+    "stepPreparingTools": "Preparing session and tools…",
+    "stepReady": "Gateway is ready, entering chat…",
+    "stepRetrying": "Gateway is unavailable, retrying…"
   },
   "studio": {
     "chat": {

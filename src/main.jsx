@@ -14,8 +14,12 @@ import "./index.css";
 
 applyUiMotionMode();
 
-async function bootstrap() {
-  await initChatSessionsStore();
+function bootstrap() {
+  /**
+   * Do not block first paint on chat-session disk hydrate.
+   * Slow startup I/O previously delayed React mount and caused a blank splash.
+   */
+  void initChatSessionsStore().catch(() => {});
   createRoot(document.getElementById("root")).render(
     <StrictMode>
       <HashRouter>

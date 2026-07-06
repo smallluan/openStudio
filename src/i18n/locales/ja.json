@@ -463,6 +463,9 @@
     "artifactsSelectFile": "左からファイルを選んでプレビュー",
     "messageCopy": "メッセージをコピー",
     "messageCopied": "コピーしました",
+    "timelineExpand": "過程を展開",
+    "timelineCollapse": "過程を折りたたむ",
+    "timelineCollapsedSummary": "上部の {{count}} 件の過程を折りたたみました",
     "messageEdit": "編集して再生成",
     "userMessageExpand": "メッセージを展開",
     "userMessageCollapse": "折りたたむ",
@@ -561,7 +564,13 @@
     "retry": "再試行",
     "openSettings": "設定を開く",
     "skipEnter": "スキップ",
-    "unknownError": "起動に失敗しました"
+    "unknownError": "起動に失敗しました",
+    "stepStarting": "起動環境を初期化しています…",
+    "stepSyncConfig": "設定を同期しています…",
+    "stepConnectingGateway": "ゲートウェイに接続しています…",
+    "stepPreparingTools": "セッションとツールを準備しています…",
+    "stepReady": "ゲートウェイの準備ができました。チャットを開きます…",
+    "stepRetrying": "ゲートウェイに接続できません。再試行しています…"
   },
   "studio": {
     "chat": {

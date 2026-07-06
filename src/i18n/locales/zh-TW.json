@@ -463,6 +463,9 @@
     "artifactsSelectFile": "從左側選擇檔案以預覽",
     "messageCopy": "複製此則",
     "messageCopied": "已複製",
+    "timelineExpand": "展開過程",
+    "timelineCollapse": "收起過程",
+    "timelineCollapsedSummary": "已收起上方 {{count}} 段過程",
     "messageEdit": "編輯並重新送出",
     "userMessageExpand": "展開訊息",
     "userMessageCollapse": "收起",
@@ -562,7 +565,13 @@
     "retry": "重試",
     "openSettings": "開啟設定",
     "skipEnter": "跳過",
-    "unknownError": "啟動失敗"
+    "unknownError": "啟動失敗",
+    "stepStarting": "正在初始化啟動環境…",
+    "stepSyncConfig": "正在同步設定…",
+    "stepConnectingGateway": "正在連線至閘道…",
+    "stepPreparingTools": "正在準備工作階段與工具…",
+    "stepReady": "閘道已就緒，正在進入對話…",
+    "stepRetrying": "閘道暫時不可用，正在自動重試…"
   },
   "studio": {
     "chat": {

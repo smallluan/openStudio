@@ -53,6 +53,7 @@ export default function StartupBootstrapGate({ children }) {
   const gateContext = useMemo(
     () => ({
       shellPhase: isElectron ? shellPhase : "ready",
+      bootPhase,
       landingRevealReady: !isElectron || shellPhase === "ready",
       playHeroTitleEntrance: !isElectron,
       progressFrac,
@@ -60,7 +61,7 @@ export default function StartupBootstrapGate({ children }) {
       gatePortalEl:
         isElectron && (shellPhase === "loading" || shellPhase === "exiting") ? gatePortalEl : null,
     }),
-    [isElectron, shellPhase, progressFrac, progressExiting, overlayActive, gatePortalEl],
+    [isElectron, shellPhase, bootPhase, progressFrac, progressExiting, overlayActive, gatePortalEl],
   );
 
   const beginExitTransition = (startedAt) => {
@@ -128,6 +129,8 @@ export default function StartupBootstrapGate({ children }) {
         if (!result?.ok) {
           const failureMsg = result?.message ? String(result.message) : "bootstrap failed";
           bridge.logRendererMessage?.({ level: "error", message: `bootstrap_gate: ${failureMsg}` });
+          bootPhaseRef.current = "gateway_retrying";
+          setBootPhase("gateway_retrying");
           const retryMs = /gateway_unreachable|ECONNREFUSED/i.test(failureMsg)
             ? BOOT_RETRY_FAST_MS
             : BOOT_RETRY_MS;
@@ -144,6 +147,8 @@ export default function StartupBootstrapGate({ children }) {
             level: "warn",
             message: "bootstrap_gate: timed out waiting for gateway_ready",
           });
+          bootPhaseRef.current = "gateway_retrying";
+          setBootPhase("gateway_retrying");
           retryTimer = window.setTimeout(() => {
             if (!cancelled) setBootPass((n) => n + 1);
           }, BOOT_RETRY_MS);
@@ -155,6 +160,8 @@ export default function StartupBootstrapGate({ children }) {
         if (!cancelled) {
           const msg = String(e?.message ?? e);
           bridge.logRendererMessage?.({ level: "error", message: `bootstrap_gate_throw: ${msg}` });
+          bootPhaseRef.current = "gateway_retrying";
+          setBootPhase("gateway_retrying");
           retryTimer = window.setTimeout(() => {
             if (!cancelled) setBootPass((n) => n + 1);
           }, BOOT_RETRY_MS);

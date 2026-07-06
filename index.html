@@ -43,9 +43,89 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/app-icon.png" />
     <title>Open Studio</title>
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family:
+          Inter,
+          "Segoe UI",
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+        background: #eef1f6;
+        color: #1f2937;
+      }
+      .boot-shell {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      .boot-card {
+        width: min(460px, calc(100vw - 48px));
+        text-align: center;
+      }
+      .boot-title {
+        margin: 0 0 10px;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+      .boot-sub {
+        margin: 0 0 18px;
+        font-size: 13px;
+        color: #6b7280;
+      }
+      .boot-track {
+        position: relative;
+        height: 6px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(31, 41, 55, 0.12);
+      }
+      .boot-fill {
+        width: 36%;
+        height: 100%;
+        border-radius: 999px;
+        background: #111827;
+        animation: boot-indeterminate 1.4s ease-in-out infinite;
+        transform-origin: left center;
+      }
+      @keyframes boot-indeterminate {
+        0% {
+          transform: translateX(-95%) scaleX(0.7);
+          opacity: 0.55;
+        }
+        55% {
+          transform: translateX(95%) scaleX(1.05);
+          opacity: 0.95;
+        }
+        100% {
+          transform: translateX(265%) scaleX(0.75);
+          opacity: 0.55;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-shell" role="status" aria-live="polite" aria-busy="true">
+        <div class="boot-card">
+          <h1 class="boot-title">Open Studio</h1>
+          <p class="boot-sub">Starting application services...</p>
+          <div class="boot-track" aria-hidden="true">
+            <div class="boot-fill"></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

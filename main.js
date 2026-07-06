@@ -762,14 +762,6 @@ app.whenReady().then(async () => {
   if (process.platform === "win32") {
     app.setAppUserModelId("dev.openstudio.app");
   }
-  try {
-    const py = enableBundledPythonRuntime({ app, log: getStudioLog() });
-    if (!py.ok) {
-      getStudioLog().warn("[startup] bundled python init failed", py);
-    }
-  } catch (e) {
-    getStudioLog().warn("[startup] bundled python init threw", String(e?.message ?? e));
-  }
   attachGatewayQuitHandlers(app);
 
   Menu.setApplicationMenu(null);
@@ -777,7 +769,27 @@ app.whenReady().then(async () => {
   userConfigStore = createConfigStore(app.getPath("userData"));
   tokenUsageStore = createTokenUsageStore(app.getPath("userData"));
   chatSessionsStore = createChatSessionsStore(app.getPath("userData"));
-  runOpenClawAgentSyncFromStudio("startup");
+  createWindow();
+  createTray();
+
+  // Keep first paint fast: heavyweight startup sync runs in background.
+  setTimeout(() => {
+    try {
+      runOpenClawAgentSyncFromStudio("startup");
+    } catch (e) {
+      getStudioLog().warn("[startup] openclaw sync threw", String(e?.message ?? e));
+    }
+  }, 0);
+  setTimeout(() => {
+    try {
+      const py = enableBundledPythonRuntime({ app, log: getStudioLog() });
+      if (!py.ok) {
+        getStudioLog().warn("[startup] bundled python init failed", py);
+      }
+    } catch (e) {
+      getStudioLog().warn("[startup] bundled python init threw", String(e?.message ?? e));
+    }
+  }, 0);
 
   /** @type {import("./lib/orchestration-service.cjs").OrchestrationService} */
   const orchestrationService = new OrchestrationService({
@@ -805,14 +817,19 @@ app.whenReady().then(async () => {
           getStudioLog().info("[startup] restored bundled extension files from mirror", { restored });
         }
       }
-      getStudioLog().info("[startup] supervised gateway begin");
-      const sup = await ensureLocalGatewayRunning(() => userConfigStore.readRaw(), {
+      getStudioLog().info("[startup] supervised gateway begin (background)");
+      void ensureLocalGatewayRunning(() => userConfigStore.readRaw(), {
         log: getStudioLog(),
         probeOpenClawGateway,
-      });
-      getStudioLog().info("[startup] supervised gateway:", sup);
+      })
+        .then((sup) => {
+          getStudioLog().info("[startup] supervised gateway:", sup);
+        })
+        .catch((e) => {
+          getStudioLog().error("[startup] supervised gateway threw:", /** @type {any} */ (e)?.message ?? e);
+        });
     } catch (e) {
-      getStudioLog().error("[startup] supervised gateway threw:", /** @type {any} */ (e)?.message ?? e);
+      getStudioLog().error("[startup] supervised gateway init threw:", /** @type {any} */ (e)?.message ?? e);
     }
   }
 
@@ -1867,9 +1884,6 @@ app.whenReady().then(async () => {
   ipcMain.handle("shell:isWindowMaximized", (event) => {
     return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
   });
-
-  createWindow();
-  createTray();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

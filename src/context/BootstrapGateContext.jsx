@@ -2,6 +2,7 @@ import { createContext, useContext } from "react";
 
 const BootstrapGateContext = createContext({
   shellPhase: "ready",
+  bootPhase: "idle",
   landingRevealReady: true,
   playHeroTitleEntrance: true,
   progressFrac: 0.15,

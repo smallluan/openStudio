@@ -2909,18 +2909,46 @@ function ChatLabPageMain() {
   );
 
   const isLanding = !messages.some((m) => m.messageKind !== "group_member_event");
-  const { landingRevealReady, playHeroTitleEntrance, shellPhase, progressFrac, progressExiting, gatePortalEl } =
+  const {
+    landingRevealReady,
+    playHeroTitleEntrance,
+    shellPhase,
+    bootPhase,
+    progressFrac,
+    progressExiting,
+    gatePortalEl,
+  } =
     useBootstrapGate();
   const portalHeroRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const landingHeroRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   useBootstrapHeroRelease(portalHeroRef, landingHeroRef, shellPhase);
 
-  const gatePending = isLanding && shellPhase !== "ready";
+  const gatePending = shellPhase !== "ready";
   const showPortalChrome = gatePending && (shellPhase === "loading" || shellPhase === "exiting");
-  const hideLandingHero = gatePending && (shellPhase === "loading" || shellPhase === "exiting");
+  const hideLandingHero = isLanding && gatePending && (shellPhase === "loading" || shellPhase === "exiting");
   const gatePortalTarget =
     gatePortalEl ??
     (typeof document !== "undefined" ? document.querySelector(".bootstrap-gate-chrome") : null);
+  const gateStepLabel = useMemo(() => {
+    switch (bootPhase) {
+      case "config_synced":
+        return t("bootstrap.stepSyncConfig");
+      case "gateway_connect":
+        return t("bootstrap.stepConnectingGateway");
+      case "tools_catalog":
+      case "session_ensure":
+      case "tools_effective":
+        return t("bootstrap.stepPreparingTools");
+      case "gateway_ready":
+      case "skipped_no_gateway":
+      case "complete":
+        return t("bootstrap.stepReady");
+      case "gateway_retrying":
+        return t("bootstrap.stepRetrying");
+      default:
+        return t("bootstrap.stepStarting");
+    }
+  }, [bootPhase, t]);
 
   const orchestrationAwaitingPlan =
     orchestrationMode && orchestrationRun?.status === "awaiting_approval";
@@ -3476,7 +3504,7 @@ function ChatLabPageMain() {
   );
 
   return (
-    <ChatLabWorkspaceProvider conversationId={conversationId} isEmptySession={isLanding}>
+    <ChatLabWorkspaceProvider key={conversationId} conversationId={conversationId} isEmptySession={isLanding}>
     <ChatLabPreviewProvider>
       <ImageViewProvider>
       <ChatLabWorkspaceActiveRootBridge activeRootRef={activeRootRef} />
@@ -3511,35 +3539,6 @@ function ChatLabPageMain() {
                   onParticipantsChange={handleParticipantsChange}
                   participantsDisabled={composerInputLocked || gatewayStreaming}
                 />
-                {showPortalChrome && gatePortalTarget
-                  ? createPortal(
-                      <div className="bootstrap-gate-chrome__stack">
-                        <ChatLabHero
-                          ref={portalHeroRef}
-                          className={cn(
-                            shellPhase === "loading" && "chat-lab__hero--gate-splash",
-                            shellPhase === "exiting" && "chat-lab__hero--gate-releasing",
-                          )}
-                          suppressTitleEntrance={!playHeroTitleEntrance}
-                        />
-                        <div
-                          className={cn(
-                            "chat-lab__gate-progress",
-                            progressExiting && "chat-lab__gate-progress--exit",
-                          )}
-                          aria-hidden={shellPhase === "exiting" ? true : undefined}
-                        >
-                          <div className="chat-lab__gate-progress-track">
-                            <div
-                              className="chat-lab__gate-progress-fill"
-                              style={{ width: `${Math.round(progressFrac * 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>,
-                      gatePortalTarget,
-                    )
-                  : null}
                 <div className="chat-lab__landing-mid">
                   <ChatLabHero
                     ref={landingHeroRef}
@@ -3610,6 +3609,36 @@ function ChatLabPageMain() {
                 />
               </div>
             )}
+            {showPortalChrome && gatePortalTarget
+              ? createPortal(
+                  <div className="bootstrap-gate-chrome__stack">
+                    <ChatLabHero
+                      ref={portalHeroRef}
+                      className={cn(
+                        shellPhase === "loading" && "chat-lab__hero--gate-splash",
+                        shellPhase === "exiting" && "chat-lab__hero--gate-releasing",
+                      )}
+                      suppressTitleEntrance={!playHeroTitleEntrance}
+                    />
+                    <div
+                      className={cn(
+                        "chat-lab__gate-progress",
+                        progressExiting && "chat-lab__gate-progress--exit",
+                      )}
+                      aria-hidden={shellPhase === "exiting" ? true : undefined}
+                    >
+                      <div className="chat-lab__gate-progress-track">
+                        <div
+                          className="chat-lab__gate-progress-fill"
+                          style={{ width: `${Math.round(progressFrac * 100)}%` }}
+                        />
+                      </div>
+                      <p className="chat-lab__gate-progress-step">{gateStepLabel}</p>
+                    </div>
+                  </div>,
+                  gatePortalTarget,
+                )
+              : null}
             <ChatLabComposerSlot
               className={gatePending ? "chat-lab__composer-slot--gate-pending" : undefined}
             >
@@ -3960,25 +3989,27 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
     return coalesceImageOnlyTextParts(out);
   }, [timeline]);
 
+  const visibleParts = renderParts;
+
   const lastGapPartIdx = useMemo(() => {
     let last = -1;
-    renderParts.forEach((p, idx) => {
+    visibleParts.forEach((p, idx) => {
       if (p.kind === "toolActivityGap") last = idx;
     });
     return last;
-  }, [renderParts]);
+  }, [visibleParts]);
 
   const lastThinkingPartIdx = useMemo(() => {
     let last = -1;
-    renderParts.forEach((p, idx) => {
+    visibleParts.forEach((p, idx) => {
       if (p.kind === "thinking") last = idx;
     });
     return last;
-  }, [renderParts]);
+  }, [visibleParts]);
 
   return (
     <div className="chat-lab__assistant-timeline">
-      {renderParts.map((p, ri) => {
+      {visibleParts.map((p, ri) => {
         if (p.kind === "text") {
           if (!String(p.body ?? "").trim()) return null;
           if (plainText) {
@@ -5487,7 +5518,6 @@ const MessageBubble = memo(function MessageBubble({
   }, [copyPlain]);
 
   const disableUserEdit = streamLocked;
-
   const startComposerEdit = useCallback(() => {
     onBeginUserEdit(message.id, {
       content: String(message.content ?? ""),
