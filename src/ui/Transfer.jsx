@@ -203,7 +203,7 @@ export default function Transfer({
             />
           </label>
         ) : null}
-        <ul className="os-transfer__list" role="listbox" aria-multiselectable="true">
+        <ul className="os-transfer__list" role="listbox" aria-multiselectable="true" style={{ maxHeight: '360px', overflowY: 'auto' }}>
           {sourceItems.length ? (
             sourceItems.map((item) => {
               const checked = sourceSelected.has(item.key);
@@ -308,7 +308,7 @@ export default function Transfer({
             className="chat-lab__orch-check os-transfer__panel-check"
           />
         </div>
-        <ul className="os-transfer__list" role="listbox" aria-multiselectable="true">
+        <ul className="os-transfer__list" role="listbox" aria-multiselectable="true" style={{ maxHeight: '360px', overflowY: 'auto' }}>
           {targetItems.length ? (
             targetItems.map((item) => {
               const checked = targetSelected.has(item.key);

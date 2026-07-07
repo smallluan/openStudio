@@ -15,6 +15,7 @@ import ModalCloseButton from "../ui/ModalCloseButton.jsx";
 import Avatar from "../ui/Avatar.jsx";
 import TextField from "../ui/TextField.jsx";
 import Select from "../ui/Select.jsx";
+import TransferDialog from "../ui/TransferDialog.jsx";
 import { cn } from "../ui/cn.js";
 
 /** @param {{ className?: string; children: React.ReactNode }} props */
@@ -104,6 +105,10 @@ export default function LobsterManagementPage() {
   const [detailAgentId, setDetailAgentId] = useState(/** @type {string | null} */ (null));
   const [deleteTargetId, setDeleteTargetId] = useState(/** @type {string | null} */ (null));
   const [skillQuery, setSkillQuery] = useState("");
+  const [skillDialogOpen, setSkillDialogOpen] = useState(false);
+  const [editSidebarField, setEditSidebarField] = useState(/** @type {"identity" | "description" | "soul" | null} */ (null));
+  const [createSkillDialogOpen, setCreateSkillDialogOpen] = useState(false);
+  const [createSidebarField, setCreateSidebarField] = useState(/** @type {"identity" | "description" | "soul" | null} */ (null));
   const [provisionNote, setProvisionNote] = useState(/** @type {string | null} */ (null));
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
@@ -408,50 +413,64 @@ export default function LobsterManagementPage() {
 
       {detailAgent ? (
         <Modal onClose={closeDetail} labelledBy={detailTitleId}>
-          <div className="flex w-full min-w-[min(100vw-2rem,560px)] max-h-[min(90vh,720px)] flex-col bg-[var(--os-bg-modal)]">
+          <div className={cn("flex w-full max-h-[min(90vh,720px)] flex-col bg-[var(--os-bg-modal)]", editSidebarField ? "min-w-[min(100vw-2rem,760px)]" : "min-w-[min(100vw-2rem,440px)]")}>
             <div className="flex shrink-0 items-center justify-between border-b border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
               <h2 id={detailTitleId} className="text-base font-semibold">
                 {t("lobsterPage.editModal.title", { name: agentDisplayLabel(detailAgent) })}
               </h2>
               <ModalCloseButton onClick={closeDetail} />
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-5 py-4">
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("lobsterPage.fieldName")}
-                <TextField
-                  value={detailAgent.name}
-                  onChange={(e) => patchAgentMeta(detailAgent.id, { name: e.target.value })}
-                />
-              </label>
+            <div className="flex min-h-0 flex-1">
+              <div className={cn("flex min-h-0 flex-1 flex-col gap-5 overflow-auto px-5 py-4", editSidebarField && "border-r border-[color-mix(in_srgb,var(--os-border)_50%,transparent)]")}>
+                {/* Content container - narrow and centered */}
+                <div className="max-w-md mx-auto w-full flex flex-col gap-5">
+                {/* Avatar on top - centered */}
+                <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)] items-center">
+                  <Avatar
+                    src={agentAvatarGlyph(detailAgent)}
+                    name={agentDisplayLabel(detailAgent)}
+                    size="2xl"
+                    shape="rounded"
+                    editable={true}
+                    onUpload={handleAvatarUpload}
+                    onDelete={detailAgent.avatar ? handleAvatarClear : undefined}
+                  />
+                  <div className="relative mt-2 flex items-center justify-center">
+                    <input
+                      type="text"
+                      value={detailAgent.name}
+                      onChange={(e) => patchAgentMeta(detailAgent.id, { name: e.target.value })}
+                      className="text-center text-[0.9rem] font-semibold text-[var(--os-text)] bg-transparent border-0 border-b border-transparent focus-visible:border-b-[var(--os-accent)] focus-visible:outline-none hover:border-b-[var(--os-border)] transition-colors"
+                      placeholder="输入名称"
+                    />
+                    <button
+                      type="button"
+                      className="absolute -right-6 rounded p-0.5 text-[var(--os-text-muted)] transition hover:text-[var(--os-accent)]"
+                      title="编辑名称"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                        <path d="m15 5 4 4"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
 
-              <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                <span>{t("lobsterPage.fieldAvatar")}</span>
-                <Avatar
-                  src={agentAvatarGlyph(detailAgent)}
-                  name={agentDisplayLabel(detailAgent)}
-                  size="lg"
-                  shape="rounded"
-                  editable={true}
-                  onUpload={handleAvatarUpload}
-                  onDelete={detailAgent.avatar ? handleAvatarClear : undefined}
-                />
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldIdentity")}</span>
+                <button
+                  type="button"
+                  onClick={() => setEditSidebarField("identity")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑身份
+                </button>
               </div>
-
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("lobsterPage.fieldIdentity")}
-                <textarea
-                  className="min-h-[120px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
-                  value={detailAgent.identityMd || buildIdentityMd(detailAgent)}
-                  onChange={(e) => patchAgentMeta(detailAgent.id, { identityMd: e.target.value })}
-                  placeholder={t("lobsterPage.identityPlaceholder")}
-                />
-                <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("lobsterPage.identityHint")}</span>
-              </label>
 
               {!detailAgent.isMain ? (
                 <>
-                  <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                    {t("lobsterPage.fieldOrchestrationRole")}
+                  <label className="flex flex-row items-center gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                    <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldOrchestrationRole")}</span>
                     <Select
                       value={detailAgent.orchestrationRole || OrchestrationRole.NONE}
                       onChange={(role) =>
@@ -471,12 +490,13 @@ export default function LobsterManagementPage() {
                         value: role,
                         label: orchestrationRoleLabel(role, t),
                       }))}
-                      className="w-full min-w-0"
+                      className="flex-1 min-w-0"
                     />
                   </label>
-                  <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                    {t("lobsterPage.fieldOrchestrationDomain")}
+                  <label className="flex flex-row items-center gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                    <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldOrchestrationDomain")}</span>
                     <TextField
+                      className="flex-1"
                       value={detailAgent.orchestrationDomain || ""}
                       onChange={(e) =>
                         patchAgentMeta(detailAgent.id, { orchestrationDomain: e.target.value })
@@ -487,67 +507,69 @@ export default function LobsterManagementPage() {
                 </>
               ) : null}
 
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("lobsterPage.fieldDescription")}
-                <textarea
-                  className="min-h-[72px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.8125rem] text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
-                  value={detailAgent.description}
-                  onChange={(e) => patchAgentMeta(detailAgent.id, { description: e.target.value })}
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("lobsterPage.fieldSoul")}
-                <textarea
-                  className="min-h-[140px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
-                  value={detailAgent.soulMd}
-                  onChange={(e) => patchAgentMeta(detailAgent.id, { soulMd: e.target.value })}
-                  placeholder={t("lobsterPage.soulPlaceholder")}
-                />
-                <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("lobsterPage.soulHint")}</span>
-              </label>
-
-              <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                <span>{t("lobsterPage.fieldGatewayId")}</span>
-                <code className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.78rem] text-[var(--os-text)]">
-                  {detailAgent.gatewayAgentId}
-                </code>
-                <span className="text-[0.68rem] text-[var(--os-text-faint)]">
-                  {t("lobsterPage.gatewayIdHint", {
-                    session: detailAgent.openclaw?.sessionKey ?? "",
-                  })}
-                </span>
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldDescription")}</span>
+                <button
+                  type="button"
+                  onClick={() => setEditSidebarField("description")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑简介
+                </button>
               </div>
 
-              <div className="flex min-h-0 flex-col gap-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[0.75rem] font-medium text-[var(--os-text-muted)]">
-                    {t("lobsterPage.skillsHeading")}
-                  </span>
-                  <TextField
-                    className="h-8 max-w-[200px] text-[0.75rem]"
-                    value={skillQuery}
-                    onChange={(e) => setSkillQuery(e.target.value)}
-                    placeholder={t("lobsterPage.skillFilterPlaceholder")}
-                    aria-label={t("lobsterPage.skillFilterPlaceholder")}
-                  />
-                </div>
-                <p className="text-[0.7rem] leading-snug text-[var(--os-text-faint)]">
-                  {t("lobsterPage.skillsHint")}
-                </p>
-                <AgentSkillPicker
-                  skills={selectableSkills}
-                  selectedIds={detailAgent.skillIds}
-                  onToggle={toggleSkill}
-                  query={skillQuery}
-                  onQueryChange={setSkillQuery}
-                  filterPlaceholder={t("lobsterPage.skillFilterPlaceholder")}
-                  emptyLabel={t("lobsterPage.skillsEmpty")}
-                  builtinBadge={t("skillsPage.badgeBuiltin")}
-                  userBadge={t("skillsPage.badgeUser")}
-                />
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldSoul")}</span>
+                <button
+                  type="button"
+                  onClick={() => setEditSidebarField("soul")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑性格
+                </button>
+              </div>
+
+              {/* Skills selection button */}
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">{t("lobsterPage.skillsHeading")}</span>
+                <button
+                  type="button"
+                  onClick={() => setSkillDialogOpen(true)}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  {t("lobsterPage.selectSkills")}
+                </button>
               </div>
             </div>
+            </div>
+            {editSidebarField && (
+              <div className="w-[320px] shrink-0 flex flex-col">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[color-mix(in_srgb,var(--os-border)_30%,transparent)]">
+                  <span className="text-[0.85rem] font-medium text-[var(--os-text)]">
+                    {editSidebarField === 'identity' ? t("lobsterPage.fieldIdentity") : editSidebarField === 'description' ? t("lobsterPage.fieldDescription") : t("lobsterPage.fieldSoul")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEditSidebarField(null)}
+                    className="rounded p-1 text-[var(--os-text-muted)] transition hover:text-[var(--os-text)] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_50%,transparent)]"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <textarea
+                  className="flex-1 w-full resize-none border-none bg-transparent px-4 py-3 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] focus:outline-none placeholder:text-[var(--os-text-faint)]"
+                  value={editSidebarField === 'identity' ? (detailAgent.identityMd || buildIdentityMd(detailAgent)) : editSidebarField === 'description' ? detailAgent.description : detailAgent.soulMd}
+                  onChange={(e) => {
+                    const field = editSidebarField;
+                    if (field === 'identity') patchAgentMeta(detailAgent.id, { identityMd: e.target.value });
+                    else if (field === 'description') patchAgentMeta(detailAgent.id, { description: e.target.value });
+                    else if (field === 'soul') patchAgentMeta(detailAgent.id, { soulMd: e.target.value });
+                  }}
+                  placeholder={editSidebarField === 'identity' ? t("lobsterPage.identityPlaceholder") : editSidebarField === 'description' ? t("lobsterPage.descriptionPlaceholder") : t("lobsterPage.soulPlaceholder")}
+                />
+              </div>
+            )}
+          </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
               {!detailAgent.isMain ? (
                 <button
@@ -575,90 +597,132 @@ export default function LobsterManagementPage() {
 
       {createOpen ? (
         <Modal onClose={() => !createBusy && setCreateOpen(false)} labelledBy={createTitleId}>
-          <div className="flex w-full min-w-[min(100vw-2rem,520px)] max-h-[min(90vh,720px)] flex-col bg-[var(--os-bg-modal)]">
+          <div className={cn("flex w-full max-h-[min(90vh,720px)] flex-col bg-[var(--os-bg-modal)]", createSidebarField ? "min-w-[min(100vw-2rem,760px)]" : "min-w-[min(100vw-2rem,440px)]")}>
             <div className="flex shrink-0 items-center justify-between border-b border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
               <h2 id={createTitleId} className="text-base font-semibold">
                 {t("lobsterPage.createModal.title")}
               </h2>
               <ModalCloseButton onClick={() => !createBusy && setCreateOpen(false)} />
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-5 py-4">
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("lobsterPage.fieldName")}
-                <TextField
-                  value={createForm.name}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setCreateForm((prev) => ({
-                      ...prev,
-                      name,
-                      identityMd: syncIdentityNameLine(name, prev.identityMd),
-                    }));
-                  }}
-                  placeholder={t("lobsterPage.createModal.namePlaceholder")}
-                  autoFocus
-                />
-              </label>
-              <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                <span>{t("lobsterPage.fieldAvatar")}</span>
-                <Avatar
-                  src={createForm.avatar}
-                  name={createForm.name || "New Agent"}
-                  size="lg"
-                  shape="rounded"
-                  editable={true}
-                  onUpload={handleCreateAvatarUpload}
-                  onDelete={createForm.avatar ? handleCreateAvatarClear : undefined}
-                />
+            <div className="flex min-h-0 flex-1">
+              <div className={cn("flex min-h-0 flex-1 flex-col gap-5 overflow-auto px-5 py-4", createSidebarField && "border-r border-[color-mix(in_srgb,var(--os-border)_50%,transparent)]")}>
+                {/* Content container - narrow and centered */}
+                <div className="max-w-md mx-auto w-full flex flex-col gap-5">
+                {/* Avatar on top - centered */}
+                <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)] items-center">
+                  <Avatar
+                    src={createForm.avatar}
+                    name={createForm.name || "New Agent"}
+                    size="2xl"
+                    shape="rounded"
+                    editable={true}
+                    onUpload={handleCreateAvatarUpload}
+                    onDelete={createForm.avatar ? handleCreateAvatarClear : undefined}
+                  />
+                  <div className="relative mt-2 flex items-center justify-center">
+                    <input
+                      type="text"
+                      value={createForm.name}
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          name,
+                          identityMd: syncIdentityNameLine(name, prev.identityMd),
+                        }));
+                      }}
+                      className="text-center text-[0.9rem] font-semibold text-[var(--os-text)] bg-transparent border-0 border-b border-transparent focus-visible:border-b-[var(--os-accent)] focus-visible:outline-none hover:border-b-[var(--os-border)] transition-colors"
+                      placeholder="输入名称"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      className="absolute -right-6 rounded p-0.5 text-[var(--os-text-muted)] transition hover:text-[var(--os-accent)]"
+                      title="编辑名称"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                        <path d="m15 5 4 4"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldIdentity")}</span>
+                <button
+                  type="button"
+                  onClick={() => setCreateSidebarField("identity")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
               </div>
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("lobsterPage.fieldIdentity")}
-                <textarea
-                  className="min-h-[100px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)]"
-                  value={createForm.identityMd}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, identityMd: e.target.value }))}
-                  placeholder={t("lobsterPage.identityPlaceholder")}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("lobsterPage.fieldDescription")}
-                <textarea
-                  className="min-h-[64px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.8125rem] text-[var(--os-text)]"
-                  value={createForm.description}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, description: e.target.value }))}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("lobsterPage.fieldSoul")}
-                <textarea
-                  className="min-h-[100px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)]"
-                  value={createForm.soulMd}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, soulMd: e.target.value }))}
-                  placeholder={t("lobsterPage.soulPlaceholder")}
-                />
-              </label>
-              <div className="flex flex-col gap-1">
-                <span className="text-[0.75rem] font-medium text-[var(--os-text-muted)]">
-                  {t("lobsterPage.skillsHeading")}
-                </span>
-                <AgentSkillPicker
-                  skills={selectableSkills}
-                  selectedIds={createForm.skillIds}
-                  onToggle={toggleCreateSkill}
-                  query={createSkillQuery}
-                  onQueryChange={setCreateSkillQuery}
-                  filterPlaceholder={t("lobsterPage.skillFilterPlaceholder")}
-                  emptyLabel={t("lobsterPage.skillsEmpty")}
-                  builtinBadge={t("skillsPage.badgeBuiltin")}
-                  userBadge={t("skillsPage.badgeUser")}
-                />
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldDescription")}</span>
+                <button
+                  type="button"
+                  onClick={() => setCreateSidebarField("description")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
+              </div>
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldSoul")}</span>
+                <button
+                  type="button"
+                  onClick={() => setCreateSidebarField("soul")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
+              </div>
+              {/* Skills selection button */}
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">{t("lobsterPage.skillsHeading")}</span>
+                <button
+                  type="button"
+                  onClick={() => setCreateSkillDialogOpen(true)}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  {t("lobsterPage.selectSkills")}
+                </button>
               </div>
               {createError ? (
                 <p className="text-[0.78rem] text-[var(--os-danger,#b91c1c)]" role="alert">
                   {createError}
                 </p>
               ) : null}
+              </div>
             </div>
+            {createSidebarField && (
+              <div className="w-[320px] shrink-0 flex flex-col">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[color-mix(in_srgb,var(--os-border)_30%,transparent)]">
+                  <span className="text-[0.85rem] font-medium text-[var(--os-text)]">
+                    {createSidebarField === 'identity' ? t("lobsterPage.fieldIdentity") : createSidebarField === 'description' ? t("lobsterPage.fieldDescription") : t("lobsterPage.fieldSoul")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCreateSidebarField(null)}
+                    className="rounded p-1 text-[var(--os-text-muted)] transition hover:text-[var(--os-text)] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_50%,transparent)]"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <textarea
+                  className="flex-1 w-full resize-none border-none bg-transparent px-4 py-3 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] focus:outline-none placeholder:text-[var(--os-text-faint)]"
+                  value={createSidebarField === 'identity' ? createForm.identityMd : createSidebarField === 'description' ? createForm.description : createForm.soulMd}
+                  onChange={(e) => {
+                    const field = createSidebarField;
+                    if (field === 'identity') setCreateForm((prev) => ({ ...prev, identityMd: e.target.value }));
+                    else if (field === 'description') setCreateForm((prev) => ({ ...prev, description: e.target.value }));
+                    else if (field === 'soul') setCreateForm((prev) => ({ ...prev, soulMd: e.target.value }));
+                  }}
+                  placeholder={createSidebarField === 'identity' ? t("lobsterPage.identityPlaceholder") : createSidebarField === 'description' ? t("lobsterPage.descriptionPlaceholder") : t("lobsterPage.soulPlaceholder")}
+                />
+              </div>
+            )}
+          </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
               <button
                 type="button"
@@ -718,6 +782,50 @@ export default function LobsterManagementPage() {
           </div>
         </Modal>
       ) : null}
+
+      {/* Skill Transfer Dialog for Edit Modal */}
+      <TransferDialog
+        open={skillDialogOpen}
+        onOpenChange={setSkillDialogOpen}
+        title={t("lobsterPage.skillsDialogTitle")}
+        items={selectableSkills.map(s => ({ key: s.id, label: s.title }))}
+        targetKeys={detailAgent?.skillIds ?? []}
+        onConfirm={(targetKeys) => {
+          if (detailAgent) {
+            patchAgentMeta(detailAgent.id, { skillIds: targetKeys });
+          }
+          setSkillDialogOpen(false);
+        }}
+        sourceTitle={t("lobsterPage.skillsSource")}
+        targetTitle={t("lobsterPage.skillsTarget")}
+        searchPlaceholder={t("lobsterPage.skillFilterPlaceholder")}
+        emptySource={t("lobsterPage.skillsEmpty")}
+        emptyTarget={t("lobsterPage.skillsEmptyTarget")}
+        showSearch={true}
+        confirmLabel={t("lobsterPage.skillsConfirm")}
+        cancelLabel={t("skillsPage.cancel")}
+      />
+
+      {/* Skill Transfer Dialog for Create Modal */}
+      <TransferDialog
+        open={createSkillDialogOpen}
+        onOpenChange={setCreateSkillDialogOpen}
+        title={t("lobsterPage.skillsDialogTitle")}
+        items={selectableSkills.map(s => ({ key: s.id, label: s.title }))}
+        targetKeys={createForm.skillIds}
+        onConfirm={(targetKeys) => {
+          setCreateForm(prev => ({ ...prev, skillIds: targetKeys }));
+          setCreateSkillDialogOpen(false);
+        }}
+        sourceTitle={t("lobsterPage.skillsSource")}
+        targetTitle={t("lobsterPage.skillsTarget")}
+        searchPlaceholder={t("lobsterPage.skillFilterPlaceholder")}
+        emptySource={t("lobsterPage.skillsEmpty")}
+        emptyTarget={t("lobsterPage.skillsEmptyTarget")}
+        showSearch={true}
+        confirmLabel={t("lobsterPage.skillsConfirm")}
+        cancelLabel={t("skillsPage.cancel")}
+      />
     </div>
   );
 }
