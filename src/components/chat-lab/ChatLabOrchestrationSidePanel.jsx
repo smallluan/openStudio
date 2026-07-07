@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { workerMessageLifecycleEnded } from "../../chat/orchestrationWorkerStream.js";
 import { agentAvatarGlyph, agentDisplayLabel } from "../../studio/agents.js";
+import Avatar from "../../ui/Avatar.jsx";
 import ChatLabOrchestrationDockIdle from "./ChatLabOrchestrationDockIdle.jsx";
 
 /**
@@ -225,11 +226,12 @@ export default function ChatLabOrchestrationSidePanel({
               aria-label={label}
             >
               <header className="chat-lab-preview-dock__orch-worker-head">
-                {glyph ? (
-                  <span className="chat-lab-preview-dock__orch-worker-avatar" aria-hidden>
-                    {glyph}
-                  </span>
-                ) : null}
+                <Avatar
+                  src={glyph}
+                  name={label}
+                  size="sm"
+                  shape="rounded"
+                />
                 <span className="chat-lab-preview-dock__orch-worker-name">{label}</span>
               </header>
               <div className="chat-lab-preview-dock__orch-worker-scroll">

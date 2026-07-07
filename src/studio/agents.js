@@ -63,23 +63,35 @@ export function agentDisplayLabel(agent) {
 /** @param {LobsterAgent} agent */
 export function agentAvatarGlyph(agent) {
   const av = String(agent.avatar ?? "").trim();
-  if (av) return av.slice(0, 4);
-  return agent.isMain ? "✨" : "🦞";
+  // 支持 URL 或图片路径（检测是否是 URL/路径而非 emoji）
+  if (av && (av.startsWith("http") || av.startsWith("/") || av.startsWith("data:") || av.startsWith("file:"))) {
+    return av; // 返回完整 URL/路径
+  }
+  // 如果是 emoji（长度较短且不含空格），返回空字符串以使用文字头像
+  if (av && av.length <= 4 && !av.includes(" ")) {
+    return ""; // emoji 不再使用
+  }
+  // 返回空字符串，触发文字头像
+  return "";
 }
 
 /** @param {{ name?: string; description?: string; avatar?: string }} meta */
 export function buildIdentityMd(meta) {
   const name = String(meta.name ?? "").trim() || "Agent";
   const vibe = String(meta.description ?? "").trim() || "Helpful specialist";
-  const emoji = String(meta.avatar ?? "🦞").trim().slice(0, 8) || "🦞";
+  const avatar = String(meta.avatar ?? "").trim();
+  // 如果 avatar 是 URL/路径，添加 Avatar 字段；否则不显示
+  const avatarLine = avatar && (avatar.startsWith("http") || avatar.startsWith("/") || avatar.startsWith("data:"))
+    ? `- **Avatar:** ${avatar}`
+    : "";
   return [
     "# IDENTITY.md - Who Am I?",
     "",
     `- **Name:** ${name}`,
     `- **Creature:** AI assistant`,
     `- **Vibe:** ${vibe}`,
-    `- **Emoji:** ${emoji}`,
-  ].join("\n");
+    avatarLine,
+  ].filter(Boolean).join("\n");
 }
 
 /** @param {string} identityMd */
@@ -242,7 +254,7 @@ function agentDefaults(o) {
     gatewayAgentId,
     name: o.name ?? "",
     description: typeof o.description === "string" ? o.description : "",
-    avatar: typeof o.avatar === "string" ? o.avatar : o.isMain ? "✨" : "🦞",
+    avatar: typeof o.avatar === "string" ? o.avatar : "",
     soulMd: typeof o.soulMd === "string" ? o.soulMd : "",
     identityMd: typeof o.identityMd === "string" ? o.identityMd : "",
     isMain: Boolean(o.isMain),
@@ -265,7 +277,7 @@ export function createInitialAgents() {
       gatewayAgentId: "dev",
       name: "",
       description: "",
-      avatar: "✨",
+      avatar: "",
       isMain: true,
       mode: AgentMode.IDLE,
     }),

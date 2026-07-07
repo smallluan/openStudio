@@ -15,6 +15,7 @@ import { Users } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { agentAvatarGlyph, agentDisplayLabel } from "../../studio/agents.js";
 import { useI18n } from "../../context/I18nContext.jsx";
+import Avatar from "../../ui/Avatar.jsx";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import TransferDialog from "../../ui/TransferDialog.jsx";
 import { cn } from "../../ui/cn.js";
@@ -168,10 +169,13 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
                   <ul className="chat-lab__members-list" role="list" aria-label={t("chatLab.participantsAria")}>
                     {participants.map((a) => (
                       <li key={a.id} className="chat-lab__members-row" role="listitem">
-                        <span className="chat-lab__participant-avatar" aria-hidden>
-                          {agentAvatarGlyph(a)}
-                        </span>
-                        <span className="chat-lab__members-row-name">{agentDisplayLabel(a)}</span>
+                        <Avatar
+                          src={agentAvatarGlyph(a)}
+                          name={agentDisplayLabel(a)}
+                          size="sm"
+                          shape="rounded"
+                        />
+                        <span className="chat-lab__members-row-name text-[var(--os-text-muted)]">{agentDisplayLabel(a)}</span>
                         {!a.isMain ? (
                           <button
                             type="button"

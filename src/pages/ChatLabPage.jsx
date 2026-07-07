@@ -123,6 +123,7 @@ import {
 } from "../context/ChatLabPreviewContext.jsx";
 import { ImageViewProvider } from "../context/ImageViewContext.jsx";
 import Image from "../ui/Image.jsx";
+import Avatar from "../ui/Avatar.jsx";
 import { lastHtmlFenceAsSrcDocDocument } from "../chat/chatLabDocumentPreview.js";
 import { collectSessionArtifacts } from "../chat/chatLabSessionArtifacts.js";
 import ChatLabArtifactsBar from "../components/chat-lab/ChatLabArtifactsBar.jsx";
@@ -5722,11 +5723,12 @@ const MessageBubble = memo(function MessageBubble({
       : null}
       {!isUser && agentName && !orchestrationSidePanel ? (
         <div className="chat-lab__msg-agent-head">
-          {agentGlyph ? (
-            <span className="chat-lab__msg-agent-avatar" aria-hidden>
-              {agentGlyph}
-            </span>
-          ) : null}
+          <Avatar
+            src={agentGlyph}
+            name={agentName}
+            size="sm"
+            shape="rounded"
+          />
           <span className="chat-lab__msg-agent-name">{agentName}</span>
         </div>
       ) : null}

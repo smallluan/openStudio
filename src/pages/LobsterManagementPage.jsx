@@ -12,6 +12,7 @@ import { useSkillEnvironment } from "../skills/useSkillEnvironment.js";
 import { useSkillLibrary } from "../skills/useSkillLibrary.js";
 import Modal from "../ui/Modal.jsx";
 import ModalCloseButton from "../ui/ModalCloseButton.jsx";
+import Avatar from "../ui/Avatar.jsx";
 import TextField from "../ui/TextField.jsx";
 import Select from "../ui/Select.jsx";
 import { cn } from "../ui/cn.js";
@@ -111,8 +112,8 @@ export default function LobsterManagementPage() {
   const [createForm, setCreateForm] = useState(() => ({
     name: "",
     description: "",
-    avatar: "🦞",
-    identityMd: buildIdentityMd({ name: "", description: "", avatar: "🦞" }),
+    avatar: "",
+    identityMd: buildIdentityMd({ name: "", description: "", avatar: "" }),
     soulMd: "",
     skillIds: /** @type {string[]} */ ([]),
   }));
@@ -190,12 +191,61 @@ export default function LobsterManagementPage() {
     patchAgentMeta(detailAgent.id, { skillIds: [...set] });
   };
 
+  const handleAvatarUpload = useCallback(
+    /** @param {File} file */
+    (file) => {
+      if (!detailAgent || !file.type.startsWith("image/")) return;
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const dataUrl = /** @type {string} */ (e.target?.result);
+          if (dataUrl) {
+            patchAgentMeta(detailAgent.id, { avatar: dataUrl });
+          }
+          resolve();
+        };
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
+    },
+    [detailAgent, patchAgentMeta],
+  );
+
+  const handleAvatarClear = useCallback(() => {
+    if (!detailAgent) return;
+    patchAgentMeta(detailAgent.id, { avatar: "" });
+  }, [detailAgent, patchAgentMeta]);
+
+  const handleCreateAvatarUpload = useCallback(
+    /** @param {File} file */
+    (file) => {
+      if (!file.type.startsWith("image/")) return;
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const dataUrl = /** @type {string} */ (e.target?.result);
+          if (dataUrl) {
+            setCreateForm((prev) => ({ ...prev, avatar: dataUrl }));
+          }
+          resolve();
+        };
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+      });
+    },
+    [],
+  );
+
+  const handleCreateAvatarClear = useCallback(() => {
+    setCreateForm((prev) => ({ ...prev, avatar: "" }));
+  }, []);
+
   const openCreateModal = useCallback(() => {
     setCreateForm({
       name: "",
       description: "",
-      avatar: "🦞",
-      identityMd: buildIdentityMd({ name: "", description: "", avatar: "🦞" }),
+      avatar: "",
+      identityMd: buildIdentityMd({ name: "", description: "", avatar: "" }),
       soulMd: "",
       skillIds: [],
     });
@@ -225,7 +275,7 @@ export default function LobsterManagementPage() {
       const result = await createAgent({
         name,
         description: createForm.description.trim(),
-        avatar: createForm.avatar.trim() || "🦞",
+        avatar: createForm.avatar.trim() || "",
         identityMd: createForm.identityMd.trim(),
         soulMd: createForm.soulMd.trim(),
         skillIds: createForm.skillIds,
@@ -291,9 +341,12 @@ export default function LobsterManagementPage() {
               return (
                 <AgentCardShell key={a.id} className="group relative">
                   <div className="flex items-start gap-2.5">
-                    <span className="text-xl leading-none" aria-hidden>
-                      {agentAvatarGlyph(a)}
-                    </span>
+                    <Avatar
+                      src={agentAvatarGlyph(a)}
+                      name={agentDisplayLabel(a)}
+                      size="lg"
+                      shape="rounded"
+                    />
                     <div className="min-w-0 flex-1">
                       <h3 className="truncate text-[0.9rem] font-semibold text-[var(--os-text)]">{label}</h3>
                     </div>
@@ -371,15 +424,18 @@ export default function LobsterManagementPage() {
                 />
               </label>
 
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("lobsterPage.fieldAvatar")}
-                <TextField
-                  value={detailAgent.avatar}
-                  onChange={(e) => patchAgentMeta(detailAgent.id, { avatar: e.target.value })}
-                  placeholder={t("lobsterPage.avatarPlaceholder")}
-                  maxLength={8}
+              <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span>{t("lobsterPage.fieldAvatar")}</span>
+                <Avatar
+                  src={agentAvatarGlyph(detailAgent)}
+                  name={agentDisplayLabel(detailAgent)}
+                  size="lg"
+                  shape="rounded"
+                  editable={true}
+                  onUpload={handleAvatarUpload}
+                  onDelete={detailAgent.avatar ? handleAvatarClear : undefined}
                 />
-              </label>
+              </div>
 
               <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
                 {t("lobsterPage.fieldIdentity")}
@@ -543,15 +599,18 @@ export default function LobsterManagementPage() {
                   autoFocus
                 />
               </label>
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("lobsterPage.fieldAvatar")}
-                <TextField
-                  value={createForm.avatar}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, avatar: e.target.value }))}
-                  placeholder={t("lobsterPage.avatarPlaceholder")}
-                  maxLength={8}
+              <div className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span>{t("lobsterPage.fieldAvatar")}</span>
+                <Avatar
+                  src={createForm.avatar}
+                  name={createForm.name || "New Agent"}
+                  size="lg"
+                  shape="rounded"
+                  editable={true}
+                  onUpload={handleCreateAvatarUpload}
+                  onDelete={createForm.avatar ? handleCreateAvatarClear : undefined}
                 />
-              </label>
+              </div>
               <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
                 {t("lobsterPage.fieldIdentity")}
                 <textarea
