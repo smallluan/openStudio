@@ -29,7 +29,6 @@ import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
 
 /** @typedef {{
  *   streamingSessionIds: Set<string>;
- *   /** @deprecated Use streamingSessionIds instead. */
  *   streamingSessionId: string | null;
  *   wechatReplyingSessionId: string | null;
  *   gatewayStreamSlice: GatewayStreamSlice | null;
