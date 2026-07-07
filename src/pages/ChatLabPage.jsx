@@ -1278,6 +1278,15 @@ function ChatLabPageMain() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [reloadConfig]);
 
+  // Listen for user config changes from other components (e.g. ModelSettingsContext)
+  useEffect(() => {
+    const onUserConfigChanged = () => {
+      void reloadConfig();
+    };
+    window.addEventListener("openstudio-user-config-changed", onUserConfigChanged);
+    return () => window.removeEventListener("openstudio-user-config-changed", onUserConfigChanged);
+  }, [reloadConfig]);
+
   const configIssueKey = useMemo(() => deriveConfigIssueKey(config), [config]);
   const enabledModelOptions = useMemo(() => {
     const profiles = Array.isArray(config?.modelProfiles) ? config.modelProfiles : [];

@@ -125,6 +125,12 @@ export function ModelSettingsProvider({ children }) {
       await window.studioBridge?.setUserConfig?.(patch);
       const c = await window.studioBridge?.getUserConfig?.();
       setHasKey(Boolean(c?.credentials?.hasProviderApiKey));
+      // Notify other components that user config has changed
+      try {
+        window.dispatchEvent(new CustomEvent("openstudio-user-config-changed"));
+      } catch {
+        /* ignore */
+      }
     },
     [serializeProfiles],
   );
