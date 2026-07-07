@@ -28,6 +28,8 @@ import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
 /** @typedef {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment} AssistantTimelineSegment */
 
 /** @typedef {{
+ *   streamingSessionIds: Set<string>;
+ *   /** @deprecated Use streamingSessionIds instead. */
  *   streamingSessionId: string | null;
  *   wechatReplyingSessionId: string | null;
  *   gatewayStreamSlice: GatewayStreamSlice | null;
@@ -61,6 +63,19 @@ const ChatLabStreamingContext = createContext(null);
 const PERSIST_MS = 420;
 /** Quiet period after `{ type: "done" }` before finalizing — absorbs trailing IPC deltas (resets on each late chunk). */
 const STREAM_DONE_GRACE_MS = 450;
+
+/**
+ * Collect all currently-active streaming conversationIds from the slice map.
+ * @param {Map<string, GatewayStreamSlice>} slices
+ * @returns {Set<string>}
+ */
+function collectActiveSessionIds(slices) {
+  const ids = new Set();
+  for (const s of slices.values()) {
+    if (s.active && s.conversationId) ids.add(s.conversationId);
+  }
+  return ids;
+}
 
 /**
  * @param {string} conversationId
@@ -107,7 +122,7 @@ function persistAssistantMerge(
 }
 
 export function ChatLabStreamingProvider({ children }) {
-  const [streamingSessionId, setStreamingSessionIdState] = useState(/** @type {string | null} */ (null));
+  const [streamingSessionIds, setStreamingSessionIdsState] = useState(() => new Set());
   const [wechatReplyingSessionId, setWechatReplyingSessionIdState] = useState(/** @type {string | null} */ (null));
   const [slicesTick, setSlicesTick] = useState(0);
 
@@ -127,8 +142,7 @@ export function ChatLabStreamingProvider({ children }) {
   }, []);
 
   const syncStreamingSessionId = useCallback(() => {
-    const active = [...slicesRef.current.values()].find((s) => s.active);
-    setStreamingSessionIdState(active?.conversationId ?? null);
+    setStreamingSessionIdsState(collectActiveSessionIds(slicesRef.current));
   }, []);
 
   const listGatewayStreamSlices = useCallback(
@@ -543,6 +557,12 @@ export function ChatLabStreamingProvider({ children }) {
     setWechatReplyingSessionIdState((cur) => (cur === cid ? null : cur));
   }, []);
 
+  /** Backwards-compatible single-value accessor: returns the first active streaming session id, or null. */
+  const streamingSessionId = useMemo(() => {
+    for (const id of streamingSessionIds) return id;
+    return null;
+  }, [streamingSessionIds]);
+
   const gatewayStreamSlice = useMemo(() => {
     void slicesTick;
     const all = [...slicesRef.current.values()];
@@ -551,6 +571,7 @@ export function ChatLabStreamingProvider({ children }) {
 
   const value = useMemo(
     () => ({
+      streamingSessionIds,
       streamingSessionId,
       wechatReplyingSessionId,
       gatewayStreamSlice,
@@ -562,6 +583,7 @@ export function ChatLabStreamingProvider({ children }) {
       clearWechatReplyingSessionId,
     }),
     [
+      streamingSessionIds,
       streamingSessionId,
       wechatReplyingSessionId,
       gatewayStreamSlice,
@@ -582,6 +604,7 @@ export function useChatLabStreaming() {
   const ctx = useContext(ChatLabStreamingContext);
   if (!ctx) {
     return {
+      streamingSessionIds: new Set(),
       streamingSessionId: null,
       wechatReplyingSessionId: null,
       gatewayStreamSlice: null,

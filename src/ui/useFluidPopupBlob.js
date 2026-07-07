@@ -80,7 +80,8 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
       return;
     }
 
-    const measure = (forceOpacity = false) => {
+    // 测量函数（用于ResizeObserver和scroll事件，此时blob已显示）
+    const measure = () => {
       const rootLive = rootRef.current;
       const idLive = hoverKey ?? fallbackKey;
       const rowLive = idLive != null ? itemRefs.current.get(idLive) : null;
@@ -94,18 +95,20 @@ export function useFluidPopupBlob({ open, hoverKey, fallbackKey = null, layoutKe
       const top = Math.round((e.top - r.top + rootLive.scrollTop + inset) * 100) / 100;
       const width = Math.round((e.width - inset * 2) * 100) / 100;
       const height = Math.round((e.height - inset * 2) * 100) / 100;
-
-      const opacity = blobReadyRef.current || forceOpacity ? 1 : 0;
-      setBlobTarget({ left, top, width, height, opacity });
+      setBlobTarget({ left, top, width, height, opacity: blobReadyRef.current ? 1 : 0 });
     };
 
-    measure();
+    // 初始状态：隐藏blob，等待popup入场动画结束
+    // popup droplet-in动画560ms，scale从0.72到1（经过峰值1.042）
+    // 在动画期间测量会拿到被scale扭曲的位置，所以必须等动画结束
+    setBlobTarget({ left: 0, top: 0, width: 0, height: 0, opacity: 0 });
 
-    // 延迟显示blob，等待popup入场动画稳定
+    // 延迟测量并显示blob，等待popup入场动画接近结束(scale≈1)
+    // 动画560ms，82%时scale≈1.008，约460ms。用480ms确保scale接近1。
     const showTimeout = setTimeout(() => {
       blobReadyRef.current = true;
-      measure(true); // 强制显示
-    }, 180);
+      measure(); // 此时scale≈1，测量结果准确
+    }, 480);
 
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
     ro?.observe(root);

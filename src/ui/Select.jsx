@@ -133,8 +133,9 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
                   ref={blobRootRef}
                   id={listId}
                   role="listbox"
-                  className="fluid-select-list relative flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-1.5 outline-none"
+                  className="fluid-select-list relative flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto outline-none"
                 >
+                  <div className="flex flex-col gap-1 p-1.5">
                   <div
                     aria-hidden
                     className="fluid-nav__blob fluid-select__blob pointer-events-none absolute top-0 left-0 z-0 rounded-lg"
@@ -166,6 +167,7 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
                       </div>
                     </li>
                   ))}
+                  </div>
                 </ul>
               </FluidPopupAnimatedSurface>
             </div>

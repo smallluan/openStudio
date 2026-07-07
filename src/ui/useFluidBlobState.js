@@ -49,10 +49,10 @@ export function useFluidBlobState() {
 
     setBlob((prev) => {
       const next = {
-        left: nextRect.left,
-        top: nextRect.top,
-        width: nextRect.width,
-        height: nextRect.height,
+        left: nextRect.left ?? prev.left,
+        top: nextRect.top ?? prev.top,
+        width: nextRect.width ?? prev.width,
+        height: nextRect.height ?? prev.height,
         opacity: nextRect.opacity ?? 1,
       };
 

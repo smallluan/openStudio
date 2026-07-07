@@ -506,7 +506,7 @@ function HistorySessionRow({
  */
 export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   const { t } = useI18n();
-  const { streamingSessionId, wechatReplyingSessionId } = useChatLabStreaming();
+  const { streamingSessionIds, wechatReplyingSessionId } = useChatLabStreaming();
   const location = useLocation();
   const navigate = useNavigate();
   const highlight = useContext(FluidNavHighlightApi);
@@ -699,9 +699,9 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   }, [displaySessions]);
 
   const selectedDeleteIds = useMemo(() => {
-    const skip = new Set([streamingSessionId, wechatReplyingSessionId].filter(Boolean));
+    const skip = new Set([...streamingSessionIds, wechatReplyingSessionId].filter(Boolean));
     return [...selectedIds].filter((id) => id && !skip.has(id));
-  }, [selectedIds, streamingSessionId, wechatReplyingSessionId]);
+  }, [selectedIds, streamingSessionIds, wechatReplyingSessionId]);
 
   const handleCancelDeleteMode = useCallback(() => {
     setDeleteModeChannel(null);
@@ -810,7 +810,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     const orchestrationActive =
       orchStatus === "planning" || orchStatus === "revising" || orchStatus === "running";
     const isStreaming =
-      streamingSessionId === s.id || wechatReplyingSessionId === s.id || orchestrationActive;
+      streamingSessionIds.has(s.id) || wechatReplyingSessionId === s.id || orchestrationActive;
     return (
       <HistorySessionRow
         key={s.id}
@@ -944,7 +944,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
                   const channelSelectedCount = groupRows.filter(
                     (row) =>
                       selectedIds.has(row.id) &&
-                      row.id !== streamingSessionId &&
+                      !streamingSessionIds.has(row.id) &&
                       row.id !== wechatReplyingSessionId,
                   ).length;
                   const headerMotion = headerMotionByChannel.get(group.channel);
