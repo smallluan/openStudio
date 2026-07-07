@@ -738,14 +738,27 @@ function createTray() {
 }
 
 app.whenReady().then(async () => {
-  if (!app.requestSingleInstanceLock()) {
-    app.quit();
-    return;
+  // In dev mode, skip single-instance lock so `pnpm dev` can run alongside a packaged .exe.
+  // Also give dev its own userData directory (suffixed `-dev`) to avoid SQLite/config file locks
+  // with the production app.
+  if (!isDev) {
+    if (!app.requestSingleInstanceLock()) {
+      app.quit();
+      return;
+    }
+    app.on("second-instance", () => {
+      createWindow();
+    });
+  } else {
+    // Dev: isolate userData so dev + packaged .exe can coexist without file-lock contention.
+    const devUserData = app.getPath("userData") + "-dev";
+    try {
+      if (!fs.existsSync(devUserData)) fs.mkdirSync(devUserData, { recursive: true });
+      app.setPath("userData", devUserData);
+    } catch (e) {
+      console.warn("[dev] failed to set dev userData:", e?.message ?? e);
+    }
   }
-
-  app.on("second-instance", () => {
-    createWindow();
-  });
 
   initStudioLogger(app, { isDev });
   attachProcessDiagnostics();
@@ -760,7 +773,9 @@ app.whenReady().then(async () => {
   }
 
   if (process.platform === "win32") {
-    app.setAppUserModelId("dev.openstudio.app");
+    // Use a distinct AppUserModelId for dev so it doesn't collide with the packaged .exe
+    // in the Windows taskbar / notification area / single-instance semantics.
+    app.setAppUserModelId(isDev ? "dev.openstudio.app.dev" : "dev.openstudio.app");
   }
   attachGatewayQuitHandlers(app);
 

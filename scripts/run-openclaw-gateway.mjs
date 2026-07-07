@@ -25,7 +25,8 @@ if (weixinPrep.installed) {
 
 const forwardArgs = process.argv.slice(2);
 if (forwardArgs.length === 0) {
-  forwardArgs.push("--dev", "gateway", "run", "--bind", "loopback", "--port", "19001", "--force");
+  // Dev gateway uses port 19002 to avoid conflict with packaged exe's gateway on 19001.
+  forwardArgs.push("--dev", "gateway", "run", "--bind", "loopback", "--port", "19002", "--force");
 }
 
 const target = resolveOpenClawSpawnOptions();
