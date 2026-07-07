@@ -20,6 +20,7 @@ const CHAT_STREAM_CHAN = "studio:chatStream";
 const ORCH_EVENT_CHAN = "studio:orchestration-event";
 const WECHAT_STATUS_CHAN = "studio:wechatStatus";
 const PREVIEW_URL_CHAN = "studio:openPreviewUrl";
+const WEBVIEW_DEVTOOLS_CHAN = "studio:openWebviewDevTools";
 
 contextBridge.exposeInMainWorld("studioBridge", {
   getUserConfig: () => ipcRenderer.invoke("studio:getUserConfig"),
@@ -104,6 +105,11 @@ contextBridge.exposeInMainWorld("studioBridge", {
     const wrapped = (_e, data) => listener(data);
     ipcRenderer.on(PREVIEW_URL_CHAN, wrapped);
     return () => ipcRenderer.removeListener(PREVIEW_URL_CHAN, wrapped);
+  },
+  onOpenWebviewDevTools: (listener) => {
+    const wrapped = (_e, data) => listener(data);
+    ipcRenderer.on(WEBVIEW_DEVTOOLS_CHAN, wrapped);
+    return () => ipcRenderer.removeListener(WEBVIEW_DEVTOOLS_CHAN, wrapped);
   },
   showSystemNotification: (payload) => ipcRenderer.invoke("studio:showSystemNotification", payload),
 });

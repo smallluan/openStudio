@@ -32,6 +32,7 @@ function isBenignWebviewLoadError(code) {
  *   useWebview?: boolean;
  *   deviceMode: "desktop" | "mobile";
  *   iframeRef?: import("react").RefObject<HTMLIFrameElement | null>;
+ *   webviewRefFromContext?: import("react").RefObject<HTMLElement | null>;
  *   onNavigate?: (url: string) => void;
  *   className?: string;
  * }} props
@@ -44,6 +45,7 @@ export default function ChatLabPreviewWebFrame({
   useWebview = false,
   deviceMode,
   iframeRef,
+  webviewRefFromContext,
   onNavigate,
   className,
 }) {
@@ -107,6 +109,16 @@ export default function ChatLabPreviewWebFrame({
     const wv = /** @type {import("electron").WebviewTag} */ (/** @type {unknown} */ (webviewNode));
     let disposed = false;
 
+    /** @param {Event & { x?: number; y?: number }} e */
+    const onContextMenu = (e) => {
+      e.preventDefault();
+      try {
+        wv.openDevTools?.();
+      } catch {
+        /* ignore */
+      }
+    };
+
     /** @param {Event & { url?: string; preventDefault?: () => void }} e */
     const onNewWindow = (e) => {
       e.preventDefault?.();
@@ -142,6 +154,16 @@ export default function ChatLabPreviewWebFrame({
     wv.addEventListener("did-finish-load", onFinishLoad);
     wv.addEventListener("did-navigate", onDidNavigate);
     wv.addEventListener("did-navigate-in-page", onDidNavigate);
+    wv.addEventListener("contextmenu", onContextMenu);
+
+    // Listen for IPC message from main process to open DevTools
+    const unsubscribeDevTools = window.studioBridge?.onOpenWebviewDevTools?.(() => {
+      try {
+        wv.openDevTools?.();
+      } catch {
+        /* ignore */
+      }
+    });
 
     return () => {
       disposed = true;
@@ -150,11 +172,16 @@ export default function ChatLabPreviewWebFrame({
       wv.removeEventListener("did-finish-load", onFinishLoad);
       wv.removeEventListener("did-navigate", onDidNavigate);
       wv.removeEventListener("did-navigate-in-page", onDidNavigate);
+      wv.removeEventListener("contextmenu", onContextMenu);
+      unsubscribeDevTools?.();
     };
   }, [electronWebview, src, frameKey, deviceMode, onNavigate, syncWebviewBackState, webviewNode]);
 
   useEffect(() => {
     setWebviewNode(null);
+    if (webviewRefFromContext) {
+      webviewRefFromContext.current = null;
+    }
   }, [mountKey]);
 
   const frameClass = cn("chat-lab-preview-dock__frame border-0", className);
@@ -203,6 +230,9 @@ export default function ChatLabPreviewWebFrame({
             ref={(node) => {
               webviewRef.current = node;
               setWebviewNode(node);
+              if (webviewRefFromContext) {
+                webviewRefFromContext.current = node;
+              }
             }}
             key={mountKey}
             src={src}

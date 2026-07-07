@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Monitor, Smartphone } from "lucide-react";
+import { Code, Monitor, Smartphone } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
 import { cn } from "../../ui/cn.js";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
@@ -295,6 +295,17 @@ export default function ChatLabPreviewDock({ extension = null }) {
             </button>
           </div>
         ) : null}
+        {viewSession?.kind === "iframe" && viewSession.useWebview ? (
+          <button
+            type="button"
+            className="chat-lab-preview-dock__icon-btn"
+            onClick={() => api?.openWebviewDevTools?.()}
+            title={t("chatLab.previewOpenDevTools")}
+            aria-label={t("chatLab.previewOpenDevTools")}
+          >
+            <Code size={15} strokeWidth={1.75} aria-hidden />
+          </button>
+        ) : null}
         {viewSession?.kind === "iframe" && viewSession.externalUrl ? (
           <button
             type="button"
@@ -412,6 +423,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
               useWebview
               deviceMode={api?.deviceMode ?? "desktop"}
               iframeRef={api.iframeRef}
+              webviewRefFromContext={api.webviewRef}
               onNavigate={onPreviewNavigate}
             />
           ) : (

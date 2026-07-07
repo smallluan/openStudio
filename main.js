@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, dialog, Notification } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, dialog, Notification, globalShortcut } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { fileURLToPath } = require("url");
@@ -786,6 +786,25 @@ app.whenReady().then(async () => {
   chatSessionsStore = createChatSessionsStore(app.getPath("userData"));
   createWindow();
   createTray();
+
+  // Register global shortcut Ctrl+Shift+I to open webview DevTools
+  try {
+    const ret = globalShortcut.register("CommandOrControl+Shift+I", () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("studio:openWebviewDevTools", {});
+      }
+    });
+    if (!ret) {
+      getStudioLog().warn("[shortcut] Ctrl+Shift+I registration failed");
+    }
+  } catch (e) {
+    getStudioLog().warn("[shortcut] Ctrl+Shift+I registration error:", String(e?.message ?? e));
+  }
+
+  // Clean up shortcuts on app quit
+  app.on("will-quit", () => {
+    globalShortcut.unregisterAll();
+  });
 
   // Keep first paint fast: heavyweight startup sync runs in background.
   setTimeout(() => {

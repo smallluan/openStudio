@@ -86,6 +86,7 @@ function readPreviewDeviceMode() {
  *   session: ChatLabPreviewSession | null;
  *   artifactsPanel: ArtifactsPanelState | null;
  *   iframeRef: import("react").RefObject<HTMLIFrameElement | null>;
+ *   webviewRef: import("react").RefObject<HTMLElement | null>;
  *   close: () => void;
  *   openIframe: (src: string, title: string, opts?: { externalUrl?: string | null; sandbox?: string; useWebview?: boolean }) => void;
  *   openSrcDoc: (html: string, title: string, opts?: { sandbox?: string }) => void;
@@ -112,6 +113,7 @@ export function useChatLabPreview() {
 export function ChatLabPreviewProvider({ children }) {
   const { t } = useI18n();
   const iframeRef = useRef(/** @type {HTMLIFrameElement | null} */ (null));
+  const webviewRef = useRef(/** @type {HTMLElement | null} */ (null));
   const blobRevokeRef = useRef(/** @type {string | null} */ (null));
   /** @type {import("react").MutableRefObject<Set<string>>} */
   const artifactBlobUrlsRef = useRef(new Set());
@@ -729,11 +731,25 @@ export function ChatLabPreviewProvider({ children }) {
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
+  const openWebviewDevTools = useCallback(() => {
+    const node = webviewRef.current;
+    if (!node) return false;
+    try {
+      /** @type {import("electron").WebviewTag} */
+      const wv = /** @type {import("electron").WebviewTag} */ (/** @type {unknown} */ (node));
+      wv.openDevTools?.();
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       session,
       artifactsPanel,
       iframeRef,
+      webviewRef,
       close,
       openIframe,
       openSrcDoc,
@@ -750,6 +766,7 @@ export function ChatLabPreviewProvider({ children }) {
       setArtifactViewMode,
       postToPreview,
       subscribeFrameMessages,
+      openWebviewDevTools,
     }),
     [
       session,
@@ -770,6 +787,7 @@ export function ChatLabPreviewProvider({ children }) {
       setArtifactViewMode,
       postToPreview,
       subscribeFrameMessages,
+      openWebviewDevTools,
     ],
   );
 
