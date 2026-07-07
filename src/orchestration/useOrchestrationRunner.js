@@ -172,8 +172,9 @@ export function useOrchestrationRunner(deps) {
           try {
             window.studioBridge?.showSystemNotification?.({
               title: "Open Studio",
-              body: "任务回复已完成",
+              body: deps.t("notifications.taskCompleted"),
               silent: false,
+              conversationId: deps.conversationId,
             });
           } catch (e) {
             // 忽略通知错误
@@ -232,8 +233,9 @@ export function useOrchestrationRunner(deps) {
           try {
             window.studioBridge?.showSystemNotification?.({
               title: "Open Studio",
-              body: "消息回复已完成",
+              body: deps.t("notifications.replyCompleted"),
               silent: false,
+              conversationId: deps.conversationId,
             });
           } catch (e) {
             // 忽略通知错误

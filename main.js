@@ -1016,11 +1016,28 @@ app.whenReady().then(async () => {
       if (!body) {
         return { ok: false, error: "empty_body" };
       }
+      const conversationId =
+        typeof payload?.conversationId === "string" ? payload.conversationId.trim() : "";
       const notification = new Notification({
         title,
         body,
         silent: payload?.silent === true,
       });
+      if (conversationId) {
+        notification.on("click", () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            // 先恢复窗口显示和焦点
+            if (mainWindow.isMinimized()) {
+              mainWindow.restore();
+            }
+            mainWindow.show();
+            mainWindow.focus();
+            mainWindow.webContents.send("openstudio-notification-click", {
+              conversationId,
+            });
+          }
+        });
+      }
       notification.show();
       return { ok: true };
     } catch (e) {

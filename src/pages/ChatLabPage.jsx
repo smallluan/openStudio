@@ -1767,8 +1767,11 @@ function ChatLabPageMain() {
           try {
             if (bridge?.showSystemNotification && typeof document !== "undefined" && !document.hasFocus()) {
               const title = sessionRec?.title?.trim() || "Open Studio";
-              const body = String(d.content ?? "").trim().slice(0, 100) || "Reply completed";
-              void bridge.showSystemNotification({ title, body });
+              void bridge.showSystemNotification({
+                title,
+                body: t("notifications.replyCompleted"),
+                conversationId,
+              });
             }
           } catch {
             // Notification failure should not block the stream
@@ -1850,12 +1853,11 @@ function ChatLabPageMain() {
           // Trigger system notification when reply completes (if window is not focused)
           try {
             if (bridge?.showSystemNotification && typeof document !== "undefined" && !document.hasFocus()) {
-              const assistantMsg = merged.find((m) => m.id === d.assistantMessageId);
-              const replyPreview = String(assistantMsg?.content ?? "").trim().slice(0, 100);
               const title = sessionRec?.title?.trim() || "Open Studio";
               void bridge.showSystemNotification({
                 title,
-                body: replyPreview || "Reply completed",
+                body: t("notifications.replyCompleted"),
+                conversationId,
               });
             }
           } catch {
@@ -1878,6 +1880,18 @@ function ChatLabPageMain() {
     participantIds,
     t,
   ]);
+
+  // Listen for notification click and navigate to the corresponding conversation
+  useEffect(() => {
+    const onNotificationClick = (/** @type {CustomEvent} */ e) => {
+      const cid = String(e?.detail?.conversationId ?? "").trim();
+      if (cid) {
+        navigate(`/chat?c=${encodeURIComponent(cid)}`, { replace: true });
+      }
+    };
+    window.addEventListener("openstudio-notification-click", onNotificationClick);
+    return () => window.removeEventListener("openstudio-notification-click", onNotificationClick);
+  }, [navigate]);
 
   const canSend =
     !gatewayStreaming &&

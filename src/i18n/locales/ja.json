@@ -668,6 +668,10 @@
     "defaultName": "メインエージェント",
     "mainBadge": "メイン"
   },
+  "notifications": {
+    "taskCompleted": "タスクが完了しました",
+    "replyCompleted": "返信が完了しました"
+  },
   "modes": {
     "idle": "待機",
     "thinking": "思考中",

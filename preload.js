@@ -107,3 +107,7 @@ contextBridge.exposeInMainWorld("studioBridge", {
   },
   showSystemNotification: (payload) => ipcRenderer.invoke("studio:showSystemNotification", payload),
 });
+
+ipcRenderer.on("openstudio-notification-click", (_e, data) => {
+  window.dispatchEvent(new CustomEvent("openstudio-notification-click", { detail: data }));
+});

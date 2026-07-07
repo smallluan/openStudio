@@ -669,6 +669,10 @@
     "defaultName": "主智慧體",
     "mainBadge": "主"
   },
+  "notifications": {
+    "taskCompleted": "您的任務已完成",
+    "replyCompleted": "您的回覆已完成"
+  },
   "modes": {
     "idle": "閒置",
     "thinking": "思考中",

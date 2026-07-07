@@ -681,6 +681,10 @@
     "defaultName": "Main agent",
     "mainBadge": "Main"
   },
+  "notifications": {
+    "taskCompleted": "Your task is complete",
+    "replyCompleted": "Your reply is complete"
+  },
   "modes": {
     "idle": "Idle",
     "thinking": "Thinking",
