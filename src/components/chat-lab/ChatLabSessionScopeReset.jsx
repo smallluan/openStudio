@@ -4,8 +4,8 @@ import { ChatLabWorkspaceContext } from "../../context/ChatLabWorkspaceContext.j
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
 
 /**
- * Only **empty** chat sessions (no user turns) drop preview + workspace when navigating away
- * or starting a fresh draft. Conversations with messages keep workspace via sessionStorage.
+ * Reset preview state when conversation changes to avoid cross-session leakage.
+ * Preview panel content should not persist across different conversations.
  *
  * @param {{ conversationId: string; isEmptySession: boolean }} props
  */
@@ -19,16 +19,11 @@ export default function ChatLabSessionScopeReset({ conversationId, isEmptySessio
   const hasSessionParam = Boolean(new URLSearchParams(location.search).get("c"));
 
   useEffect(() => {
-    if (!isEmptySession) {
-      prevConversationIdRef.current = conversationId;
-      return;
-    }
     if (prevConversationIdRef.current !== conversationId) {
       preview?.close?.();
-      workspace?.resetSelection?.();
     }
     prevConversationIdRef.current = conversationId;
-  }, [conversationId, isEmptySession, preview, workspace]);
+  }, [conversationId, preview]);
 
   useEffect(() => {
     if (!isEmptySession) return;

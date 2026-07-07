@@ -3582,7 +3582,7 @@ function ChatLabPageMain() {
 
   return (
     <ChatLabWorkspaceProvider key={conversationId} conversationId={conversationId} isEmptySession={isLanding}>
-    <ChatLabPreviewProvider>
+    <ChatLabPreviewProvider key={conversationId}>
       <ImageViewProvider>
       <ChatLabWorkspaceActiveRootBridge activeRootRef={activeRootRef} />
       <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
@@ -3786,8 +3786,10 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
   const handledTailIdRef = useRef(/** @type {string | null} */ (null));
 
   useEffect(() => {
-    handledTailIdRef.current = null;
-  }, [conversationId]);
+    // Reset to the last message id on conversation change to prevent auto-opening preview
+    const last = messages[messages.length - 1];
+    handledTailIdRef.current = last?.id ?? null;
+  }, [conversationId, messages]);
 
   useEffect(() => {
     if (!preview) return;
@@ -3812,8 +3814,10 @@ function ChatLabAutoLinkPreview({ conversationId, messages }) {
   const handledTailIdRef = useRef(/** @type {string | null} */ (null));
 
   useEffect(() => {
-    handledTailIdRef.current = null;
-  }, [conversationId]);
+    // Mark last message as handled on conversation change to avoid auto-opening preview from previous session's content
+    const last = messages[messages.length - 1];
+    handledTailIdRef.current = last?.id ?? null;
+  }, [conversationId, messages]);
 
   useEffect(() => {
     if (!preview?.openFromHref) return;
