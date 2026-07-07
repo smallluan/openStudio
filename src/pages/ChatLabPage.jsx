@@ -835,6 +835,10 @@ function ChatLabPageMain() {
   /** When true, chat returned HTTP 404 — keep composer locked until a full probe succeeds again. */
   const [chatApiBlocked, setChatApiBlocked] = useState(false);
   const [probeRestartKey, setProbeRestartKey] = useState(0);
+  // 会话级模型状态：每个会话独立维护自己的模型ID，不受其他会话切换影响
+  const [conversationModelIds, setConversationModelIds] = useState(() => new Map());
+  const conversationModelIdsRef = useRef(conversationModelIds);
+  conversationModelIdsRef.current = conversationModelIds;
   const [toolbarModelId, setToolbarModelId] = useState("");
   const [participantIds, setParticipantIds] = useState(/** @type {string[]} */ ([]));
   const [orchestrationMode, setOrchestrationMode] = useState(false);
@@ -1303,13 +1307,28 @@ function ChatLabPageMain() {
       });
   }, [config?.enabledModelProfileIds, config?.modelProfiles, t]);
 
+  // 同步 toolbarModelId：根据会话状态决定显示哪个模型
+  // - 流式会话：显示会话级模型（固定，不可切换）
+  // - 空闲会话：显示全局默认模型（可切换，作为新会话的默认值）
   useEffect(() => {
-    const activeId = typeof config?.activeModelProfileId === "string" ? config.activeModelProfileId.trim() : "";
-    const next = enabledModelOptions.some((o) => o.value === activeId)
-      ? activeId
+    const globalActiveId = typeof config?.activeModelProfileId === "string" ? config.activeModelProfileId.trim() : "";
+    const sessionModelId = conversationModelIdsRef.current.get(conversationId);
+    
+    // 如果会话正在流式执行，优先显示会话级模型
+    if (gatewayStreaming && sessionModelId) {
+      const next = enabledModelOptions.some((o) => o.value === sessionModelId)
+        ? sessionModelId
+        : (enabledModelOptions[0]?.value ?? "");
+      setToolbarModelId(next);
+      return;
+    }
+    
+    // 空闲会话：显示全局默认模型
+    const next = enabledModelOptions.some((o) => o.value === globalActiveId)
+      ? globalActiveId
       : (enabledModelOptions[0]?.value ?? "");
     setToolbarModelId(next);
-  }, [config?.activeModelProfileId, enabledModelOptions]);
+  }, [conversationId, gatewayStreaming, config?.activeModelProfileId, conversationModelIds, enabledModelOptions]);
 
   const applyToolbarModelId = useCallback(
     async (pid) => {
@@ -2607,6 +2626,15 @@ function ChatLabPageMain() {
       return;
     }
     if (gatewayPhase !== "online" || chatApiBlocked) return;
+
+    // 保存会话级模型：当前选中的模型将被锁定为该会话的模型
+    // 这样流式开始后，toolbarModelId 会显示会话级模型而不是全局模型
+    const currentModelId = toolbarModelId;
+    setConversationModelIds((prev) => {
+      const next = new Map(prev);
+      next.set(conversationId, currentModelId);
+      return next;
+    });
 
     const editId = pendingEditMessageIdRef.current;
     if (editId) {
