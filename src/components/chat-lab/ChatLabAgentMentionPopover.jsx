@@ -11,6 +11,7 @@ import {
 } from "@floating-ui/react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
 import { agentAvatarGlyph, agentDisplayLabel } from "../../studio/agents.js";
+import Avatar from "../../ui/Avatar.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { cn } from "../../ui/cn.js";
@@ -113,13 +114,14 @@ export default function ChatLabAgentMentionPopover({
 
   return (
     <FloatingPortal>
-      <div
-        ref={refs.setFloating}
-        style={floatingStyles}
-        className="outline-none z-[400] w-[min(100vw-2rem,300px)] max-w-[min(100vw-2rem,300px)]"
-        onMouseDown={(e) => e.preventDefault()}
-        {...getFloatingProps()}
-      >
+        <div
+          ref={refs.setFloating}
+          style={floatingStyles}
+          className="outline-none z-[400] w-[min(100vw-2rem,300px)] max-w-[min(100vw-2rem,300px)]"
+          onMouseDown={(e) => e.preventDefault()}
+          data-mention-popover=""
+          {...getFloatingProps()}
+        >
         <FluidPopupAnimatedSurface
           key={surfaceKey}
           leaving={leaving}
@@ -181,9 +183,12 @@ export default function ChatLabAgentMentionPopover({
                       onMouseEnter={() => onHighlightIndexChange?.(optionIndex)}
                       onClick={() => onPick(a)}
                     >
-                      <span className="chat-lab__participant-avatar" aria-hidden>
-                        {agentAvatarGlyph(a)}
-                      </span>
+                      <Avatar
+                        src={agentAvatarGlyph(a)}
+                        name={agentDisplayLabel(a)}
+                        size="xs"
+                        shape="rounded"
+                      />
                       <span className="chat-lab__mention-item-name min-w-0 flex-1 truncate">
                         {mentionLabel(a, mainFallback)}
                       </span>

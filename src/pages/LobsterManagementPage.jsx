@@ -106,9 +106,9 @@ export default function LobsterManagementPage() {
   const [deleteTargetId, setDeleteTargetId] = useState(/** @type {string | null} */ (null));
   const [skillQuery, setSkillQuery] = useState("");
   const [skillDialogOpen, setSkillDialogOpen] = useState(false);
-  const [editSidebarField, setEditSidebarField] = useState(/** @type {"identity" | "description" | "soul" | null} */ (null));
+  const [editSidebarField, setEditSidebarField] = useState(/** @type {"identity" | "description" | "soul" | "agents" | "user" | "tools" | "memory" | null} */ (null));
   const [createSkillDialogOpen, setCreateSkillDialogOpen] = useState(false);
-  const [createSidebarField, setCreateSidebarField] = useState(/** @type {"identity" | "description" | "soul" | null} */ (null));
+  const [createSidebarField, setCreateSidebarField] = useState(/** @type {"identity" | "description" | "soul" | "agents" | "user" | "tools" | "memory" | null} */ (null));
   const [provisionNote, setProvisionNote] = useState(/** @type {string | null} */ (null));
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
@@ -120,6 +120,10 @@ export default function LobsterManagementPage() {
     avatar: "",
     identityMd: buildIdentityMd({ name: "", description: "", avatar: "" }),
     soulMd: "",
+    agentsMd: "",
+    userMd: "",
+    toolsMd: "",
+    memoryMd: "",
     skillIds: /** @type {string[]} */ ([]),
   }));
 
@@ -252,6 +256,10 @@ export default function LobsterManagementPage() {
       avatar: "",
       identityMd: buildIdentityMd({ name: "", description: "", avatar: "" }),
       soulMd: "",
+      agentsMd: "",
+      userMd: "",
+      toolsMd: "",
+      memoryMd: "",
       skillIds: [],
     });
     setCreateSkillQuery("");
@@ -283,6 +291,10 @@ export default function LobsterManagementPage() {
         avatar: createForm.avatar.trim() || "",
         identityMd: createForm.identityMd.trim(),
         soulMd: createForm.soulMd.trim(),
+        agentsMd: createForm.agentsMd.trim(),
+        userMd: createForm.userMd.trim(),
+        toolsMd: createForm.toolsMd.trim(),
+        memoryMd: createForm.memoryMd.trim(),
         skillIds: createForm.skillIds,
       });
       if (!result.ok) {
@@ -295,6 +307,55 @@ export default function LobsterManagementPage() {
       window.setTimeout(() => setProvisionNote(null), 4000);
     } finally {
       setCreateBusy(false);
+    }
+  };
+
+  const handleImportFromFolder = async () => {
+    const bridge = window.studioBridge;
+    if (!bridge?.pickWorkspaceFolder || !bridge?.readWorkspaceFolder) {
+      setCreateError("当前环境不支持文件夹导入");
+      return;
+    }
+    try {
+      const pickResult = await bridge.pickWorkspaceFolder();
+      if (!pickResult?.ok) {
+        if (!pickResult?.canceled) setCreateError("选择文件夹失败");
+        return;
+      }
+      const folderPath = pickResult.path || pickResult.folderPath;
+      if (!folderPath) {
+        setCreateError("未选择文件夹");
+        return;
+      }
+      const readResult = await bridge.readWorkspaceFolder({ folderPath });
+      if (!readResult?.ok) {
+        setCreateError("读取文件夹失败：" + (readResult?.reason || "未知错误"));
+        return;
+      }
+      setCreateForm((prev) => ({
+        ...prev,
+        soulMd: readResult.soulMd != null ? readResult.soulMd : prev.soulMd,
+        identityMd: readResult.identityMd != null ? readResult.identityMd : prev.identityMd,
+        agentsMd: readResult.agentsMd != null ? readResult.agentsMd : prev.agentsMd,
+        userMd: readResult.userMd != null ? readResult.userMd : prev.userMd,
+        toolsMd: readResult.toolsMd != null ? readResult.toolsMd : prev.toolsMd,
+        memoryMd: readResult.memoryMd != null ? readResult.memoryMd : prev.memoryMd,
+      }));
+      let importedCount = 0;
+      if (readResult.soulMd != null) importedCount++;
+      if (readResult.identityMd != null) importedCount++;
+      if (readResult.agentsMd != null) importedCount++;
+      if (readResult.userMd != null) importedCount++;
+      if (readResult.toolsMd != null) importedCount++;
+      if (readResult.memoryMd != null) importedCount++;
+      if (importedCount === 0) {
+        setCreateError("文件夹中未找到任何 .md 配置文件");
+        return;
+      }
+      setProvisionNote(`已从文件夹导入 ${importedCount} 个配置文件`);
+      window.setTimeout(() => setProvisionNote(null), 4000);
+    } catch (e) {
+      setCreateError("导入失败：" + String(e?.message ?? e));
     }
   };
 
@@ -529,6 +590,109 @@ export default function LobsterManagementPage() {
                 </button>
               </div>
 
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">工作流</span>
+                <button
+                  type="button"
+                  onClick={() => setEditSidebarField("agents")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
+              </div>
+
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">用户</span>
+                <button
+                  type="button"
+                  onClick={() => setEditSidebarField("user")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
+              </div>
+
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">工具</span>
+                <button
+                  type="button"
+                  onClick={() => setEditSidebarField("tools")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
+              </div>
+
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">记忆</span>
+                <button
+                  type="button"
+                  onClick={() => setEditSidebarField("memory")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
+              </div>
+
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">导入</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const bridge = window.studioBridge;
+                    if (!bridge?.pickWorkspaceFolder || !bridge?.readWorkspaceFolder) {
+                      setProvisionNote("⚠️ 当前环境不支持文件夹导入");
+                      window.setTimeout(() => setProvisionNote(null), 4000);
+                      return;
+                    }
+                    try {
+                      const pickResult = await bridge.pickWorkspaceFolder();
+                      if (!pickResult?.ok) {
+                        if (!pickResult?.canceled) {
+                          setProvisionNote("⚠️ 选择文件夹失败");
+                          window.setTimeout(() => setProvisionNote(null), 4000);
+                        }
+                        return;
+                      }
+                      const folderPath = pickResult.path || pickResult.folderPath;
+                      if (!folderPath) {
+                        setProvisionNote("⚠️ 未选择文件夹");
+                        window.setTimeout(() => setProvisionNote(null), 4000);
+                        return;
+                      }
+                      const readResult = await bridge.readWorkspaceFolder({ folderPath });
+                      if (!readResult?.ok) {
+                        setProvisionNote("⚠️ 读取文件夹失败：" + (readResult?.reason || "未知错误"));
+                        window.setTimeout(() => setProvisionNote(null), 5000);
+                        return;
+                      }
+                      const patch = {};
+                      let importedCount = 0;
+                      if (readResult.soulMd != null) { patch.soulMd = readResult.soulMd; importedCount++; }
+                      if (readResult.identityMd != null) { patch.identityMd = readResult.identityMd; importedCount++; }
+                      if (readResult.agentsMd != null) { patch.agentsMd = readResult.agentsMd; importedCount++; }
+                      if (readResult.userMd != null) { patch.userMd = readResult.userMd; importedCount++; }
+                      if (readResult.toolsMd != null) { patch.toolsMd = readResult.toolsMd; importedCount++; }
+                      if (readResult.memoryMd != null) { patch.memoryMd = readResult.memoryMd; importedCount++; }
+                      if (importedCount === 0) {
+                        setProvisionNote("⚠️ 文件夹中未找到任何 .md 配置文件");
+                        window.setTimeout(() => setProvisionNote(null), 4000);
+                        return;
+                      }
+                      patchAgentMeta(detailAgent.id, patch);
+                      setProvisionNote(`✅ 已从文件夹导入 ${importedCount} 个配置文件`);
+                      window.setTimeout(() => setProvisionNote(null), 4000);
+                    } catch (e) {
+                      setProvisionNote("⚠️ 导入失败：" + String(e?.message ?? e));
+                      window.setTimeout(() => setProvisionNote(null), 5000);
+                    }
+                  }}
+                  className="rounded-md border border-[var(--os-accent)] px-2.5 py-1 text-[0.75rem] font-medium text-[var(--os-accent)] transition hover:bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  从文件夹导入
+                </button>
+              </div>
+
               {/* Skills selection button */}
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.skillsHeading")}</span>
@@ -546,7 +710,7 @@ export default function LobsterManagementPage() {
               <div className="w-[320px] shrink-0 flex flex-col">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-[color-mix(in_srgb,var(--os-border)_30%,transparent)]">
                   <span className="text-[0.85rem] font-medium text-[var(--os-text)]">
-                    {editSidebarField === 'identity' ? t("lobsterPage.fieldIdentity") : editSidebarField === 'description' ? t("lobsterPage.fieldDescription") : t("lobsterPage.fieldSoul")}
+                    {editSidebarField === 'identity' ? t("lobsterPage.fieldIdentity") : editSidebarField === 'description' ? t("lobsterPage.fieldDescription") : editSidebarField === 'soul' ? t("lobsterPage.fieldSoul") : editSidebarField === 'agents' ? '工作流 (AGENTS.md)' : editSidebarField === 'user' ? '用户 (USER.md)' : editSidebarField === 'tools' ? '工具 (TOOLS.md)' : '记忆 (MEMORY.md)'}
                   </span>
                   <button
                     type="button"
@@ -558,14 +722,32 @@ export default function LobsterManagementPage() {
                 </div>
                 <textarea
                   className="flex-1 w-full resize-none border-none bg-transparent px-4 py-3 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] focus:outline-none placeholder:text-[var(--os-text-faint)]"
-                  value={editSidebarField === 'identity' ? (detailAgent.identityMd || buildIdentityMd(detailAgent)) : editSidebarField === 'description' ? detailAgent.description : detailAgent.soulMd}
+                  value={
+                    editSidebarField === 'identity' ? (detailAgent.identityMd || buildIdentityMd(detailAgent))
+                    : editSidebarField === 'description' ? detailAgent.description
+                    : editSidebarField === 'soul' ? detailAgent.soulMd
+                    : editSidebarField === 'agents' ? (detailAgent.agentsMd || '')
+                    : editSidebarField === 'user' ? (detailAgent.userMd || '')
+                    : editSidebarField === 'tools' ? (detailAgent.toolsMd || '')
+                    : editSidebarField === 'memory' ? (detailAgent.memoryMd || '')
+                    : ''
+                  }
                   onChange={(e) => {
                     const field = editSidebarField;
                     if (field === 'identity') patchAgentMeta(detailAgent.id, { identityMd: e.target.value });
                     else if (field === 'description') patchAgentMeta(detailAgent.id, { description: e.target.value });
                     else if (field === 'soul') patchAgentMeta(detailAgent.id, { soulMd: e.target.value });
+                    else if (field === 'agents') patchAgentMeta(detailAgent.id, { agentsMd: e.target.value });
+                    else if (field === 'user') patchAgentMeta(detailAgent.id, { userMd: e.target.value });
+                    else if (field === 'tools') patchAgentMeta(detailAgent.id, { toolsMd: e.target.value });
+                    else if (field === 'memory') patchAgentMeta(detailAgent.id, { memoryMd: e.target.value });
                   }}
-                  placeholder={editSidebarField === 'identity' ? t("lobsterPage.identityPlaceholder") : editSidebarField === 'description' ? t("lobsterPage.descriptionPlaceholder") : t("lobsterPage.soulPlaceholder")}
+                  placeholder={
+                    editSidebarField === 'identity' ? t("lobsterPage.identityPlaceholder")
+                    : editSidebarField === 'description' ? t("lobsterPage.descriptionPlaceholder")
+                    : editSidebarField === 'soul' ? t("lobsterPage.soulPlaceholder")
+                    : ''
+                  }
                 />
               </div>
             )}
@@ -677,7 +859,56 @@ export default function LobsterManagementPage() {
                   编辑
                 </button>
               </div>
-              {/* Skills selection button */}
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">工作流</span>
+                <button
+                  type="button"
+                  onClick={() => setCreateSidebarField("agents")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
+              </div>
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">用户</span>
+                <button
+                  type="button"
+                  onClick={() => setCreateSidebarField("user")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
+              </div>
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">工具</span>
+                <button
+                  type="button"
+                  onClick={() => setCreateSidebarField("tools")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
+              </div>
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">记忆</span>
+                <button
+                  type="button"
+                  onClick={() => setCreateSidebarField("memory")}
+                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  编辑
+                </button>
+              </div>
+              <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
+                <span className="min-w-[80px] shrink-0">导入</span>
+                <button
+                  type="button"
+                  onClick={handleImportFromFolder}
+                  className="rounded-md border border-[var(--os-accent)] px-2.5 py-1 text-[0.75rem] font-medium text-[var(--os-accent)] transition hover:bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                >
+                  从文件夹导入
+                </button>
+              </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.skillsHeading")}</span>
                 <button
@@ -699,7 +930,7 @@ export default function LobsterManagementPage() {
               <div className="w-[320px] shrink-0 flex flex-col">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-[color-mix(in_srgb,var(--os-border)_30%,transparent)]">
                   <span className="text-[0.85rem] font-medium text-[var(--os-text)]">
-                    {createSidebarField === 'identity' ? t("lobsterPage.fieldIdentity") : createSidebarField === 'description' ? t("lobsterPage.fieldDescription") : t("lobsterPage.fieldSoul")}
+                    {createSidebarField === 'identity' ? t("lobsterPage.fieldIdentity") : createSidebarField === 'description' ? t("lobsterPage.fieldDescription") : createSidebarField === 'soul' ? t("lobsterPage.fieldSoul") : createSidebarField === 'agents' ? '工作流 (AGENTS.md)' : createSidebarField === 'user' ? '用户 (USER.md)' : createSidebarField === 'tools' ? '工具 (TOOLS.md)' : '记忆 (MEMORY.md)'}
                   </span>
                   <button
                     type="button"
@@ -711,14 +942,32 @@ export default function LobsterManagementPage() {
                 </div>
                 <textarea
                   className="flex-1 w-full resize-none border-none bg-transparent px-4 py-3 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] focus:outline-none placeholder:text-[var(--os-text-faint)]"
-                  value={createSidebarField === 'identity' ? createForm.identityMd : createSidebarField === 'description' ? createForm.description : createForm.soulMd}
+                  value={
+                    createSidebarField === 'identity' ? createForm.identityMd
+                    : createSidebarField === 'description' ? createForm.description
+                    : createSidebarField === 'soul' ? createForm.soulMd
+                    : createSidebarField === 'agents' ? (createForm.agentsMd || '')
+                    : createSidebarField === 'user' ? (createForm.userMd || '')
+                    : createSidebarField === 'tools' ? (createForm.toolsMd || '')
+                    : createSidebarField === 'memory' ? (createForm.memoryMd || '')
+                    : ''
+                  }
                   onChange={(e) => {
                     const field = createSidebarField;
                     if (field === 'identity') setCreateForm((prev) => ({ ...prev, identityMd: e.target.value }));
                     else if (field === 'description') setCreateForm((prev) => ({ ...prev, description: e.target.value }));
                     else if (field === 'soul') setCreateForm((prev) => ({ ...prev, soulMd: e.target.value }));
+                    else if (field === 'agents') setCreateForm((prev) => ({ ...prev, agentsMd: e.target.value }));
+                    else if (field === 'user') setCreateForm((prev) => ({ ...prev, userMd: e.target.value }));
+                    else if (field === 'tools') setCreateForm((prev) => ({ ...prev, toolsMd: e.target.value }));
+                    else if (field === 'memory') setCreateForm((prev) => ({ ...prev, memoryMd: e.target.value }));
                   }}
-                  placeholder={createSidebarField === 'identity' ? t("lobsterPage.identityPlaceholder") : createSidebarField === 'description' ? t("lobsterPage.descriptionPlaceholder") : t("lobsterPage.soulPlaceholder")}
+                  placeholder={
+                    createSidebarField === 'identity' ? t("lobsterPage.identityPlaceholder")
+                    : createSidebarField === 'description' ? t("lobsterPage.descriptionPlaceholder")
+                    : createSidebarField === 'soul' ? t("lobsterPage.soulPlaceholder")
+                    : ''
+                  }
                 />
               </div>
             )}

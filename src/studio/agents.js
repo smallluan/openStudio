@@ -16,6 +16,10 @@ import { getZoneById, pickZoneIdForMode } from "./zones.js";
  * @property {string} avatar
  * @property {string} soulMd
  * @property {string} identityMd
+ * @property {string} agentsMd
+ * @property {string} userMd
+ * @property {string} toolsMd
+ * @property {string} memoryMd
  * @property {boolean} [isMain]
  * @property {string[]} skillIds
  * @property {import("./modes.js").AgentModeValue} mode
@@ -170,11 +174,22 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
   /** @param {string} content */
   const withStudioSuffix = (content) => (studioSuffix ? `${content}\n\n${studioSuffix}` : content);
   const soul = String(agent.soulMd ?? "").trim();
+  const extraWorkspaceFiles = [];
+  const agentsMd = String(agent.agentsMd ?? "").trim();
+  if (agentsMd) extraWorkspaceFiles.push(`# AGENTS.md\n\n${agentsMd}`);
+  const userMd = String(agent.userMd ?? "").trim();
+  if (userMd) extraWorkspaceFiles.push(`# USER.md\n\n${userMd}`);
+  const toolsMd = String(agent.toolsMd ?? "").trim();
+  if (toolsMd) extraWorkspaceFiles.push(`# TOOLS.md\n\n${toolsMd}`);
+  const memoryMd = String(agent.memoryMd ?? "").trim();
+  if (memoryMd) extraWorkspaceFiles.push(`# MEMORY.md\n\n${memoryMd}`);
+  const extraBlock = extraWorkspaceFiles.length ? `\n\n${extraWorkspaceFiles.join("\n\n")}` : "";
+  const fallbackBlock = fallbackSystemPrompt?.trim() ? `\n\n# General Instructions\n\n${fallbackSystemPrompt.trim()}` : "";
   if (soul) {
     return {
       role: "system",
       content: withStudioSuffix(
-        `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}\n\n# SOUL.md\n\n${soul}`,
+        `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}\n\n# SOUL.md\n\n${soul}${extraBlock}${fallbackBlock}`,
       ),
     };
   }
@@ -182,13 +197,13 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
     return {
       role: "system",
       content: withStudioSuffix(
-        `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}\n\n${fallbackSystemPrompt.trim()}`,
+        `${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}${extraBlock}${fallbackBlock}`,
       ),
     };
   }
   return {
     role: "system",
-    content: withStudioSuffix(`${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}`),
+    content: withStudioSuffix(`${identity}${groupBlock}${delegateBlock}${orchBlock}${identityLock}${extraBlock}${fallbackBlock}`),
   };
 }
 
@@ -230,6 +245,10 @@ export function normalizeLobsterAgent(raw) {
     avatar: typeof r.avatar === "string" ? r.avatar : "",
     soulMd: typeof r.soulMd === "string" ? r.soulMd : "",
     identityMd: typeof r.identityMd === "string" ? r.identityMd : "",
+    agentsMd: typeof r.agentsMd === "string" ? r.agentsMd : "",
+    userMd: typeof r.userMd === "string" ? r.userMd : "",
+    toolsMd: typeof r.toolsMd === "string" ? r.toolsMd : "",
+    memoryMd: typeof r.memoryMd === "string" ? r.memoryMd : "",
     isMain: Boolean(r.isMain) || id === MAIN_AGENT_STUDIO_ID,
     skillIds: Array.isArray(r.skillIds) ? r.skillIds.filter((x) => typeof x === "string") : [],
     mode,
@@ -257,6 +276,10 @@ function agentDefaults(o) {
     avatar: typeof o.avatar === "string" ? o.avatar : "",
     soulMd: typeof o.soulMd === "string" ? o.soulMd : "",
     identityMd: typeof o.identityMd === "string" ? o.identityMd : "",
+    agentsMd: typeof o.agentsMd === "string" ? o.agentsMd : "",
+    userMd: typeof o.userMd === "string" ? o.userMd : "",
+    toolsMd: typeof o.toolsMd === "string" ? o.toolsMd : "",
+    memoryMd: typeof o.memoryMd === "string" ? o.memoryMd : "",
     isMain: Boolean(o.isMain),
     skillIds,
     mode,

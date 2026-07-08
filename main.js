@@ -39,6 +39,10 @@ const {
   removeOpenClawAgent,
   readAgentSoulMd,
   readAgentIdentityMd,
+  readAgentAgentsMd,
+  readAgentUserMd,
+  readAgentToolsMd,
+  readAgentMemoryMd,
   readAgentBootstrapForChat,
   defaultGatewayAgentIdFromConfig,
 } = require("./lib/openclaw-agent-crud.cjs");
@@ -77,6 +81,7 @@ const {
   resolveUserSkillDirectorySync,
   getSkillEnvironmentCached,
 } = require("./lib/skill-runtime.cjs");
+const { injectGitUnixToolsPath } = require("./lib/git-unix-tools.cjs");
 
 /** Sidebar cannot embed Office; open these locally in the OS default viewer instead. */
 const OPEN_EXTERNALLY_SIDE_PREVIEW_EXT = new Set([".pptx", ".ppt", ".xlsx", ".xls"]);
@@ -763,6 +768,10 @@ app.whenReady().then(async () => {
   initStudioLogger(app, { isDev });
   attachProcessDiagnostics();
 
+  // 自动检测 Git 并注入 Unix 工具路径（grep, sort, awk 等）
+  const log = getStudioLog();
+  injectGitUnixToolsPath({ log });
+
   if (!isDev) {
     try {
       registerRendererProtocol(__dirname);
@@ -1231,6 +1240,72 @@ app.whenReady().then(async () => {
     try {
       const cfg = userConfigStore.readRaw();
       return readAgentIdentityMd(payload, cfg);
+    } catch (e) {
+      return { ok: false, reason: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:readAgentAgents", async (_event, payload) => {
+    try {
+      const cfg = userConfigStore.readRaw();
+      return readAgentAgentsMd(payload, cfg);
+    } catch (e) {
+      return { ok: false, reason: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:readAgentUser", async (_event, payload) => {
+    try {
+      const cfg = userConfigStore.readRaw();
+      return readAgentUserMd(payload, cfg);
+    } catch (e) {
+      return { ok: false, reason: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:readAgentTools", async (_event, payload) => {
+    try {
+      const cfg = userConfigStore.readRaw();
+      return readAgentToolsMd(payload, cfg);
+    } catch (e) {
+      return { ok: false, reason: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:readAgentMemory", async (_event, payload) => {
+    try {
+      const cfg = userConfigStore.readRaw();
+      return readAgentMemoryMd(payload, cfg);
+    } catch (e) {
+      return { ok: false, reason: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:readWorkspaceFolder", async (_event, payload) => {
+    try {
+      const p = payload && typeof payload === "object" ? payload : {};
+      const folderPath = typeof p.folderPath === "string" ? p.folderPath : "";
+      if (!folderPath) return { ok: false, reason: "missing_folder_path" };
+      const fs = require("fs");
+      const path = require("path");
+      const readOpt = (filename) => {
+        const fp = path.join(folderPath, filename);
+        try {
+          return fs.readFileSync(fp, "utf8");
+        } catch {
+          return null;
+        }
+      };
+      return {
+        ok: true,
+        folderPath,
+        soulMd: readOpt("SOUL.md"),
+        identityMd: readOpt("IDENTITY.md"),
+        agentsMd: readOpt("AGENTS.md"),
+        userMd: readOpt("USER.md"),
+        toolsMd: readOpt("TOOLS.md"),
+        memoryMd: readOpt("MEMORY.md"),
+      };
     } catch (e) {
       return { ok: false, reason: String(e?.message ?? e) };
     }

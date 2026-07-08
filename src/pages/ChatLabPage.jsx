@@ -3431,7 +3431,15 @@ function ChatLabPageMain() {
             onKeyUp={(e) => setMentionCaret(e.currentTarget.selectionStart ?? 0)}
             onCompositionEnd={(e) => setMentionCaret(e.currentTarget.selectionStart ?? 0)}
             onFocus={() => setComposerFocused(true)}
-            onBlur={() => setComposerFocused(false)}
+            onBlur={() => {
+              setTimeout(() => {
+                const activeElement = document.activeElement;
+                if (activeElement?.closest('[data-mention-popover]')) {
+                  return;
+                }
+                setComposerFocused(false);
+              }, 0);
+            }}
             onKeyDown={onKeyDown}
             onPaste={(e) => {
               const fl = e.clipboardData?.files;
@@ -3457,7 +3465,7 @@ function ChatLabPageMain() {
           t={t}
         />
         <ChatLabAgentMentionPopover
-          open={Boolean(mentionActive)}
+          open={composerFocused && Boolean(mentionActive)}
           textareaRef={textareaRef}
           agents={mentionEligible}
           query={mentionActive?.query ?? ""}
