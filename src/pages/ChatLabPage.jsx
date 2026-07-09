@@ -116,6 +116,7 @@ import ChatLabComposerSlot from "../components/chat-lab/ChatLabComposerSlot.jsx"
 import ChatLabSessionScopeReset from "../components/chat-lab/ChatLabSessionScopeReset.jsx";
 import ChatLabWorkspaceActiveRootBridge from "../components/chat-lab/ChatLabWorkspaceActiveRootBridge.jsx";
 import { ChatLabWorkspaceProvider } from "../context/ChatLabWorkspaceContext.jsx";
+import ChatLabRawTraceFloatPanel from "../components/chat-lab/ChatLabRawTraceFloatPanel.jsx";
 import {
   ChatLabPreviewContext,
   ChatLabPreviewProvider,
@@ -166,6 +167,8 @@ import Checkbox from "../ui/Checkbox.jsx";
 const CHAT_LAB_PLAIN_MESSAGE_MAX = 48;
 /** Distance from bottom (px) within which the transcript stays pinned during streaming. */
 const CHAT_AUTO_SCROLL_BOTTOM_PX = 96;
+const RAW_TRACE_MAX_ROUNDS = 24;
+const RAW_TRACE_MAX_EVENTS_PER_ROUND = 240;
 
 /** @param {HTMLElement | null} el @param {import("react").MutableRefObject<boolean>} autoScrollRef */
 function syncChatAutoScrollFromEl(el, autoScrollRef) {
@@ -921,6 +924,34 @@ function ChatLabPageMain() {
   const gatewaySlicesRef = useRef(gatewaySlicesForConv);
   gatewaySlicesRef.current = gatewaySlicesForConv;
   const gatewayStreaming = gatewaySlicesForConv.some((s) => s.active);
+  /** @type {import("react").MutableRefObject<Map<string, {
+   *   id: string;
+   *   streamId: string;
+   *   conversationId: string;
+   *   assistantMessageId: string;
+   *   startedAt: number;
+   *   endedAt?: number;
+   *   status: "streaming" | "done" | "aborted" | "error";
+   *   omittedEvents?: number;
+   *   events: Array<{ id: string; at: number; type: string; seq?: number; raw: Record<string, unknown> }>;
+   * }>>} */
+  const rawTraceRoundsRef = useRef(new Map());
+  const rawTraceFlushTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+  const rawTraceEventSeqRef = useRef(0);
+  const [rawTraceRounds, setRawTraceRounds] = useState(
+    /** @type {Array<{
+     *   id: string;
+     *   streamId: string;
+     *   conversationId: string;
+     *   assistantMessageId: string;
+     *   startedAt: number;
+     *   endedAt?: number;
+     *   status: "streaming" | "done" | "aborted" | "error";
+     *   omittedEvents?: number;
+     *   events: Array<{ id: string; at: number; type: string; seq?: number; raw: Record<string, unknown> }>;
+     * }>} */
+    ([]),
+  );
   const parallelReplyActive = useMemo(
     () => messages.filter((m) => m.role === "assistant" && m.streaming).length > 1,
     [messages],
@@ -943,6 +974,34 @@ function ChatLabPageMain() {
     composerResizeDraggingRef.current = false;
     setComposerResizeStripHover(false);
   }, [conversationId]);
+
+  const clearRawTraceRounds = useCallback(() => {
+    rawTraceRoundsRef.current.clear();
+    if (rawTraceFlushTimerRef.current) {
+      clearTimeout(rawTraceFlushTimerRef.current);
+      rawTraceFlushTimerRef.current = null;
+    }
+    setRawTraceRounds([]);
+  }, []);
+
+  const flushRawTraceRounds = useCallback(() => {
+    const snap = [...rawTraceRoundsRef.current.values()]
+      .sort((a, b) => Number(b.startedAt || 0) - Number(a.startedAt || 0))
+      .slice(0, RAW_TRACE_MAX_ROUNDS)
+      .map((round) => ({
+        ...round,
+        events: Array.isArray(round.events) ? [...round.events] : [],
+      }));
+    setRawTraceRounds(snap);
+  }, []);
+
+  const scheduleRawTraceFlush = useCallback(() => {
+    if (rawTraceFlushTimerRef.current) return;
+    rawTraceFlushTimerRef.current = setTimeout(() => {
+      rawTraceFlushTimerRef.current = null;
+      flushRawTraceRounds();
+    }, 110);
+  }, [flushRawTraceRounds]);
 
   const composerSnapPx = useMemo(() => Math.round(composerMaxPx * 0.72), [composerMaxPx]);
 
@@ -1901,7 +1960,7 @@ function ChatLabPageMain() {
     t,
   ]);
 
-  // Listen for notification click and navigate to the corresponding conversation
+// Listen for notification click and navigate to the corresponding conversation
   useEffect(() => {
     const onNotificationClick = (/** @type {CustomEvent} */ e) => {
       const cid = String(e?.detail?.conversationId ?? "").trim();
@@ -1912,6 +1971,112 @@ function ChatLabPageMain() {
     window.addEventListener("openstudio-notification-click", onNotificationClick);
     return () => window.removeEventListener("openstudio-notification-click", onNotificationClick);
   }, [navigate]);
+
+  useEffect(() => {
+    if (!bridge?.onChatStream) return undefined;
+    if (!config?.chatLabRawTraceEnabled) return undefined;
+
+    /**
+     * @param {unknown} value
+     * @param {number} depth
+     * @returns {unknown}
+     */
+    const sanitizeValue = (value, depth = 0) => {
+      if (value == null) return value;
+      if (depth > 5) return "[DepthLimit]";
+      if (Array.isArray(value)) {
+        const cap = 80;
+        if (value.length > cap) {
+          return [...value.slice(0, cap).map((v) => sanitizeValue(v, depth + 1)), `[+${value.length - cap} more]`];
+        }
+        return value.map((v) => sanitizeValue(v, depth + 1));
+      }
+      if (typeof value === "object") {
+        const out = {};
+        for (const [k, v] of Object.entries(value)) out[k] = sanitizeValue(v, depth + 1);
+        return out;
+      }
+      if (typeof value === "string" && value.length > 3000) {
+        return `${value.slice(0, 3000)}\n...<truncated ${value.length - 3000} chars>`;
+      }
+      return value;
+    };
+
+    const off = bridge.onChatStream((evt) => {
+      if (!evt || typeof evt !== "object") return;
+      const streamId = String(evt.streamId ?? "").trim();
+      if (!streamId) return;
+      const now = Date.now();
+
+      let round = rawTraceRoundsRef.current.get(streamId);
+      if (!round) {
+        round = {
+          id: streamId,
+          streamId,
+          conversationId: conversationId || "",
+          assistantMessageId: "",
+          startedAt: now,
+          status: /** @type {const} */ ("streaming"),
+          omittedEvents: 0,
+          events: [],
+        };
+        rawTraceRoundsRef.current.set(streamId, round);
+      }
+
+      if (!round.conversationId && conversationId) round.conversationId = conversationId;
+      if (typeof evt.assistantMessageId === "string" && evt.assistantMessageId.trim()) {
+        round.assistantMessageId = evt.assistantMessageId.trim();
+      }
+
+      if (evt.type === "done") {
+        round.status = "done";
+        round.endedAt = now;
+      } else if (evt.type === "aborted") {
+        round.status = "aborted";
+        round.endedAt = now;
+      } else if (evt.type === "error") {
+        round.status = "error";
+        round.endedAt = now;
+      }
+
+      if (round.events.length < RAW_TRACE_MAX_EVENTS_PER_ROUND) {
+        const evSeq = rawTraceEventSeqRef.current++;
+        const raw = sanitizeValue(evt);
+        round.events.push({
+          id: `${streamId}:${evSeq}`,
+          at: now,
+          type: String(evt.type ?? "unknown"),
+          seq: typeof evt.seq === "number" ? evt.seq : undefined,
+          raw: raw && typeof raw === "object" ? /** @type {Record<string, unknown>} */ (raw) : { value: raw },
+        });
+      } else {
+        round.omittedEvents = Number(round.omittedEvents || 0) + 1;
+      }
+
+      if (rawTraceRoundsRef.current.size > RAW_TRACE_MAX_ROUNDS * 2) {
+        const oldestFirst = [...rawTraceRoundsRef.current.values()].sort(
+          (a, b) => Number(a.startedAt || 0) - Number(b.startedAt || 0),
+        );
+        const purgeCount = rawTraceRoundsRef.current.size - RAW_TRACE_MAX_ROUNDS * 2;
+        for (let i = 0; i < purgeCount; i += 1) {
+          rawTraceRoundsRef.current.delete(oldestFirst[i].streamId);
+        }
+      }
+
+      scheduleRawTraceFlush();
+    });
+
+    return () => {
+      off?.();
+    };
+  }, [bridge, config?.chatLabRawTraceEnabled, conversationId, scheduleRawTraceFlush]);
+
+  useEffect(
+    () => () => {
+      if (rawTraceFlushTimerRef.current) clearTimeout(rawTraceFlushTimerRef.current);
+    },
+    [],
+  );
 
   const canSend =
     !gatewayStreaming &&
@@ -3769,6 +3934,9 @@ function ChatLabPageMain() {
               : null
           }
         />
+        {config?.chatLabRawTraceEnabled ? (
+          <ChatLabRawTraceFloatPanel rounds={rawTraceRounds} onClear={clearRawTraceRounds} />
+        ) : null}
       </div>
       </ImageViewProvider>
     </ChatLabPreviewProvider>

@@ -2487,6 +2487,191 @@ html[data-os-motion="reduced"] .chat-lab-preview-dock:not(.chat-lab-preview-dock
   pointer-events: none;
 }
 
+.chat-lab-raw-trace-float {
+  position: fixed;
+  z-index: 120;
+  width: 110px;
+  user-select: none;
+}
+
+.chat-lab-raw-trace-float--open {
+  width: 460px;
+}
+
+.chat-lab-raw-trace-float__launcher {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--os-border) 72%, transparent);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--os-bg-elevated) 90%, transparent);
+  color: var(--os-text, var(--text));
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.24);
+  cursor: grab;
+  backdrop-filter: blur(8px);
+}
+
+.chat-lab-raw-trace-float__launcher--dragging {
+  cursor: grabbing;
+}
+
+.chat-lab-raw-trace-float__launcher-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 22px;
+  text-align: center;
+  background: color-mix(in srgb, var(--os-accent) 30%, var(--os-bg-elevated));
+}
+
+.chat-lab-raw-trace-float__panel {
+  width: 460px;
+  height: 380px;
+  border: 1px solid color-mix(in srgb, var(--os-border) 70%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--os-bg-elevated) 94%, transparent);
+  box-shadow:
+    0 16px 32px rgba(15, 23, 42, 0.28),
+    0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-lab-raw-trace-float__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--os-border) 64%, transparent);
+  cursor: grab;
+}
+
+.chat-lab-raw-trace-float__title {
+  font-size: 0.82rem;
+}
+
+.chat-lab-raw-trace-float__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-lab-raw-trace-float__head-btn {
+  border: 1px solid color-mix(in srgb, var(--os-border) 68%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--os-bg-subtle) 70%, transparent);
+  color: var(--os-text, var(--text));
+  font-size: 0.74rem;
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.chat-lab-raw-trace-float__head-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.chat-lab-raw-trace-float__filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--os-border) 56%, transparent);
+}
+
+.chat-lab-raw-trace-float__label {
+  font-size: 0.76rem;
+  color: var(--os-text-muted, var(--muted));
+}
+
+.chat-lab-raw-trace-float__select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--os-border) 64%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--os-bg-subtle) 68%, transparent);
+  color: var(--os-text, var(--text));
+  font-size: 0.76rem;
+  padding: 4px 7px;
+}
+
+.chat-lab-raw-trace-float__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.chat-lab-raw-trace-float__meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+  color: var(--os-text-muted, var(--muted));
+  padding: 6px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--os-border) 48%, transparent);
+}
+
+.chat-lab-raw-trace-float__event-list {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-bottom: 1px solid color-mix(in srgb, var(--os-border) 48%, transparent);
+}
+
+.chat-lab-raw-trace-float__event-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--os-border) 64%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--os-bg-subtle) 72%, transparent);
+  color: var(--os-text, var(--text));
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chat-lab-raw-trace-float__event-item--active {
+  border-color: color-mix(in srgb, var(--os-accent) 45%, var(--os-border));
+  background: color-mix(in srgb, var(--os-accent) 18%, var(--os-bg-subtle));
+}
+
+.chat-lab-raw-trace-float__event-seq {
+  color: var(--os-text-muted, var(--muted));
+}
+
+.chat-lab-raw-trace-float__json {
+  margin: 0;
+  padding: 10px;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: color-mix(in srgb, var(--os-text) 92%, transparent);
+}
+
+.chat-lab-raw-trace-float__empty {
+  padding: 14px 12px;
+  font-size: 0.78rem;
+  color: var(--os-text-muted, var(--muted));
+}
+
 .chat-lab-preview-dock__frame-status {
   position: absolute;
   inset: 0;
