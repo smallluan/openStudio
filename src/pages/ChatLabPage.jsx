@@ -5485,7 +5485,6 @@ function UserMessageExpandChevronIcon() {
  *     content: string;
  *     imageAttachments?: { mime: string; dataUrl: string }[];
  *   };
- *   mdComponents: import("react-markdown").Components;
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  *   expanded: boolean;
  *   onExpandedChange: (next: boolean) => void;
@@ -5494,7 +5493,6 @@ function UserMessageExpandChevronIcon() {
  */
 const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
   message,
-  mdComponents,
   t,
   expanded,
   onExpandedChange,
@@ -5503,7 +5501,7 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
   const innerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const [naturalH, setNaturalH] = useState(0);
 
-  const userMdSource = String(message.content ?? "");
+  const userText = String(message.content ?? "");
 
   useLayoutEffect(() => {
     const el = innerRef.current;
@@ -5512,7 +5510,7 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
     ro.observe(el);
     setNaturalH(el.scrollHeight);
     return () => ro.disconnect();
-  }, [message.content, message.imageAttachments, userMdSource]);
+  }, [message.content, message.imageAttachments, userText]);
 
   const canFold = naturalH > USER_MESSAGE_COLLAPSED_MAX_PX;
   const showCollapsed = canFold && !expanded;
@@ -5532,9 +5530,7 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
     >
       <div ref={innerRef} className="chat-lab__user-body">
         {String(message.content ?? "").trim() ? (
-          <div className="chat-lab__md chat-lab__user-md">
-            <ChatLabMarkdownContent source={userMdSource} components={mdComponents} />
-          </div>
+          <div className="chat-lab__user-text">{userText}</div>
         ) : null}
         {Array.isArray(message.imageAttachments) && message.imageAttachments.length > 0 ? (
           <div className="chat-lab__user-images">
@@ -6333,7 +6329,6 @@ const MessageBubble = memo(function MessageBubble({
           : isUser ? (
           <UserMessageCollapsibleBody
             message={message}
-            mdComponents={mdComponents}
             t={t}
             expanded={userLongExpanded}
             onExpandedChange={setUserLongExpanded}

@@ -8413,14 +8413,12 @@ button.os-image {
   -webkit-overflow-scrolling: touch;
 }
 
-/* User bubble: MD + KaTeX; bump typography over base `.chat-lab__md`. */
-.chat-lab__md.chat-lab__user-md {
+/* User bubble: plain text (no Markdown). */
+.chat-lab__user-text {
   font-size: 0.905rem;
   line-height: 1.52;
-}
-
-.chat-lab__md.chat-lab__user-md p {
-  margin: 0.35em 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .chat-lab__md h1,
