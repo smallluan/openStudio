@@ -91,6 +91,8 @@
     "languageAria": "选择界面语言",
     "autoSummarize": "自动总结为标题",
     "autoSummarizeTitle": "自动总结对话内容为标题",
+    "groupContinuousConversation": "群聊时连续对话",
+    "groupContinuousConversationAria": "群聊时自动沿用上一次@的智能体连续对话",
     "uiMotionShort": "界面动画",
     "uiMotionAria": "界面动画强度",
     "uiMotion": {

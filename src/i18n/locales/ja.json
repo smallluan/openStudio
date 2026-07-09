@@ -91,6 +91,8 @@
     "languageAria": "表示言語を選択",
     "autoSummarize": "タイトルを自動要約",
     "autoSummarizeTitle": "最初のメッセージから会話タイトルを自動生成",
+    "groupContinuousConversation": "グループ会話を継続",
+    "groupContinuousConversationAria": "グループ会話で直前に @ したエージェントへ継続して話しかける",
     "uiMotionShort": "UI アニメーション",
     "uiMotionAria": "UI アニメーションの強さ",
     "uiMotion": {

@@ -83,6 +83,7 @@ export function isEveryoneMention(mentionIds, everyoneIds) {
  */
 export function parseAgentMentions(text, agents, opts = {}) {
   const raw = String(text ?? "");
+  const stripMentions = opts.stripMentions !== false;
   const mainFallback = typeof opts.mainFallback === "string" ? opts.mainFallback : "";
   const everyoneLabel =
     typeof opts.everyoneLabel === "string" && opts.everyoneLabel.trim()
@@ -103,11 +104,15 @@ export function parseAgentMentions(text, agents, opts = {}) {
   const mentionIds = [];
   const seen = new Set();
   let cleanText = raw;
+  let scanText = raw;
 
   const escapedEveryone = everyoneLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const everyoneRe = new RegExp(`@${escapedEveryone}(?=\\s|$|[.,!?;:，。！？；：])`, "gu");
-  if (allowEveryone && everyoneRe.test(cleanText)) {
-    cleanText = cleanText.replace(everyoneRe, "").replace(/\s{2,}/g, " ").trim();
+  if (allowEveryone && everyoneRe.test(scanText)) {
+    scanText = scanText.replace(everyoneRe, " ");
+    if (stripMentions) {
+      cleanText = cleanText.replace(everyoneRe, "").replace(/\s{2,}/g, " ").trim();
+    }
     for (const agent of mentionEveryoneAgents(eligible, opts)) {
       if (mentionIds.length >= maxMentions) break;
       if (!seen.has(agent.id)) {
@@ -128,8 +133,11 @@ export function parseAgentMentions(text, agents, opts = {}) {
     for (const label of mentionMatchTokens(agent, mainFallback)) {
       const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const re = new RegExp(`@${escaped}(?=\\s|$|[.,!?;:，。！？；：])`, "gu");
-      if (!re.test(cleanText)) continue;
-      cleanText = cleanText.replace(re, "").replace(/\s{2,}/g, " ").trim();
+      if (!re.test(scanText)) continue;
+      scanText = scanText.replace(re, " ");
+      if (stripMentions) {
+        cleanText = cleanText.replace(re, "").replace(/\s{2,}/g, " ").trim();
+      }
       if (!seen.has(agent.id)) {
         seen.add(agent.id);
         mentionIds.push(agent.id);
@@ -139,7 +147,7 @@ export function parseAgentMentions(text, agents, opts = {}) {
   }
 
   return {
-    cleanText: cleanText.trim(),
+    cleanText: stripMentions ? cleanText.trim() : raw,
     mentionIds: mentionIds.slice(0, maxMentions),
   };
 }

@@ -8796,14 +8796,20 @@ button.os-image {
 .chat-lab__md table {
   border-collapse: separate;
   border-spacing: 0;
-  width: 100%;
+  min-width: 100%;
+  width: max-content;
   font-size: 0.78rem;
   line-height: 1.38;
   margin: 0.55em 0;
   border: 1px solid #e5e5e5;
   border-radius: 10px;
-  overflow: hidden;
   background: #fff;
+}
+
+/* Wide markdown tables: horizontal scroll wrapper. */
+.chat-lab__md:has(table) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chat-lab__md thead th {

@@ -91,6 +91,8 @@
     "languageAria": "Choose interface language",
     "autoSummarize": "Auto-summarize title",
     "autoSummarizeTitle": "Auto-generate conversation title (first message)",
+    "groupContinuousConversation": "Continuous group chat",
+    "groupContinuousConversationAria": "Continue talking to the last @mentioned agent in group chat",
     "uiMotionShort": "UI motion",
     "uiMotionAria": "UI motion intensity",
     "uiMotion": {

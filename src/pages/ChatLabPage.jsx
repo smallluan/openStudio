@@ -904,6 +904,23 @@ function ChatLabPageMain() {
   }, [mentionActive, mentionEveryoneEnabled, mentionEveryoneLabel]);
 
   const mentionOptionCount = (mentionEveryoneVisible ? 1 : 0) + mentionFilteredAgents.length;
+  const chatLabGroupContinuousConversation =
+    typeof config?.chatLabGroupContinuousConversation === "boolean"
+      ? config.chatLabGroupContinuousConversation
+      : true;
+  const continuousMentionTargetId = useMemo(() => {
+    if (!chatLabGroupContinuousConversation) return "";
+    const eligibleIds = new Set(mentionEligible.map((a) => a.id));
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const row = messages[i];
+      if (row?.role !== "user") continue;
+      const mentions = Array.isArray(row.mentions) ? row.mentions.filter(Boolean) : [];
+      if (!mentions.length) continue;
+      if (mentions.length !== 1) return "";
+      return eligibleIds.has(mentions[0]) ? mentions[0] : "";
+    }
+    return "";
+  }, [chatLabGroupContinuousConversation, mentionEligible, messages]);
 
   /** Active gateway stream ids for abort/stop (multi-agent turns may have several). */
   const activeStreamIdsRef = useRef(/** @type {Set<string>} */ (new Set()));
@@ -2173,10 +2190,13 @@ function ChatLabPageMain() {
         everyoneLabel: mentionEveryoneLabel,
         mainAgent,
         participantIds,
+        stripMentions: false,
       });
+      const effectiveMentionIds =
+        mentionIds.length === 0 && continuousMentionTargetId ? [continuousMentionTargetId] : mentionIds;
       const effectiveText = cleanText || trimmed;
       const replyTargets = resolveReplyTargets({
-        mentionIds,
+        mentionIds: effectiveMentionIds,
         participantIds,
         agents,
       });
@@ -2192,7 +2212,7 @@ function ChatLabPageMain() {
         role: /** @type {const} */ ("user"),
         content: effectiveText,
         createdAt: now,
-        ...(mentionIds.length ? { mentions: mentionIds } : {}),
+        ...(effectiveMentionIds.length ? { mentions: effectiveMentionIds } : {}),
         ...(skillSnap ? { skillMeta: skillSnap } : {}),
         ...(followUpRef ? { followUpRef } : {}),
         ...(imageAttachments && imageAttachments.length ? { imageAttachments: imageAttachments } : {}),
@@ -2207,7 +2227,7 @@ function ChatLabPageMain() {
         ...new Set([
           ...(mainAgent ? [mainAgent.id] : []),
           ...participantIds,
-          ...mentionIds,
+          ...effectiveMentionIds,
           ...replyTargets.map((a) => a.id),
         ]),
       ];
@@ -2398,6 +2418,7 @@ function ChatLabPageMain() {
       orchestrationMode,
       paramC,
       mentionEveryoneLabel,
+      continuousMentionTargetId,
       participantIds,
       resetGatewayStream,
       resolveWorkspaceContextBlock,
@@ -2666,7 +2687,10 @@ function ChatLabPageMain() {
         everyoneLabel: mentionEveryoneLabel,
         mainAgent,
         participantIds,
+        stripMentions: false,
       });
+      const effectiveMentionIds =
+        mentionIds.length === 0 && continuousMentionTargetId ? [continuousMentionTargetId] : mentionIds;
       const effectiveText = cleanText || trimmed;
       const now = Date.now();
       const userMsg = {
@@ -2674,7 +2698,7 @@ function ChatLabPageMain() {
         role: /** @type {const} */ ("user"),
         content: effectiveText,
         createdAt: now,
-        ...(mentionIds.length ? { mentions: mentionIds } : {}),
+        ...(effectiveMentionIds.length ? { mentions: effectiveMentionIds } : {}),
       };
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
@@ -2684,7 +2708,7 @@ function ChatLabPageMain() {
         ...new Set([
           ...(mainAgent ? [mainAgent.id] : []),
           ...participantIds,
-          ...mentionIds,
+          ...effectiveMentionIds,
         ]),
       ];
       if (!paramC) setSearchParams({ c: conversationId }, { replace: true });
@@ -2696,7 +2720,7 @@ function ChatLabPageMain() {
           role: /** @type {const} */ ("user"),
           content: userMsg.content,
           createdAt: userMsg.createdAt,
-          ...(mentionIds.length ? { mentions: mentionIds } : {}),
+          ...(effectiveMentionIds.length ? { mentions: effectiveMentionIds } : {}),
         },
       ];
       upsertSession(conversationId, deriveTitleFromMessages(persistable) || "…", persistable, {
@@ -2704,7 +2728,7 @@ function ChatLabPageMain() {
         orchestrationMode: true,
         orchestration: rec?.orchestration,
       });
-      void orchestrationRunner.startOrchestration(conversationId, effectiveText, mentionIds);
+      void orchestrationRunner.startOrchestration(conversationId, effectiveText, effectiveMentionIds);
       return;
     }
 
@@ -2741,6 +2765,7 @@ function ChatLabPageMain() {
     mainAgent,
     mainAgentLabel,
     mentionEveryoneLabel,
+    continuousMentionTargetId,
     orchestrationMode,
     orchestrationRunner,
     paramC,

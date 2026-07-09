@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, dialog, Notification, globalShortcut } = require("electron");
+﻿const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, dialog, Notification, globalShortcut } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { fileURLToPath } = require("url");
@@ -90,14 +90,13 @@ const isDev = process.env.NODE_ENV === "development";
 
 registerRendererSchemePrivileges();
 
-/* Windows: Fluent/overlay scrollbars often ignore ::-webkit-scrollbar — disable so rail CSS applies. */
+/* Windows: Fluent/overlay scrollbars often ignore ::-webkit-scrollbar 鈥?disable so rail CSS applies. */
 if (process.platform === "win32") {
   app.commandLine.appendSwitch(
     "disable-features",
     ["FluentOverlayScrollbars", "WindowsFluentScrollbar", "FluentScrollbars"].join(","),
   );
-  // CSSBackdropFilter + UseSkiaRenderer = 稳定高斯模糊所需的组合
-  // CanvasOopRasterization 确保合成层正确光栅化
+  // CSSBackdropFilter + UseSkiaRenderer = 绋冲畾楂樻柉妯＄硦鎵€闇€鐨勭粍鍚?  // CanvasOopRasterization 纭繚鍚堟垚灞傛纭厜鏍呭寲
   app.commandLine.appendSwitch(
     "enable-features",
     "CSSBackdropFilter,UseSkiaRenderer,CanvasOopRasterization",
@@ -106,8 +105,8 @@ if (process.platform === "win32") {
     app.commandLine.appendSwitch("ignore-gpu-blocklist");
     app.commandLine.appendSwitch("enable-accelerated-2d-canvas");
     app.commandLine.appendSwitch("enable-gpu-rasterization");
-    // 注意: enable-zero-copy 在 Windows 上与 Intel/AMD GPU 驱动存在兼容性问题,
-    // 会导致 backdrop-filter / 高斯模糊渲染失效, 因此移除此 flag。
+    // 娉ㄦ剰: enable-zero-copy 鍦?Windows 涓婁笌 Intel/AMD GPU 椹卞姩瀛樺湪鍏煎鎬ч棶棰?
+    // 浼氬鑷?backdrop-filter / 楂樻柉妯＄硦娓叉煋澶辨晥, 鍥犳绉婚櫎姝?flag銆?
   }
 }
 
@@ -302,10 +301,10 @@ let chatSessionsStore = null;
 const chatStreamAbortControllers = new Map();
 /** @type {Map<string, Promise<{ ok: boolean }>>} */
 const inFlightChatSends = new Map();
-/** UI conversation id → active stream id (abort stale WeChat / edit resends). */
+/** UI conversation id 鈫?active stream id (abort stale WeChat / edit resends). */
 /** @type {Map<string, string>} */
 const chatStreamByConversationId = new Map();
-/** UI conversation id → concurrent multi-agent stream ids. */
+/** UI conversation id 鈫?concurrent multi-agent stream ids. */
 /** @type {Map<string, Set<string>>} */
 const chatStreamsByConversationId = new Map();
 /** @type {Map<string, Promise<{ ok: boolean }>>} */
@@ -317,7 +316,7 @@ const wechatPeerConversationMap = new Map();
 /** Peers waiting for the next inbound to open a fresh `wechat:thread:*` row. */
 /** @type {Set<string>} */
 const wechatPeerPendingNewChat = new Set();
-/** Recent Studio→WeChat outbound echoes to ignore when polling getUpdates. */
+/** Recent Studio鈫扺eChat outbound echoes to ignore when polling getUpdates. */
 /** @type {Map<string, Array<{ text: string; ts: number; messageId?: string }>>} */
 const wechatRecentOutbound = new Map();
 let wechatPollTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
@@ -482,7 +481,7 @@ function stopWechatPoller() {
   wechatPollTimer = null;
 }
 
-/** Serialize `studio:bootstrapGateway` — React Strict Mode can fire the effect twice in dev. */
+/** Serialize `studio:bootstrapGateway` 鈥?React Strict Mode can fire the effect twice in dev. */
 let bootstrapGatewayInFlight = /** @type {Promise<{ ok: boolean; message?: string; skipped?: string }> | null} */ (null);
 
 /** Fingerprint of fields that affect on-disk OpenClaw sync; avoids rewriting every chat turn. */
@@ -547,12 +546,12 @@ function runOpenClawAgentSyncFromStudio(reason) {
       process.env.OPENCLAW_SYNC_SILENT_MODEL_RESTART_HINT !== "1"
     ) {
       console.warn(
-        "[openclaw-sync] openclaw.json model updated — restart the gateway process if it was already running so it picks up the new default model.",
+        "[openclaw-sync] openclaw.json model updated 鈥?restart the gateway process if it was already running so it picks up the new default model.",
       );
     }
     if (isDev && r?.browserHeadlessPatched) {
       console.warn(
-        "[openclaw-sync] openclaw.json browser settings updated for link open mode — restart the OpenClaw gateway so the browser plugin allowlist takes effect.",
+        "[openclaw-sync] openclaw.json browser settings updated for link open mode 鈥?restart the OpenClaw gateway so the browser plugin allowlist takes effect.",
       );
     }
     lastOpenClawSyncFingerprint = computeOpenClawSyncFingerprint(userConfigStore.readRaw());
@@ -768,7 +767,7 @@ app.whenReady().then(async () => {
   initStudioLogger(app, { isDev });
   attachProcessDiagnostics();
 
-  // 自动检测 Git 并注入 Unix 工具路径（grep, sort, awk 等）
+  // 鑷姩妫€娴?Git 骞舵敞鍏?Unix 宸ュ叿璺緞锛坓rep, sort, awk 绛夛級
   const log = getStudioLog();
   injectGitUnixToolsPath({ log });
 
@@ -873,6 +872,25 @@ app.whenReady().then(async () => {
         });
     } catch (e) {
       getStudioLog().error("[startup] supervised gateway init threw:", /** @type {any} */ (e)?.message ?? e);
+    }
+  }
+
+  // 无论在开发模式还是生产模式，都启动本地 gateway，确保继承修改后的 PATH（包含 Unix 工具）
+  if (isDev) {
+    try {
+      getStudioLog().info("[startup] supervised gateway begin (background, dev mode)");
+      void ensureLocalGatewayRunning(() => userConfigStore.readRaw(), {
+        log: getStudioLog(),
+        probeOpenClawGateway,
+      })
+        .then((sup) => {
+          getStudioLog().info("[startup] supervised gateway (dev):", sup);
+        })
+        .catch((e) => {
+          getStudioLog().error("[startup] supervised gateway threw (dev):", /** @type {any} */ (e)?.message ?? e);
+        });
+    } catch (e) {
+      getStudioLog().error("[startup] supervised gateway init threw (dev):", /** @type {any} */ (e)?.message ?? e);
     }
   }
 
@@ -1054,7 +1072,7 @@ app.whenReady().then(async () => {
       if (conversationId) {
         notification.on("click", () => {
           if (mainWindow && !mainWindow.isDestroyed()) {
-            // 先恢复窗口显示和焦点
+            // 鍏堟仮澶嶇獥鍙ｆ樉绀哄拰鐒︾偣
             if (mainWindow.isMinimized()) {
               mainWindow.restore();
             }
@@ -1362,7 +1380,7 @@ app.whenReady().then(async () => {
     } catch (err) {
       const msg = String(err?.message ?? err);
       if (msg === "wechat_plugin_not_loaded") {
-        return { ok: false, message: "wechat_plugin_not_loaded: gateway未加载微信插件，请在OpenClaw插件配置中启用wechat后重启。" };
+        return { ok: false, message: "wechat_plugin_not_loaded: gateway wechat plugin not loaded, enable wechat in OpenClaw plugins and restart." };
       }
       return { ok: false, message: msg };
     }
@@ -1394,7 +1412,7 @@ app.whenReady().then(async () => {
     } catch (err) {
       const msg = String(err?.message ?? err);
       if (msg === "wechat_plugin_not_loaded") {
-        return { ok: false, message: "wechat_plugin_not_loaded: gateway未加载微信插件，请在OpenClaw插件配置中启用wechat后重启。" };
+        return { ok: false, message: "wechat_plugin_not_loaded: gateway wechat plugin not loaded, enable wechat in OpenClaw plugins and restart." };
       }
       return { ok: false, message: msg };
     }
