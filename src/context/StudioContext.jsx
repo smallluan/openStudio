@@ -35,6 +35,10 @@ import { AgentMode } from "../studio/modes.js";
  *     description?: string;
  *     identityMd?: string;
  *     soulMd?: string;
+ *     agentsMd?: string;
+ *     userMd?: string;
+ *     toolsMd?: string;
+ *     memoryMd?: string;
  *     avatar?: string;
  *     skillIds?: string[];
  *   }) => Promise<{ ok: boolean; id?: string; reason?: string }>;
@@ -45,6 +49,10 @@ import { AgentMode } from "../studio/modes.js";
  *     avatar?: string;
  *     identityMd?: string;
  *     soulMd?: string;
+ *     agentsMd?: string;
+ *     userMd?: string;
+ *     toolsMd?: string;
+ *     memoryMd?: string;
  *     skillIds?: string[];
  *     openclaw?: { sessionKey?: string };
  *     orchestrationRole?: import("../studio/orchestrationRoles.js").OrchestrationRoleValue;
@@ -75,6 +83,10 @@ async function provisionAgentOnDisk(agent) {
       avatar: agent.avatar,
       soulMd: agent.soulMd,
       identityMd: agent.identityMd,
+      agentsMd: agent.agentsMd,
+      userMd: agent.userMd,
+      toolsMd: agent.toolsMd,
+      memoryMd: agent.memoryMd,
       isMain: Boolean(agent.isMain),
     });
   } catch {
@@ -214,6 +226,10 @@ export function StudioProvider({ children }) {
           avatar,
           soulMd: partial?.soulMd?.trim() ?? "",
           identityMd,
+          agentsMd: partial?.agentsMd?.trim() ?? "",
+          userMd: partial?.userMd?.trim() ?? "",
+          toolsMd: partial?.toolsMd?.trim() ?? "",
+          memoryMd: partial?.memoryMd?.trim() ?? "",
           skillIds: Array.isArray(partial?.skillIds) ? [...partial.skillIds] : [],
           mode: AgentMode.IDLE,
           zoneId: "lounge",
@@ -265,6 +281,10 @@ export function StudioProvider({ children }) {
         if (patch.avatar !== undefined) row.avatar = patch.avatar;
         if (patch.identityMd !== undefined) row.identityMd = patch.identityMd;
         if (patch.soulMd !== undefined) row.soulMd = patch.soulMd;
+        if (patch.agentsMd !== undefined) row.agentsMd = patch.agentsMd;
+        if (patch.userMd !== undefined) row.userMd = patch.userMd;
+        if (patch.toolsMd !== undefined) row.toolsMd = patch.toolsMd;
+        if (patch.memoryMd !== undefined) row.memoryMd = patch.memoryMd;
         if (patch.skillIds !== undefined) row.skillIds = [...patch.skillIds];
         if (patch.openclaw !== undefined) {
           const merged = { ...a.openclaw, ...patch.openclaw };

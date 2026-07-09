@@ -40,6 +40,7 @@ export default function GeneralSettingsSection() {
 
   const [chatLabAutoTitle, setChatLabAutoTitle] = useState(false);
   const [rawTraceEnabled, setRawTraceEnabled] = useState(false);
+  const [chatLabGroupContinuousConversation, setChatLabGroupContinuousConversation] = useState(true);
   const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
 
   useEffect(() => {
@@ -50,6 +51,11 @@ export default function GeneralSettingsSection() {
         if (!cancelled && c && typeof c === "object") {
           setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
           setRawTraceEnabled(Boolean(c.chatLabRawTraceEnabled));
+          setChatLabGroupContinuousConversation(
+            typeof c.chatLabGroupContinuousConversation === "boolean"
+              ? c.chatLabGroupContinuousConversation
+              : true,
+          );
           if (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar") {
             const mode = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
             setLinkOpenMode(mode);
@@ -89,6 +95,26 @@ export default function GeneralSettingsSection() {
         if (c && typeof c === "object") setRawTraceEnabled(Boolean(c.chatLabRawTraceEnabled));
       } catch {
         setRawTraceEnabled(false);
+      }
+    }
+  };
+
+  const persistChatLabGroupContinuousConversation = async (next) => {
+    setChatLabGroupContinuousConversation(next);
+    try {
+      await bridge?.setUserConfig?.({ chatLabGroupContinuousConversation: next });
+    } catch {
+      try {
+        const c = await bridge?.getUserConfig?.();
+        if (c && typeof c === "object") {
+          setChatLabGroupContinuousConversation(
+            typeof c.chatLabGroupContinuousConversation === "boolean"
+              ? c.chatLabGroupContinuousConversation
+              : true,
+          );
+        }
+      } catch {
+        setChatLabGroupContinuousConversation(true);
       }
     }
   };
@@ -207,13 +233,23 @@ export default function GeneralSettingsSection() {
           />
         </GeneralSettingRow>
 
-        <GeneralSettingRow title={t("settings.autoSummarize")} last>
+        <GeneralSettingRow title={t("settings.autoSummarize")}>
           <Switch
             compact
             id="settings-auto-summarize"
             label={t("settings.autoSummarizeTitle")}
             checked={chatLabAutoTitle}
             onCheckedChange={(v) => void persistChatLabAutoTitle(v)}
+          />
+        </GeneralSettingRow>
+
+        <GeneralSettingRow title={t("settings.groupContinuousConversation")} last>
+          <Switch
+            compact
+            id="settings-group-continuous-conversation"
+            label={t("settings.groupContinuousConversationAria")}
+            checked={chatLabGroupContinuousConversation}
+            onCheckedChange={(v) => void persistChatLabGroupContinuousConversation(v)}
           />
         </GeneralSettingRow>
       </div>

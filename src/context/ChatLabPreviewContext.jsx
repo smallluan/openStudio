@@ -26,8 +26,15 @@ import {
   readLinkOpenModeLocal,
   writeLinkOpenModeLocal,
 } from "../chat/chatLabLinkOpenPreference.js";
+import { getSession, upsertSession } from "../chat/chatSessionsStore.js";
+import {
+  captureSidebarPreviewSnapshot,
+  composeChatLabPreviewContextBlock,
+} from "../chat/chatLabPreviewSnapshot.js";
+import { runSidebarPreviewAutomation } from "../chat/chatLabPreviewAutomation.js";
 
 const PREVIEW_DEVICE_KEY = "openstudio_chat_preview_device";
+const PREVIEW_TAB_MAX = 16;
 
 /** @returns {"desktop" | "mobile"} */
 function readPreviewDeviceMode() {
@@ -38,6 +45,100 @@ function readPreviewDeviceMode() {
     /* ignore */
   }
   return "desktop";
+}
+
+/**
+ * @typedef {{
+ *   id: string;
+ *   src: string;
+ *   title: string;
+ *   externalUrl?: string | null;
+ *   sandbox?: string;
+ *   useWebview?: boolean;
+ *   lastVisitedAt: number;
+ * }} PreviewWebTab
+ *
+ * @typedef {{
+ *   tabs: PreviewWebTab[];
+ *   activeTabId: string;
+ * }} PreviewWebState
+ *
+ * @param {string | undefined} conversationId
+ * @returns {PreviewWebState}
+ */
+function readStoredPreviewWebState(conversationId) {
+  const cid = String(conversationId ?? "").trim();
+  if (!cid) return { tabs: [], activeTabId: "" };
+  const rec = getSession(cid);
+  const stored = rec?.previewState;
+  if (!stored || !Array.isArray(stored.tabs)) return { tabs: [], activeTabId: "" };
+  /** @type {PreviewWebTab[]} */
+  const tabs = [];
+  const seen = new Set();
+  for (const row of stored.tabs) {
+    if (!row || typeof row !== "object") continue;
+    const id = typeof row.id === "string" ? row.id.trim().slice(0, 96) : "";
+    const src = typeof row.url === "string" ? row.url.trim() : "";
+    if (!id || !src || seen.has(id)) continue;
+    seen.add(id);
+    const title = typeof row.title === "string" && row.title.trim() ? row.title.trim() : src;
+    tabs.push({
+      id,
+      src,
+      title,
+      externalUrl: typeof row.externalUrl === "string" ? row.externalUrl : src,
+      sandbox: typeof row.sandbox === "string" ? row.sandbox : undefined,
+      useWebview: Boolean(row.useWebview),
+      lastVisitedAt:
+        typeof row.lastVisitedAt === "number" && Number.isFinite(row.lastVisitedAt)
+          ? row.lastVisitedAt
+          : 0,
+    });
+    if (tabs.length >= PREVIEW_TAB_MAX) break;
+  }
+  if (!tabs.length) return { tabs: [], activeTabId: "" };
+  const activeTabId = String(stored.activeTabId ?? "").trim();
+  const fallbackId = tabs.reduce((best, tab) => (tab.lastVisitedAt > best.lastVisitedAt ? tab : best), tabs[0]).id;
+  return {
+    tabs,
+    activeTabId: tabs.some((t) => t.id === activeTabId) ? activeTabId : fallbackId,
+  };
+}
+
+/**
+ * @param {PreviewWebTab[]} tabs
+ * @param {string} activeTabId
+ */
+function toPersistedPreviewWebState(tabs, activeTabId) {
+  if (!Array.isArray(tabs) || tabs.length === 0) return undefined;
+  return {
+    tabs: tabs.slice(0, PREVIEW_TAB_MAX).map((tab) => ({
+      id: tab.id,
+      url: tab.src,
+      title: tab.title,
+      ...(tab.externalUrl ? { externalUrl: tab.externalUrl } : {}),
+      ...(tab.sandbox ? { sandbox: tab.sandbox } : {}),
+      ...(tab.useWebview ? { useWebview: true } : {}),
+      ...(tab.lastVisitedAt ? { lastVisitedAt: tab.lastVisitedAt } : {}),
+    })),
+    ...(activeTabId ? { activeTabId } : {}),
+  };
+}
+
+/**
+ * @param {PreviewWebTab} tab
+ * @returns {ChatLabPreviewSession}
+ */
+function sessionFromWebTab(tab) {
+  return {
+    kind: "iframe",
+    src: tab.src,
+    title: tab.title,
+    frameKey: newPreviewFrameKey(),
+    ...(tab.sandbox ? { sandbox: tab.sandbox } : {}),
+    externalUrl: tab.externalUrl ?? tab.src,
+    useWebview: Boolean(tab.useWebview),
+  };
 }
 
 /**
@@ -103,6 +204,11 @@ function readPreviewDeviceMode() {
  *   setArtifactViewMode: (mode: "render" | "source") => void;
  *   postToPreview: (payload: unknown, targetOrigin?: string) => void;
  *   subscribeFrameMessages: (fn: (data: unknown) => void) => () => void;
+ *   previewTabs: PreviewWebTab[];
+ *   activePreviewTabId: string;
+ *   activatePreviewTab: (tabId: string) => void;
+ *   captureSidebarContextBlock: () => Promise<string>;
+ *   runSidebarAutomation: (steps: import("../chat/chatLabPreviewAutomation.js").SidebarAutomationStep[] | unknown) => Promise<unknown>;
  * }>} */
 export const ChatLabPreviewContext = createContext(null);
 
@@ -110,8 +216,9 @@ export function useChatLabPreview() {
   return useContext(ChatLabPreviewContext);
 }
 
-export function ChatLabPreviewProvider({ children }) {
+export function ChatLabPreviewProvider({ conversationId, children }) {
   const { t } = useI18n();
+  const restoredWebState = useMemo(() => readStoredPreviewWebState(conversationId), [conversationId]);
   const iframeRef = useRef(/** @type {HTMLIFrameElement | null} */ (null));
   const webviewRef = useRef(/** @type {HTMLElement | null} */ (null));
   const blobRevokeRef = useRef(/** @type {string | null} */ (null));
@@ -122,10 +229,32 @@ export function ChatLabPreviewProvider({ children }) {
   /** @type {import("react").MutableRefObject<Set<(data: unknown) => void>>} */
   const subscribedRef = useRef(new Set());
 
-  const [session, setSession] = useState(/** @type {ChatLabPreviewSession | null} */ (null));
+  const [session, setSession] = useState(
+    /** @type {ChatLabPreviewSession | null} */ (
+      restoredWebState.activeTabId
+        ? sessionFromWebTab(
+            restoredWebState.tabs.find((tab) => tab.id === restoredWebState.activeTabId) ?? restoredWebState.tabs[0],
+          )
+        : null
+    ),
+  );
   const [artifactsPanel, setArtifactsPanel] = useState(/** @type {ArtifactsPanelState | null} */ (null));
+  const [previewTabs, setPreviewTabs] = useState(restoredWebState.tabs);
+  const [activePreviewTabId, setActivePreviewTabId] = useState(restoredWebState.activeTabId);
   const [deviceMode, setDeviceModeState] = useState(readPreviewDeviceMode);
   const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
+
+  useEffect(() => {
+    const next = readStoredPreviewWebState(conversationId);
+    setPreviewTabs(next.tabs);
+    setActivePreviewTabId(next.activeTabId);
+    if (!next.tabs.length) {
+      setSession(null);
+      return;
+    }
+    const active = next.tabs.find((tab) => tab.id === next.activeTabId) ?? next.tabs[0];
+    setSession(sessionFromWebTab(active));
+  }, [conversationId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,6 +319,75 @@ export function ChatLabPreviewProvider({ children }) {
     }
     artifactBlobUrlsRef.current.clear();
   }, []);
+
+  const upsertWebPreviewTab = useCallback(
+    (src, title, opts = {}, mode = "new") => {
+      const nextSrc = String(src ?? "").trim();
+      if (!nextSrc) return "";
+      const nextTitle = String(title ?? "").trim() || nextSrc;
+      const now = Date.now();
+      const nextTabId = mode === "new" ? `pvtab_${now.toString(36)}_${Math.random().toString(16).slice(2, 8)}` : "";
+      let resolvedId = "";
+      setPreviewTabs((prev) => {
+        const base = Array.isArray(prev) ? prev : [];
+        const currentActive = String(activePreviewTabId ?? "").trim();
+        const idx = mode === "active" ? base.findIndex((tab) => tab.id === currentActive) : -1;
+        /** @type {PreviewWebTab} */
+        const row = {
+          id: idx >= 0 ? base[idx].id : nextTabId,
+          src: nextSrc,
+          title: nextTitle,
+          externalUrl: opts.externalUrl ?? nextSrc,
+          sandbox: opts.sandbox,
+          useWebview: Boolean(opts.useWebview),
+          lastVisitedAt: now,
+        };
+        resolvedId = row.id;
+        if (idx >= 0) {
+          const next = [...base];
+          next[idx] = row;
+          return next;
+        }
+        const appended = [...base, row];
+        if (appended.length <= PREVIEW_TAB_MAX) return appended;
+        return appended.slice(appended.length - PREVIEW_TAB_MAX);
+      });
+      if (resolvedId) setActivePreviewTabId(resolvedId);
+      return resolvedId;
+    },
+    [activePreviewTabId],
+  );
+
+  const activatePreviewTab = useCallback((tabId) => {
+    const id = String(tabId ?? "").trim();
+    if (!id) return;
+    let nextSession = /** @type {ChatLabPreviewSession | null} */ (null);
+    setPreviewTabs((prev) => {
+      const idx = prev.findIndex((tab) => tab.id === id);
+      if (idx < 0) return prev;
+      const next = [...prev];
+      const updated = { ...next[idx], lastVisitedAt: Date.now() };
+      next[idx] = updated;
+      nextSession = sessionFromWebTab(updated);
+      return next;
+    });
+    setActivePreviewTabId(id);
+    setArtifactsPanel(null);
+    revokeBlob();
+    if (nextSession) setSession(nextSession);
+  }, [revokeBlob]);
+
+  useEffect(() => {
+    const cid = String(conversationId ?? "").trim();
+    if (!cid) return;
+    const rec = getSession(cid);
+    if (!rec) return;
+    const nextPreviewState = toPersistedPreviewWebState(previewTabs, activePreviewTabId);
+    const prevRaw = rec.previewState ? JSON.stringify(rec.previewState) : "";
+    const nextRaw = nextPreviewState ? JSON.stringify(nextPreviewState) : "";
+    if (prevRaw === nextRaw) return;
+    upsertSession(cid, rec.title || "…", rec.messages, { previewState: nextPreviewState ?? null });
+  }, [activePreviewTabId, conversationId, previewTabs]);
 
   const close = useCallback(() => {
     revokeBlob();
@@ -424,20 +622,24 @@ export function ChatLabPreviewProvider({ children }) {
      * @param {{ externalUrl?: string | null; sandbox?: string; useWebview?: boolean }} [opts]
      */
     (src, title, opts = {}) => {
+      const tabId = upsertWebPreviewTab(src, title, opts, "new");
       revokeArtifactBlobs();
       setArtifactsPanel(null);
       revokeBlob();
-      setSession({
-        kind: "iframe",
-        src,
-        title,
-        frameKey: newPreviewFrameKey(),
-        sandbox: opts.sandbox,
-        externalUrl: opts.externalUrl ?? src,
-        useWebview: Boolean(opts.useWebview),
-      });
+      const label = String(title ?? "").trim() || String(src ?? "").trim();
+      setSession(
+        sessionFromWebTab({
+          id: tabId || `pvtab_${Date.now().toString(36)}`,
+          src,
+          title: label,
+          externalUrl: opts.externalUrl ?? src,
+          sandbox: opts.sandbox,
+          useWebview: Boolean(opts.useWebview),
+          lastVisitedAt: Date.now(),
+        }),
+      );
     },
-    [revokeArtifactBlobs, revokeBlob],
+    [revokeArtifactBlobs, revokeBlob, upsertWebPreviewTab],
   );
 
   const openSrcDoc = useCallback(
@@ -509,32 +711,36 @@ export function ChatLabPreviewProvider({ children }) {
       const nextUrl = String(url ?? "").trim();
       if (!nextUrl) return;
       const label = String(title ?? nextUrl).trim() || nextUrl;
-      setSession((prev) => {
-        if (prev?.kind === "iframe" && prev.useWebview) {
-          return {
-            ...prev,
-            src: nextUrl,
-            externalUrl: nextUrl,
-            title: label,
-            frameKey: newPreviewFrameKey(),
-          };
-        }
-        return {
-          kind: "iframe",
-          src: nextUrl,
-          title: label,
-          frameKey: newPreviewFrameKey(),
-          sandbox:
-            "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals",
+      const prev = previewTabs.find((tab) => tab.id === activePreviewTabId);
+      const sandbox =
+        prev?.sandbox ?? "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals";
+      const useWebview = prev?.useWebview ?? true;
+      const tabId = upsertWebPreviewTab(
+        nextUrl,
+        label,
+        {
           externalUrl: nextUrl,
-          useWebview: true,
-        };
-      });
+          sandbox,
+          useWebview,
+        },
+        prev ? "active" : "new",
+      );
       revokeArtifactBlobs();
       setArtifactsPanel(null);
       revokeBlob();
+      setSession(
+        sessionFromWebTab({
+          id: tabId || `pvtab_${Date.now().toString(36)}`,
+          src: nextUrl,
+          title: label,
+          externalUrl: nextUrl,
+          sandbox,
+          useWebview,
+          lastVisitedAt: Date.now(),
+        }),
+      );
     },
-    [revokeArtifactBlobs, revokeBlob],
+    [activePreviewTabId, previewTabs, revokeArtifactBlobs, revokeBlob, upsertWebPreviewTab],
   );
 
   const openFromHref = useCallback(
@@ -744,6 +950,62 @@ export function ChatLabPreviewProvider({ children }) {
     }
   }, []);
 
+  const captureSidebarContextBlock = useCallback(async () => {
+    if (linkOpenMode === "external") return "";
+    try {
+      const snap = await captureSidebarPreviewSnapshot({
+        session,
+        webviewRef,
+        iframeRef,
+        previewTabs,
+        activePreviewTabId,
+        artifactsPanel,
+      });
+      return composeChatLabPreviewContextBlock(t, snap);
+    } catch {
+      return "";
+    }
+  }, [
+    activePreviewTabId,
+    artifactsPanel,
+    iframeRef,
+    linkOpenMode,
+    previewTabs,
+    session,
+    t,
+    webviewRef,
+  ]);
+
+  const runSidebarAutomation = useCallback(
+    async (steps, opts = {}) => {
+      if (linkOpenMode === "external") return { ok: false, error: "external_mode", steps: [] };
+      return runSidebarPreviewAutomation({
+        steps,
+        session,
+        webviewRef,
+        iframeRef,
+        previewTabs,
+        activePreviewTabId,
+        artifactsPanel,
+        navigatePreviewTo,
+        t,
+        onStepComplete: opts.onStepComplete,
+        stopOnFailure: opts.stopOnFailure,
+      });
+    },
+    [
+      activePreviewTabId,
+      artifactsPanel,
+      iframeRef,
+      linkOpenMode,
+      navigatePreviewTo,
+      previewTabs,
+      session,
+      t,
+      webviewRef,
+    ],
+  );
+
   const value = useMemo(
     () => ({
       session,
@@ -767,6 +1029,11 @@ export function ChatLabPreviewProvider({ children }) {
       postToPreview,
       subscribeFrameMessages,
       openWebviewDevTools,
+      previewTabs,
+      activePreviewTabId,
+      activatePreviewTab,
+      captureSidebarContextBlock,
+      runSidebarAutomation,
     }),
     [
       session,
@@ -788,6 +1055,11 @@ export function ChatLabPreviewProvider({ children }) {
       postToPreview,
       subscribeFrameMessages,
       openWebviewDevTools,
+      previewTabs,
+      activePreviewTabId,
+      activatePreviewTab,
+      captureSidebarContextBlock,
+      runSidebarAutomation,
     ],
   );
 

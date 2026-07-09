@@ -84,6 +84,16 @@ import {
   resolveReplyTargets,
 } from "../studio/agentMentions.js";
 import { extractFirstWebMarkdownLink, readLinkOpenModeLocal } from "../chat/chatLabLinkOpenPreference.js";
+import {
+  isSidebarAutomationCarrierContent,
+  isSidebarAutomationCarrierMessage,
+  automationHadFailure,
+  findUserRequestBeforeAssistant,
+  formatSidebarAutomationRetryMessage,
+  isSidebarAutomationInternalUserMessage,
+  shouldTriggerSidebarAutomationReplan,
+  SIDEBAR_AUTOMATION_MAX_RETRIES,
+} from "../chat/chatLabSidebarActionProtocol.js";
 import { composeChatLabSystemPrompt, composeChatLabStudioSuffix, fetchChatLabWorkspaceContextBlock } from "../chat/chatLabSystemPrompt.js";
 import {
   agentAvatarGlyph,
@@ -115,6 +125,8 @@ import ChatLabContextBar from "../components/chat-lab/ChatLabContextBar.jsx";
 import ChatLabComposerSlot from "../components/chat-lab/ChatLabComposerSlot.jsx";
 import ChatLabSessionScopeReset from "../components/chat-lab/ChatLabSessionScopeReset.jsx";
 import ChatLabWorkspaceActiveRootBridge from "../components/chat-lab/ChatLabWorkspaceActiveRootBridge.jsx";
+import ChatLabPreviewContextBridge from "../components/chat-lab/ChatLabPreviewContextBridge.jsx";
+import ChatLabSidebarActionRunner from "../components/chat-lab/ChatLabSidebarActionRunner.jsx";
 import { ChatLabWorkspaceProvider } from "../context/ChatLabWorkspaceContext.jsx";
 import ChatLabRawTraceFloatPanel from "../components/chat-lab/ChatLabRawTraceFloatPanel.jsx";
 import {
@@ -351,7 +363,7 @@ function formatMessageTimestamp(ts, locale) {
  * @param {import("../studio/agents.js").LobsterAgent} agent
  * @param {(key: string) => string} t
  * @param {import("../studio/agents.js").LobsterAgent[]} groupAgents
- * @param {{ orchestrationTeamRoster?: string; mentionDelegateReply?: boolean; workspaceContext?: string }} [extra]
+ * @param {{ orchestrationTeamRoster?: string; mentionDelegateReply?: boolean; workspaceContext?: string; previewContext?: string }} [extra]
  */
 function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
   const others = groupAgents.filter((a) => a.id !== agent.id);
@@ -361,8 +373,11 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
         ? t("chatLab.groupDelegateReplyHint")
         : t("chatLab.groupDelegateHint")
       : "";
-  const workspaceBlock = String(extra.workspaceContext ?? "").trim();
-  const studioSuffix = [workspaceBlock, composeChatLabStudioSuffix(t)].filter(Boolean).join("\n\n");
+  const contextBlocks = [
+    String(extra.workspaceContext ?? "").trim(),
+    String(extra.previewContext ?? "").trim(),
+  ].filter(Boolean);
+  const studioSuffix = [...contextBlocks, composeChatLabStudioSuffix(t)].filter(Boolean).join("\n\n");
   return systemMessageForAgent(agent, t("chatLab.systemPrompt"), {
     groupAgents,
     groupDelegateHint,
@@ -693,14 +708,21 @@ function mergeTerminalAssistantPayload(m, extra) {
   /** @type {*} */
   const next = { ...m, streaming: false, createdAt: Date.now() };
   if (typeof extra?.content === "string") {
-    next.content = preferLongerAssistantText(String(m.content ?? ""), extra.content);
+    const prev = String(m.content ?? "");
+    const incoming = extra.content;
+    if (isSidebarAutomationCarrierContent(prev, false) && !isSidebarAutomationCarrierContent(incoming, false)) {
+      next.content = incoming;
+    } else {
+      next.content = preferLongerAssistantText(prev, incoming);
+    }
   }
   if (typeof extra?.thinking === "string") {
     next.thinking = preferLongerAssistantText(String(m.thinking ?? ""), extra.thinking);
   }
   if (extra?.error) next.error = extra.error;
   if (Array.isArray(extra?.toolTrace)) {
-    if (extra.toolTrace.length > 0) next.toolTrace = /** @type {typeof m.toolTrace} */ (extra.toolTrace);
+    const merged = mergePreservingSidebarAutomationToolTrace(m.toolTrace, extra.toolTrace);
+    if (merged?.length) next.toolTrace = merged;
     else delete next.toolTrace;
   }
   if (Array.isArray(extra?.activityLog)) {
@@ -721,7 +743,181 @@ function mergeTerminalAssistantPayload(m, extra) {
     if (extra.mentions.length > 0) next.mentions = extra.mentions;
     else delete next.mentions;
   }
+  if (next.sidebarAutomationHandoff && !isSidebarAutomationCarrierContent(String(next.content ?? ""), false)) {
+    delete next.sidebarAutomationHandoff;
+  }
   return next;
+}
+
+function isSidebarAutomationToolRow(row) {
+  const id = String(row?.id ?? "");
+  const toolName = String(row?.toolName ?? "");
+  return id.startsWith("sidebar-auto:") || toolName === "sidebar-action";
+}
+
+/**
+ * @param {import("../chat/toolTraceMerge.js").ToolTraceRow[] | undefined} prev
+ * @param {import("../chat/toolTraceMerge.js").ToolTraceRow[] | undefined} incoming
+ */
+function mergePreservingSidebarAutomationToolTrace(prev, incoming) {
+  const prevList = Array.isArray(prev) ? prev : [];
+  const incomingList = Array.isArray(incoming) ? incoming : [];
+  const sidebarRows = prevList.filter(isSidebarAutomationToolRow);
+  const gatewayRows = incomingList.filter((r) => !isSidebarAutomationToolRow(r));
+  const merged = [...gatewayRows, ...sidebarRows];
+  return merged.length ? merged : undefined;
+}
+
+/**
+ * @param {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[] | undefined} timeline
+ * @param {import("../chat/toolTraceMerge.js").ToolTraceRow[]} sidebarRows
+ * @param {string} cleanContent
+ */
+function mergeSidebarAutomationTimeline(timeline, sidebarRows, cleanContent) {
+  /** @type {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[]} */
+  let tl = Array.isArray(timeline) ? [...timeline] : [];
+  if (cleanContent.trim().length > 0 && tl.length > 0) {
+    tl = reconcileTimelineWithCanonicalText(tl, cleanContent);
+  }
+  const seen = new Set(tl.filter((s) => s.kind === "tool").map((s) => s.refId));
+  for (const row of sidebarRows) {
+    if (!seen.has(row.id)) {
+      tl.push({ kind: "tool", refId: row.id });
+      seen.add(row.id);
+    }
+  }
+  return tl.length ? tl : undefined;
+}
+
+function sidebarAutomationStepLabel(req) {
+  const action = String(req?.action ?? "step").trim() || "step";
+  const selector = typeof req?.selector === "string" ? req.selector.trim() : "";
+  const placeholder = typeof req?.placeholder === "string" ? req.placeholder.trim() : "";
+  const label = typeof req?.label === "string" ? req.label.trim() : "";
+  const verifyHint = typeof req?.verifyHint === "string" ? req.verifyHint.trim() : "";
+  const hint = selector || placeholder || label || verifyHint;
+  return hint ? `${action} · ${hint}` : action;
+}
+
+/**
+ * @param {unknown} requested
+ * @param {unknown} executed
+ * @param {number} index
+ * @returns {import("../chat/toolTraceMerge.js").ToolTraceRow}
+ */
+function sidebarAutomationToolTraceRowFromResult(requested, executed, index) {
+  const req = requested && typeof requested === "object" ? requested : {};
+  const row = executed && typeof executed === "object" ? executed : {};
+  const action = String(row.action ?? req.action ?? "step").trim() || "step";
+  const ok = row.ok !== false;
+  const err = row.error ? String(row.error) : "";
+  const verifyFailed = err === "verify_failed" || String(err).includes("verify") || String(err).includes("mismatch") || String(err).includes("missing");
+  const summary = ok
+    ? `${action} completed`
+    : verifyFailed
+      ? `${action} verify failed: ${err}`
+      : err
+        ? `${action} failed: ${err}`
+        : `${action} failed`;
+  return {
+    id: `sidebar-auto:${index}`,
+    toolName: "sidebar-action",
+    label: sidebarAutomationStepLabel(req),
+    phase: ok ? "completed" : "error",
+    status: ok ? "ok" : "error",
+    summary,
+    seq: index + 1,
+    args: req && typeof req === "object" ? req : undefined,
+    result: row && typeof row === "object" ? JSON.stringify(row, null, 2) : undefined,
+    ...(err ? { error: err } : {}),
+    done: true,
+  };
+}
+
+/**
+ * @param {unknown} requested
+ * @param {number} index
+ * @returns {import("../chat/toolTraceMerge.js").ToolTraceRow}
+ */
+function sidebarAutomationPendingToolTraceRow(requested, index) {
+  const req = requested && typeof requested === "object" ? requested : {};
+  const action = String(req.action ?? "step").trim() || "step";
+  return {
+    id: `sidebar-auto:${index}`,
+    toolName: "sidebar-action",
+    label: sidebarAutomationStepLabel(req),
+    phase: "start",
+    status: "running",
+    summary: `${action} pending`,
+    seq: index + 1,
+    args: req && typeof req === "object" ? req : undefined,
+    done: false,
+  };
+}
+
+function filterSidebarAutomationToolRows(rows) {
+  return Array.isArray(rows) ? rows.filter((r) => !isSidebarAutomationToolRow(r)) : [];
+}
+
+function sidebarAutomationPendingToolTraceRows(requestedSteps) {
+  const requested = Array.isArray(requestedSteps) ? requestedSteps : [];
+  return requested.map((step, index) => sidebarAutomationPendingToolTraceRow(step, index));
+}
+
+/**
+ * @param {unknown[]} requestedSteps
+ * @param {unknown} result
+ * @returns {import("../chat/toolTraceMerge.js").ToolTraceRow[]}
+ */
+function sidebarAutomationToolTraceRows(requestedSteps, result) {
+  const requested = Array.isArray(requestedSteps) ? requestedSteps : [];
+  const executed = Array.isArray(result?.steps) ? result.steps : [];
+  const maxLen = Math.max(requested.length, executed.length);
+  /** @type {import("../chat/toolTraceMerge.js").ToolTraceRow[]} */
+  const out = [];
+  for (let i = 0; i < maxLen; i++) {
+    out.push(sidebarAutomationToolTraceRowFromResult(requested[i], executed[i], i));
+  }
+  if (result && typeof result === "object" && result.ok === false && out.length === 0) {
+    out.push(
+      sidebarAutomationToolTraceRowFromResult(
+        { action: "sidebar-automation" },
+        {
+          ok: false,
+          action: "sidebar-automation",
+          error: String(result.error ?? "automation_failed"),
+        },
+        0,
+      ),
+    );
+  }
+  return out;
+}
+
+/**
+ * @param {unknown[]} requestedSteps
+ * @param {unknown} result
+ * @param {number} [runningIndex]
+ * @returns {import("../chat/toolTraceMerge.js").ToolTraceRow[]}
+ */
+function sidebarAutomationProgressToolTraceRows(requestedSteps, result, runningIndex = -1) {
+  const requested = Array.isArray(requestedSteps) ? requestedSteps : [];
+  const executed = Array.isArray(result?.steps) ? result.steps : [];
+  return requested.map((step, index) => {
+    if (index < executed.length) {
+      return sidebarAutomationToolTraceRowFromResult(step, executed[index], index);
+    }
+    if (index === runningIndex) {
+      return sidebarAutomationPendingToolTraceRow(step, index);
+    }
+    return {
+      ...sidebarAutomationPendingToolTraceRow(step, index),
+      phase: "pending",
+      status: "pending",
+      summary: `${String(step && typeof step === "object" ? step.action : "step")} pending`,
+      done: false,
+    };
+  });
 }
 
 /** Active thread first, then most-recent locals — matches main-process prewarm cap. */
@@ -764,12 +960,30 @@ function ChatLabPageMain() {
   const conversationId = paramC || draftIdRef.current;
 
   const activeRootRef = useRef(/** @type {string | null} */ (null));
+  const previewSnapshotRef = useRef(/** @type {(() => Promise<string>) | null} */ (null));
+  const sidebarAutomationRetryCountRef = useRef(0);
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
   const isElectron = Boolean(bridge?.startChatStream);
 
   const resolveWorkspaceContextBlock = useCallback(
     () => fetchChatLabWorkspaceContextBlock(bridge, activeRootRef.current, t),
     [bridge, t],
+  );
+  const resolvePreviewContextBlock = useCallback(async () => {
+    const capture = previewSnapshotRef.current;
+    if (!capture) return "";
+    try {
+      return await capture();
+    } catch {
+      return "";
+    }
+  }, []);
+  const resolveAgentContextBlocks = useCallback(
+    () =>
+      Promise.all([resolveWorkspaceContextBlock(), resolvePreviewContextBlock()]).then(
+        ([workspaceContext, previewContext]) => ({ workspaceContext, previewContext }),
+      ),
+    [resolvePreviewContextBlock, resolveWorkspaceContextBlock],
   );
   const { agents, agentById, mainAgent } = useStudio();
   const skillEnv = useSkillEnvironment();
@@ -907,6 +1121,23 @@ function ChatLabPageMain() {
   }, [mentionActive, mentionEveryoneEnabled, mentionEveryoneLabel]);
 
   const mentionOptionCount = (mentionEveryoneVisible ? 1 : 0) + mentionFilteredAgents.length;
+  const chatLabGroupContinuousConversation =
+    typeof config?.chatLabGroupContinuousConversation === "boolean"
+      ? config.chatLabGroupContinuousConversation
+      : true;
+  const continuousMentionTargetId = useMemo(() => {
+    if (!chatLabGroupContinuousConversation) return "";
+    const eligibleIds = new Set(mentionEligible.map((a) => a.id));
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const row = messages[i];
+      if (row?.role !== "user") continue;
+      const mentions = Array.isArray(row.mentions) ? row.mentions.filter(Boolean) : [];
+      if (!mentions.length) continue;
+      if (mentions.length !== 1) return "";
+      return eligibleIds.has(mentions[0]) ? mentions[0] : "";
+    }
+    return "";
+  }, [chatLabGroupContinuousConversation, mentionEligible, messages]);
 
   /** Active gateway stream ids for abort/stop (multi-agent turns may have several). */
   const activeStreamIdsRef = useRef(/** @type {Set<string>} */ (new Set()));
@@ -1484,7 +1715,10 @@ function ChatLabPageMain() {
           if (m.id !== rowId) return m;
           changed = true;
           const row = { ...m, content, thinking, streaming: active };
-          if (toolTrace && toolTrace.length > 0) row.toolTrace = toolTrace;
+          if (toolTrace && toolTrace.length > 0) {
+            const merged = mergePreservingSidebarAutomationToolTrace(m.toolTrace, toolTrace);
+            if (merged) row.toolTrace = merged;
+          }
           if (activityLog && activityLog.length > 0) row.activityLog = activityLog;
           if (Array.isArray(assistantTimeline)) {
             if (assistantTimeline.length > 0) row.assistantTimeline = assistantTimeline;
@@ -2222,10 +2456,10 @@ function ChatLabPageMain() {
       assistantStreamIdsRef.current.set(assistantMsg.id, streamId);
 
       const editGroupAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
-      const workspaceContext = await resolveWorkspaceContextBlock();
+      const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
       const sysRow = mainAgent
-        ? systemRowForGroupAgent(mainAgent, t, editGroupAgents, { workspaceContext })
-        : { role: "system", content: composeChatLabSystemPrompt(t, { workspaceContext }) };
+        ? systemRowForGroupAgent(mainAgent, t, editGroupAgents, { workspaceContext, previewContext })
+        : { role: "system", content: composeChatLabSystemPrompt(t, { workspaceContext, previewContext }) };
       const outgoing = [
         ...(sysRow ? [sysRow] : []),
         ...priorRows,
@@ -2310,7 +2544,7 @@ function ChatLabPageMain() {
       paramC,
       mainAgent,
       resetGatewayStream,
-      resolveWorkspaceContextBlock,
+      resolveAgentContextBlocks,
       setSearchParams,
       t,
     ],
@@ -2338,10 +2572,16 @@ function ChatLabPageMain() {
         everyoneLabel: mentionEveryoneLabel,
         mainAgent,
         participantIds,
+        stripMentions: false,
       });
+      const effectiveMentionIds =
+        mentionIds.length === 0 && continuousMentionTargetId ? [continuousMentionTargetId] : mentionIds;
       const effectiveText = cleanText || trimmed;
+      if (!isSidebarAutomationInternalUserMessage(effectiveText)) {
+        sidebarAutomationRetryCountRef.current = 0;
+      }
       const replyTargets = resolveReplyTargets({
-        mentionIds,
+        mentionIds: effectiveMentionIds,
         participantIds,
         agents,
       });
@@ -2357,7 +2597,7 @@ function ChatLabPageMain() {
         role: /** @type {const} */ ("user"),
         content: effectiveText,
         createdAt: now,
-        ...(mentionIds.length ? { mentions: mentionIds } : {}),
+        ...(effectiveMentionIds.length ? { mentions: effectiveMentionIds } : {}),
         ...(skillSnap ? { skillMeta: skillSnap } : {}),
         ...(followUpRef ? { followUpRef } : {}),
         ...(imageAttachments && imageAttachments.length ? { imageAttachments: imageAttachments } : {}),
@@ -2372,7 +2612,7 @@ function ChatLabPageMain() {
         ...new Set([
           ...(mainAgent ? [mainAgent.id] : []),
           ...participantIds,
-          ...mentionIds,
+          ...effectiveMentionIds,
           ...replyTargets.map((a) => a.id),
         ]),
       ];
@@ -2399,7 +2639,7 @@ function ChatLabPageMain() {
 
       const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
       const groupAgents = groupAgentsInSession({ agents, mainAgent, participantIds: sessionParticipantIds });
-      const workspaceContext = await resolveWorkspaceContextBlock();
+      const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
 
       const parallelReply = replyTargets.length > 1;
       const historyBeforeUser = messagesRef.current.filter((m) => m.id !== userMsg.id);
@@ -2424,7 +2664,7 @@ function ChatLabPageMain() {
           createdAt: now + i + 1,
           agentId: target.id,
         };
-        const sysRow = systemRowForGroupAgent(target, t, groupAgents, { workspaceContext });
+        const sysRow = systemRowForGroupAgent(target, t, groupAgents, { workspaceContext, previewContext });
         const ctx = resolveAgentGatewayContext({
           conversationId,
           agentId: target.id,
@@ -2563,9 +2803,10 @@ function ChatLabPageMain() {
       orchestrationMode,
       paramC,
       mentionEveryoneLabel,
+      continuousMentionTargetId,
       participantIds,
       resetGatewayStream,
-      resolveWorkspaceContextBlock,
+      resolveAgentContextBlocks,
       setProbeRestartKey,
       setSearchParams,
       setMessages,
@@ -2596,10 +2837,11 @@ function ChatLabPageMain() {
         mainAgent,
         participantIds: sessionParticipantIds,
       });
-      const workspaceContext = await resolveWorkspaceContextBlock();
+      const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
       const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
         mentionDelegateReply: true,
         workspaceContext,
+        previewContext,
       });
       const ctx = resolveAgentGatewayContext({
         conversationId,
@@ -2708,7 +2950,7 @@ function ChatLabPageMain() {
       mainAgent,
       participantIds,
       resetGatewayStream,
-      resolveWorkspaceContextBlock,
+      resolveAgentContextBlocks,
       setProbeRestartKey,
       setMessages,
       t,
@@ -2831,7 +3073,10 @@ function ChatLabPageMain() {
         everyoneLabel: mentionEveryoneLabel,
         mainAgent,
         participantIds,
+        stripMentions: false,
       });
+      const effectiveMentionIds =
+        mentionIds.length === 0 && continuousMentionTargetId ? [continuousMentionTargetId] : mentionIds;
       const effectiveText = cleanText || trimmed;
       const now = Date.now();
       const userMsg = {
@@ -2839,7 +3084,7 @@ function ChatLabPageMain() {
         role: /** @type {const} */ ("user"),
         content: effectiveText,
         createdAt: now,
-        ...(mentionIds.length ? { mentions: mentionIds } : {}),
+        ...(effectiveMentionIds.length ? { mentions: effectiveMentionIds } : {}),
       };
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
@@ -2849,7 +3094,7 @@ function ChatLabPageMain() {
         ...new Set([
           ...(mainAgent ? [mainAgent.id] : []),
           ...participantIds,
-          ...mentionIds,
+          ...effectiveMentionIds,
         ]),
       ];
       if (!paramC) setSearchParams({ c: conversationId }, { replace: true });
@@ -2861,7 +3106,7 @@ function ChatLabPageMain() {
           role: /** @type {const} */ ("user"),
           content: userMsg.content,
           createdAt: userMsg.createdAt,
-          ...(mentionIds.length ? { mentions: mentionIds } : {}),
+          ...(effectiveMentionIds.length ? { mentions: effectiveMentionIds } : {}),
         },
       ];
       upsertSession(conversationId, deriveTitleFromMessages(persistable) || "…", persistable, {
@@ -2869,7 +3114,7 @@ function ChatLabPageMain() {
         orchestrationMode: true,
         orchestration: rec?.orchestration,
       });
-      void orchestrationRunner.startOrchestration(conversationId, effectiveText, mentionIds);
+      void orchestrationRunner.startOrchestration(conversationId, effectiveText, effectiveMentionIds);
       return;
     }
 
@@ -2906,6 +3151,7 @@ function ChatLabPageMain() {
     mainAgent,
     mainAgentLabel,
     mentionEveryoneLabel,
+    continuousMentionTargetId,
     orchestrationMode,
     orchestrationRunner,
     paramC,
@@ -2939,6 +3185,84 @@ function ChatLabPageMain() {
       gatewayPhase,
       gatewayStreaming,
       isElectron,
+      submitNewUserTurn,
+    ],
+  );
+
+  const applySidebarAutomationResult = useCallback(
+    async ({ phase, assistantMessageId, requestedSteps, runningIndex, result }) => {
+      const sourceId = String(assistantMessageId ?? "").trim();
+      if (!sourceId) return;
+      const requested = Array.isArray(requestedSteps) ? requestedSteps : [];
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== sourceId) return m;
+          const messageContent = String(m.content ?? "");
+          const keepRows = Array.isArray(m.toolTrace)
+            ? m.toolTrace.filter((r) => !isSidebarAutomationToolRow(r))
+            : [];
+          const nextTimeline = Array.isArray(m.assistantTimeline)
+            ? m.assistantTimeline.filter(
+                (seg) => seg.kind !== "tool" || !String(seg.refId ?? "").startsWith("sidebar-auto:"),
+              )
+            : undefined;
+          return {
+            ...m,
+            content: messageContent,
+            streaming: phase === "complete" ? false : true,
+            toolTrace: keepRows.length ? keepRows : undefined,
+            assistantTimeline: nextTimeline?.length ? nextTimeline : undefined,
+            createdAt: Date.now(),
+          };
+        }),
+      );
+
+      if (phase !== "complete") return;
+
+      if (!shouldTriggerSidebarAutomationReplan(result)) {
+        sidebarAutomationRetryCountRef.current = 0;
+        return;
+      }
+
+      if (sidebarAutomationRetryCountRef.current >= SIDEBAR_AUTOMATION_MAX_RETRIES) return;
+      if (orchestrationMode) return;
+      if (!isElectron || !bridge?.startChatStream) return;
+      if (gatewayPhase !== "online" || chatApiBlocked) return;
+      if (configIssueKey) return;
+      if (
+        messagesRef.current.some(
+          (m) => m.role === "assistant" && m.streaming && m.id !== sourceId,
+        )
+      ) {
+        return;
+      }
+
+      sidebarAutomationRetryCountRef.current += 1;
+      const originalRequest = findUserRequestBeforeAssistant(messagesRef.current, sourceId);
+      await resolvePreviewContextBlock();
+      const retryText = formatSidebarAutomationRetryMessage({
+        originalRequest,
+        requestedSteps: requested,
+        result,
+        attempt: sidebarAutomationRetryCountRef.current,
+        maxAttempts: SIDEBAR_AUTOMATION_MAX_RETRIES,
+      });
+      await submitNewUserTurn({
+        trimmed: retryText,
+        imageAttachments: undefined,
+        skillPickRow: null,
+        onCommitted: () => {},
+      });
+    },
+    [
+      bridge,
+      chatApiBlocked,
+      configIssueKey,
+      gatewayPhase,
+      isElectron,
+      orchestrationMode,
+      resolvePreviewContextBlock,
+      setMessages,
       submitNewUserTurn,
     ],
   );
@@ -3596,7 +3920,15 @@ function ChatLabPageMain() {
             onKeyUp={(e) => setMentionCaret(e.currentTarget.selectionStart ?? 0)}
             onCompositionEnd={(e) => setMentionCaret(e.currentTarget.selectionStart ?? 0)}
             onFocus={() => setComposerFocused(true)}
-            onBlur={() => setComposerFocused(false)}
+            onBlur={() => {
+              setTimeout(() => {
+                const activeElement = document.activeElement;
+                if (activeElement?.closest('[data-mention-popover]')) {
+                  return;
+                }
+                setComposerFocused(false);
+              }, 0);
+            }}
             onKeyDown={onKeyDown}
             onPaste={(e) => {
               const fl = e.clipboardData?.files;
@@ -3622,7 +3954,7 @@ function ChatLabPageMain() {
           t={t}
         />
         <ChatLabAgentMentionPopover
-          open={Boolean(mentionActive)}
+          open={composerFocused && Boolean(mentionActive)}
           textareaRef={textareaRef}
           agents={mentionEligible}
           query={mentionActive?.query ?? ""}
@@ -3748,9 +4080,15 @@ function ChatLabPageMain() {
 
   return (
     <ChatLabWorkspaceProvider key={conversationId} conversationId={conversationId} isEmptySession={isLanding}>
-    <ChatLabPreviewProvider key={conversationId}>
+    <ChatLabPreviewProvider key={conversationId} conversationId={conversationId}>
       <ImageViewProvider>
       <ChatLabWorkspaceActiveRootBridge activeRootRef={activeRootRef} />
+      <ChatLabPreviewContextBridge previewSnapshotRef={previewSnapshotRef} />
+      <ChatLabSidebarActionRunner
+        conversationId={conversationId}
+        messages={messages}
+        onAutomationApplied={applySidebarAutomationResult}
+      />
       <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
       <ChatLabAutoLinkPreview conversationId={conversationId} messages={messages} />
       <ChatLabSessionScopeReset conversationId={conversationId} isEmptySession={isLanding} />
@@ -4058,6 +4396,15 @@ function GapToolActivityPanel({
   nested = false,
   collapseWhenIdle = true,
 }) {
+  const visibleSegments = useMemo(
+    () =>
+      segments.filter((s) => {
+        if (s.kind !== "tool") return true;
+        const row = toolMap.get(s.refId);
+        return !isSidebarAutomationToolRow(row);
+      }),
+    [segments, toolMap],
+  );
   const [open, setOpen] = useState(() => !keepCollapsed && Boolean(streaming));
   const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
@@ -4072,24 +4419,24 @@ function GapToolActivityPanel({
   const summaryCounts = useMemo(() => {
     let toolCount = 0;
     let stepCount = 0;
-    for (const s of segments) {
+    for (const s of visibleSegments) {
       if (s.kind === "tool") toolCount++;
       else if (s.kind === "activity") stepCount++;
     }
     return { toolCount, stepCount };
-  }, [segments]);
+  }, [visibleSegments]);
 
   const lastActivityIdx = useMemo(() => {
     let last = -1;
-    segments.forEach((s, idx) => {
+    visibleSegments.forEach((s, idx) => {
       if (s.kind === "activity") last = idx;
     });
     return last;
-  }, [segments]);
+  }, [visibleSegments]);
 
-  if (!segments.length) return null;
+  if (!visibleSegments.length) return null;
 
-  const disableEnterAnim = shouldDisableTraceRowEnterAnim(streaming, segments.length);
+  const disableEnterAnim = shouldDisableTraceRowEnterAnim(streaming, visibleSegments.length);
 
   return (
     <TraceDisclosure
@@ -4106,7 +4453,7 @@ function GapToolActivityPanel({
       })}
     >
       <div className="chat-lab__tool-chain-body">
-        {segments.map((s, idx) => {
+        {visibleSegments.map((s, idx) => {
           if (s.kind === "tool") {
             const row = toolMap.get(s.refId);
             if (!row) return null;
@@ -4261,20 +4608,21 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
     <div className="chat-lab__assistant-timeline">
       {visibleParts.map((p, ri) => {
         if (p.kind === "text") {
-          if (!String(p.body ?? "").trim()) return null;
+          const body = String(p.body ?? "");
+          if (!body.trim()) return null;
           if (plainText) {
             return (
               <div
                 key={p.key}
                 className="chat-lab__timeline-block chat-lab__timeline-block--text chat-lab__timeline-block--plain"
               >
-                {p.body}
+                {body}
               </div>
             );
           }
           return (
             <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--text chat-lab__md">
-              <ChatLabMarkdownContent source={String(p.body ?? "")} components={mdComponents} />
+              <ChatLabMarkdownContent source={body} components={mdComponents} />
             </div>
           );
         }
@@ -4694,6 +5042,7 @@ function ToolRow({ row, t, enterRegistryRef, disableEnterAnim = false }) {
  * }} props
  */
 function ToolChainPanel({ rows, t, streaming, keepCollapsed = false }) {
+  const visibleRows = useMemo(() => filterSidebarAutomationToolRows(rows), [rows]);
   const [open, setOpen] = useState(() => !keepCollapsed && Boolean(streaming));
   const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
@@ -4704,18 +5053,18 @@ function ToolChainPanel({ rows, t, streaming, keepCollapsed = false }) {
     if (streaming) setOpen(true);
     else setOpen(false);
   }, [streaming, keepCollapsed]);
-  if (!rows?.length) return null;
-  const disableEnterAnim = shouldDisableTraceRowEnterAnim(streaming, rows.length);
+  if (!visibleRows?.length) return null;
+  const disableEnterAnim = shouldDisableTraceRowEnterAnim(streaming, visibleRows.length);
   return (
     <TraceDisclosure
       className="chat-lab__tool-chain"
       open={open}
       onOpenChange={setOpen}
       triggerClassName="chat-lab__tool-chain-summary"
-      summary={t("chatLab.toolsInvokedSummary", { count: rows.length })}
+      summary={t("chatLab.toolsInvokedSummary", { count: visibleRows.length })}
     >
       <div className="chat-lab__tool-chain-body">
-        {rows.map((row) => (
+        {visibleRows.map((row) => (
           <ToolRow
             key={row.id}
             row={row}
@@ -5634,6 +5983,10 @@ const MessageBubble = memo(function MessageBubble({
     );
   }
   if (message.messageKind === "orchestration_internal") return null;
+  if (isUser && isSidebarAutomationInternalUserMessage(String(message.content ?? ""))) return null;
+
+  const sidebarAutomationPending =
+    !isUser && isSidebarAutomationCarrierMessage(message, Boolean(message.streaming));
 
   const orchTimelineActive = Boolean(orchestrationRun?.status);
   if (
@@ -5695,7 +6048,9 @@ const MessageBubble = memo(function MessageBubble({
     if (message.streaming) setThinkOpen(true);
   }, [message.streaming]);
 
-  const toolRows = Array.isArray(message.toolTrace) ? message.toolTrace : [];
+  const toolRows = filterSidebarAutomationToolRows(
+    Array.isArray(message.toolTrace) ? message.toolTrace : [],
+  );
   const activityRows = Array.isArray(message.activityLog) ? message.activityLog : [];
 
   const timeLabel =
@@ -6006,9 +6361,14 @@ const MessageBubble = memo(function MessageBubble({
         ) : (
           <div className="chat-lab__md">
             {message.content ? (
-              <ChatLabMarkdownContent source={String(message.content ?? "")} components={mdComponents} />
+              <ChatLabMarkdownContent
+                source={String(message.content ?? "")}
+                components={mdComponents}
+              />
             ) : showTyping ? (
               <ChatStreamingIndicator label={t("chatLab.streaming")} />
+            ) : sidebarAutomationPending ? (
+              <ChatStreamingIndicator label={t("chatLab.sidebarAutomationRunning")} />
             ) : !message.thinking &&
               !message.error &&
               toolRows.length === 0 &&

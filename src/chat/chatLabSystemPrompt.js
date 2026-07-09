@@ -13,6 +13,7 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
   ];
   if (linkOpenMode !== "external") {
     parts.push(String(t("chatLab.linkOpenSidebarPrompt") ?? "").trim());
+    parts.push(String(t("chatLab.sidebarAutomationPrompt") ?? "").trim());
   }
   return parts.filter(Boolean).join("\n\n");
 }
@@ -20,12 +21,13 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
 /**
  * Base + image/chart display rules sent to the gateway as the Chat Lab system row.
  * @param {(key: string, vars?: Record<string, string | number>) => string} t
- * @param {{ linkOpenMode?: "sidebar" | "external"; workspaceContext?: string }} [opts]
+ * @param {{ linkOpenMode?: "sidebar" | "external"; workspaceContext?: string; previewContext?: string }} [opts]
  */
 export function composeChatLabSystemPrompt(t, opts = {}) {
   const parts = [
     String(t("chatLab.systemPrompt") ?? "").trim(),
     String(opts.workspaceContext ?? "").trim(),
+    String(opts.previewContext ?? "").trim(),
     composeChatLabStudioSuffix(t, opts),
   ].filter(Boolean);
   return parts.join("\n\n");

@@ -92,6 +92,10 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
 
   const handleTransferConfirm = (keys) => {
     const nonMain = keys.filter((id) => id !== main?.id);
+    // Close the dialog first
+    setTransferOpen(false);
+    // Then update state - onChange will be called with the new participant list
+    // Note: onChange may be debounced in parent, but dialog closing shouldn't cancel it
     onChange(nonMain);
   };
 

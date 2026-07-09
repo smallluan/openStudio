@@ -4,6 +4,38 @@ import { useI18n } from "../context/I18nContext.jsx";
 import Checkbox from "./Checkbox.jsx";
 import { cn } from "./cn.js";
 
+/** Render an item icon: URL string → <img>, ReactNode → as-is, empty → text initial badge. */
+function RowIcon({ icon, label }) {
+  const isUrl =
+    typeof icon === "string" &&
+    (icon.startsWith("data:") ||
+      icon.startsWith("http://") ||
+      icon.startsWith("https://") ||
+      icon.startsWith("file:") ||
+      (icon.startsWith("/") && !icon.startsWith("//")));
+
+  const labelText = typeof label === "string" ? label : "";
+  const initial = labelText.trim().charAt(0).toUpperCase();
+
+  if (icon) {
+    return (
+      <span className="os-transfer__row-icon">
+        {isUrl ? (
+          <img src={icon} alt="" className="os-transfer__row-icon-img" draggable={false} />
+        ) : (
+          icon
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <span className="os-transfer__row-icon os-transfer__row-icon-fallback" aria-hidden>
+      {initial || "?"}
+    </span>
+  );
+}
+
 /**
  * @typedef {object} TransferItem
  * @property {string} key
@@ -232,7 +264,7 @@ export default function Transfer({
                         </svg>
                       ) : null}
                     </span>
-                    {item.icon ? <span className="os-transfer__row-icon">{item.icon}</span> : null}
+                    <RowIcon icon={item.icon} label={item.label} />
                     <span className="os-transfer__row-body">
                       <span className="os-transfer__row-label">{item.label}</span>
                       {item.description ? (
@@ -348,7 +380,7 @@ export default function Transfer({
                         </svg>
                       ) : null}
                     </span>
-                    {item.icon ? <span className="os-transfer__row-icon">{item.icon}</span> : null}
+                    <RowIcon icon={item.icon} label={item.label} />
                     <span className="os-transfer__row-body">
                       <span className="os-transfer__row-label">{item.label}</span>
                       {item.description ? (

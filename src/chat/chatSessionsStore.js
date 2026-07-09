@@ -103,7 +103,27 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {import("../studio/orchestration.js").OrchestrationRun} [orchestration]
  * @property {boolean} [orchestrationMode]
  * @property {boolean} [orchestrationFastMode]
+ * @property {PreviewStateRecord} [previewState]
  * @property {PersistedChatMessage[]} messages
+ */
+
+/**
+ * Persisted right-sidebar web page tab.
+ * @typedef {object} PreviewTabRecord
+ * @property {string} id
+ * @property {string} url
+ * @property {string} title
+ * @property {string} [externalUrl]
+ * @property {string} [sandbox]
+ * @property {boolean} [useWebview]
+ * @property {number} [lastVisitedAt]
+ */
+
+/**
+ * Persisted right-sidebar preview state for one conversation.
+ * @typedef {object} PreviewStateRecord
+ * @property {PreviewTabRecord[]} tabs
+ * @property {string} [activeTabId]
  */
 
 /** @returns {string} */
@@ -163,7 +183,53 @@ function normalizeSessionRow(r) {
     orchestration: row.orchestration ? normalizeOrchestrationRun(row.orchestration) ?? undefined : undefined,
     orchestrationMode: Boolean(row.orchestrationMode),
     orchestrationFastMode: Boolean(row.orchestrationFastMode),
+    previewState: sanitizePreviewState(row.previewState),
     messages: sanitizeMessages(row.messages),
+  };
+}
+
+/** @param {unknown} raw @returns {PreviewStateRecord | undefined} */
+function sanitizePreviewState(raw) {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = /** @type {Record<string, unknown>} */ (raw);
+  if (!Array.isArray(r.tabs)) return undefined;
+  /** @type {PreviewTabRecord[]} */
+  const tabs = [];
+  const seen = new Set();
+  for (const item of r.tabs) {
+    if (!item || typeof item !== "object") continue;
+    const tab = /** @type {Record<string, unknown>} */ (item);
+    const id = typeof tab.id === "string" ? tab.id.trim().slice(0, 96) : "";
+    const url = typeof tab.url === "string" ? tab.url.trim().slice(0, 4096) : "";
+    if (!id || !url || seen.has(id)) continue;
+    seen.add(id);
+    const title = typeof tab.title === "string" ? tab.title.trim().slice(0, 240) : "";
+    /** @type {PreviewTabRecord} */
+    const row = {
+      id,
+      url,
+      title: title || url,
+    };
+    if (typeof tab.externalUrl === "string" && tab.externalUrl.trim()) {
+      row.externalUrl = tab.externalUrl.trim().slice(0, 4096);
+    }
+    if (typeof tab.sandbox === "string" && tab.sandbox.trim()) {
+      row.sandbox = tab.sandbox.trim().slice(0, 240);
+    }
+    if (typeof tab.useWebview === "boolean") {
+      row.useWebview = tab.useWebview;
+    }
+    if (typeof tab.lastVisitedAt === "number" && Number.isFinite(tab.lastVisitedAt)) {
+      row.lastVisitedAt = tab.lastVisitedAt;
+    }
+    tabs.push(row);
+    if (tabs.length >= 24) break;
+  }
+  if (!tabs.length) return undefined;
+  const activeTabId = typeof r.activeTabId === "string" ? r.activeTabId.trim().slice(0, 96) : "";
+  return {
+    tabs,
+    ...(activeTabId && tabs.some((t) => t.id === activeTabId) ? { activeTabId } : {}),
   };
 }
 
@@ -598,7 +664,17 @@ function writeAll(rows, persistSession) {
  * @param {string} id
  * @param {string} title
  * @param {PersistedChatMessage[]} messages
- * @param {{ channel?: 'internal' | 'wechat'; channelPeerId?: string; gatewayConversationId?: string; participantIds?: string[]; threadContext?: ThreadContextState | null; orchestration?: import("../studio/orchestration.js").OrchestrationRun | null; orchestrationMode?: boolean }} [opts]
+ * @param {{
+ *   channel?: 'internal' | 'wechat';
+ *   channelPeerId?: string;
+ *   gatewayConversationId?: string;
+ *   participantIds?: string[];
+ *   threadContext?: ThreadContextState | null;
+ *   orchestration?: import("../studio/orchestration.js").OrchestrationRun | null;
+ *   orchestrationMode?: boolean;
+ *   orchestrationFastMode?: boolean;
+ *   previewState?: PreviewStateRecord | null;
+ * }} [opts]
  */
 export function upsertSession(id, title, messages, opts = {}) {
   if (!id) return;
@@ -643,6 +719,10 @@ export function upsertSession(id, title, messages, opts = {}) {
     opts.threadContext !== undefined
       ? sanitizeThreadContext(opts.threadContext)
       : sanitizeThreadContext(prev?.threadContext);
+  const nextPreviewState =
+    opts.previewState !== undefined
+      ? sanitizePreviewState(opts.previewState)
+      : sanitizePreviewState(prev?.previewState);
   const sessionRecord = {
     id,
     title: resolvedTitle,
@@ -653,6 +733,7 @@ export function upsertSession(id, title, messages, opts = {}) {
     ...(nextGatewayConversationId ? { gatewayConversationId: nextGatewayConversationId } : {}),
     ...(nextParticipants.length ? { participantIds: nextParticipants } : {}),
     ...(nextThreadContext ? { threadContext: nextThreadContext } : {}),
+    ...(nextPreviewState ? { previewState: nextPreviewState } : {}),
     ...(nextOrchestration ? { orchestration: nextOrchestration } : {}),
     ...(nextOrchestrationMode ? { orchestrationMode: true } : {}),
     ...(nextOrchestrationFastMode ? { orchestrationFastMode: true } : {}),

@@ -265,6 +265,17 @@ code {
   flex-shrink: 0;
   font-size: 0.95rem;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.os-transfer__row-icon-img {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .os-transfer__row-body {
@@ -2396,6 +2407,38 @@ html[data-os-motion="reduced"] .chat-lab-preview-dock:not(.chat-lab-preview-dock
 .chat-lab-preview-dock__icon-btn:hover {
   background: color-mix(in srgb, var(--os-accent) 12%, var(--os-bg-subtle));
   color: var(--os-text, var(--text));
+}
+
+.chat-lab-preview-dock__tabs {
+  border-color: color-mix(in srgb, var(--os-border) 50%, transparent);
+  background: color-mix(in srgb, var(--os-bg-subtle) 32%, var(--os-bg-elevated));
+  scrollbar-width: thin;
+}
+
+.chat-lab-preview-dock__tab-btn {
+  max-width: 11.5rem;
+  flex: 0 0 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  border-radius: 8px;
+  padding: 0.24rem 0.56rem;
+  font-size: 0.73rem;
+  line-height: 1.25;
+  color: var(--os-text-muted, var(--muted));
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-lab-preview-dock__tab-btn:hover {
+  color: var(--os-text, var(--text));
+  background: color-mix(in srgb, var(--os-accent) 8%, var(--os-bg-subtle));
+}
+
+.chat-lab-preview-dock__tab-btn--active {
+  color: var(--os-text, var(--text));
+  background: color-mix(in srgb, var(--os-accent) 16%, var(--os-bg-elevated));
 }
 
 .chat-lab-preview-dock__body {
@@ -8970,14 +9013,20 @@ button.os-image {
 .chat-lab__md table {
   border-collapse: separate;
   border-spacing: 0;
-  width: 100%;
+  min-width: 100%;
+  width: max-content;
   font-size: 0.78rem;
   line-height: 1.38;
   margin: 0.55em 0;
   border: 1px solid #e5e5e5;
   border-radius: 10px;
-  overflow: hidden;
   background: #fff;
+}
+
+/* Wide markdown tables: horizontal scroll wrapper. */
+.chat-lab__md:has(table) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chat-lab__md thead th {
