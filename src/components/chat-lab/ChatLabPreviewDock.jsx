@@ -198,6 +198,22 @@ export default function ChatLabPreviewDock({ extension = null }) {
     return Boolean(url && /^https?:\/\//i.test(url));
   }, [viewSession]);
 
+  const previewTabItems = useMemo(
+    () =>
+      (api?.previewTabs ?? []).map((tab) => ({
+        id: tab.id,
+        label: String(tab.title ?? "").trim() || t("chatLab.previewTabUntitled"),
+      })),
+    [api?.previewTabs, t],
+  );
+
+  const showPreviewTabs = Boolean(
+    !viewArtifacts &&
+      !viewExtension &&
+      viewSession?.kind === "iframe" &&
+      previewTabItems.length > 0,
+  );
+
   const selectedArtifact = useMemo(() => {
     if (!viewArtifacts?.selectedPath) return null;
     return viewArtifacts.files.find((f) => f.path === viewArtifacts.selectedPath) ?? null;
@@ -329,6 +345,34 @@ export default function ChatLabPreviewDock({ extension = null }) {
           </button>
         ) : null}
       </header>
+      {showPreviewTabs ? (
+        <div
+          className="chat-lab-preview-dock__tabs flex shrink-0 items-center gap-1 overflow-x-auto border-b px-2 py-1.5"
+          role="tablist"
+          aria-label={t("chatLab.previewTabsAria")}
+        >
+          {previewTabItems.map((tab) => {
+            const active = tab.id === api?.activePreviewTabId;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-label={tab.label}
+                className={cn(
+                  "chat-lab-preview-dock__tab-btn",
+                  active && "chat-lab-preview-dock__tab-btn--active",
+                )}
+                onClick={() => api?.activatePreviewTab?.(tab.id)}
+                title={tab.label}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {!contentReady ? (
         <div className="chat-lab-preview-dock__body min-h-0 flex-1" aria-hidden />

@@ -2409,6 +2409,38 @@ html[data-os-motion="reduced"] .chat-lab-preview-dock:not(.chat-lab-preview-dock
   color: var(--os-text, var(--text));
 }
 
+.chat-lab-preview-dock__tabs {
+  border-color: color-mix(in srgb, var(--os-border) 50%, transparent);
+  background: color-mix(in srgb, var(--os-bg-subtle) 32%, var(--os-bg-elevated));
+  scrollbar-width: thin;
+}
+
+.chat-lab-preview-dock__tab-btn {
+  max-width: 11.5rem;
+  flex: 0 0 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  border-radius: 8px;
+  padding: 0.24rem 0.56rem;
+  font-size: 0.73rem;
+  line-height: 1.25;
+  color: var(--os-text-muted, var(--muted));
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-lab-preview-dock__tab-btn:hover {
+  color: var(--os-text, var(--text));
+  background: color-mix(in srgb, var(--os-accent) 8%, var(--os-bg-subtle));
+}
+
+.chat-lab-preview-dock__tab-btn--active {
+  color: var(--os-text, var(--text));
+  background: color-mix(in srgb, var(--os-accent) 16%, var(--os-bg-elevated));
+}
+
 .chat-lab-preview-dock__body {
   display: flex;
   flex-direction: column;
