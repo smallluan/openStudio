@@ -39,6 +39,7 @@ export default function GeneralSettingsSection() {
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
 
   const [chatLabAutoTitle, setChatLabAutoTitle] = useState(false);
+  const [rawTraceEnabled, setRawTraceEnabled] = useState(false);
   const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export default function GeneralSettingsSection() {
         const c = await bridge?.getUserConfig?.();
         if (!cancelled && c && typeof c === "object") {
           setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
+          setRawTraceEnabled(Boolean(c.chatLabRawTraceEnabled));
           if (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar") {
             const mode = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
             setLinkOpenMode(mode);
@@ -73,6 +75,20 @@ export default function GeneralSettingsSection() {
         if (c && typeof c === "object") setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
       } catch {
         setChatLabAutoTitle(false);
+      }
+    }
+  };
+
+  const persistRawTraceEnabled = async (next) => {
+    setRawTraceEnabled(next);
+    try {
+      await bridge?.setUserConfig?.({ chatLabRawTraceEnabled: next });
+    } catch {
+      try {
+        const c = await bridge?.getUserConfig?.();
+        if (c && typeof c === "object") setRawTraceEnabled(Boolean(c.chatLabRawTraceEnabled));
+      } catch {
+        setRawTraceEnabled(false);
       }
     }
   };
@@ -178,6 +194,16 @@ export default function GeneralSettingsSection() {
             onChange={(v) => void persistLinkOpenMode(v)}
             options={linkOpenModeOptions}
             className="min-w-[8.5rem]"
+          />
+        </GeneralSettingRow>
+
+        <GeneralSettingRow title={t("settings.rawTraceEnabled")}>
+          <Switch
+            compact
+            id="settings-raw-trace"
+            label={t("settings.rawTraceEnabledTitle")}
+            checked={rawTraceEnabled}
+            onCheckedChange={(v) => void persistRawTraceEnabled(v)}
           />
         </GeneralSettingRow>
 

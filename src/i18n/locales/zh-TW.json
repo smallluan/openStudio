@@ -91,6 +91,8 @@
     "languageAria": "選擇介面語言",
     "autoSummarize": "自動總結為標題",
     "autoSummarizeTitle": "自動將對話內容總結為標題",
+    "rawTraceEnabled": "Raw Trace 偵錯面板",
+    "rawTraceEnabledTitle": "在聊天檢視顯示 Agent 原始串流事件面板",
     "uiMotionShort": "介面動畫",
     "uiMotionAria": "介面動畫強度",
     "uiMotion": {

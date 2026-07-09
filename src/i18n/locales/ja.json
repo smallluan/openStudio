@@ -91,6 +91,8 @@
     "languageAria": "表示言語を選択",
     "autoSummarize": "タイトルを自動要約",
     "autoSummarizeTitle": "最初のメッセージから会話タイトルを自動生成",
+    "rawTraceEnabled": "Raw Trace デバッグパネル",
+    "rawTraceEnabledTitle": "チャットビューにエージェントの生のストリームイベントパネルを表示",
     "uiMotionShort": "UI アニメーション",
     "uiMotionAria": "UI アニメーションの強さ",
     "uiMotion": {

@@ -91,6 +91,8 @@
     "languageAria": "Choose interface language",
     "autoSummarize": "Auto-summarize title",
     "autoSummarizeTitle": "Auto-generate conversation title (first message)",
+    "rawTraceEnabled": "Raw Trace debug panel",
+    "rawTraceEnabledTitle": "Show agent raw stream events panel in chat view",
     "uiMotionShort": "UI motion",
     "uiMotionAria": "UI motion intensity",
     "uiMotion": {

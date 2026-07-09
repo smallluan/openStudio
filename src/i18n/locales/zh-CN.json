@@ -91,6 +91,8 @@
     "languageAria": "选择界面语言",
     "autoSummarize": "自动总结为标题",
     "autoSummarizeTitle": "自动总结对话内容为标题",
+    "rawTraceEnabled": "Raw Trace 调试面板",
+    "rawTraceEnabledTitle": "在聊天视图显示 Agent 原始流事件面板",
     "uiMotionShort": "界面动画",
     "uiMotionAria": "界面动画强度",
     "uiMotion": {
