@@ -531,6 +531,7 @@
       "instruction": "當使用者問「這個專案」或目前程式庫時，指的是上述選中資料夾，而非 Agent 的 bootstrap 工作區。請依該路徑下的檔案作答；讀檔時請使用該目錄下的絕對路徑。"
     },
     "contextMeterLine1": "上下文，{{pct}}%",
+    "contextMeterLine1Pending": "預估發送後，{{pct}}%",
     "contextMeterLine2": "已使用約 {{n}} tokens / {{windowK}}",
     "composerAttachmentsLabel": "待傳送的圖片",
     "removeComposerImage": "移除圖片",

@@ -544,6 +544,7 @@
       "instruction": "当用户问「这个项目」「当前代码库」或类似问题时，指的是上述选中文件夹，而不是 Agent 的 bootstrap 工作区。请基于该路径下的文件作答；若需读文件，请使用该目录下的绝对路径。"
     },
     "contextMeterLine1": "上下文，{{pct}}%",
+    "contextMeterLine1Pending": "预估发送后，{{pct}}%",
     "contextMeterLine2": "已使用约 {{n}} tokens / {{windowK}}",
     "composerAttachmentsLabel": "待发送的图片",
     "removeComposerImage": "移除图片",

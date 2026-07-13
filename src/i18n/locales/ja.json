@@ -530,6 +530,7 @@
       "instruction": "ユーザーが「このプロジェクト」や現在のコードベースについて聞いている場合、上記の選択フォルダを指します（Agent bootstrap workspace ではありません）。そのパス配下のファイルに基づいて回答し、ツールで読む場合はそのディレクトリ下の絶対パスを使ってください。"
     },
     "contextMeterLine1": "文脈、{{pct}}%",
+    "contextMeterLine1Pending": "送信後、{{pct}}%",
     "contextMeterLine2": "約 {{n}} tokens 使用済み / {{windowK}}",
     "composerAttachmentsLabel": "送信予定の画像",
     "removeComposerImage": "画像を削除",

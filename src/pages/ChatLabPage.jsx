@@ -3497,15 +3497,23 @@ function ChatLabPageMain() {
     const currentModelId = currentProfile?.modelId || "";
     const contextWindow = getContextWindowSize(currentModelId);
     
-    const chars = estimateThreadCharBudget(messages, {
-      systemPromptLen: composeChatLabSystemPrompt(t).length,
-      inputLen: input.length,
-      pendingImagePayloadChars: composerPendingImageChars,
+    // Calculate USED context: only sent messages (user + assistant)
+    // Do NOT include system prompt - it's a fixed cost, not user-visible usage
+    const usedChars = estimateThreadCharBudget(messages, {
+      systemPromptLen: 0,  // Don't count system prompt
+      inputLen: 0,
+      pendingImagePayloadChars: 0,
     });
-    const tokens = approxTokensFromChars(chars);
-    const frac = tokens / contextWindow;
-    return { chars, tokens, frac, contextWindow };
-  }, [composerPendingImageChars, input.length, messages, t, config?.modelProfiles, toolbarModelId]);
+    const usedTokens = approxTokensFromChars(usedChars);
+    const usedFrac = usedTokens / contextWindow;
+    
+    return { 
+      chars: usedChars, 
+      tokens: usedTokens, 
+      frac: usedFrac,
+      contextWindow 
+    };
+  }, [messages, t, config?.modelProfiles, toolbarModelId]);
 
   const contextMeterLines = useMemo(() => {
     const pct = Math.round(Math.min(100, Math.max(0, contextUsageApprox.frac * 100)));
@@ -3513,7 +3521,7 @@ function ChatLabPageMain() {
     const line1 = t("chatLab.contextMeterLine1", { pct });
     const line2 = t("chatLab.contextMeterLine2", { n: contextUsageApprox.tokens, windowK: windowFormatted });
     return { line1, line2, pct, ariaSummary: `${line1}，${line2}` };
-  }, [contextUsageApprox.frac, contextUsageApprox.tokens, contextUsageApprox.contextWindow, t]);
+  }, [contextUsageApprox, t]);
 
   const addComposerImageFiles = useCallback(
     /** @param {FileList | File[] | null | undefined} fileList */
