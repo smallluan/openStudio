@@ -1,18 +1,14 @@
-import { normalizeAutomationSteps } from "./chatLabPreviewAutomation.js";
+import { normalizeAutomationSteps, SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN } from "./chatLabPreviewAutomation.js";
 
 /** @typedef {import("./chatLabPreviewAutomation.js").SidebarAutomationStep} SidebarAutomationStep */
 
-/** Max sidebar-action steps executed in one assistant message (shown as tool-trace rows). */
-export const SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN = 16;
-
-/** Max automatic model re-plans after sidebar automation failures. */
-export const SIDEBAR_AUTOMATION_MAX_RETRIES = 3;
+export { SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN };
 
 function createFenceRe() {
   return /```\s*sidebar-action[^\n]*\r?\n([\s\S]*?)```/gi;
 }
 
-const SIDEBAR_ACTION_HINT_RE = /"action"\s*:\s*"(click|focus|blur|type|type_chars|press|wait|scroll|snapshot|navigate|verify)"/i;
+const SIDEBAR_ACTION_HINT_RE = /"action"\s*:\s*"(click|focus|blur|type|type_chars|press|wait|scroll|snapshot|navigate|mousedown|mouseup|pointerdown|pointerup|mousemove|pointermove|hover|dblclick|rightclick|contextmenu|drag)"/i;
 
 /**
  * @param {unknown} row
@@ -167,88 +163,6 @@ export function isSidebarAutomationRetryUserMessage(content) {
  */
 export function isSidebarAutomationInternalUserMessage(content) {
   return isSidebarAutomationHandoffUserMessage(content) || isSidebarAutomationRetryUserMessage(content);
-}
-
-/**
- * @param {Array<{ id?: string; role?: string; content?: string }>} messages
- * @param {string} assistantId
- */
-export function findUserRequestBeforeAssistant(messages, assistantId) {
-  const idx = messages.findIndex((m) => m.id === assistantId);
-  if (idx < 0) return "";
-  for (let i = idx - 1; i >= 0; i--) {
-    const row = messages[i];
-    if (row?.role !== "user") continue;
-    const text = String(row.content ?? "");
-    if (isSidebarAutomationInternalUserMessage(text)) continue;
-    return text;
-  }
-  return "";
-}
-
-/**
- * @param {unknown} result
- */
-export function automationHadFailure(result) {
-  if (!result || result.ok === false) return true;
-  const steps = Array.isArray(result.steps) ? result.steps : [];
-  return steps.some((s) => s && s.ok === false);
-}
-
-/**
- * @param {unknown} result
- */
-export function shouldTriggerSidebarAutomationReplan(result) {
-  return automationHadFailure(result);
-}
-
-/**
- * @param {{
- *   originalRequest?: string;
- *   requestedSteps?: SidebarAutomationStep[];
- *   result?: { ok?: boolean; error?: string; steps?: Array<Record<string, unknown>> };
- *   attempt?: number;
- *   maxAttempts?: number;
- * }} input
- */
-export function formatSidebarAutomationRetryMessage(input) {
-  const attempt = Math.max(1, Number(input.attempt) || 1);
-  const maxAttempts = Math.max(attempt, Number(input.maxAttempts) || SIDEBAR_AUTOMATION_MAX_RETRIES);
-  const requested = Array.isArray(input.requestedSteps) ? input.requestedSteps : [];
-  const executed = Array.isArray(input.result?.steps) ? input.result.steps : [];
-  const failed = executed
-    .map((row, index) => ({
-      index: index + 1,
-      requested: requested[index] ?? null,
-      executed: row,
-      verifyHint:
-        requested[index] && typeof requested[index].verifyHint === "string"
-          ? requested[index].verifyHint
-          : undefined,
-    }))
-    .filter((row) => row.executed && row.executed.ok === false);
-  const stoppedAt =
-    typeof input.result?.stoppedAt === "number" && Number.isFinite(input.result.stoppedAt)
-      ? input.result.stoppedAt + 1
-      : failed[0]?.index ?? null;
-
-  return `[sidebar-automation-retry]
-右侧边栏自动化第 ${attempt}/${maxAttempts} 次重规划：第 ${stoppedAt ?? "?"} 步执行或**验证未通过**，流程已暂停。系统已将**最新页面快照**注入到 sidebarPreviewContext，请根据快照和用户原始意图**重新输出完整** sidebar-action 步骤数组（写在回复正文，最多 12 步）。
-
-**原始用户请求：**
-${String(input.originalRequest ?? "").trim() || "（未找到）"}
-
-**失败步骤（含 verify 期望）：**
-\`\`\`json
-${JSON.stringify(failed, null, 2)}
-\`\`\`
-
-**要求：**
-- 每一步必须带 \`verify\`（或单独的 verify 步骤），写明如何确认上一步成功
-- 用快照里的可见文字/DOM 结构解析模糊描述，换成可执行的 selector、label、placeholder、title 或 parentSelector
-- 一次输出**全部**修正步骤（从第 1 步开始），不要分多条回复
-- 搜索/提交：focus → type → press Enter（press 带 selector/title）
-- 不要向用户解释失败，直接给出可执行步骤`;
 }
 
 /**

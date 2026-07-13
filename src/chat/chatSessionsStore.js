@@ -116,6 +116,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string} [externalUrl]
  * @property {string} [sandbox]
  * @property {boolean} [useWebview]
+ * @property {string} [frameKey]
  * @property {number} [lastVisitedAt]
  */
 
@@ -221,6 +222,9 @@ function sanitizePreviewState(raw) {
     }
     if (typeof tab.lastVisitedAt === "number" && Number.isFinite(tab.lastVisitedAt)) {
       row.lastVisitedAt = tab.lastVisitedAt;
+    }
+    if (typeof tab.frameKey === "string" && tab.frameKey.trim()) {
+      row.frameKey = tab.frameKey.trim().slice(0, 96);
     }
     tabs.push(row);
     if (tabs.length >= 24) break;

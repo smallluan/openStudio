@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Code, Monitor, Smartphone } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
 import { cn } from "../../ui/cn.js";
@@ -7,6 +7,10 @@ import { useI18n } from "../../context/I18nContext.jsx";
 import ChatLabArtifactPreviewPane from "./ChatLabArtifactPreviewPane.jsx";
 import ChatLabPreviewFileTree from "./ChatLabPreviewFileTree.jsx";
 import ChatLabPreviewWebFrame from "./ChatLabPreviewWebFrame.jsx";
+
+const ChatLabPreviewAutomationDebugInput = lazy(
+  () => import("./ChatLabPreviewAutomationDebugInput.jsx"),
+);
 
 const PREVIEW_W_KEY = "openstudio_chat_preview_px";
 const PREVIEW_W_DEFAULT = 520;
@@ -71,18 +75,13 @@ export default function ChatLabPreviewDock({ extension = null }) {
   const [expanded, setExpanded] = useState(wantsOpen);
   const [contentReady, setContentReady] = useState(() => wantsOpen && previewDockAnimMs() === 0);
 
-  useEffect(() => {
+  // Open synchronously so link clicks show the dock immediately (rAF open left expanded=false / present=false).
+  useLayoutEffect(() => {
     if (wantsOpen) {
       setPresent(true);
-      let outer = 0;
-      let inner = 0;
-      outer = requestAnimationFrame(() => {
-        inner = requestAnimationFrame(() => setExpanded(true));
-      });
-      return () => {
-        cancelAnimationFrame(outer);
-        cancelAnimationFrame(inner);
-      };
+      setExpanded(true);
+      setContentReady(true);
+      return undefined;
     }
     setExpanded(false);
     setContentReady(false);
@@ -134,7 +133,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
   const [treeDragging, setTreeDragging] = useState(false);
   const isResizing = panelDragging || treeDragging;
 
-  const dockWidth = expanded ? panelWidth : 0;
+  const dockWidth = wantsOpen || expanded ? panelWidth : 0;
 
   const persistWidth = useCallback((key, value) => {
     try {
@@ -243,14 +242,31 @@ export default function ChatLabPreviewDock({ extension = null }) {
     viewArtifacts && viewArtifacts.treeMode !== "file-only",
   );
 
-  if (!api || !present) return null;
+  const showAutomationDebugInput = Boolean(
+    !viewArtifacts &&
+      !viewExtension &&
+      viewSession?.kind === "iframe" &&
+      viewSession.useWebview,
+  );
+
+  const runAutomationDebug = useCallback(
+    async (steps) => {
+      if (!api?.runSidebarAutomation) {
+        return { ok: false, error: "automation_unavailable", steps: [] };
+      }
+      return api.runSidebarAutomation(steps, { stopOnFailure: true });
+    },
+    [api],
+  );
+
+  if (!api || (!wantsOpen && !present)) return null;
 
   return (
     <aside
       ref={asideRef}
       className={cn(
         "chat-lab-preview-dock relative flex min-h-0 shrink-0 flex-col overflow-hidden border-l",
-        !expanded && "chat-lab-preview-dock--collapsed",
+        !wantsOpen && !expanded && "chat-lab-preview-dock--collapsed",
         isResizing && "chat-lab-preview-dock--resizing",
       )}
       style={{
@@ -271,9 +287,33 @@ export default function ChatLabPreviewDock({ extension = null }) {
         onActiveChange={setPanelDragging}
       />
       <header className="chat-lab-preview-dock__head flex shrink-0 items-center gap-2 border-b px-2.5 py-2 pr-3">
-        <h3 className="chat-lab-preview-dock__title min-w-0 flex-1 truncate text-[0.82rem] font-semibold leading-tight">
-          {previewTitle}
-        </h3>
+        {showAutomationDebugInput ? (
+          <div className="chat-lab-preview-dock__head-main min-w-0 flex flex-1 flex-col gap-1">
+            <span
+              className="chat-lab-preview-dock__title chat-lab-preview-dock__title--compact min-w-0 truncate text-[0.72rem] font-medium leading-tight"
+              title={previewTitle}
+            >
+              {previewTitle}
+            </span>
+            <Suspense
+              fallback={
+                <div
+                  className="chat-lab-preview-dock__automation-input chat-lab-preview-dock__automation-input--placeholder"
+                  aria-hidden
+                />
+              }
+            >
+              <ChatLabPreviewAutomationDebugInput
+                onRun={runAutomationDebug}
+                disabled={!api?.runSidebarAutomation}
+              />
+            </Suspense>
+          </div>
+        ) : (
+          <h3 className="chat-lab-preview-dock__title min-w-0 flex-1 truncate text-[0.82rem] font-semibold leading-tight">
+            {previewTitle}
+          </h3>
+        )}
         {viewExtension?.meta ? (
           <span className="chat-lab-preview-dock__meta shrink-0 text-[0.76rem]">{viewExtension.meta}</span>
         ) : null}
@@ -333,7 +373,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             ↗
           </button>
         ) : null}
-        {!viewExtension ? (
+        {!viewExtension || viewSession ? (
           <button
             type="button"
             className="chat-lab-preview-dock__icon-btn"
@@ -448,7 +488,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             isResizing={isResizing}
           />
         </div>
-      ) : viewExtension ? (
+      ) : viewExtension && !viewSession ? (
         <div className="chat-lab-preview-dock__body chat-lab-preview-dock__body--orch min-h-0 flex-1 overflow-hidden">
           {viewExtension.body}
         </div>

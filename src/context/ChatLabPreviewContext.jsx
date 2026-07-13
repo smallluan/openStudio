@@ -35,6 +35,91 @@ import { runSidebarPreviewAutomation } from "../chat/chatLabPreviewAutomation.js
 
 const PREVIEW_DEVICE_KEY = "openstudio_chat_preview_device";
 const PREVIEW_TAB_MAX = 16;
+const WEB_PREVIEW_SANDBOX =
+  "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals";
+
+/**
+ * @param {string} url
+ */
+function normalizePreviewTabUrl(url) {
+  const raw = String(url ?? "").trim();
+  if (!raw) return "";
+  try {
+    const base = typeof window !== "undefined" ? window.location.href : "https://localhost/";
+    const u = new URL(raw, base);
+    u.hash = "";
+    const host = u.hostname.toLowerCase();
+    const pathname = u.pathname.replace(/\/+$/, "") || "/";
+    return `${u.protocol}//${host}${pathname}${u.search}`;
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * @param {string} a
+ * @param {string} b
+ */
+function previewTabUrlsMatch(a, b) {
+  const na = normalizePreviewTabUrl(a);
+  const nb = normalizePreviewTabUrl(b);
+  return Boolean(na) && na === nb;
+}
+
+/**
+ * @param {string} tabId
+ */
+function previewFrameKeyForTab(tabId) {
+  const id = String(tabId ?? "").trim();
+  return id ? `pvframe-${id}` : newPreviewFrameKey();
+}
+
+/**
+ * @param {PreviewWebTab[]} prevTabs
+ * @param {string} nextUrl
+ * @param {string} label
+ * @param {{ externalUrl?: string | null; sandbox?: string; useWebview?: boolean }} opts
+ * @param {number} now
+ * @param {boolean} inElectron
+ * @returns {{ tabs: PreviewWebTab[]; targetTab: PreviewWebTab }}
+ */
+function planWebPreviewTabUpdate(prevTabs, nextUrl, label, opts, now, inElectron) {
+  const base = Array.isArray(prevTabs) ? prevTabs : [];
+  const dupIdx = base.findIndex(
+    (tab) =>
+      previewTabUrlsMatch(tab.src, nextUrl) ||
+      previewTabUrlsMatch(tab.externalUrl ?? "", nextUrl),
+  );
+  if (dupIdx >= 0) {
+    const updated = {
+      ...base[dupIdx],
+      title: label,
+      lastVisitedAt: now,
+      useWebview: base[dupIdx].useWebview || (opts.useWebview !== false && inElectron),
+      ...(opts.externalUrl ? { externalUrl: opts.externalUrl } : {}),
+      ...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
+    };
+    const next = [...base];
+    next[dupIdx] = updated;
+    return { tabs: next, targetTab: updated };
+  }
+
+  const tabId = `pvtab_${now.toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
+  const row = {
+    id: tabId,
+    src: nextUrl,
+    title: label,
+    externalUrl: opts.externalUrl ?? nextUrl,
+    sandbox: opts.sandbox ?? WEB_PREVIEW_SANDBOX,
+    useWebview: opts.useWebview !== false && inElectron,
+    frameKey: previewFrameKeyForTab(tabId),
+    lastVisitedAt: now,
+  };
+  const appended = [...base, row];
+  const tabs =
+    appended.length <= PREVIEW_TAB_MAX ? appended : appended.slice(appended.length - PREVIEW_TAB_MAX);
+  return { tabs, targetTab: row };
+}
 
 /** @returns {"desktop" | "mobile"} */
 function readPreviewDeviceMode() {
@@ -55,6 +140,7 @@ function readPreviewDeviceMode() {
  *   externalUrl?: string | null;
  *   sandbox?: string;
  *   useWebview?: boolean;
+ *   frameKey?: string;
  *   lastVisitedAt: number;
  * }} PreviewWebTab
  *
@@ -82,13 +168,19 @@ function readStoredPreviewWebState(conversationId) {
     if (!id || !src || seen.has(id)) continue;
     seen.add(id);
     const title = typeof row.title === "string" && row.title.trim() ? row.title.trim() : src;
+    const inElectron = typeof window !== "undefined" && Boolean(window.studioBridge);
+    const useWebview = Boolean(row.useWebview) || (inElectron && /^https?:\/\//i.test(src));
     tabs.push({
       id,
       src,
       title,
       externalUrl: typeof row.externalUrl === "string" ? row.externalUrl : src,
       sandbox: typeof row.sandbox === "string" ? row.sandbox : undefined,
-      useWebview: Boolean(row.useWebview),
+      useWebview,
+      frameKey:
+        typeof row.frameKey === "string" && row.frameKey.trim()
+          ? row.frameKey.trim()
+          : previewFrameKeyForTab(id),
       lastVisitedAt:
         typeof row.lastVisitedAt === "number" && Number.isFinite(row.lastVisitedAt)
           ? row.lastVisitedAt
@@ -119,6 +211,7 @@ function toPersistedPreviewWebState(tabs, activeTabId) {
       ...(tab.externalUrl ? { externalUrl: tab.externalUrl } : {}),
       ...(tab.sandbox ? { sandbox: tab.sandbox } : {}),
       ...(tab.useWebview ? { useWebview: true } : {}),
+      ...(tab.frameKey ? { frameKey: tab.frameKey } : {}),
       ...(tab.lastVisitedAt ? { lastVisitedAt: tab.lastVisitedAt } : {}),
     })),
     ...(activeTabId ? { activeTabId } : {}),
@@ -134,7 +227,7 @@ function sessionFromWebTab(tab) {
     kind: "iframe",
     src: tab.src,
     title: tab.title,
-    frameKey: newPreviewFrameKey(),
+    frameKey: tab.frameKey || previewFrameKeyForTab(tab.id),
     ...(tab.sandbox ? { sandbox: tab.sandbox } : {}),
     externalUrl: tab.externalUrl ?? tab.src,
     useWebview: Boolean(tab.useWebview),
@@ -241,6 +334,8 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
   const [artifactsPanel, setArtifactsPanel] = useState(/** @type {ArtifactsPanelState | null} */ (null));
   const [previewTabs, setPreviewTabs] = useState(restoredWebState.tabs);
   const [activePreviewTabId, setActivePreviewTabId] = useState(restoredWebState.activeTabId);
+  const previewTabsRef = useRef(previewTabs);
+  previewTabsRef.current = previewTabs;
   const [deviceMode, setDeviceModeState] = useState(readPreviewDeviceMode);
   const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
 
@@ -320,18 +415,75 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
     artifactBlobUrlsRef.current.clear();
   }, []);
 
+  const showWebPreviewAtUrl = useCallback(
+    /**
+     * @param {string} url
+     * @param {string} [title]
+     * @param {{ externalUrl?: string | null; sandbox?: string; useWebview?: boolean }} [opts]
+     * @returns {boolean}
+     */
+    (url, title, opts = {}) => {
+      const nextUrl = String(url ?? "").trim();
+      if (!nextUrl) return false;
+      const label = String(title ?? nextUrl).trim() || nextUrl;
+      const now = Date.now();
+      const inElectron = typeof window !== "undefined" && Boolean(window.studioBridge);
+      const plan = planWebPreviewTabUpdate(
+        previewTabsRef.current,
+        nextUrl,
+        label,
+        opts,
+        now,
+        inElectron,
+      );
+
+      setPreviewTabs(plan.tabs);
+
+      revokeArtifactBlobs();
+      setArtifactsPanel(null);
+      revokeBlob();
+      setActivePreviewTabId(plan.targetTab.id);
+      setSession(sessionFromWebTab(plan.targetTab));
+      return true;
+    },
+    [revokeArtifactBlobs, revokeBlob],
+  );
+
   const upsertWebPreviewTab = useCallback(
     (src, title, opts = {}, mode = "new") => {
       const nextSrc = String(src ?? "").trim();
       if (!nextSrc) return "";
       const nextTitle = String(title ?? "").trim() || nextSrc;
       const now = Date.now();
-      const nextTabId = mode === "new" ? `pvtab_${now.toString(36)}_${Math.random().toString(16).slice(2, 8)}` : "";
       let resolvedId = "";
       setPreviewTabs((prev) => {
         const base = Array.isArray(prev) ? prev : [];
         const currentActive = String(activePreviewTabId ?? "").trim();
-        const idx = mode === "active" ? base.findIndex((tab) => tab.id === currentActive) : -1;
+        const activeIdx = base.findIndex((tab) => tab.id === currentActive);
+
+        if (mode === "new") {
+          const dupIdx = base.findIndex(
+            (tab) =>
+              previewTabUrlsMatch(tab.src, nextSrc) ||
+              previewTabUrlsMatch(tab.externalUrl ?? "", nextSrc),
+          );
+          if (dupIdx >= 0) {
+            const next = [...base];
+            next[dupIdx] = {
+              ...next[dupIdx],
+              title: nextTitle,
+              lastVisitedAt: now,
+              ...(opts.externalUrl ? { externalUrl: opts.externalUrl } : {}),
+              ...(opts.sandbox ? { sandbox: opts.sandbox } : {}),
+              ...(opts.useWebview ? { useWebview: true } : {}),
+            };
+            resolvedId = next[dupIdx].id;
+            return next;
+          }
+        }
+
+        const nextTabId = `pvtab_${now.toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
+        const idx = mode === "active" ? activeIdx : -1;
         /** @type {PreviewWebTab} */
         const row = {
           id: idx >= 0 ? base[idx].id : nextTabId,
@@ -340,6 +492,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
           externalUrl: opts.externalUrl ?? nextSrc,
           sandbox: opts.sandbox,
           useWebview: Boolean(opts.useWebview),
+          frameKey: idx >= 0 ? base[idx].frameKey || previewFrameKeyForTab(base[idx].id) : previewFrameKeyForTab(nextTabId),
           lastVisitedAt: now,
         };
         resolvedId = row.id;
@@ -361,20 +514,22 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
   const activatePreviewTab = useCallback((tabId) => {
     const id = String(tabId ?? "").trim();
     if (!id) return;
-    let nextSession = /** @type {ChatLabPreviewSession | null} */ (null);
+    /** @type {PreviewWebTab | null} */
+    let targetTab = null;
     setPreviewTabs((prev) => {
       const idx = prev.findIndex((tab) => tab.id === id);
       if (idx < 0) return prev;
       const next = [...prev];
       const updated = { ...next[idx], lastVisitedAt: Date.now() };
       next[idx] = updated;
-      nextSession = sessionFromWebTab(updated);
+      targetTab = updated;
       return next;
     });
+    if (!targetTab) return;
     setActivePreviewTabId(id);
     setArtifactsPanel(null);
     revokeBlob();
-    if (nextSession) setSession(nextSession);
+    setSession(sessionFromWebTab(targetTab));
   }, [revokeBlob]);
 
   useEffect(() => {
@@ -620,24 +775,43 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
      * @param {string} src
      * @param {string} title
      * @param {{ externalUrl?: string | null; sandbox?: string; useWebview?: boolean }} [opts]
+     * @returns {boolean}
      */
     (src, title, opts = {}) => {
-      const tabId = upsertWebPreviewTab(src, title, opts, "new");
+      const nextSrc = String(src ?? "").trim();
+      if (!nextSrc) return false;
+      const label = String(title ?? "").trim() || nextSrc;
+      const inElectron = typeof window !== "undefined" && Boolean(window.studioBridge);
+      const wantsWebview =
+        opts.useWebview !== false && /^https?:\/\//i.test(nextSrc) && inElectron;
+      const tabId = upsertWebPreviewTab(
+        nextSrc,
+        label,
+        {
+          ...opts,
+          useWebview: wantsWebview,
+          sandbox: opts.sandbox ?? (wantsWebview ? WEB_PREVIEW_SANDBOX : opts.sandbox),
+        },
+        "new",
+      );
       revokeArtifactBlobs();
       setArtifactsPanel(null);
       revokeBlob();
-      const label = String(title ?? "").trim() || String(src ?? "").trim();
+      const stableId = tabId || `pvtab_${Date.now().toString(36)}`;
+      setActivePreviewTabId(stableId);
       setSession(
         sessionFromWebTab({
-          id: tabId || `pvtab_${Date.now().toString(36)}`,
-          src,
+          id: stableId,
+          src: nextSrc,
           title: label,
-          externalUrl: opts.externalUrl ?? src,
-          sandbox: opts.sandbox,
-          useWebview: Boolean(opts.useWebview),
+          externalUrl: opts.externalUrl ?? nextSrc,
+          sandbox: opts.sandbox ?? (wantsWebview ? WEB_PREVIEW_SANDBOX : undefined),
+          useWebview: wantsWebview,
+          frameKey: previewFrameKeyForTab(stableId),
           lastVisitedAt: Date.now(),
         }),
       );
+      return true;
     },
     [revokeArtifactBlobs, revokeBlob, upsertWebPreviewTab],
   );
@@ -711,36 +885,41 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       const nextUrl = String(url ?? "").trim();
       if (!nextUrl) return;
       const label = String(title ?? nextUrl).trim() || nextUrl;
-      const prev = previewTabs.find((tab) => tab.id === activePreviewTabId);
-      const sandbox =
-        prev?.sandbox ?? "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals";
-      const useWebview = prev?.useWebview ?? true;
-      const tabId = upsertWebPreviewTab(
-        nextUrl,
-        label,
-        {
-          externalUrl: nextUrl,
-          sandbox,
-          useWebview,
-        },
-        prev ? "active" : "new",
+      const dupTab = previewTabs.find(
+        (tab) =>
+          tab.id !== activePreviewTabId &&
+          (previewTabUrlsMatch(tab.src, nextUrl) || previewTabUrlsMatch(tab.externalUrl ?? "", nextUrl)),
       );
-      revokeArtifactBlobs();
-      setArtifactsPanel(null);
-      revokeBlob();
-      setSession(
-        sessionFromWebTab({
-          id: tabId || `pvtab_${Date.now().toString(36)}`,
+      if (dupTab) {
+        showWebPreviewAtUrl(nextUrl, label);
+        return;
+      }
+      const activeId = String(activePreviewTabId ?? "").trim();
+      const activeTab = previewTabs.find((tab) => tab.id === activeId);
+      if (activeTab) {
+        const sandbox = activeTab.sandbox ?? WEB_PREVIEW_SANDBOX;
+        const useWebview = activeTab.useWebview ?? true;
+        const now = Date.now();
+        const updated = {
+          ...activeTab,
           src: nextUrl,
           title: label,
           externalUrl: nextUrl,
           sandbox,
           useWebview,
-          lastVisitedAt: Date.now(),
-        }),
-      );
+          lastVisitedAt: now,
+        };
+        setPreviewTabs((prev) => prev.map((tab) => (tab.id === activeId ? updated : tab)));
+        revokeArtifactBlobs();
+        setArtifactsPanel(null);
+        revokeBlob();
+        setActivePreviewTabId(activeId);
+        setSession(sessionFromWebTab(updated));
+        return;
+      }
+      showWebPreviewAtUrl(nextUrl, label, { useWebview: true });
     },
-    [activePreviewTabId, previewTabs, revokeArtifactBlobs, revokeBlob, upsertWebPreviewTab],
+    [activePreviewTabId, previewTabs, revokeArtifactBlobs, revokeBlob, showWebPreviewAtUrl],
   );
 
   const openFromHref = useCallback(
@@ -752,7 +931,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
     (href, linkLabel) => {
       if (!isPreviewInterceptableHref(href)) return false;
 
-      if (linkOpenMode === "external") {
+      if (readLinkOpenModeLocal() === "external") {
         return openChatLabExternalUrl(href);
       }
 
@@ -761,8 +940,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       const title = String(linkLabel ?? "").trim() || href;
 
       if (kind === "blob" || href.startsWith("data:")) {
-        openIframe(href, title, { externalUrl: null, sandbox: "allow-scripts allow-downloads" });
-        return true;
+        return openIframe(href, title, { externalUrl: null, sandbox: "allow-scripts allow-downloads" });
       }
 
       if (kind === "sheet" || kind === "slides") {
@@ -770,11 +948,10 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
         if (abs) {
           const viewer = officeEmbedViewerUrl(abs);
           if (viewer) {
-            openIframe(viewer, title, {
+            return openIframe(viewer, title, {
               externalUrl: abs,
               sandbox: "allow-scripts allow-same-origin allow-popups",
             });
-            return true;
           }
         }
         openPlaceholder(title, t("chatLab.previewOfficeNeedsPublicUrl"));
@@ -789,26 +966,23 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       }
 
       if (kind === "pdf" || kind === "html") {
-        openIframe(resolved, title, {
+        return openIframe(resolved, title, {
           externalUrl: resolved,
           sandbox: "allow-scripts allow-downloads allow-popups",
         });
-        return true;
       }
 
       if (kind === "web") {
-        openIframe(resolved, title, {
+        return showWebPreviewAtUrl(resolved, title, {
           externalUrl: resolved,
-          sandbox:
-            "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals",
+          sandbox: WEB_PREVIEW_SANDBOX,
           useWebview: true,
         });
-        return true;
       }
 
       return false;
     },
-    [linkOpenMode, openIframe, openPlaceholder, t],
+    [openIframe, openPlaceholder, showWebPreviewAtUrl, t],
   );
 
   const openFromMarkdownLink = useCallback(
@@ -870,7 +1044,14 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       if (anchor.dataset.previewBypass === "true") return;
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const href = anchor.getAttribute("href");
-      if (!href || !openFromHref(href, anchor.textContent ?? "")) return;
+      if (!href) return;
+      let targetHref = href;
+      try {
+        targetHref = new URL(href, window.location.href).href;
+      } catch {
+        /* keep raw href */
+      }
+      if (!openFromHref(targetHref, anchor.textContent ?? "")) return;
       e.preventDefault();
       e.stopPropagation();
     }

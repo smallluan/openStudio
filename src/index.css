@@ -2387,6 +2387,70 @@ html[data-os-motion="reduced"] .chat-lab-preview-dock:not(.chat-lab-preview-dock
   color: var(--os-text, var(--text));
 }
 
+.chat-lab-preview-dock__head-main {
+  min-height: 0;
+}
+
+.chat-lab-preview-dock__title--compact {
+  color: color-mix(in srgb, var(--os-text-muted, var(--muted)) 82%, var(--os-text, var(--text)));
+}
+
+.chat-lab-preview-dock__automation-input--placeholder {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.chat-lab-preview-dock__automation-input-wrap {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.chat-lab-preview-dock__automation-input {
+  min-width: 0;
+  flex: 1;
+  height: 1.85rem;
+  padding: 0 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--os-border) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--os-bg) 88%, var(--os-bg-elevated));
+  color: var(--os-text, var(--text));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.chat-lab-preview-dock__automation-input::placeholder {
+  color: color-mix(in srgb, var(--os-text-muted, var(--muted)) 72%, transparent);
+  font-family: inherit;
+}
+
+.chat-lab-preview-dock__automation-input:focus {
+  border-color: color-mix(in srgb, var(--os-accent) 55%, var(--os-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--os-accent) 18%, transparent);
+}
+
+.chat-lab-preview-dock__automation-input--ok {
+  border-color: color-mix(in srgb, #2f9e6b 65%, var(--os-border));
+}
+
+.chat-lab-preview-dock__automation-input--err {
+  border-color: color-mix(in srgb, #d84b4b 65%, var(--os-border));
+}
+
+.chat-lab-preview-dock__automation-input--running {
+  border-color: color-mix(in srgb, var(--os-accent) 45%, var(--os-border));
+}
+
+.chat-lab-preview-dock__automation-run--busy {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .chat-lab-preview-dock__icon-btn {
   display: inline-flex;
   align-items: center;

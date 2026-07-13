@@ -1,9 +1,33 @@
 import { useEffect, useRef } from "react";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
-import { readLinkOpenModeLocal } from "../../chat/chatLabLinkOpenPreference.js";
+import { extractFirstWebMarkdownLink, readLinkOpenModeLocal } from "../../chat/chatLabLinkOpenPreference.js";
 import {
   extractSidebarActionStepsFromAssistantMessage,
 } from "../../chat/chatLabSidebarActionProtocol.js";
+
+const SIDEBAR_AUTOMATION_WEBVIEW_READY_MS = 600;
+
+/**
+ * @param {() => boolean} isReady
+ * @param {number} timeoutMs
+ */
+function waitUntil(isReady, timeoutMs) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const tick = () => {
+      if (isReady()) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() - started >= timeoutMs) {
+        resolve(false);
+        return;
+      }
+      window.setTimeout(tick, 50);
+    };
+    tick();
+  });
+}
 
 /**
  * Watches completed assistant messages for ```sidebar-action fences, runs them in the
@@ -20,14 +44,21 @@ export default function ChatLabSidebarActionRunner({
   const conversationIdRef = useRef(conversationId);
 
   useEffect(() => {
-    if (conversationIdRef.current !== conversationId) {
-      conversationIdRef.current = conversationId;
-      handledMessageIdsRef.current = new Set();
+    if (conversationIdRef.current === conversationId) return;
+    conversationIdRef.current = conversationId;
+    const handled = new Set();
+    for (const m of messages) {
+      if (m.role !== "assistant" || m.streaming || m.error) continue;
+      if (extractSidebarActionStepsFromAssistantMessage(m).length > 0) {
+        handled.add(m.id);
+      }
     }
-  }, [conversationId]);
+    handledMessageIdsRef.current = handled;
+  }, [conversationId, messages]);
 
   useEffect(() => {
     const runAutomation = preview?.runSidebarAutomation;
+    const openFromHref = preview?.openFromHref;
     if (!runAutomation || !onAutomationApplied) return;
     if (readLinkOpenModeLocal() === "external") return;
     if (runningRef.current) return;
@@ -47,6 +78,17 @@ export default function ChatLabSidebarActionRunner({
 
     void (async () => {
       try {
+        const messageText = String(lastAssistant.content ?? "");
+        const linkedUrl = extractFirstWebMarkdownLink(messageText);
+        const needsNavigate = steps.some((step) => step.action === "navigate");
+        if (linkedUrl && openFromHref && !needsNavigate) {
+          openFromHref(linkedUrl, linkedUrl);
+          await waitUntil(
+            () => Boolean(preview?.webviewRef?.current || preview?.session?.kind === "iframe"),
+            SIDEBAR_AUTOMATION_WEBVIEW_READY_MS,
+          );
+        }
+
         await onAutomationApplied({
           phase: "start",
           assistantMessageId: lastAssistant.id,
@@ -85,7 +127,7 @@ export default function ChatLabSidebarActionRunner({
         runningRef.current = false;
       }
     })();
-  }, [messages, onAutomationApplied, preview?.runSidebarAutomation]);
+  }, [messages, onAutomationApplied, preview?.openFromHref, preview?.runSidebarAutomation, preview?.session?.kind, preview?.webviewRef]);
 
   return null;
 }

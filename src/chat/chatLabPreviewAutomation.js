@@ -1,21 +1,6 @@
 import { captureSidebarPreviewSnapshot, composeChatLabPreviewContextBlock } from "./chatLabPreviewSnapshot.js";
 
 /** @typedef {{
- *   selector?: string;
- *   label?: string;
- *   placeholder?: string;
- *   title?: string;
- *   parentSelector?: string;
- *   text_contains?: string;
- *   url_contains?: string;
- *   title_contains?: string;
- *   value?: string;
- *   hidden?: boolean;
- *   visible?: boolean;
- *   active?: boolean;
- * }} SidebarAutomationVerifySpec */
-
-/** @typedef {{
  *   action: string;
  *   selector?: string;
  *   text?: string;
@@ -29,93 +14,71 @@ import { captureSidebarPreviewSnapshot, composeChatLabPreviewContextBlock } from
  *   amount?: number;
  *   title?: string;
  *   parentSelector?: string;
- *   verify?: SidebarAutomationVerifySpec | SidebarAutomationVerifySpec[];
- *   verifyHint?: string;
- *   text_contains?: string;
- *   url_contains?: string;
- *   title_contains?: string;
- *   value?: string;
- *   hidden?: boolean;
- *   visible?: boolean;
- *   active?: boolean;
+ *   scroll?: boolean;
+ *   button?: number;
+ *   buttons?: number;
+ *   x?: number;
+ *   y?: number;
+ *   offsetX?: number;
+ *   offsetY?: number;
+ *   toSelector?: string;
+ *   toX?: number;
+ *   toY?: number;
+ *   toOffsetX?: number;
+ *   toOffsetY?: number;
+ *   dragSteps?: number;
  * }} SidebarAutomationStep */
 
 export const SIDEBAR_AUTOMATION_STEP_INTERVAL_MS = 500;
+export const SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN = 100;
 
 const RETRYABLE_STEP_ERRORS = new Set(["element_not_found"]);
 const STEP_RETRY_DELAYS_MS = [800, 1200, 1800];
+const SIDEBAR_INTERPOLATION_RE = /\{\{\s*([\s\S]+?)\s*\}\}/g;
 
 /**
- * @param {unknown} raw
- * @returns {SidebarAutomationVerifySpec | null}
+ * @param {string} expr
+ * @returns {string | null}
  */
-function normalizeVerifySpecOne(raw) {
-  if (!raw || typeof raw !== "object") return null;
-  const row = /** @type {Record<string, unknown>} */ (raw);
-  /** @type {SidebarAutomationVerifySpec} */
-  const out = {};
-  for (const key of [
-    "selector",
-    "label",
-    "placeholder",
-    "title",
-    "parentSelector",
-    "text_contains",
-    "url_contains",
-    "title_contains",
-    "value",
-  ]) {
-    if (typeof row[key] === "string" && row[key].trim()) {
-      out[/** @type {keyof SidebarAutomationVerifySpec} */ (key)] = row[key].trim();
-    }
-  }
-  if (row.hidden === true) out.hidden = true;
-  if (row.visible === true) out.visible = true;
-  if (row.active === true) out.active = true;
-  return Object.keys(out).length ? out : null;
+function evalSidebarAutomationInterpolationExpr(expr) {
+  const s = String(expr ?? "").trim();
+  if (!s) return null;
+
+  const numCall = /^Number\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)$/i.exec(s);
+  if (numCall) return String(Number(numCall[1]));
+
+  if (/^-?\d+(?:\.\d+)?$/.test(s)) return String(Number(s));
+
+  const strCall = /^String\s*\(\s*(['"])([\s\S]*?)\1\s*\)$/i.exec(s);
+  if (strCall) return strCall[2];
+
+  if (/^true$/i.test(s)) return "true";
+  if (/^false$/i.test(s)) return "false";
+
+  return null;
 }
 
 /**
  * @param {unknown} raw
- * @returns {SidebarAutomationVerifySpec | SidebarAutomationVerifySpec[] | undefined}
+ * @returns {string | undefined}
  */
-function normalizeVerifySpec(raw) {
-  if (raw == null) return undefined;
-  if (Array.isArray(raw)) {
-    const list = raw.map(normalizeVerifySpecOne).filter(Boolean);
-    return list.length ? /** @type {SidebarAutomationVerifySpec[]} */ (list) : undefined;
-  }
-  const one = normalizeVerifySpecOne(raw);
-  return one ?? undefined;
-}
+function normalizeAutomationStepText(raw) {
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
+  if (typeof raw === "boolean") return String(raw);
+  if (typeof raw !== "string") return undefined;
 
-/**
- * @param {SidebarAutomationStep} step
- * @returns {SidebarAutomationVerifySpec | SidebarAutomationVerifySpec[] | undefined}
- */
-function verifySpecFromStep(step) {
-  /** @type {SidebarAutomationVerifySpec} */
-  const out = {};
-  for (const key of [
-    "selector",
-    "label",
-    "placeholder",
-    "title",
-    "parentSelector",
-    "text_contains",
-    "url_contains",
-    "title_contains",
-    "value",
-  ]) {
-    const v = step[/** @type {keyof SidebarAutomationStep} */ (key)];
-    if (typeof v === "string" && v.trim()) {
-      out[/** @type {keyof SidebarAutomationVerifySpec} */ (key)] = v.trim();
-    }
+  const text = raw;
+  const trimmed = text.trim();
+  if (/^\{\{[\s\S]+\}\}$/.test(trimmed)) {
+    const inner = trimmed.slice(2, -2);
+    const whole = evalSidebarAutomationInterpolationExpr(inner);
+    if (whole != null) return whole;
   }
-  if (step.hidden === true) out.hidden = true;
-  if (step.visible === true) out.visible = true;
-  if (step.active === true) out.active = true;
-  return Object.keys(out).length ? out : undefined;
+
+  return text.replace(SIDEBAR_INTERPOLATION_RE, (match, expr) => {
+    const resolved = evalSidebarAutomationInterpolationExpr(expr);
+    return resolved != null ? resolved : match;
+  });
 }
 
 /**
@@ -124,7 +87,13 @@ function verifySpecFromStep(step) {
  * @returns {SidebarAutomationStep[]}
  */
 export function normalizeAutomationSteps(raw, opts = {}) {
-  const maxSteps = Math.max(1, Math.min(16, Number(opts.maxSteps) || 16));
+  const maxSteps = Math.max(
+    1,
+    Math.min(
+      SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN,
+      Number(opts.maxSteps) || SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN,
+    ),
+  );
   const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
   /** @type {SidebarAutomationStep[]} */
   const out = [];
@@ -132,11 +101,12 @@ export function normalizeAutomationSteps(raw, opts = {}) {
     if (!item || typeof item !== "object") continue;
     const row = /** @type {Record<string, unknown>} */ (item);
     const action = typeof row.action === "string" ? row.action.trim().toLowerCase() : "";
-    if (!action) continue;
+    if (!action || action === "verify") continue;
     /** @type {SidebarAutomationStep} */
     const step = { action };
     if (typeof row.selector === "string" && row.selector.trim()) step.selector = row.selector.trim();
-    if (typeof row.text === "string") step.text = row.text;
+    const text = normalizeAutomationStepText(row.text);
+    if (text !== undefined) step.text = text;
     if (typeof row.mode === "string" && row.mode.trim()) step.mode = row.mode.trim().toLowerCase();
     if (typeof row.intervalMs === "number" && Number.isFinite(row.intervalMs)) {
       step.intervalMs = Math.max(0, Math.min(300, Math.floor(row.intervalMs)));
@@ -147,30 +117,33 @@ export function normalizeAutomationSteps(raw, opts = {}) {
     if (typeof row.parentSelector === "string" && row.parentSelector.trim()) {
       step.parentSelector = row.parentSelector.trim();
     }
-    const verify = normalizeVerifySpec(row.verify);
-    if (verify) step.verify = verify;
-    if (typeof row.verifyHint === "string" && row.verifyHint.trim()) {
-      step.verifyHint = row.verifyHint.trim();
-    }
-    if (action === "verify") {
-      if (typeof row.text_contains === "string" && row.text_contains.trim()) {
-        step.text_contains = row.text_contains.trim();
-      }
-      if (typeof row.url_contains === "string" && row.url_contains.trim()) {
-        step.url_contains = row.url_contains.trim();
-      }
-      if (typeof row.title_contains === "string" && row.title_contains.trim()) {
-        step.title_contains = row.title_contains.trim();
-      }
-      if (typeof row.value === "string") step.value = row.value;
-      if (row.hidden === true) step.hidden = true;
-      if (row.visible === true) step.visible = true;
-      if (row.active === true) step.active = true;
-    }
     if (typeof row.url === "string" && row.url.trim()) step.url = row.url.trim();
     if (typeof row.key === "string" && row.key.trim()) step.key = row.key.trim();
     if (typeof row.ms === "number" && Number.isFinite(row.ms)) step.ms = Math.max(0, Math.min(15000, row.ms));
     if (typeof row.amount === "number" && Number.isFinite(row.amount)) step.amount = row.amount;
+    if (typeof row.scroll === "boolean") step.scroll = row.scroll;
+    if (typeof row.toSelector === "string" && row.toSelector.trim()) step.toSelector = row.toSelector.trim();
+    if (typeof row.button === "number" && Number.isFinite(row.button)) {
+      step.button = Math.max(0, Math.min(2, Math.floor(row.button)));
+    }
+    if (typeof row.buttons === "number" && Number.isFinite(row.buttons)) {
+      step.buttons = Math.max(0, Math.min(7, Math.floor(row.buttons)));
+    }
+    for (const coordKey of [
+      "x",
+      "y",
+      "offsetX",
+      "offsetY",
+      "toX",
+      "toY",
+      "toOffsetX",
+      "toOffsetY",
+      "dragSteps",
+    ]) {
+      if (typeof row[coordKey] === "number" && Number.isFinite(row[coordKey])) {
+        step[coordKey] = row[coordKey];
+      }
+    }
     out.push(step);
     if (out.length >= maxSteps) break;
   }
@@ -185,7 +158,7 @@ function buildStepScript(step) {
   return `(async function(){
     var step = ${payload};
     var INPUT_SELECTOR = "input, textarea, [contenteditable], [contenteditable=true], [role=textbox]";
-    var TARGET_SELECTOR = "button, a, input[type=submit], input[type=button], [role=button], " + INPUT_SELECTOR + ", label";
+    var TARGET_SELECTOR = "button, a, input[type=submit], input[type=button], [role=button], " + INPUT_SELECTOR + ", label, span, li, div, [role=menuitem], [role=option], [role=treeitem]";
     function sleep(ms) {
       return new Promise(function(resolve) { setTimeout(resolve, ms); });
     }
@@ -270,6 +243,82 @@ function buildStepScript(step) {
       }
       return out;
     }
+    function parseContainsSelector(selector) {
+      var s = String(selector || "");
+      var re = /:contains\\(\\s*(['"])([\\s\\S]*?)\\1\\s*\\)/;
+      var m = re.exec(s);
+      if (!m) return { base: s, needle: "" };
+      return { base: s.replace(re, "").trim(), needle: m[2] };
+    }
+    function queryDeepWithContains(selector) {
+      var parsed = parseContainsSelector(selector);
+      if (!parsed.needle) return querySelectorDeep(parsed.base);
+      /** @type {string[]} */
+      var bases = [];
+      if (parsed.base) bases.push(parsed.base);
+      if (parsed.base && parsed.base.indexOf(" > ") >= 0) {
+        bases.push(parsed.base.replace(/ > /g, " "));
+      }
+      if (!bases.length) bases.push("");
+      for (var bi = 0; bi < bases.length; bi++) {
+        var base = bases[bi];
+        var nodes = base ? querySelectorAllDeep(base) : querySelectorAllDeep(TARGET_SELECTOR);
+        for (var ci = 0; ci < nodes.length; ci++) {
+          var cn = nodes[ci];
+          if (!vis(cn)) continue;
+          var ctext = (cn.innerText || cn.textContent || "").trim();
+          if (ctext.indexOf(parsed.needle) >= 0) return cn;
+        }
+      }
+      return null;
+    }
+    function queryWithinWithContains(root, selector) {
+      var parsed = parseContainsSelector(selector);
+      if (!parsed.needle) return queryWithin(root, parsed.base);
+      /** @type {string[]} */
+      var bases = [];
+      if (parsed.base) bases.push(parsed.base);
+      if (parsed.base && parsed.base.indexOf(" > ") >= 0) {
+        bases.push(parsed.base.replace(/ > /g, " "));
+      }
+      if (!bases.length) bases.push("");
+      for (var bi = 0; bi < bases.length; bi++) {
+        var base = bases[bi];
+        var cnodes = base ? queryAllWithin(root, base) : queryAllWithin(root, TARGET_SELECTOR);
+        for (var cj = 0; cj < cnodes.length; cj++) {
+          var cel = cnodes[cj];
+          if (!vis(cel)) continue;
+          var ctxt = (cel.innerText || cel.textContent || "").trim();
+          if (ctxt.indexOf(parsed.needle) >= 0) return cel;
+        }
+      }
+      return null;
+    }
+    function queryTargetBySelector(scope, selector) {
+      var sel = String(selector || "");
+      if (!sel) return null;
+      var usesContains = /:contains\\(\\s*(['"])/.test(sel);
+      var hit = null;
+      if (scope) {
+        hit = usesContains ? queryWithinWithContains(scope, sel) : queryWithin(scope, sel);
+      }
+      if (!hit) hit = usesContains ? queryDeepWithContains(sel) : querySelectorDeep(sel);
+      if (!usesContains && hit) {
+        var active = document.activeElement;
+        if (active && active.nodeType === 1 && vis(active)) {
+          try {
+            var inScope =
+              !scope ||
+              scope === active ||
+              (typeof scope.contains === "function" && scope.contains(active));
+            if (inScope && typeof active.matches === "function" && active.matches(sel)) {
+              return active;
+            }
+          } catch (e) {}
+        }
+      }
+      return hit;
+    }
     function isTextInput(el) {
       if (!el || el.nodeType !== 1) return false;
       var tag = el.tagName;
@@ -284,13 +333,17 @@ function buildStepScript(step) {
         el.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));
       }
     }
-    function focusInput(el, skipClick) {
-      if (!el) return false;
+    function scrollTargetIntoView(el) {
+      if (step.scroll === false || !el || el.nodeType !== 1) return;
       try {
         if (typeof el.scrollIntoView === "function") {
-          el.scrollIntoView({ block: "nearest", inline: "nearest" });
+          el.scrollIntoView({ block: "center", inline: "center" });
         }
       } catch (e) {}
+    }
+    function focusInput(el, skipClick) {
+      if (!el) return false;
+      scrollTargetIntoView(el);
       if (!skipClick) {
         try {
           if (typeof el.click === "function") el.click();
@@ -366,11 +419,8 @@ function buildStepScript(step) {
         if (!scope) return null;
       }
       if (s.selector) {
-        if (scope) {
-          var scoped = queryWithin(scope, String(s.selector));
-          if (scoped) return scoped;
-        }
-        return querySelectorDeep(String(s.selector));
+        var selHit = queryTargetBySelector(scope, s.selector);
+        if (selHit) return selHit;
       }
       if (s.title) {
         var titleNeedle = String(s.title);
@@ -421,6 +471,223 @@ function buildStepScript(step) {
       }
       return null;
     }
+    function resolveClickableTarget(el) {
+      if (!el || el.nodeType !== 1) return el;
+      var interactive = { A: 1, BUTTON: 1, INPUT: 1, LABEL: 1 };
+      var cur = el;
+      for (var depth = 0; cur && depth < 8; depth++) {
+        var tag = cur.tagName;
+        if (interactive[tag]) return cur;
+        var role = cur.getAttribute("role") || "";
+        if (role === "button" || role === "menuitem" || role === "option" || role === "treeitem" || role === "link") {
+          return cur;
+        }
+        if (tag === "LI") return cur;
+        if (cur.getAttribute("onclick") || cur.onclick) return cur;
+        try {
+          var pst = window.getComputedStyle(cur);
+          if (pst && pst.cursor === "pointer") return cur;
+        } catch (e) {}
+        cur = cur.parentElement;
+      }
+      return el;
+    }
+    function parseMouseButton(step) {
+      var b = Number(step.button);
+      if (!Number.isFinite(b) || b < 0 || b > 2) return 0;
+      return Math.floor(b);
+    }
+    function buttonsMaskForButton(button, pressed) {
+      if (!pressed) return 0;
+      if (button === 2) return 2;
+      if (button === 1) return 4;
+      return 1;
+    }
+    function resolveClientPoint(el, step) {
+      var absX = Number(step.x);
+      var absY = Number(step.y);
+      if (Number.isFinite(absX) && Number.isFinite(absY)) {
+        return { x: absX, y: absY };
+      }
+      if (!el || el.nodeType !== 1) {
+        return { x: Number.isFinite(absX) ? absX : 0, y: Number.isFinite(absY) ? absY : 0 };
+      }
+      var rect = el.getBoundingClientRect();
+      var offX = Number(step.offsetX);
+      var offY = Number(step.offsetY);
+      if (!Number.isFinite(offX)) offX = 0;
+      if (!Number.isFinite(offY)) offY = 0;
+      return { x: rect.left + rect.width / 2 + offX, y: rect.top + rect.height / 2 + offY };
+    }
+    function elementAtPoint(x, y) {
+      try {
+        var hit = document.elementFromPoint(x, y);
+        return hit && hit.nodeType === 1 ? hit : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    function ptrTypeForMouse(type) {
+      var map = {
+        mousedown: "pointerdown",
+        mouseup: "pointerup",
+        mousemove: "pointermove",
+        mouseover: "pointerover",
+        mouseenter: "pointerenter",
+        mouseout: "pointerout",
+        mouseleave: "pointerleave",
+      };
+      return map[type] || null;
+    }
+    function dispatchPointerAndMouse(target, type, point, step, extra) {
+      extra = extra || {};
+      if (!target || target.nodeType !== 1) target = document.body;
+      var button = extra.button != null ? extra.button : parseMouseButton(step);
+      var pressed = extra.pressed;
+      if (pressed == null) {
+        pressed = type === "mousedown";
+        if (type === "mousemove") {
+          pressed = Number(extra.buttons) > 0 || Number(step.buttons) > 0;
+        }
+      }
+      var buttons =
+        extra.buttons != null ? Number(extra.buttons) : buttonsMaskForButton(button, pressed);
+      var detail = extra.detail != null ? extra.detail : type === "dblclick" ? 2 : 1;
+      var bubbles = extra.bubbles != null ? extra.bubbles : true;
+      var mouseInit = {
+        bubbles: bubbles,
+        cancelable: true,
+        composed: true,
+        view: window,
+        detail: detail,
+        clientX: point.x,
+        clientY: point.y,
+        screenX: point.x,
+        screenY: point.y,
+        button: button,
+        buttons: buttons,
+        relatedTarget: extra.relatedTarget || null,
+      };
+      var ptrType = ptrTypeForMouse(type);
+      if (ptrType && typeof PointerEvent === "function") {
+        try {
+          target.dispatchEvent(
+            new PointerEvent(ptrType, {
+              bubbles: bubbles,
+              cancelable: true,
+              composed: true,
+              view: window,
+              detail: detail,
+              clientX: point.x,
+              clientY: point.y,
+              screenX: point.x,
+              screenY: point.y,
+              button: button,
+              buttons: buttons,
+              pointerId: 1,
+              pointerType: "mouse",
+              isPrimary: true,
+              pressure: pressed ? 0.5 : 0,
+              width: 1,
+              height: 1,
+              relatedTarget: extra.relatedTarget || null,
+            }),
+          );
+        } catch (ePtr) {}
+      }
+      try {
+        target.dispatchEvent(new MouseEvent(type, mouseInit));
+      } catch (eMouse) {
+        target.dispatchEvent(new Event(type, { bubbles: bubbles, cancelable: true }));
+      }
+      return target;
+    }
+    function resolveMouseTarget(step, clickable) {
+      var el = resolveTarget(step);
+      if (!el) return null;
+      if (clickable) el = resolveClickableTarget(el);
+      scrollTargetIntoView(el);
+      return el;
+    }
+    function dispatchSyntheticClick(el, step) {
+      var pt = resolveClientPoint(el, step);
+      var button = parseMouseButton(step);
+      var target = elementAtPoint(pt.x, pt.y) || el;
+      dispatchPointerAndMouse(target, "mousedown", pt, step, { button: button, pressed: true });
+      dispatchPointerAndMouse(target, "mouseup", pt, step, { button: button, pressed: false, buttons: 0 });
+      dispatchPointerAndMouse(target, "click", pt, step, { button: button, pressed: false, buttons: 0 });
+    }
+    function dispatchHover(el, step) {
+      var pt = resolveClientPoint(el, step);
+      var target = elementAtPoint(pt.x, pt.y) || el;
+      dispatchPointerAndMouse(target, "mouseover", pt, step, { pressed: false, buttons: 0 });
+      dispatchPointerAndMouse(target, "mouseenter", pt, step, { pressed: false, buttons: 0, bubbles: false });
+    }
+    function dispatchDblClick(el, step) {
+      var pt = resolveClientPoint(el, step);
+      var button = parseMouseButton(step);
+      var target = elementAtPoint(pt.x, pt.y) || el;
+      dispatchPointerAndMouse(target, "mousedown", pt, step, { button: button, pressed: true, detail: 1 });
+      dispatchPointerAndMouse(target, "mouseup", pt, step, { button: button, pressed: false, buttons: 0, detail: 1 });
+      dispatchPointerAndMouse(target, "click", pt, step, { button: button, pressed: false, buttons: 0, detail: 1 });
+      dispatchPointerAndMouse(target, "mousedown", pt, step, { button: button, pressed: true, detail: 2 });
+      dispatchPointerAndMouse(target, "mouseup", pt, step, { button: button, pressed: false, buttons: 0, detail: 2 });
+      dispatchPointerAndMouse(target, "click", pt, step, { button: button, pressed: false, buttons: 0, detail: 2 });
+      dispatchPointerAndMouse(target, "dblclick", pt, step, { button: button, pressed: false, buttons: 0, detail: 2 });
+    }
+    function dispatchRightClick(el, step) {
+      var pt = resolveClientPoint(el, step);
+      var patched = Object.assign({}, step, { button: 2 });
+      var target = elementAtPoint(pt.x, pt.y) || el;
+      dispatchPointerAndMouse(target, "mousedown", pt, patched, { button: 2, pressed: true });
+      dispatchPointerAndMouse(target, "mouseup", pt, patched, { button: 2, pressed: false, buttons: 0 });
+      dispatchPointerAndMouse(target, "contextmenu", pt, patched, { button: 2, pressed: false, buttons: 0 });
+    }
+    async function performDrag(step) {
+      var srcEl = resolveTarget(step);
+      if (!srcEl) return { ok: false, action: "drag", error: "element_not_found" };
+      scrollTargetIntoView(srcEl);
+      var fromPt = resolveClientPoint(srcEl, step);
+      var toPt = null;
+      if (step.toSelector) {
+        var toScope = null;
+        if (step.parentSelector) toScope = querySelectorDeep(String(step.parentSelector));
+        var toEl = queryTargetBySelector(toScope, String(step.toSelector));
+        if (!toEl) return { ok: false, action: "drag", error: "target_not_found" };
+        scrollTargetIntoView(toEl);
+        toPt = resolveClientPoint(toEl, {
+          x: step.toX,
+          y: step.toY,
+          offsetX: step.toOffsetX,
+          offsetY: step.toOffsetY,
+        });
+      } else if (Number.isFinite(Number(step.toX)) && Number.isFinite(Number(step.toY))) {
+        toPt = { x: Number(step.toX), y: Number(step.toY) };
+      } else {
+        return { ok: false, action: "drag", error: "missing_drag_target" };
+      }
+      var dragSteps = Number(step.dragSteps);
+      if (!Number.isFinite(dragSteps) || dragSteps < 1) dragSteps = 12;
+      var button = parseMouseButton(step);
+      var btnMask = buttonsMaskForButton(button, true);
+      var srcTarget = elementAtPoint(fromPt.x, fromPt.y) || srcEl;
+      dispatchPointerAndMouse(srcTarget, "mousedown", fromPt, step, { button: button, pressed: true });
+      for (var di = 1; di <= dragSteps; di++) {
+        var t = di / dragSteps;
+        var mx = fromPt.x + (toPt.x - fromPt.x) * t;
+        var my = fromPt.y + (toPt.y - fromPt.y) * t;
+        var moveTarget = elementAtPoint(mx, my) || document.body;
+        dispatchPointerAndMouse(moveTarget, "mousemove", { x: mx, y: my }, step, {
+          button: button,
+          pressed: true,
+          buttons: btnMask,
+        });
+        if (di < dragSteps) await sleep(16);
+      }
+      var endTarget = elementAtPoint(toPt.x, toPt.y) || document.body;
+      dispatchPointerAndMouse(endTarget, "mouseup", toPt, step, { button: button, pressed: false, buttons: 0 });
+      return { ok: true, action: "drag", from: fromPt, to: toPt, steps: dragSteps };
+    }
     function nativeInputProto(el) {
       if (!el || el.nodeType !== 1) return null;
       if (el.tagName === "TEXTAREA") return window.HTMLTextAreaElement && window.HTMLTextAreaElement.prototype;
@@ -454,14 +721,39 @@ function buildStepScript(step) {
       }
       return false;
     }
+    function resetReactInputTracker(el) {
+      try {
+        var tracker = el._valueTracker;
+        if (tracker && typeof tracker.setValue === "function") {
+          tracker.setValue(String(el.value != null ? el.value : ""));
+        }
+      } catch (e) {}
+    }
     function setTextValue(el, value) {
       return writeNativeValue(el, value);
     }
     function setValue(el, value) {
       if (!isTextInput(el)) return false;
-      focusInput(el, true);
-      if (!setTextValue(el, value)) return false;
+      var alreadyFocused = document.activeElement === el;
+      focusInput(el, alreadyFocused);
+      var str = String(value ?? "");
+      resetReactInputTracker(el);
+      writeNativeValue(el, "");
       el.dispatchEvent(new Event("input", { bubbles: true }));
+      resetReactInputTracker(el);
+      if (!setTextValue(el, str)) return false;
+      try {
+        el.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            cancelable: true,
+            inputType: "insertFromPaste",
+            data: str,
+          }),
+        );
+      } catch (e1) {
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }
       el.dispatchEvent(new Event("change", { bubbles: true }));
       return true;
     }
@@ -505,6 +797,7 @@ function buildStepScript(step) {
         var pressEl = resolveTarget(step);
         var target = pressEl || document.activeElement || document.body;
         if (pressEl) focusInput(pressEl, true);
+        else if (target && target.nodeType === 1) scrollTargetIntoView(target);
         var code = key;
         var keyCode = 0;
         if (keyNorm === "enter") {
@@ -585,267 +878,113 @@ function buildStepScript(step) {
         if (!blurEl || blurEl === document.body || blurEl === document.documentElement) {
           return { ok: false, action: "blur", error: "element_not_found" };
         }
+        scrollTargetIntoView(blurEl);
         blurInput(blurEl);
         return { ok: true, action: "blur" };
       }
       if (action === "click") {
         var clickEl = resolveTarget(step);
         if (!clickEl) return { ok: false, action: "click", error: "element_not_found" };
-        try {
-          if (typeof clickEl.scrollIntoView === "function") {
-            clickEl.scrollIntoView({ block: "nearest", inline: "nearest" });
-          }
-        } catch (e) {}
-        clickEl.click();
-        return { ok: true, action: "click" };
+        clickEl = resolveClickableTarget(clickEl);
+        scrollTargetIntoView(clickEl);
+        var clickMode = String(step.mode || "").toLowerCase();
+        if (clickMode === "synthetic" || clickMode === "chain") {
+          dispatchSyntheticClick(clickEl, step);
+        } else {
+          clickEl.click();
+        }
+        return {
+          ok: true,
+          action: "click",
+          mode: clickMode === "synthetic" || clickMode === "chain" ? "synthetic" : "native",
+          target: clickEl.tagName,
+          text: String(clickEl.innerText || clickEl.textContent || "").trim().slice(0, 80),
+        };
+      }
+      if (action === "mousedown" || action === "pointerdown") {
+        var downEl = resolveMouseTarget(step, true);
+        if (!downEl) return { ok: false, action: action, error: "element_not_found" };
+        var downPt = resolveClientPoint(downEl, step);
+        var downTarget = elementAtPoint(downPt.x, downPt.y) || downEl;
+        dispatchPointerAndMouse(downTarget, "mousedown", downPt, step, { pressed: true });
+        return { ok: true, action: action, x: downPt.x, y: downPt.y, button: parseMouseButton(step) };
+      }
+      if (action === "mouseup" || action === "pointerup") {
+        var upEl = resolveMouseTarget(step, false);
+        if (!upEl) upEl = document.body;
+        var upPt = resolveClientPoint(upEl, step);
+        var upTarget = elementAtPoint(upPt.x, upPt.y) || upEl;
+        dispatchPointerAndMouse(upTarget, "mouseup", upPt, step, { pressed: false, buttons: 0 });
+        return { ok: true, action: action, x: upPt.x, y: upPt.y, button: parseMouseButton(step) };
+      }
+      if (action === "mousemove" || action === "pointermove") {
+        var moveEl = null;
+        if (step.selector || step.label || step.placeholder || step.title || step.parentSelector) {
+          moveEl = resolveTarget(step);
+          if (!moveEl) return { ok: false, action: action, error: "element_not_found" };
+          scrollTargetIntoView(moveEl);
+        }
+        var movePt = resolveClientPoint(moveEl || document.body, step);
+        var moveButtons = Number(step.buttons);
+        if (!Number.isFinite(moveButtons)) moveButtons = buttonsMaskForButton(parseMouseButton(step), true);
+        var moveTarget = elementAtPoint(movePt.x, movePt.y) || moveEl || document.body;
+        dispatchPointerAndMouse(moveTarget, "mousemove", movePt, step, {
+          buttons: moveButtons,
+          pressed: moveButtons > 0,
+        });
+        return { ok: true, action: action, x: movePt.x, y: movePt.y, buttons: moveButtons };
+      }
+      if (action === "hover") {
+        var hoverEl = resolveMouseTarget(step, true);
+        if (!hoverEl) return { ok: false, action: action, error: "element_not_found" };
+        dispatchHover(hoverEl, step);
+        return { ok: true, action: "hover" };
+      }
+      if (action === "dblclick") {
+        var dblEl = resolveMouseTarget(step, true);
+        if (!dblEl) return { ok: false, action: action, error: "element_not_found" };
+        dispatchDblClick(dblEl, step);
+        return { ok: true, action: "dblclick" };
+      }
+      if (action === "rightclick" || action === "contextmenu") {
+        var rcEl = resolveMouseTarget(step, true);
+        if (!rcEl) return { ok: false, action: action, error: "element_not_found" };
+        dispatchRightClick(rcEl, step);
+        return { ok: true, action: action };
+      }
+      if (action === "drag") {
+        return await performDrag(step);
       }
       if (action === "type" || action === "type_chars") {
         var typeEl = resolveTarget(step);
         if (!typeEl) return { ok: false, action: action, error: "element_not_found" };
+        if (step.selector) {
+          var activeType = document.activeElement;
+          if (activeType && activeType.nodeType === 1 && vis(activeType)) {
+            try {
+              if (typeof activeType.matches === "function" && activeType.matches(String(step.selector))) {
+                typeEl = activeType;
+              }
+            } catch (eType) {}
+          }
+        }
         var charMode = action === "type_chars" || String(step.mode || "").toLowerCase() === "char";
         if (charMode) {
           if (!(await typeChars(typeEl, String(step.text ?? ""), step.intervalMs))) {
             return { ok: false, action: action, error: "not_input" };
           }
-          return { ok: true, action: "type_chars" };
+          await sleep(150);
+          return { ok: true, action: "type_chars", value: readNativeValue(typeEl) };
         }
         if (!setValue(typeEl, String(step.text ?? ""))) return { ok: false, action: action, error: "not_input" };
-        return { ok: true, action: "type" };
+        await sleep(150);
+        return { ok: true, action: "type", value: readNativeValue(typeEl) };
       }
       return { ok: false, action: action, error: "unknown_action" };
     } catch (e) {
       return { ok: false, action: String(step.action || ""), error: String(e && e.message ? e.message : e) };
     }
   })()`;
-}
-
-/**
- * @param {SidebarAutomationVerifySpec | SidebarAutomationVerifySpec[]} verifySpec
- */
-function buildVerifyScript(verifySpec) {
-  const checks = Array.isArray(verifySpec) ? verifySpec : [verifySpec];
-  const payload = JSON.stringify(checks);
-  return `(function(){
-    var checks = ${payload};
-    var INPUT_SELECTOR = "input, textarea, [contenteditable], [contenteditable=true], [role=textbox]";
-    var TARGET_SELECTOR = "button, a, input[type=submit], input[type=button], [role=button], " + INPUT_SELECTOR + ", label, div, span, li";
-    function vis(el) {
-      if (!el || el.nodeType !== 1) return false;
-      if (el.getAttribute("aria-hidden") === "true") return false;
-      var st = window.getComputedStyle(el);
-      if (st.display === "none" || st.visibility === "hidden" || Number(st.opacity) === 0) return false;
-      var r = el.getBoundingClientRect();
-      return r.width > 2 && r.height > 2;
-    }
-    function walkShadowHosts(node, visit) {
-      if (!node || node.nodeType !== 1) return;
-      visit(node);
-      var kids = node.children || [];
-      for (var i = 0; i < kids.length; i++) {
-        var kid = kids[i];
-        if (kid.shadowRoot) {
-          visit(kid.shadowRoot);
-          walkShadowHosts(kid.shadowRoot, visit);
-        }
-        walkShadowHosts(kid, visit);
-      }
-    }
-    function collectRoots(depth) {
-      if (depth > 3) return [document];
-      var roots = [document];
-      walkShadowHosts(document.documentElement, function(node) {
-        if (node && node.nodeType === 11) roots.push(node);
-      });
-      var frames = document.querySelectorAll("iframe");
-      for (var f = 0; f < frames.length; f++) {
-        try {
-          var fd = frames[f].contentDocument;
-          if (!fd) continue;
-          roots.push(fd);
-          walkShadowHosts(fd.documentElement, function(node) {
-            if (node && node.nodeType === 11) roots.push(node);
-          });
-        } catch (e) {}
-      }
-      return roots;
-    }
-    function querySelectorDeep(selector) {
-      var roots = collectRoots(0);
-      for (var i = 0; i < roots.length; i++) {
-        try {
-          var hit = roots[i].querySelector(selector);
-          if (hit && vis(hit)) return hit;
-        } catch (e) {}
-      }
-      return null;
-    }
-    function querySelectorAllDeep(selector) {
-      var roots = collectRoots(0);
-      var out = [];
-      var seen = [];
-      for (var i = 0; i < roots.length; i++) {
-        try {
-          var nodes = roots[i].querySelectorAll(selector);
-          for (var j = 0; j < nodes.length; j++) {
-            if (seen.indexOf(nodes[j]) < 0) {
-              seen.push(nodes[j]);
-              out.push(nodes[j]);
-            }
-          }
-        } catch (e) {}
-      }
-      return out;
-    }
-    function queryWithin(root, selector) {
-      if (!root) return null;
-      try {
-        var hit = root.querySelector(selector);
-        if (hit && vis(hit)) return hit;
-      } catch (e) {}
-      return null;
-    }
-    function queryAllWithin(root, selector) {
-      if (!root) return [];
-      try {
-        return Array.prototype.slice.call(root.querySelectorAll(selector));
-      } catch (e) {
-        return [];
-      }
-    }
-    function resolveTarget(s) {
-      var scope = null;
-      if (s.parentSelector) {
-        scope = querySelectorDeep(String(s.parentSelector));
-        if (!scope) return null;
-      }
-      if (s.selector) {
-        if (scope) {
-          var scoped = queryWithin(scope, String(s.selector));
-          if (scoped) return scoped;
-        }
-        return querySelectorDeep(String(s.selector));
-      }
-      if (s.title) {
-        var titleNeedle = String(s.title);
-        var titleNodes = scope
-          ? queryAllWithin(scope, INPUT_SELECTOR + ", [title]")
-          : querySelectorAllDeep(INPUT_SELECTOR + ", [title]");
-        for (var ti = 0; ti < titleNodes.length; ti++) {
-          var tel = titleNodes[ti];
-          if (!vis(tel)) continue;
-          if ((tel.getAttribute("title") || "").indexOf(titleNeedle) >= 0) return tel;
-        }
-      }
-      if (s.placeholder) {
-        var p = String(s.placeholder);
-        var inputs = scope ? queryAllWithin(scope, INPUT_SELECTOR) : querySelectorAllDeep(INPUT_SELECTOR);
-        for (var i = 0; i < inputs.length; i++) {
-          var el = inputs[i];
-          if (!vis(el)) continue;
-          var ph = el.getAttribute("placeholder") || el.getAttribute("aria-placeholder") || "";
-          if (ph.indexOf(p) >= 0) return el;
-        }
-      }
-      if (s.label) {
-        var lbl = String(s.label);
-        var nodes = scope
-          ? [scope].concat(queryAllWithin(scope, TARGET_SELECTOR))
-          : querySelectorAllDeep(TARGET_SELECTOR);
-        for (var j = 0; j < nodes.length; j++) {
-          var n = nodes[j];
-          if (!vis(n)) continue;
-          var t = (n.innerText || n.textContent || n.value || n.getAttribute("aria-label") || "").trim();
-          if (t.indexOf(lbl) >= 0) return n;
-        }
-      }
-      return null;
-    }
-    function readValue(el) {
-      if (!el) return "";
-      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
-        var proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-        var desc = Object.getOwnPropertyDescriptor(proto, "value");
-        if (desc && desc.get) return String(desc.get.call(el));
-      }
-      return String(el.value != null ? el.value : el.textContent || el.innerText || "");
-    }
-    function runOne(v) {
-      if (v.url_contains && String(location.href).indexOf(String(v.url_contains)) < 0) {
-        return { ok: false, error: "url_mismatch", expected: v.url_contains, actual: String(location.href) };
-      }
-      if (v.title_contains && String(document.title || "").indexOf(String(v.title_contains)) < 0) {
-        return { ok: false, error: "title_mismatch", expected: v.title_contains, actual: String(document.title || "") };
-      }
-      if (v.text_contains) {
-        var bodyText = document.body ? String(document.body.innerText || document.body.textContent || "") : "";
-        if (bodyText.indexOf(String(v.text_contains)) < 0) {
-          return { ok: false, error: "text_missing", expected: v.text_contains };
-        }
-      }
-      var needsEl = !!(v.selector || v.label || v.placeholder || v.title || v.parentSelector || v.value != null || v.active);
-      if (needsEl) {
-        var el = resolveTarget(v);
-        var hide = v.hidden === true;
-        if (!hide && (!el || !vis(el))) {
-          return { ok: false, error: "element_not_found", expected: v };
-        }
-        if (hide && el && vis(el)) {
-          return { ok: false, error: "element_still_visible", expected: v };
-        }
-        if (v.value != null && el) {
-          var actual = readValue(el);
-          if (actual.indexOf(String(v.value)) < 0) {
-            return { ok: false, error: "value_mismatch", expected: v.value, actual: actual };
-          }
-        }
-        if (v.active === true && el && document.activeElement !== el) {
-          return { ok: false, error: "not_focused", expected: v };
-        }
-      }
-      return { ok: true };
-    }
-    for (var c = 0; c < checks.length; c++) {
-      var row = runOne(checks[c]);
-      if (!row.ok) {
-        row.checkIndex = c;
-        row.checksTotal = checks.length;
-        return row;
-      }
-    }
-    return { ok: true, checks: checks.length };
-  })()`;
-}
-
-/**
- * @param {import("electron").WebviewTag} wv
- * @param {SidebarAutomationVerifySpec | SidebarAutomationVerifySpec[] | undefined} verifySpec
- */
-async function runVerifyOnWebview(wv, verifySpec) {
-  if (!verifySpec) return { ok: true, skipped: true };
-  focusWebviewHost(wv);
-  const raw = await wv.executeJavaScript(buildVerifyScript(verifySpec), false);
-  return raw && typeof raw === "object" ? raw : { ok: false, error: "bad_verify_result" };
-}
-
-/**
- * @param {SidebarAutomationStep} step
- * @param {Record<string, unknown>} row
- */
-async function applyStepVerification(wv, step, row) {
-  if (row.ok === false || step.action === "verify") return row;
-  const spec = step.verify;
-  if (!spec) return row;
-  const verifyResult = await runVerifyOnWebview(wv, spec);
-  if (verifyResult.ok === false) {
-    return {
-      ...row,
-      ok: false,
-      error: String(verifyResult.error || "verify_failed"),
-      verify: verifyResult,
-      verifyHint: step.verifyHint,
-    };
-  }
-  return { ...row, verify: verifyResult, verifyHint: step.verifyHint };
 }
 
 const WEBVIEW_INTERACTION_ACTIONS = new Set([
@@ -855,6 +994,17 @@ const WEBVIEW_INTERACTION_ACTIONS = new Set([
   "type",
   "type_chars",
   "press",
+  "mousedown",
+  "mouseup",
+  "pointerdown",
+  "pointerup",
+  "mousemove",
+  "pointermove",
+  "hover",
+  "dblclick",
+  "rightclick",
+  "contextmenu",
+  "drag",
 ]);
 
 /**
@@ -873,12 +1023,6 @@ function focusWebviewHost(wv) {
  * @param {SidebarAutomationStep} step
  */
 async function runStepOnWebview(wv, step) {
-  if (step.action === "verify") {
-    focusWebviewHost(wv);
-    const spec = verifySpecFromStep(step) || step.verify;
-    const row = await runVerifyOnWebview(wv, spec);
-    return { ...row, action: "verify" };
-  }
   if (step.action === "wait") {
     await new Promise((r) => window.setTimeout(r, step.ms ?? 500));
     return { ok: true, action: "wait", ms: step.ms ?? 500 };
@@ -1016,7 +1160,6 @@ export async function runSidebarPreviewAutomation(input) {
     }
     const wv = /** @type {import("electron").WebviewTag} */ (webviewNode);
     let row = await runStepOnWebviewWithRetry(wv, step);
-    row = await applyStepVerification(wv, step, row);
     results.push(row);
     if (input.onStepComplete) {
       await input.onStepComplete({ step, row, index: stepIndex, results: [...results] });
@@ -1039,7 +1182,17 @@ export async function runSidebarPreviewAutomation(input) {
       step.action === "navigate" ||
       step.action === "wait" ||
       step.action === "scroll" ||
-      step.action === "verify"
+      step.action === "mousedown" ||
+      step.action === "mouseup" ||
+      step.action === "pointerdown" ||
+      step.action === "pointerup" ||
+      step.action === "mousemove" ||
+      step.action === "pointermove" ||
+      step.action === "hover" ||
+      step.action === "dblclick" ||
+      step.action === "rightclick" ||
+      step.action === "contextmenu" ||
+      step.action === "drag"
     ) {
       await new Promise((r) => window.setTimeout(r, SIDEBAR_AUTOMATION_STEP_INTERVAL_MS));
     }

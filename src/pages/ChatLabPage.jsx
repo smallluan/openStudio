@@ -87,12 +87,7 @@ import { extractFirstWebMarkdownLink, readLinkOpenModeLocal } from "../chat/chat
 import {
   isSidebarAutomationCarrierContent,
   isSidebarAutomationCarrierMessage,
-  automationHadFailure,
-  findUserRequestBeforeAssistant,
-  formatSidebarAutomationRetryMessage,
   isSidebarAutomationInternalUserMessage,
-  shouldTriggerSidebarAutomationReplan,
-  SIDEBAR_AUTOMATION_MAX_RETRIES,
 } from "../chat/chatLabSidebarActionProtocol.js";
 import { composeChatLabSystemPrompt, composeChatLabStudioSuffix, fetchChatLabWorkspaceContextBlock } from "../chat/chatLabSystemPrompt.js";
 import {
@@ -961,7 +956,6 @@ function ChatLabPageMain() {
 
   const activeRootRef = useRef(/** @type {string | null} */ (null));
   const previewSnapshotRef = useRef(/** @type {(() => Promise<string>) | null} */ (null));
-  const sidebarAutomationRetryCountRef = useRef(0);
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
   const isElectron = Boolean(bridge?.startChatStream);
 
@@ -2577,9 +2571,6 @@ function ChatLabPageMain() {
       const effectiveMentionIds =
         mentionIds.length === 0 && continuousMentionTargetId ? [continuousMentionTargetId] : mentionIds;
       const effectiveText = cleanText || trimmed;
-      if (!isSidebarAutomationInternalUserMessage(effectiveText)) {
-        sidebarAutomationRetryCountRef.current = 0;
-      }
       const replyTargets = resolveReplyTargets({
         mentionIds: effectiveMentionIds,
         participantIds,
@@ -3218,53 +3209,8 @@ function ChatLabPageMain() {
       );
 
       if (phase !== "complete") return;
-
-      if (!shouldTriggerSidebarAutomationReplan(result)) {
-        sidebarAutomationRetryCountRef.current = 0;
-        return;
-      }
-
-      if (sidebarAutomationRetryCountRef.current >= SIDEBAR_AUTOMATION_MAX_RETRIES) return;
-      if (orchestrationMode) return;
-      if (!isElectron || !bridge?.startChatStream) return;
-      if (gatewayPhase !== "online" || chatApiBlocked) return;
-      if (configIssueKey) return;
-      if (
-        messagesRef.current.some(
-          (m) => m.role === "assistant" && m.streaming && m.id !== sourceId,
-        )
-      ) {
-        return;
-      }
-
-      sidebarAutomationRetryCountRef.current += 1;
-      const originalRequest = findUserRequestBeforeAssistant(messagesRef.current, sourceId);
-      await resolvePreviewContextBlock();
-      const retryText = formatSidebarAutomationRetryMessage({
-        originalRequest,
-        requestedSteps: requested,
-        result,
-        attempt: sidebarAutomationRetryCountRef.current,
-        maxAttempts: SIDEBAR_AUTOMATION_MAX_RETRIES,
-      });
-      await submitNewUserTurn({
-        trimmed: retryText,
-        imageAttachments: undefined,
-        skillPickRow: null,
-        onCommitted: () => {},
-      });
     },
-    [
-      bridge,
-      chatApiBlocked,
-      configIssueKey,
-      gatewayPhase,
-      isElectron,
-      orchestrationMode,
-      resolvePreviewContextBlock,
-      setMessages,
-      submitNewUserTurn,
-    ],
+    [setMessages],
   );
 
   const stop = useCallback(() => {
@@ -4084,13 +4030,13 @@ function ChatLabPageMain() {
       <ImageViewProvider>
       <ChatLabWorkspaceActiveRootBridge activeRootRef={activeRootRef} />
       <ChatLabPreviewContextBridge previewSnapshotRef={previewSnapshotRef} />
+      <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
+      <ChatLabAutoLinkPreview conversationId={conversationId} messages={messages} />
       <ChatLabSidebarActionRunner
         conversationId={conversationId}
         messages={messages}
         onAutomationApplied={applySidebarAutomationResult}
       />
-      <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
-      <ChatLabAutoLinkPreview conversationId={conversationId} messages={messages} />
       <ChatLabSessionScopeReset conversationId={conversationId} isEmptySession={isLanding} />
       <div className="chat-lab__workspace relative">
         <div className="chat-lab__column">
@@ -4319,22 +4265,29 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
 function ChatLabAutoLinkPreview({ conversationId, messages }) {
   const preview = useChatLabPreview();
   const handledTailIdRef = useRef(/** @type {string | null} */ (null));
+  const conversationIdRef = useRef(conversationId);
 
   useEffect(() => {
-    // Mark last message as handled on conversation change to avoid auto-opening preview from previous session's content
-    const last = messages[messages.length - 1];
-    handledTailIdRef.current = last?.id ?? null;
+    if (conversationIdRef.current === conversationId) return;
+    conversationIdRef.current = conversationId;
+    // Skip auto-open for the tail assistant already present when switching conversations.
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && !m.streaming && !m.error);
+    handledTailIdRef.current = lastAssistant?.id ?? null;
   }, [conversationId, messages]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!preview?.openFromHref) return;
     if (readLinkOpenModeLocal() === "external") return;
-    const last = messages[messages.length - 1];
-    if (!last || last.role !== "assistant" || last.streaming || last.error) return;
-    if (handledTailIdRef.current === last.id) return;
-    handledTailIdRef.current = last.id;
-    if (lastHtmlFenceAsSrcDocDocument(String(last.content ?? ""))) return;
-    const url = extractFirstWebMarkdownLink(String(last.content ?? ""));
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && !m.streaming && !m.error);
+    if (!lastAssistant?.id) return;
+    if (handledTailIdRef.current === lastAssistant.id) return;
+    handledTailIdRef.current = lastAssistant.id;
+    if (lastHtmlFenceAsSrcDocDocument(String(lastAssistant.content ?? ""))) return;
+    const url = extractFirstWebMarkdownLink(String(lastAssistant.content ?? ""));
     if (!url) return;
     preview.openFromHref(url, url);
   }, [messages, preview]);
@@ -5502,6 +5455,7 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
   const [naturalH, setNaturalH] = useState(0);
 
   const userText = String(message.content ?? "");
+  const userMdComponents = useMemo(() => createChatLabMarkdownComponents(t), [t]);
 
   useLayoutEffect(() => {
     const el = innerRef.current;
@@ -5530,7 +5484,9 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
     >
       <div ref={innerRef} className="chat-lab__user-body">
         {String(message.content ?? "").trim() ? (
-          <div className="chat-lab__user-text">{userText}</div>
+          <div className="chat-lab__user-text chat-lab__md chat-lab__md--user">
+            <ChatLabMarkdownContent source={userText} components={userMdComponents} />
+          </div>
         ) : null}
         {Array.isArray(message.imageAttachments) && message.imageAttachments.length > 0 ? (
           <div className="chat-lab__user-images">

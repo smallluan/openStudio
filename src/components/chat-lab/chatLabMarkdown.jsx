@@ -707,10 +707,19 @@ function ChatLabMarkdownLink({ href, children, className, node: _node, ...rest }
   const text = chatMarkdownPlainText(children);
   /** @param {import("react").MouseEvent<HTMLAnchorElement>} e */
   const onClick = (e) => {
-    if (!previewApi || !href) return;
+    if (!href) return;
     if (e.button !== 0) return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    if (previewApi.openFromHref?.(href, text)) e.preventDefault();
+    let targetHref = href;
+    try {
+      targetHref = new URL(href, window.location.href).href;
+    } catch {
+      /* keep raw href */
+    }
+    if (previewApi?.openFromHref?.(targetHref, text)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
   };
   return (
     <a href={href ?? "#"} onClick={onClick} className={cn("chat-lab__md-a", className)} {...rest}>
