@@ -1,17 +1,8 @@
-import {
-  memo,
-  useCallback,
-  useContext,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Send } from "lucide-react";
 import "katex/dist/katex.min.css";
 import {
   CONTEXT_WINDOW_APPROX_TOKENS,
@@ -22,6 +13,7 @@ import {
   imageAttachmentsContextChars,
   readImageFileAsComposerAttachment,
 } from "../chat/chatLabComposerAttachments.js";
+import { getContextWindowSize, formatContextWindow } from "../chat/modelContextWindow.js";
 import { buildStreamUsageMeta } from "../chat/chatStreamUsageMeta.js";
 import {
   emojiForFileRefKind,
@@ -3500,23 +3492,28 @@ function ChatLabPageMain() {
   );
 
   const contextUsageApprox = useMemo(() => {
+    // Get current model's context window size
+    const currentProfile = config?.modelProfiles?.find((p) => p.id === toolbarModelId);
+    const currentModelId = currentProfile?.modelId || "";
+    const contextWindow = getContextWindowSize(currentModelId);
+    
     const chars = estimateThreadCharBudget(messages, {
       systemPromptLen: composeChatLabSystemPrompt(t).length,
       inputLen: input.length,
       pendingImagePayloadChars: composerPendingImageChars,
     });
     const tokens = approxTokensFromChars(chars);
-    const frac = tokens / CONTEXT_WINDOW_APPROX_TOKENS;
-    return { chars, tokens, frac };
-  }, [composerPendingImageChars, input.length, messages, t]);
+    const frac = tokens / contextWindow;
+    return { chars, tokens, frac, contextWindow };
+  }, [composerPendingImageChars, input.length, messages, t, config?.modelProfiles, toolbarModelId]);
 
   const contextMeterLines = useMemo(() => {
     const pct = Math.round(Math.min(100, Math.max(0, contextUsageApprox.frac * 100)));
-    const windowK = Math.round(CONTEXT_WINDOW_APPROX_TOKENS / 1000);
+    const windowFormatted = formatContextWindow(contextUsageApprox.contextWindow);
     const line1 = t("chatLab.contextMeterLine1", { pct });
-    const line2 = t("chatLab.contextMeterLine2", { n: contextUsageApprox.tokens, windowK });
+    const line2 = t("chatLab.contextMeterLine2", { n: contextUsageApprox.tokens, windowK: windowFormatted });
     return { line1, line2, pct, ariaSummary: `${line1}，${line2}` };
-  }, [contextUsageApprox.frac, contextUsageApprox.tokens, t]);
+  }, [contextUsageApprox.frac, contextUsageApprox.tokens, contextUsageApprox.contextWindow, t]);
 
   const addComposerImageFiles = useCallback(
     /** @param {FileList | File[] | null | undefined} fileList */
@@ -3993,6 +3990,8 @@ function ChatLabPageMain() {
               ratio={Math.min(1, contextUsageApprox.frac)}
               ariaSummary={contextMeterLines.ariaSummary}
               percentText={`${contextMeterLines.pct}%`}
+              line1={contextMeterLines.line1}
+              line2={contextMeterLines.line2}
             />
             <button
               type="button"
@@ -4012,7 +4011,9 @@ function ChatLabPageMain() {
               }
               aria-label={gatewayStreaming || orchestrationStreamBusy ? t("chatLab.stop") : t("chatLab.send")}
             >
-              <span className="chat-lab__send-round-label">{t("chatLab.send")}</span>
+              <span className="chat-lab__send-round-icon" aria-hidden>
+                <Send />
+              </span>
               <span className="chat-lab__send-round-stop-icon" aria-hidden>
                 <ChatStreamPauseIcon />
               </span>

@@ -543,7 +543,7 @@
       "instruction": "When the user asks about \"this project\" or the current codebase, they mean the selected folder above—not the agent bootstrap workspace. Answer from files under that path; use absolute paths under that directory when reading files with tools."
     },
     "contextMeterLine1": "Context, {{pct}}%",
-    "contextMeterLine2": "tokens: {{n}} / {{windowK}}k",
+    "contextMeterLine2": "~{{n}} tokens used / {{windowK}}",
     "composerAttachmentsLabel": "Images to send",
     "removeComposerImage": "Remove image",
     "chatUntitledImage": "[Image]",

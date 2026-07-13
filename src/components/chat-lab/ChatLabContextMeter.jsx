@@ -1,8 +1,45 @@
+import { useState } from "react";
+import { useFloating, useInteractions, useHover, useDismiss, useRole, offset, shift } from "@floating-ui/react";
+import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
+import { cn } from "../../ui/cn.js";
+
 /**
- * Context window gauge with inline percentage label.
- * @param {{ ratio: number; ariaSummary: string; percentText: string }} props
+ * Context window gauge - shows ring by default, details on hover.
+ * @param {{ ratio: number; ariaSummary: string; percentText: string; line1: string; line2: string }} props
  */
-export function ChatLabContextMeter({ ratio, ariaSummary, percentText }) {
+export function ChatLabContextMeter({ ratio, ariaSummary, percentText, line1, line2 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+
+  const { refs, floatingStyles, context } = useFloating({
+    open: isOpen,
+    onOpenChange: (open) => {
+      if (open) {
+        setLeaving(false);
+        setIsOpen(true);
+      } else {
+        setLeaving(true);
+      }
+    },
+    placement: "top",
+    middleware: [
+      offset(8),
+      shift({
+        padding: 8,
+      }),
+    ],
+  });
+
+  const hover = useHover(context, { move: false });
+  const dismiss = useDismiss(context);
+  const role = useRole(context, { role: "tooltip" });
+
+  const { getReferenceProps, getFloatingProps } = useInteractions([hover, dismiss, role]);
+
+  const finishLeave = () => {
+    setLeaving(false);
+    setIsOpen(false);
+  };
 
   const r = 10;
   const hi = ratio >= 0.92;
@@ -12,11 +49,14 @@ export function ChatLabContextMeter({ ratio, ariaSummary, percentText }) {
   const stroke = hi ? "#e53935" : mid ? "#d97706" : "color-mix(in srgb, var(--os-accent) 82%, var(--os-text-muted))";
 
   return (
-    <div className="chat-lab__ctx-inline" role="img" aria-label={ariaSummary}>
-      <span className="chat-lab__ctx-percent" aria-hidden>
-        {percentText}
-      </span>
-      <span className="chat-lab__ctx-ring-wrap" aria-hidden>
+    <>
+      <span
+        ref={refs.setReference}
+        className="chat-lab__ctx-ring-wrap chat-lab__ctx-ring-wrap--standalone"
+        role="img"
+        aria-label={ariaSummary}
+        {...getReferenceProps()}
+      >
         <svg className="chat-lab__ctx-ring-svg" width="34" height="34" viewBox="0 0 34 34" aria-hidden>
           <circle
             cx="17"
@@ -41,6 +81,32 @@ export function ChatLabContextMeter({ ratio, ariaSummary, percentText }) {
           />
         </svg>
       </span>
-    </div>
+
+      {isOpen && (
+        <div
+          ref={refs.setFloating}
+          style={floatingStyles}
+          className="z-[500]"
+          {...getFloatingProps()}
+        >
+          <FluidPopupAnimatedSurface
+            leaving={leaving}
+            finishLeave={finishLeave}
+            placement={context.placement}
+            morphBr="10px"
+            className={cn(
+              "flex flex-col gap-1 px-3 py-2",
+              "rounded-[10px] border",
+              "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)]",
+              "bg-[var(--os-bg-modal)]",
+              "shadow-[var(--os-shadow-soft)]",
+            )}
+          >
+            <div className="text-[0.8125rem] leading-snug text-[var(--os-text)]">{line1}</div>
+            <div className="text-[0.75rem] leading-snug text-[var(--os-text-muted)]">{line2}</div>
+          </FluidPopupAnimatedSurface>
+        </div>
+      )}
+    </>
   );
 }
