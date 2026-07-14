@@ -14,7 +14,7 @@ import { ChevronDown, Folder, FolderOpen, GitBranch, Search, X } from "lucide-re
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import SearchSparkleIcon from "../../assets/svg/SearchSparkleIcon.jsx";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
-import { useChatLabWorkspace } from "../../context/ChatLabWorkspaceContext.jsx";
+import { useOptionalChatLabWorkspace } from "../../context/ChatLabWorkspaceContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { cn } from "../../ui/cn.js";
@@ -293,6 +293,13 @@ function ContextPopover({
  * Workspace + Git branch context bar above the chat composer (Cursor-style).
  */
 export default function ChatLabContextBar() {
+  const workspace = useOptionalChatLabWorkspace();
+  if (!workspace) return null;
+  return <ChatLabContextBarInner workspace={workspace} />;
+}
+
+/** @param {{ workspace: NonNullable<ReturnType<typeof useOptionalChatLabWorkspace>> }} props */
+function ChatLabContextBarInner({ workspace }) {
   const { t } = useI18n();
   const preview = useChatLabPreview();
   const {
@@ -305,7 +312,7 @@ export default function ChatLabContextBar() {
     workspaceLabel,
     git,
     recents,
-  } = useChatLabWorkspace();
+  } = workspace;
   const workspaceBtnRef = useRef(/** @type {HTMLButtonElement | null} */ (null));
   const branchBtnRef = useRef(/** @type {HTMLButtonElement | null} */ (null));
 

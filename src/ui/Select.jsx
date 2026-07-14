@@ -33,7 +33,7 @@ function Chevron({ open }) {
   );
 }
 
-export default function Select({ id, value, onChange, options, ariaLabel, className }) {
+export default function Select({ id, value, onChange, options, ariaLabel, className, disabled = false }) {
   const autoId = useId();
   const listId = `${autoId}-list`;
   const [open, setOpen] = useState(false);
@@ -77,7 +77,7 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
     whileElementsMounted: autoUpdate,
   });
 
-  const click = useClick(context);
+  const click = useClick(context, { enabled: !disabled });
   const dismiss = useDismiss(context);
   const role = useRole(context, { role: "listbox" });
   const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role]);
@@ -93,12 +93,14 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
         id={id}
         type="button"
         aria-label={ariaLabel}
+        disabled={disabled}
         {...getReferenceProps()}
         className={cn(
           "flex h-8 w-full min-w-[10rem] items-center justify-between gap-2 rounded-lg border border-[var(--os-border)]",
           "bg-[var(--os-bg-elevated)] px-2.5 text-left text-[0.8125rem] font-medium text-[var(--os-text)] shadow-[var(--os-control-inset)]",
           "transition-[border-color,box-shadow] duration-150 hover:border-[color-mix(in_srgb,var(--os-accent)_32%,var(--os-border))]",
           "focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]",
+          disabled && "cursor-not-allowed opacity-55 hover:border-[var(--os-border)]",
         )}
       >
         <span className="min-w-0 truncate">{selected?.label ?? "—"}</span>

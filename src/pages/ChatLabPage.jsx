@@ -108,8 +108,7 @@ import {
 } from "../context/ChatLabStreamingContext.jsx";
 import { createChatLabMarkdownComponents } from "../components/chat-lab/chatLabMarkdown.jsx";
 import ChatLabPreviewDock from "../components/chat-lab/ChatLabPreviewDock.jsx";
-import ChatLabContextBar from "../components/chat-lab/ChatLabContextBar.jsx";
-import ChatLabComposerSlot from "../components/chat-lab/ChatLabComposerSlot.jsx";
+import ChatLabComposerStack from "../components/chat-lab/ChatLabComposerStack.jsx";
 import ChatLabSessionScopeReset from "../components/chat-lab/ChatLabSessionScopeReset.jsx";
 import ChatLabWorkspaceActiveRootBridge from "../components/chat-lab/ChatLabWorkspaceActiveRootBridge.jsx";
 import ChatLabPreviewContextBridge from "../components/chat-lab/ChatLabPreviewContextBridge.jsx";
@@ -927,17 +926,8 @@ function buildStudioGatewayPrewarmIds(currentConversationId, max) {
 
 
 export default function ChatLabPage() {
-  return <ChatLabPageMain />;
-}
-
-function ChatLabPageMain() {
-  const { theme } = useTheme();
-  const { t, locale } = useI18n();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const paramC = searchParams.get("c");
-
   const draftIdRef = useRef(/** @type {string | null} */ (null));
   if (paramC) {
     draftIdRef.current = null;
@@ -945,6 +935,31 @@ function ChatLabPageMain() {
     draftIdRef.current = newId();
   }
   const conversationId = paramC || draftIdRef.current;
+  const [workspaceEmptySession, setWorkspaceEmptySession] = useState(true);
+
+  return (
+    <ChatLabWorkspaceProvider conversationId={conversationId} isEmptySession={workspaceEmptySession}>
+      <ChatLabPageMain
+        conversationId={conversationId}
+        onWorkspaceEmptySessionChange={setWorkspaceEmptySession}
+      />
+    </ChatLabWorkspaceProvider>
+  );
+}
+
+/**
+ * @param {{
+ *   conversationId: string;
+ *   onWorkspaceEmptySessionChange: (isEmpty: boolean) => void;
+ * }} props
+ */
+function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
+  const { theme } = useTheme();
+  const { t, locale } = useI18n();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paramC = searchParams.get("c");
 
   const activeRootRef = useRef(/** @type {string | null} */ (null));
   const previewSnapshotRef = useRef(/** @type {(() => Promise<string>) | null} */ (null));
@@ -1012,6 +1027,18 @@ function ChatLabPageMain() {
   );
   const [composerAttachmentsLeaving, setComposerAttachmentsLeaving] = useState(false);
   const [composerFileRefsLeaving, setComposerFileRefsLeaving] = useState(false);
+  
+  /** Queued messages (max 3) - sent automatically when stream completes */
+  const [queuedMessages, setQueuedMessages] = useState(
+    /** @type {Array<{id: string; text: string; attachments: Array<{id: string; name: string; mime: string; dataUrl: string}>; fileRefs: import("../chat/chatLabComposerFileRefs.js").ComposerFileRef[]; modelId: string; skillRow: import("../skills/skillRegistry.js").SkillPickRow | null; followUpRef: import("../chat/chatSessionsStore.js").MessageFollowUpRef | null; mentionIds: string[]}>} */
+    ([]),
+  );
+  const queuedMessagesRef = useRef(queuedMessages);
+  const queuedAutoSendTokenRef = useRef(0);
+  const [queuedSendingId, setQueuedSendingId] = useState(/** @type {string | null} */ (null));
+  useEffect(() => {
+    queuedMessagesRef.current = queuedMessages;
+  }, [queuedMessages]);
   const textareaRef = useRef(/** @type {HTMLTextAreaElement | null} */ (null));
   const composerResizeDragRef = useRef(
     /** @type {{ startY: number; startH: number }} */ ({ startY: 0, startH: CHAT_LAB_COMPOSER_TEXT_MIN_PX }),
@@ -1190,6 +1217,10 @@ function ChatLabPageMain() {
     setComposerResizeDragging(false);
     composerResizeDraggingRef.current = false;
     setComposerResizeStripHover(false);
+    // 切换会话时清空排队消息
+    queuedAutoSendTokenRef.current += 1;
+    setQueuedSendingId(null);
+    setQueuedMessages([]);
   }, [conversationId]);
 
   const clearRawTraceRounds = useCallback(() => {
@@ -1587,10 +1618,21 @@ function ChatLabPageMain() {
   // 同步 toolbarModelId：根据会话状态决定显示哪个模型
   // - 流式会话：显示会话级模型（固定，不可切换）
   // - 空闲会话：显示全局默认模型（可切换，作为新会话的默认值）
+  // - 有排队消息时：显示/切换排队消息的模型，不锁定为当前流式会话模型
   useEffect(() => {
     const globalActiveId = typeof config?.activeModelProfileId === "string" ? config.activeModelProfileId.trim() : "";
     const sessionModelId = conversationModelIdsRef.current.get(conversationId);
-    
+
+    if (gatewayStreaming && queuedMessages.length > 0) {
+      const queueModelId = queuedMessages[queuedMessages.length - 1]?.modelId;
+      const candidate = queueModelId || globalActiveId;
+      const next = enabledModelOptions.some((o) => o.value === candidate)
+        ? candidate
+        : (enabledModelOptions[0]?.value ?? "");
+      setToolbarModelId(next);
+      return;
+    }
+
     // 如果会话正在流式执行，优先显示会话级模型
     if (gatewayStreaming && sessionModelId) {
       const next = enabledModelOptions.some((o) => o.value === sessionModelId)
@@ -1599,13 +1641,26 @@ function ChatLabPageMain() {
       setToolbarModelId(next);
       return;
     }
-    
+
     // 空闲会话：显示全局默认模型
     const next = enabledModelOptions.some((o) => o.value === globalActiveId)
       ? globalActiveId
       : (enabledModelOptions[0]?.value ?? "");
     setToolbarModelId(next);
-  }, [conversationId, gatewayStreaming, config?.activeModelProfileId, conversationModelIds, enabledModelOptions]);
+  }, [conversationId, gatewayStreaming, config?.activeModelProfileId, conversationModelIds, enabledModelOptions, queuedMessages]);
+
+  // 当有排队消息时，模型变化应用于全部排队消息
+  const prevToolbarModelIdRef = useRef(toolbarModelId);
+  useEffect(() => {
+    if (
+      prevToolbarModelIdRef.current &&
+      prevToolbarModelIdRef.current !== toolbarModelId &&
+      queuedMessages.length > 0
+    ) {
+      setQueuedMessages((prev) => prev.map((m) => ({ ...m, modelId: toolbarModelId })));
+    }
+    prevToolbarModelIdRef.current = toolbarModelId;
+  }, [toolbarModelId, queuedMessages.length]);
 
   const applyToolbarModelId = useCallback(
     async (pid) => {
@@ -2298,23 +2353,39 @@ function ChatLabPageMain() {
     [],
   );
 
-  const canSend =
-    !gatewayStreaming &&
-    (input.trim().length > 0 || composerAttachments.length > 0 || composerFileRefs.length > 0) &&
-    (composerAttachments.length > 0 ||
-      composerFileRefs.length > 0 ||
-      !isSlashOnlyComposerDraft(input, Boolean(composerSkillRow))) &&
+  const composerHasPayload =
+    input.trim().length > 0 || composerAttachments.length > 0 || composerFileRefs.length > 0;
+  const composerDraftValid =
+    composerAttachments.length > 0 ||
+    composerFileRefs.length > 0 ||
+    !isSlashOnlyComposerDraft(input, Boolean(composerSkillRow));
+  const composerGatewayReady =
     isElectron &&
     configLoaded &&
     !configIssueKey &&
     gatewayPhase === "online" &&
     !chatApiBlocked;
 
+  const canQueue =
+    gatewayStreaming &&
+    queuedMessages.length < 3 &&
+    composerHasPayload &&
+    composerDraftValid &&
+    composerGatewayReady;
+
+  const canSend =
+    !gatewayStreaming &&
+    queuedMessages.length === 0 &&
+    !queuedSendingId &&
+    composerHasPayload &&
+    composerDraftValid &&
+    composerGatewayReady;
+
   const composerInputLocked =
     !isElectron ||
-    gatewayStreaming ||
     !configLoaded ||
-    (!configIssueKey && (gatewayPhase !== "online" || chatApiBlocked));
+    (!configIssueKey && (gatewayPhase !== "online" || chatApiBlocked)) ||
+    (gatewayStreaming && queuedMessages.length >= 3);  // 流式时如果排队消息达到上限才锁定
 
   /** Skill UI is local; keep it usable while waiting on gateway (matches `/` picker). Only lock while a reply streams. */
   const composerSkillUiLocked = gatewayStreaming;
@@ -2797,6 +2868,88 @@ function ChatLabPageMain() {
     ],
   );
 
+  // 流式结束后自动发送队首消息
+  const sendQueuedMessage = useCallback(
+    /**
+     * @param {NonNullable<typeof queuedMessagesRef.current[number]>} item
+     */
+    async (item) => {
+      const token = queuedAutoSendTokenRef.current;
+      if (!item || token !== queuedAutoSendTokenRef.current) return;
+
+      setQueuedSendingId(item.id);
+
+      if (item.modelId) {
+        setConversationModelIds((prev) => {
+          const next = new Map(prev);
+          next.set(conversationId, item.modelId);
+          return next;
+        });
+      }
+
+      const trimmed = item.text.trim();
+      const attachmentSnap =
+        item.attachments?.length > 0
+          ? item.attachments.map(({ mime, dataUrl }) => ({ mime, dataUrl }))
+          : undefined;
+      const fileRefsSnap =
+        item.fileRefs?.length > 0
+          ? item.fileRefs.map(({ path, name, kind }) => ({ path, name, kind }))
+          : undefined;
+
+      if (
+        !trimmed &&
+        (!attachmentSnap || attachmentSnap.length === 0) &&
+        (!fileRefsSnap || fileRefsSnap.length === 0)
+      ) {
+        setQueuedSendingId(null);
+        setQueuedMessages((prev) => prev.filter((m) => m.id !== item.id));
+        return;
+      }
+
+      if (token !== queuedAutoSendTokenRef.current) {
+        setQueuedSendingId(null);
+        return;
+      }
+
+      try {
+        await submitNewUserTurn({
+          trimmed,
+          imageAttachments: attachmentSnap,
+          fileRefs: fileRefsSnap,
+          skillPickRow: item.skillRow || null,
+          followUpRef: item.followUpRef || null,
+          onCommitted: () => {
+            setQueuedMessages((prev) => prev.filter((m) => m.id !== item.id));
+          },
+        });
+      } catch (err) {
+        console.error("Failed to auto-send queued message:", err);
+        setQueuedSendingId(null);
+      }
+    },
+    [conversationId, submitNewUserTurn],
+  );
+
+  useEffect(() => {
+    if (gatewayStreaming && queuedSendingId) {
+      setQueuedSendingId(null);
+    }
+  }, [gatewayStreaming, queuedSendingId]);
+
+  const prevGatewayStreamingRef = useRef(gatewayStreaming);
+  useEffect(() => {
+    const wasStreaming = prevGatewayStreamingRef.current;
+    prevGatewayStreamingRef.current = gatewayStreaming;
+
+    if (!wasStreaming || gatewayStreaming || queuedSendingId) return;
+
+    const next = queuedMessagesRef.current[0];
+    if (!next) return;
+
+    void sendQueuedMessage(next);
+  }, [gatewayStreaming, queuedSendingId, sendQueuedMessage]);
+
   const launchGroupAgentReply = useCallback(
     async ({ target, historyMessages, triggerAgentId }) => {
       if (!target || !bridge?.startChatStream || !mainAgent || !conversationId) return;
@@ -2994,8 +3147,6 @@ function ChatLabPageMain() {
   }, [maybeDelegateAfterAgentReply]);
 
   const send = useCallback(async () => {
-    if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
-    if (gatewayStreaming) return;
     const trimmed = input.trim();
     const attachmentSnap =
       composerAttachments.length > 0
@@ -3005,6 +3156,49 @@ function ChatLabPageMain() {
       composerFileRefs.length > 0
         ? composerFileRefs.map(({ path, name, kind }) => ({ path, name, kind }))
         : undefined;
+    const hasPayload =
+      Boolean(trimmed) ||
+      (attachmentSnap && attachmentSnap.length > 0) ||
+      (fileRefsSnap && fileRefsSnap.length > 0);
+
+    // 流式进行中：加入排队（最多 3 条）
+    if (gatewayStreaming && queuedMessages.length < 3) {
+      if (!hasPayload) return;
+
+      const { mentionIds } = parseAgentMentions(trimmed, agents, {
+        mainFallback: mainAgentLabel,
+        everyoneLabel: mentionEveryoneLabel,
+        mainAgent,
+        participantIds,
+        stripMentions: false,
+      });
+
+      const queuedMsg = {
+        id: newId(),
+        text: trimmed,
+        attachments: [...composerAttachments],
+        fileRefs: [...composerFileRefs],
+        modelId: toolbarModelId,
+        skillRow: composerSkillRow,
+        followUpRef: composerFollowUpRef,
+        mentionIds,
+      };
+
+      setQueuedMessages((prev) => [...prev, queuedMsg]);
+
+      setInput("");
+      setComposerSkillRow(null);
+      setComposerFollowUpRef(null);
+      setComposerAttachments([]);
+      setComposerFileRefs([]);
+
+      return;
+    }
+
+    // 队列排空期间禁止手动直发
+    if (!gatewayStreaming && (queuedMessages.length > 0 || queuedSendingId)) return;
+
+    if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
     if (
       !trimmed &&
       (!attachmentSnap || attachmentSnap.length === 0) &&
@@ -3141,6 +3335,10 @@ function ChatLabPageMain() {
     participantIds,
     setSearchParams,
     submitNewUserTurn,
+    queuedMessages,
+    queuedSendingId,
+    toolbarModelId,
+    composerFollowUpRef,
   ]);
 
   const quickReplySend = useCallback(
@@ -3171,6 +3369,20 @@ function ChatLabPageMain() {
       submitNewUserTurn,
     ],
   );
+
+  /** Cancel a queued message (including one about to auto-send) */
+  const cancelQueuedMessage = useCallback((queuedId) => {
+    if (queuedSendingId === queuedId) {
+      queuedAutoSendTokenRef.current += 1;
+      setQueuedSendingId(null);
+    }
+    setQueuedMessages((prev) => prev.filter((m) => m.id !== queuedId));
+  }, [queuedSendingId]);
+
+  /** Clear all queued messages */
+  const clearQueuedMessages = useCallback(() => {
+    setQueuedMessages([]);
+  }, []);
 
   const applySidebarAutomationResult = useCallback(
     async ({ phase, assistantMessageId, requestedSteps, runningIndex, result }) => {
@@ -3386,16 +3598,17 @@ function ChatLabPageMain() {
           !e.nativeEvent.isComposing
         ) {
           e.preventDefault();
-          if (canSend) send();
+          if (canQueue || canSend) send();
         }
         return;
       }
       if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
-        if (canSend) send();
+        if (canQueue || canSend) send();
       }
     },
     [
+      canQueue,
       canSend,
       composerLongTextMode,
       mentionActive,
@@ -3414,6 +3627,9 @@ function ChatLabPageMain() {
   );
 
   const isLanding = !messages.some((m) => m.messageKind !== "group_member_event");
+  useEffect(() => {
+    onWorkspaceEmptySessionChange(isLanding);
+  }, [isLanding, onWorkspaceEmptySessionChange]);
   const {
     landingRevealReady,
     playHeroTitleEntrance,
@@ -3934,6 +4150,11 @@ function ChatLabPageMain() {
                   : [{ value: "__model_not_configured__", label: t("chatLab.modelNeedConfig") }]
               }
               className="chat-lab__pill-model"
+              disabled={
+                composerInputLocked ||
+                orchestrationInProgress ||
+                (gatewayStreaming && queuedMessages.length === 0)
+              }
             />
             <Checkbox
               id="chat-toolbar-orch-toggle"
@@ -4034,7 +4255,6 @@ function ChatLabPageMain() {
   );
 
   return (
-    <ChatLabWorkspaceProvider key={conversationId} conversationId={conversationId} isEmptySession={isLanding}>
     <ChatLabPreviewProvider key={conversationId} conversationId={conversationId}>
       <ImageViewProvider>
       <ChatLabWorkspaceActiveRootBridge activeRootRef={activeRootRef} />
@@ -4175,12 +4395,13 @@ function ChatLabPageMain() {
                   gatePortalTarget,
                 )
               : null}
-            <ChatLabComposerSlot
+            <ChatLabComposerStack
               className={gatePending ? "chat-lab__composer-slot--gate-pending" : undefined}
-            >
-              <ChatLabContextBar />
-              {composer}
-            </ChatLabComposerSlot>
+              composer={composer}
+              queuedMessages={queuedMessages}
+              queuedSendingId={queuedSendingId}
+              onCancelQueuedMessage={cancelQueuedMessage}
+            />
           </div>
         </div>
         <ChatLabPreviewDock
@@ -4233,7 +4454,6 @@ function ChatLabPageMain() {
       </div>
       </ImageViewProvider>
     </ChatLabPreviewProvider>
-    </ChatLabWorkspaceProvider>
   );
 }
 

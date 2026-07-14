@@ -41,6 +41,11 @@ export function useChatLabWorkspace() {
   return ctx;
 }
 
+/** @returns {null | ReturnType<typeof useChatLabWorkspace>} */
+export function useOptionalChatLabWorkspace() {
+  return useContext(ChatLabWorkspaceContext);
+}
+
 /**
  * @param {{
  *   conversationId: string;
