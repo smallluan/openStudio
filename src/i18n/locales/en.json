@@ -220,7 +220,7 @@
   },
   "lobsterPage": {
     "title": "Agent management",
-    "desc": "Create and manage OpenClaw agents: name, IDENTITY.md (who), SOUL.md (voice), workspace, and skills. Confirming create writes to disk and restarts the gateway.",
+    "desc": "",
     "actions": {
       "create": "New agent",
       "edit": "Edit",

@@ -363,7 +363,7 @@ export default function LobsterManagementPage() {
     <div className="route-page route-page--plain flex min-h-0 flex-1 flex-col bg-[color-mix(in_srgb,var(--os-bg-base)_96%,var(--os-bg-panel))]">
       <header className="route-page__header shrink-0">
         <h1 className="route-page__title">{t("lobsterPage.title")}</h1>
-        <p className="route-page__desc muted">{t("lobsterPage.desc")}</p>
+        {t("lobsterPage.desc") && <p className="route-page__desc muted">{t("lobsterPage.desc")}</p>}
       </header>
 
       <div className="mb-4 flex min-h-0 shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

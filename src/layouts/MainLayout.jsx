@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet } from "react-router-dom";
-import { LayoutDashboard, MessageSquarePlus, Shell, Sparkles } from "lucide-react";
+import { Bot, MessageSquarePlus, Puzzle, Users } from "lucide-react";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
 import ChatHistoryList from "../components/shell/ChatHistoryList.jsx";
@@ -78,23 +78,16 @@ export default function MainLayout({ railResizeEnabled = false }) {
           !new URLSearchParams(loc.search).get("c"),
       },
       {
-        id: "studio",
-        to: "/studio",
-        end: true,
-        label: t("nav.studio"),
-        icon: <NavIcon icon={LayoutDashboard} />,
-      },
-      {
         id: "lobster",
         to: "/lobster",
         label: t("nav.lobster"),
-        icon: <NavIcon icon={Shell} />,
+        icon: <NavIcon icon={Users} />,
       },
       {
         id: "skills",
         to: "/skills",
         label: t("nav.skills"),
-        icon: <NavIcon icon={Sparkles} />,
+        icon: <NavIcon icon={Puzzle} />,
       },
     ],
     [t],

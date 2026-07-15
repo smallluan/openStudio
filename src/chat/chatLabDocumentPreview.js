@@ -57,7 +57,6 @@ export function isPreviewInterceptableHref(href) {
       const inAppRoute =
         path === "/" ||
         path === "/chat" ||
-        path === "/studio" ||
         path === "/lobster" ||
         path === "/skills" ||
         path.startsWith("/settings");
