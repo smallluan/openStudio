@@ -2542,7 +2542,7 @@ html[data-os-motion="reduced"] .chat-lab-preview-dock:not(.chat-lab-preview-dock
 }
 
 .chat-lab-preview-dock__tab-card:hover {
-  background: color-mix(in srgb, var(--os-accent) 8%, var(--os-bg-subtle));
+  background: color-mix(in srgb, var(--os-accent) 18%, var(--os-bg-subtle));
 }
 
 .chat-lab-preview-dock__tab-card--active {
