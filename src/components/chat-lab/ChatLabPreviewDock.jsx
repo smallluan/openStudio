@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Code, Monitor, Smartphone, X } from "lucide-react";
+import { Code, ExternalLink, Monitor, Smartphone, X } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
 import { cn } from "../../ui/cn.js";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
@@ -433,7 +433,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             title={t("chatLab.previewOpenExternal")}
             data-preview-bypass="true"
           >
-            ↗
+            <ExternalLink size={15} strokeWidth={1.75} aria-hidden />
           </button>
         ) : null}
         {!viewExtension || viewSession ? (
