@@ -1168,6 +1168,31 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
     ],
   );
 
+  const closePreviewTab = useCallback(
+    (tabId) => {
+      const id = String(tabId ?? "").trim();
+      if (!id) return;
+      setPreviewTabs((prev) => {
+        const idx = prev.findIndex((tab) => tab.id === id);
+        if (idx < 0) return prev;
+        const next = prev.filter((tab) => tab.id !== id);
+        if (!next.length) {
+          setActivePreviewTabId("");
+          setSession(null);
+          return next;
+        }
+        const currentActiveId = String(activePreviewTabId ?? "").trim();
+        if (currentActiveId === id) {
+          const fallback = next[Math.min(idx, next.length - 1)];
+          setActivePreviewTabId(fallback.id);
+          setSession(sessionFromWebTab(fallback));
+        }
+        return next;
+      });
+    },
+    [activePreviewTabId],
+  );
+
   const value = useMemo(
     () => ({
       session,
@@ -1194,6 +1219,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       previewTabs,
       activePreviewTabId,
       activatePreviewTab,
+      closePreviewTab,
       captureSidebarContextBlock,
       runSidebarAutomation,
     }),
@@ -1220,6 +1246,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       previewTabs,
       activePreviewTabId,
       activatePreviewTab,
+      closePreviewTab,
       captureSidebarContextBlock,
       runSidebarAutomation,
     ],

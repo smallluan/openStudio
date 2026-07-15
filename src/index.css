@@ -2498,6 +2498,89 @@ html[data-os-motion="reduced"] .chat-lab-preview-dock:not(.chat-lab-preview-dock
   background: color-mix(in srgb, var(--os-accent) 16%, var(--os-bg-elevated));
 }
 
+.chat-lab-preview-dock__url-bar {
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-lab-preview-dock__url-input {
+  width: 100%;
+  height: 1.85rem;
+  padding: 0 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--os-border) 72%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--os-bg) 88%, var(--os-bg-elevated));
+  color: var(--os-text, var(--text));
+  font-size: 0.75rem;
+  line-height: 1.2;
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.chat-lab-preview-dock__url-input::placeholder {
+  color: color-mix(in srgb, var(--os-text-muted, var(--muted)) 72%, transparent);
+}
+
+.chat-lab-preview-dock__url-input:focus {
+  border-color: color-mix(in srgb, var(--os-accent) 55%, var(--os-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--os-accent) 18%, transparent);
+}
+
+.chat-lab-preview-dock__tab-card {
+  max-width: 11.5rem;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  margin-bottom: -1px;
+  overflow: hidden;
+  transition: background 0.12s ease;
+}
+
+.chat-lab-preview-dock__tab-card:hover {
+  background: color-mix(in srgb, var(--os-accent) 8%, var(--os-bg-subtle));
+}
+
+.chat-lab-preview-dock__tab-card--active {
+  background: var(--os-bg-elevated);
+  border-color: color-mix(in srgb, var(--os-border) 50%, transparent);
+}
+
+.chat-lab-preview-dock__tab-label {
+  color: var(--os-text-muted, var(--muted));
+  cursor: pointer;
+  min-width: 0;
+}
+
+.chat-lab-preview-dock__tab-card--active .chat-lab-preview-dock__tab-label {
+  color: var(--os-text, var(--text));
+}
+
+.chat-lab-preview-dock__tab-close {
+  width: 1.2rem;
+  height: 1.2rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--os-text-muted, var(--muted));
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.chat-lab-preview-dock__tab-card:hover .chat-lab-preview-dock__tab-close {
+  opacity: 1;
+}
+
+.chat-lab-preview-dock__tab-close:hover {
+  background: color-mix(in srgb, var(--os-danger, #b91c1c) 12%, transparent);
+  color: var(--os-danger, #b91c1c);
+}
+
 .chat-lab-preview-dock__body {
   display: flex;
   flex-direction: column;

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Code, Monitor, Smartphone } from "lucide-react";
+import { Code, Monitor, Smartphone, X } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
 import { cn } from "../../ui/cn.js";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
@@ -222,6 +222,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
       (api?.previewTabs ?? []).map((tab) => ({
         id: tab.id,
         label: String(tab.title ?? "").trim() || t("chatLab.previewTabUntitled"),
+        src: String(tab.src ?? "").trim(),
       })),
     [api?.previewTabs, t],
   );
@@ -270,6 +271,28 @@ export default function ChatLabPreviewDock({ extension = null }) {
       viewSession.useWebview,
   );
 
+  const [urlInputValue, setUrlInputValue] = useState("");
+  const urlInputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
+
+  useEffect(() => {
+    if (viewSession?.kind === "iframe") {
+      const url = viewSession.externalUrl ?? viewSession.src ?? "";
+      setUrlInputValue(url);
+    } else {
+      setUrlInputValue("");
+    }
+  }, [viewSession]);
+
+  const handleUrlSubmit = useCallback(
+    (e) => {
+      e?.preventDefault?.();
+      const url = urlInputValue.trim();
+      if (!url || !/^https?:\/\//i.test(url)) return;
+      api?.navigatePreviewTo?.(url);
+    },
+    [api, urlInputValue],
+  );
+
   const runAutomationDebug = useCallback(
     async (steps) => {
       if (!api?.runSidebarAutomation) {
@@ -310,12 +333,20 @@ export default function ChatLabPreviewDock({ extension = null }) {
       <header className="chat-lab-preview-dock__head flex shrink-0 items-center gap-2 border-b px-2.5 py-2 pr-3">
         {showAutomationDebugInput ? (
           <div className="chat-lab-preview-dock__head-main min-w-0 flex flex-1 flex-col gap-1">
-            <span
-              className="chat-lab-preview-dock__title chat-lab-preview-dock__title--compact min-w-0 truncate text-[0.72rem] font-medium leading-tight"
-              title={previewTitle}
-            >
-              {previewTitle}
-            </span>
+            <form className="chat-lab-preview-dock__url-bar" onSubmit={handleUrlSubmit}>
+              <input
+                ref={urlInputRef}
+                type="text"
+                className="chat-lab-preview-dock__url-input"
+                value={urlInputValue}
+                onChange={(e) => setUrlInputValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleUrlSubmit(e); }}
+                placeholder="https://example.com"
+                spellCheck={false}
+                autoComplete="off"
+                aria-label={t("chatLab.previewUrlBar")}
+              />
+            </form>
             <Suspense
               fallback={
                 <div
@@ -331,9 +362,20 @@ export default function ChatLabPreviewDock({ extension = null }) {
             </Suspense>
           </div>
         ) : (
-          <h3 className="chat-lab-preview-dock__title min-w-0 flex-1 truncate text-[0.82rem] font-semibold leading-tight">
-            {previewTitle}
-          </h3>
+          <form className="chat-lab-preview-dock__url-bar flex-1" onSubmit={handleUrlSubmit}>
+            <input
+              ref={urlInputRef}
+              type="text"
+              className="chat-lab-preview-dock__url-input"
+              value={urlInputValue}
+              onChange={(e) => setUrlInputValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleUrlSubmit(e); }}
+              placeholder="https://example.com"
+              spellCheck={false}
+              autoComplete="off"
+              aria-label={t("chatLab.previewUrlBar")}
+            />
+          </form>
         )}
         {viewExtension?.meta ? (
           <span className="chat-lab-preview-dock__meta shrink-0 text-[0.76rem]">{viewExtension.meta}</span>
@@ -408,28 +450,44 @@ export default function ChatLabPreviewDock({ extension = null }) {
       </header>
       {showPreviewTabs ? (
         <div
-          className="chat-lab-preview-dock__tabs flex shrink-0 items-center gap-1 overflow-x-auto border-b px-2 py-1.5"
+          className="chat-lab-preview-dock__tabs flex shrink-0 items-end gap-0.5 overflow-x-auto border-b px-1.5 pt-1.5 pb-0"
           role="tablist"
           aria-label={t("chatLab.previewTabsAria")}
         >
           {previewTabItems.map((tab) => {
             const active = tab.id === api?.activePreviewTabId;
             return (
-              <button
+              <div
                 key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                aria-label={tab.label}
                 className={cn(
-                  "chat-lab-preview-dock__tab-btn",
-                  active && "chat-lab-preview-dock__tab-btn--active",
+                  "chat-lab-preview-dock__tab-card flex items-center gap-1",
+                  active && "chat-lab-preview-dock__tab-card--active",
                 )}
-                onClick={() => api?.activatePreviewTab?.(tab.id)}
-                title={tab.label}
               >
-                {tab.label}
-              </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  aria-label={tab.label}
+                  className="chat-lab-preview-dock__tab-label flex-1 min-w-0 truncate text-left px-2.5 py-1.5 text-[0.73rem]"
+                  onClick={() => api?.activatePreviewTab?.(tab.id)}
+                  title={tab.src || tab.label}
+                >
+                  {tab.label}
+                </button>
+                <button
+                  type="button"
+                  className="chat-lab-preview-dock__tab-close flex shrink-0 items-center justify-center"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    api?.closePreviewTab?.(tab.id);
+                  }}
+                  title={t("chatLab.previewTabClose")}
+                  aria-label={t("chatLab.previewTabClose")}
+                >
+                  <X size={12} strokeWidth={2} aria-hidden />
+                </button>
+              </div>
             );
           })}
         </div>

@@ -386,6 +386,8 @@
     "sidebarAutomationRunning": "正在操作右侧页面…",
     "previewTabsAria": "侧栏预览页签",
     "previewTabUntitled": "未命名页签",
+    "previewTabClose": "关闭标签",
+    "previewUrlBar": "地址栏",
     "sidebarPreviewContext": {
       "header": "## 右侧边栏当前页面快照（用户已打开的网页）",
       "methodNote": "快照说明：这是读取页面**可见文字**（DOM 文本），不是截图/OCR。普通网页正文可读；在线表格/Canvas 渲染的单元格常常读不到。",
