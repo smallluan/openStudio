@@ -95,6 +95,8 @@
     "rawTraceEnabledTitle": "Show agent raw stream events panel in chat view",
     "groupContinuousConversation": "Continuous group chat",
     "groupContinuousConversationAria": "Continue talking to the last @mentioned agent in group chat",
+    "showAutomationDebugInput": "Show sidebar automation input",
+    "showAutomationDebugInputTitle": "Show automation action input box in the preview sidebar (hidden by default)",
     "uiMotionShort": "UI motion",
     "uiMotionAria": "UI motion intensity",
     "uiMotion": {

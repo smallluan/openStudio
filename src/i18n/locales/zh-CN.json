@@ -95,6 +95,8 @@
     "rawTraceEnabledTitle": "在聊天视图显示 Agent 原始流事件面板",
     "groupContinuousConversation": "群聊时连续对话",
     "groupContinuousConversationAria": "群聊时自动沿用上一次@的智能体连续对话",
+    "showAutomationDebugInput": "显示侧边栏自动化输入框",
+    "showAutomationDebugInputTitle": "在预览侧边栏显示自动化操作输入框（默认隐藏）",
     "uiMotionShort": "界面动画",
     "uiMotionAria": "界面动画强度",
     "uiMotion": {

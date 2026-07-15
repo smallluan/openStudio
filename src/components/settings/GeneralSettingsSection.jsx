@@ -41,6 +41,7 @@ export default function GeneralSettingsSection() {
   const [chatLabAutoTitle, setChatLabAutoTitle] = useState(false);
   const [rawTraceEnabled, setRawTraceEnabled] = useState(false);
   const [chatLabGroupContinuousConversation, setChatLabGroupContinuousConversation] = useState(true);
+  const [showAutomationDebugInput, setShowAutomationDebugInput] = useState(false);
   const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function GeneralSettingsSection() {
               ? c.chatLabGroupContinuousConversation
               : true,
           );
+          setShowAutomationDebugInput(Boolean(c.chatLabShowAutomationDebugInput));
           if (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar") {
             const mode = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
             setLinkOpenMode(mode);
@@ -115,6 +117,20 @@ export default function GeneralSettingsSection() {
         }
       } catch {
         setChatLabGroupContinuousConversation(true);
+      }
+    }
+  };
+
+  const persistShowAutomationDebugInput = async (next) => {
+    setShowAutomationDebugInput(next);
+    try {
+      await bridge?.setUserConfig?.({ chatLabShowAutomationDebugInput: next });
+    } catch {
+      try {
+        const c = await bridge?.getUserConfig?.();
+        if (c && typeof c === "object") setShowAutomationDebugInput(Boolean(c.chatLabShowAutomationDebugInput));
+      } catch {
+        setShowAutomationDebugInput(false);
       }
     }
   };
@@ -243,13 +259,23 @@ export default function GeneralSettingsSection() {
           />
         </GeneralSettingRow>
 
-        <GeneralSettingRow title={t("settings.groupContinuousConversation")} last>
+        <GeneralSettingRow title={t("settings.groupContinuousConversation")}>
           <Switch
             compact
             id="settings-group-continuous-conversation"
             label={t("settings.groupContinuousConversationAria")}
             checked={chatLabGroupContinuousConversation}
             onCheckedChange={(v) => void persistChatLabGroupContinuousConversation(v)}
+          />
+        </GeneralSettingRow>
+
+        <GeneralSettingRow title={t("settings.showAutomationDebugInput")} last>
+          <Switch
+            compact
+            id="settings-show-automation-debug-input"
+            label={t("settings.showAutomationDebugInputTitle")}
+            checked={showAutomationDebugInput}
+            onCheckedChange={(v) => void persistShowAutomationDebugInput(v)}
           />
         </GeneralSettingRow>
       </div>

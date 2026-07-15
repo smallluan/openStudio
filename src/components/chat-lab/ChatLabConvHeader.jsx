@@ -11,9 +11,10 @@ import {
   useInteractions,
   useRole,
 } from "@floating-ui/react";
-import { Route } from "lucide-react";
+import { PanelRight, Route } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { buildUserTurnAnchors, scrollThreadToMessage } from "../../chat/chatLabThreadScroll.js";
+import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { cn } from "../../ui/cn.js";
@@ -53,6 +54,7 @@ export default function ChatLabConvHeader({
   participantsDisabled = false,
 }) {
   const { t } = useI18n();
+  const preview = useChatLabPreview();
   const panelId = useId();
   const popoverListRef = useRef(/** @type {HTMLOListElement | null} */ (null));
   const [navOpen, setNavOpen] = useState(false);
@@ -134,6 +136,15 @@ export default function ChatLabConvHeader({
             {...getReferenceProps()}
           >
             <Route size={16} strokeWidth={2.1} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className="chat-lab__turn-nav-icon-btn"
+            aria-label="打开侧边栏"
+            title="打开侧边栏"
+            onClick={() => preview?.openIframe?.("https://www.baidu.com", "百度")}
+          >
+            <PanelRight size={16} strokeWidth={2.1} aria-hidden />
           </button>
         </div>
       </header>

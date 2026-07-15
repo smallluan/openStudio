@@ -131,7 +131,27 @@ export default function ChatLabPreviewDock({ extension = null }) {
 
   const [panelDragging, setPanelDragging] = useState(false);
   const [treeDragging, setTreeDragging] = useState(false);
+  const [showAutomationInputConfig, setShowAutomationInputConfig] = useState(false);
   const isResizing = panelDragging || treeDragging;
+
+  const bridge = typeof window !== 'undefined' ? window.studioBridge : undefined;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const c = await bridge?.getUserConfig?.();
+        if (!cancelled && c && typeof c === 'object') {
+          setShowAutomationInputConfig(Boolean(c.chatLabShowAutomationDebugInput));
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge]);
 
   const dockWidth = wantsOpen || expanded ? panelWidth : 0;
 
@@ -243,6 +263,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
   );
 
   const showAutomationDebugInput = Boolean(
+    showAutomationInputConfig &&
     !viewArtifacts &&
       !viewExtension &&
       viewSession?.kind === "iframe" &&

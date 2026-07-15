@@ -323,13 +323,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
   const subscribedRef = useRef(new Set());
 
   const [session, setSession] = useState(
-    /** @type {ChatLabPreviewSession | null} */ (
-      restoredWebState.activeTabId
-        ? sessionFromWebTab(
-            restoredWebState.tabs.find((tab) => tab.id === restoredWebState.activeTabId) ?? restoredWebState.tabs[0],
-          )
-        : null
-    ),
+    /** @type {ChatLabPreviewSession | null} */ (null),
   );
   const [artifactsPanel, setArtifactsPanel] = useState(/** @type {ArtifactsPanelState | null} */ (null));
   const [previewTabs, setPreviewTabs] = useState(restoredWebState.tabs);
@@ -343,12 +337,6 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
     const next = readStoredPreviewWebState(conversationId);
     setPreviewTabs(next.tabs);
     setActivePreviewTabId(next.activeTabId);
-    if (!next.tabs.length) {
-      setSession(null);
-      return;
-    }
-    const active = next.tabs.find((tab) => tab.id === next.activeTabId) ?? next.tabs[0];
-    setSession(sessionFromWebTab(active));
   }, [conversationId]);
 
   useEffect(() => {
