@@ -80,14 +80,14 @@ const STATUS_COLORS = /** @type {const} */ ({
 });
 
 const DEFAULT_COLORS = [
-  "bg-blue-500",
-  "bg-purple-500",
-  "bg-pink-500",
-  "bg-indigo-500",
-  "bg-teal-500",
-  "bg-orange-500",
-  "bg-cyan-500",
-  "bg-emerald-500",
+  "bg-blue-400",
+  "bg-purple-400",
+  "bg-pink-300",
+  "bg-indigo-400",
+  "bg-teal-400",
+  "bg-orange-300",
+  "bg-cyan-400",
+  "bg-emerald-400",
 ];
 
 // ============================================================================
