@@ -2546,8 +2546,8 @@ html[data-os-motion="reduced"] .chat-lab-preview-dock:not(.chat-lab-preview-dock
 }
 
 .chat-lab-preview-dock__tab-card--active {
-  background: var(--os-bg-elevated);
-  border-color: color-mix(in srgb, var(--os-border) 50%, transparent);
+  background: color-mix(in srgb, var(--os-bg-elevated) 92%, var(--os-accent) 8%);
+  border-color: color-mix(in srgb, var(--os-accent) 25%, var(--os-border));
 }
 
 .chat-lab-preview-dock__tab-label {
@@ -2905,7 +2905,7 @@ html[data-os-motion="reduced"] .chat-lab-preview-dock:not(.chat-lab-preview-dock
 }
 
 .chat-lab-preview-dock__device-btn--active {
-  background: color-mix(in srgb, var(--os-accent) 14%, var(--os-bg-elevated));
+  background: color-mix(in srgb, var(--os-accent) 8%, var(--os-bg-elevated));
   color: var(--os-text, var(--text));
 }
 
