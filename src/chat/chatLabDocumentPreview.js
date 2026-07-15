@@ -51,6 +51,8 @@ export function isPreviewInterceptableHref(href) {
   try {
     const u = new URL(h, window.location.href);
     if (u.origin === window.location.origin) {
+      // HashRouter in-app navigation (e.g. app://…/index.html#/settings).
+      if (/^#\//.test(u.hash)) return false;
       const path = u.pathname.toLowerCase();
       const inAppRoute =
         path === "/" ||

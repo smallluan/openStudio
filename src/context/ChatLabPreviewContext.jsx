@@ -1044,14 +1044,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       if (anchor.dataset.previewBypass === "true") return;
       if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const href = anchor.getAttribute("href");
-      if (!href) return;
-      let targetHref = href;
-      try {
-        targetHref = new URL(href, window.location.href).href;
-      } catch {
-        /* keep raw href */
-      }
-      if (!openFromHref(targetHref, anchor.textContent ?? "")) return;
+      if (!href || !openFromHref(href, anchor.textContent ?? "")) return;
       e.preventDefault();
       e.stopPropagation();
     }
