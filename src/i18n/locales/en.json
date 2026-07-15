@@ -462,6 +462,7 @@
     "previewOpen": "Preview",
     "previewDockAria": "Document preview",
     "previewDefaultTitle": "Preview",
+    "previewReload": "Reload",
     "previewOpenExternal": "Open in browser",
     "previewDeviceDesktop": "Desktop",
     "previewDeviceMobile": "Mobile",

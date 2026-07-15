@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Code, ExternalLink, Monitor, Smartphone, X } from "lucide-react";
+import { Code, ExternalLink, Monitor, RefreshCw, Smartphone, X } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
 import { cn } from "../../ui/cn.js";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
@@ -203,6 +203,32 @@ export default function ChatLabPreviewDock({ extension = null }) {
       /* ignore */
     }
   }, [viewSession]);
+
+  const onReloadPreview = useCallback(() => {
+    if (!viewSession || viewSession.kind !== "iframe") return;
+    const webview = api?.webviewRef?.current;
+    const iframe = api?.iframeRef?.current;
+    if (viewSession.useWebview && webview) {
+      try {
+        webview.reload?.();
+        return;
+      } catch {
+        /* fallthrough to iframe path */
+      }
+    }
+    if (iframe) {
+      try {
+        const currentSrc = viewSession.externalUrl ?? viewSession.src ?? "";
+        if (currentSrc) {
+          iframe.src = currentSrc;
+          return;
+        }
+        iframe.contentWindow?.location.reload?.();
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [viewSession, api?.webviewRef, api?.iframeRef]);
 
   const onPreviewNavigate = useCallback(
     (url) => {
@@ -414,6 +440,17 @@ export default function ChatLabPreviewDock({ extension = null }) {
             </button>
           </div>
         ) : null}
+        {viewSession?.kind === "iframe" ? (
+          <button
+            type="button"
+            className="chat-lab-preview-dock__icon-btn"
+            onClick={onReloadPreview}
+            title={t("chatLab.previewReload")}
+            aria-label={t("chatLab.previewReload")}
+          >
+            <RefreshCw size={15} strokeWidth={1.75} aria-hidden />
+          </button>
+        ) : null}
         {viewSession?.kind === "iframe" && viewSession.useWebview ? (
           <button
             type="button"
@@ -436,7 +473,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             <ExternalLink size={15} strokeWidth={1.75} aria-hidden />
           </button>
         ) : null}
-        {!viewExtension || viewSession ? (
+        {(viewExtension || viewSession) ? (
           <button
             type="button"
             className="chat-lab-preview-dock__icon-btn"

@@ -463,6 +463,7 @@
     "previewOpen": "预览",
     "previewDockAria": "文档预览",
     "previewDefaultTitle": "预览",
+    "previewReload": "刷新",
     "previewOpenExternal": "在浏览器中打开",
     "previewDeviceDesktop": "桌面端",
     "previewDeviceMobile": "手机端",
