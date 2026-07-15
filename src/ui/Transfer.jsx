@@ -33,7 +33,7 @@ function RowIcon({ icon, label }) {
 
   return (
     <span
-      className={cn("os-transfer__row-icon os-transfer__row-icon-fallback flex items-center justify-center font-semibold text-white", colorClass)}
+      className={cn("os-transfer__row-icon os-transfer__row-icon-fallback flex items-center justify-center font-semibold text-gray-700", colorClass)}
       style={{ width: "1.4rem", height: "1.4rem", fontSize: "0.75rem", borderRadius: "6px" }}
       aria-hidden
     >

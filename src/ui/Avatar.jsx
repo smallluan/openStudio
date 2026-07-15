@@ -80,14 +80,14 @@ const STATUS_COLORS = /** @type {const} */ ({
 });
 
 const DEFAULT_COLORS = [
-  "bg-blue-400",
-  "bg-purple-400",
-  "bg-pink-300",
-  "bg-indigo-400",
-  "bg-teal-400",
-  "bg-orange-300",
-  "bg-cyan-400",
-  "bg-emerald-400",
+  "bg-blue-200",
+  "bg-purple-200",
+  "bg-pink-200",
+  "bg-indigo-200",
+  "bg-teal-200",
+  "bg-orange-200",
+  "bg-cyan-200",
+  "bg-emerald-200",
 ];
 
 // ============================================================================
@@ -489,7 +489,7 @@ export default function Avatar({
       {/* Text Avatar */}
       {showTextAvatar && (
         <div
-          className={cn("absolute inset-0 flex items-center justify-center font-semibold text-white overflow-hidden", SHAPE_MAP[shape], backgroundColor)}
+          className={cn("absolute inset-0 flex items-center justify-center font-semibold text-gray-700 overflow-hidden", SHAPE_MAP[shape], backgroundColor)}
           style={{ fontSize: textSize }}
           aria-hidden
         >
