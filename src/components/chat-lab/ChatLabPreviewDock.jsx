@@ -425,7 +425,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             <Code size={15} strokeWidth={1.75} aria-hidden />
           </button>
         ) : null}
-        {viewSession?.kind === "iframe" && viewSession.externalUrl ? (
+        {viewSession?.kind === "iframe" && viewSession.externalUrl && api?.linkOpenMode === "sidebar" ? (
           <button
             type="button"
             className="chat-lab-preview-dock__icon-btn"
