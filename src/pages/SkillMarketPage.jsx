@@ -29,7 +29,7 @@ function SkillCardShell({ className, children }) {
   return (
     <article
       className={cn(
-        "flex min-h-[148px] flex-col rounded-[14px] border border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-panel)_88%,var(--os-bg-elevated))] p-3.5 shadow-[var(--os-shadow-soft)] transition-[box-shadow,transform] duration-150",
+        "flex min-h-[148px] flex-col rounded-[14px] border border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-panel)_88%,var(--os-bg-elevated))] p-3.5 transition-[box-shadow,transform] duration-150",
         "hover:shadow-[0_10px_28px_-12px_color-mix(in_srgb,var(--os-shadow-color,#000)_28%,transparent)]",
         className,
       )}

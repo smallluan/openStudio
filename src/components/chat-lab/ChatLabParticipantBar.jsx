@@ -169,50 +169,60 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
                   "shadow-[var(--os-shadow-soft)]",
                 )}
               >
-                <div id={panelId} className="chat-lab__members-popover-inner">
-                  <ul className="chat-lab__members-list" role="list" aria-label={t("chatLab.participantsAria")}>
+                <div id={panelId} className="chat-lab__members-popover-inner p-4">
+                  <div className="chat-lab__members-grid flex flex-wrap gap-4">
                     {participants.map((a) => (
-                      <li key={a.id} className="chat-lab__members-row" role="listitem">
-                        <Avatar
-                          src={agentAvatarGlyph(a)}
-                          name={agentDisplayLabel(a)}
-                          size="sm"
-                          shape="rounded"
-                        />
-                        <span className="chat-lab__members-row-name text-[var(--os-text-muted)]">{agentDisplayLabel(a)}</span>
-                        {!a.isMain ? (
-                          <button
-                            type="button"
-                            className="chat-lab__members-row-remove"
-                            disabled={disabled}
-                            aria-label={t("chatLab.participantRemove", { name: agentDisplayLabel(a) })}
-                            onClick={() => removeAgent(a.id)}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
-                              <path
-                                d="M18 6 6 18M6 6l12 12"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                          </button>
-                        ) : (
-                          <span className="chat-lab__members-row-remove-spacer" aria-hidden />
-                        )}
-                      </li>
+                      <div key={a.id} className="chat-lab__members-grid-item relative group flex flex-col items-center w-16">
+                        <div className="relative">
+                          <Avatar
+                            src={agentAvatarGlyph(a)}
+                            name={agentDisplayLabel(a)}
+                            size="md"
+                            shape="rounded"
+                          />
+                          {!a.isMain ? (
+                            <button
+                              type="button"
+                              className="chat-lab__members-grid-remove absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-600"
+                              disabled={disabled}
+                              aria-label={t("chatLab.participantRemove", { name: agentDisplayLabel(a) })}
+                              onClick={() => removeAgent(a.id)}
+                            >
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
+                                <path
+                                  d="M18 6 6 18M6 6l12 12"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            </button>
+                          ) : null}
+                        </div>
+                        <span className="chat-lab__members-grid-name mt-1.5 text-xs text-center text-[var(--os-text-muted)] truncate w-full">
+                          {agentDisplayLabel(a)}
+                        </span>
+                      </div>
                     ))}
-                  </ul>
-                  <div className="chat-lab__members-add-section">
                     <button
                       type="button"
-                      className={cn("chat-lab__participants-add", transferOpen && "chat-lab__participants-add--open")}
+                      className="chat-lab__members-grid-add relative flex flex-col items-center w-16 group cursor-pointer"
                       disabled={disabled}
                       aria-haspopup="dialog"
                       aria-expanded={transferOpen}
                       onClick={() => setTransferOpen(true)}
                     >
-                      {t("chatLab.participantsAdd")}
+                      <div className="w-10 h-10 rounded-lg border border-dashed border-[var(--os-border)] flex items-center justify-center bg-[var(--os-bg-elevated)] group-hover:border-[var(--os-accent)] group-hover:bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)] transition-colors">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden className="text-[var(--os-text-muted)] group-hover:text-[var(--os-accent)]">
+                          <path
+                            d="M12 5v14M5 12h14"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </div>
+                      <span className="mt-1.5 text-xs text-center text-[var(--os-text-muted)]">添加</span>
                     </button>
                   </div>
                 </div>
