@@ -1,10 +1,11 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useI18n } from "../context/I18nContext.jsx";
+import { getColorFromString, getInitials } from "./Avatar.jsx";
 import Checkbox from "./Checkbox.jsx";
 import { cn } from "./cn.js";
 
-/** Render an item icon: URL string → <img>, ReactNode → as-is, empty → text initial badge. */
+/** Render an item icon: URL string → <img>, ReactNode → as-is, empty → colored text-initial badge. */
 function RowIcon({ icon, label }) {
   const isUrl =
     typeof icon === "string" &&
@@ -15,7 +16,8 @@ function RowIcon({ icon, label }) {
       (icon.startsWith("/") && !icon.startsWith("//")));
 
   const labelText = typeof label === "string" ? label : "";
-  const initial = labelText.trim().charAt(0).toUpperCase();
+  const initial = getInitials(labelText) || "?";
+  const colorClass = getColorFromString(labelText);
 
   if (icon) {
     return (
@@ -30,8 +32,12 @@ function RowIcon({ icon, label }) {
   }
 
   return (
-    <span className="os-transfer__row-icon os-transfer__row-icon-fallback" aria-hidden>
-      {initial || "?"}
+    <span
+      className={cn("os-transfer__row-icon os-transfer__row-icon-fallback flex items-center justify-center font-semibold text-white", colorClass)}
+      style={{ width: "1.4rem", height: "1.4rem", fontSize: "0.75rem", borderRadius: "6px" }}
+      aria-hidden
+    >
+      {initial}
     </span>
   );
 }

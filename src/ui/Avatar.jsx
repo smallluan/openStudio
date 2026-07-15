@@ -99,7 +99,7 @@ const DEFAULT_COLORS = [
  * @param {string} name
  * @returns {string}
  */
-function getInitials(name) {
+export function getInitials(name) {
   if (!name) return "";
   const words = name.trim().split(/\s+/);
   if (words.length === 1) {
@@ -113,7 +113,7 @@ function getInitials(name) {
  * @param {string} name
  * @returns {string}
  */
-function getColorFromString(name) {
+export function getColorFromString(name) {
   if (!name) return DEFAULT_COLORS[0];
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
