@@ -1,0 +1,319 @@
+@import '../../styles/variables.less';
+
+// 轨道内边距：滑块 / 文案都不要紧贴边缘
+@switch-gap: 3px;
+@switch-label-edge: 5px;
+// 位移：顺滑减速；尺寸：略带回弹但不猛
+@switch-move: cubic-bezier(0.22, 1, 0.36, 1);
+@switch-spring: cubic-bezier(0.34, 1.35, 0.64, 1);
+
+.udesign-switch {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: @border-radius-round;
+  background-color: @neutral-5;
+  color: @neutral-1;
+  cursor: pointer;
+  font-family: @font-family;
+  font-weight: 500;
+  line-height: 1;
+  outline: none;
+  transition: background-color 0.28s @switch-move;
+  user-select: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px fade(@brand-6, 28%);
+  }
+
+  // —— small ——
+  &--size-small {
+    width: 28px;
+    height: 16px;
+    font-size: 10px;
+
+    &.udesign-switch--with-content {
+      width: 34px;
+    }
+
+    .udesign-switch__handle {
+      width: 10px;
+      height: 10px;
+      // travel = 28 - 3*2 - 12(on) = 10；关闭用较小滑块，位移按开启宽度对齐右端
+      --udesign-switch-travel: 10px;
+    }
+
+    &.udesign-switch--with-content .udesign-switch__handle {
+      // 34 - 6 - 12 = 16
+      --udesign-switch-travel: 16px;
+    }
+
+    &.udesign-switch--checked .udesign-switch__handle {
+      width: 12px;
+      height: 12px;
+    }
+
+    &.udesign-switch--pressed:not(.udesign-switch--disabled):not(.udesign-switch--checked)
+      .udesign-switch__handle {
+      width: 14px;
+    }
+
+    &.udesign-switch--pressed.udesign-switch--checked:not(.udesign-switch--disabled)
+      .udesign-switch__handle {
+      width: 16px;
+    }
+
+    .udesign-switch__content {
+      // 右侧文案：左侧避开滑块区，右侧留边
+      padding-left: 14px;
+      padding-right: @switch-label-edge;
+    }
+
+    &.udesign-switch--checked .udesign-switch__content {
+      padding-left: @switch-label-edge;
+      padding-right: 15px;
+    }
+  }
+
+  // —— medium ——
+  &--size-medium {
+    width: 36px;
+    height: 20px;
+    font-size: 11px;
+
+    &.udesign-switch--with-content {
+      width: 44px;
+    }
+
+    .udesign-switch__handle {
+      width: 14px;
+      height: 14px;
+      // 36 - 6 - 16 = 14
+      --udesign-switch-travel: 14px;
+    }
+
+    &.udesign-switch--with-content .udesign-switch__handle {
+      // 44 - 6 - 16 = 22
+      --udesign-switch-travel: 22px;
+    }
+
+    &.udesign-switch--checked .udesign-switch__handle {
+      width: 16px;
+      height: 16px;
+    }
+
+    &.udesign-switch--pressed:not(.udesign-switch--disabled):not(.udesign-switch--checked)
+      .udesign-switch__handle {
+      width: 18px;
+    }
+
+    &.udesign-switch--pressed.udesign-switch--checked:not(.udesign-switch--disabled)
+      .udesign-switch__handle {
+      width: 20px;
+    }
+
+    .udesign-switch__content {
+      padding-left: 18px;
+      padding-right: @switch-label-edge;
+    }
+
+    &.udesign-switch--checked .udesign-switch__content {
+      padding-left: @switch-label-edge;
+      padding-right: 20px;
+    }
+  }
+
+  // —— large ——
+  &--size-large {
+    width: 44px;
+    height: 24px;
+    font-size: 12px;
+
+    &.udesign-switch--with-content {
+      width: 52px;
+    }
+
+    .udesign-switch__handle {
+      width: 18px;
+      height: 18px;
+      // 44 - 6 - 20 = 18
+      --udesign-switch-travel: 18px;
+    }
+
+    &.udesign-switch--with-content .udesign-switch__handle {
+      // 52 - 6 - 20 = 26
+      --udesign-switch-travel: 26px;
+    }
+
+    &.udesign-switch--checked .udesign-switch__handle {
+      width: 20px;
+      height: 20px;
+    }
+
+    &.udesign-switch--pressed:not(.udesign-switch--disabled):not(.udesign-switch--checked)
+      .udesign-switch__handle {
+      width: 22px;
+    }
+
+    &.udesign-switch--pressed.udesign-switch--checked:not(.udesign-switch--disabled)
+      .udesign-switch__handle {
+      width: 24px;
+    }
+
+    .udesign-switch__content {
+      padding-left: 22px;
+      padding-right: @switch-label-edge;
+    }
+
+    &.udesign-switch--checked .udesign-switch__content {
+      padding-left: @switch-label-edge;
+      padding-right: 24px;
+    }
+  }
+
+  &--checked {
+    background-color: @brand-6;
+  }
+
+  &--disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  &--loading {
+    cursor: wait;
+  }
+
+  &__content {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    box-sizing: border-box;
+    overflow: hidden;
+    color: @neutral-8;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0.92;
+    transition:
+      padding 0.36s @switch-move,
+      color 0.28s @switch-move,
+      opacity 0.28s @switch-move;
+
+    > svg {
+      width: 0.9em;
+      height: 0.9em;
+      flex-shrink: 0;
+    }
+  }
+
+  &--checked &__content {
+    justify-content: flex-start;
+    color: @neutral-1;
+    opacity: 1;
+  }
+
+  &__handle {
+    position: absolute;
+    top: 50%;
+    left: @switch-gap;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border-radius: 50%;
+    background-color: @neutral-1;
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.1),
+      0 1px 3px rgba(0, 0, 0, 0.06);
+    // 只用 transform 位移，避免 left/right 切换导致跳变
+    transform: translate3d(0, -50%, 0);
+    transform-origin: center center;
+    transition:
+      transform 0.38s @switch-move,
+      width 0.32s @switch-spring,
+      height 0.32s @switch-spring,
+      border-radius 0.28s @switch-move,
+      box-shadow 0.28s @switch-move;
+    will-change: transform, width, height;
+  }
+
+  &--checked &__handle {
+    transform: translate3d(var(--udesign-switch-travel), -50%, 0);
+  }
+
+  // 按住：略拉长 + 轻压扁，位移用 travel 保持贴边
+  &--pressed:not(.udesign-switch--disabled):not(.udesign-switch--checked) &__handle {
+    border-radius: 40%;
+    transform: translate3d(0, -50%, 0) scaleY(0.9);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.14),
+      0 2px 5px rgba(0, 0, 0, 0.08);
+  }
+
+  &--pressed&--checked:not(.udesign-switch--disabled) &__handle {
+    border-radius: 40%;
+    // 变宽时向左收一点，避免顶出右边缘
+    transform: translate3d(
+        calc(var(--udesign-switch-travel) - 4px),
+        -50%,
+        0
+      )
+      scaleY(0.9);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.14),
+      0 2px 5px rgba(0, 0, 0, 0.08);
+  }
+
+  &__handle-inner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: @neutral-7;
+    font-size: 1em;
+    line-height: 1;
+    pointer-events: none;
+
+    > svg {
+      width: 0.85em;
+      height: 0.85em;
+    }
+  }
+
+  &--checked &__handle-inner {
+    color: @brand-6;
+  }
+
+  &__loading-icon {
+    display: block;
+    width: 0.75em;
+    height: 0.75em;
+    color: @brand-6;
+    animation: udesign-switch-spin 0.7s linear infinite;
+  }
+
+  &:not(.udesign-switch--checked) &__loading-icon {
+    color: @neutral-7;
+  }
+}
+
+@keyframes udesign-switch-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

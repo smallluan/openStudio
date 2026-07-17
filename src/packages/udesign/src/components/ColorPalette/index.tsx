@@ -1,11 +1,11 @@
-import React from 'react';
+import type { FC } from 'react';
 import './index.less';
 
 export interface ColorPaletteProps {
   className?: string;
 }
 
-const ColorPalette: React.FC<ColorPaletteProps> = ({ className }) => {
+const ColorPalette: FC<ColorPaletteProps> = ({ className }) => {
   const colorGroups = [
     {
       title: '品牌色 Brand',

@@ -1,7 +1,7 @@
 import type { StorybookConfig } from '@storybook/react-vite';
 
 const config: StorybookConfig = {
-  stories: ['../src/**/*.mdx', '../src/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
+  stories: ['../src/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
   addons: [
     '@storybook/addon-links',
     '@storybook/addon-essentials',
@@ -11,11 +11,20 @@ const config: StorybookConfig = {
     name: '@storybook/react-vite',
     options: {},
   },
-  viteFinal: async (config) => {
+  core: {
+    disableTelemetry: true,
+  },
+  typescript: {
+    check: false,
+    reactDocgen: 'react-docgen-typescript',
+  },
+  async viteFinal(config) {
     return {
       ...config,
       css: {
+        ...config.css,
         preprocessorOptions: {
+          ...config.css?.preprocessorOptions,
           less: {
             javascriptEnabled: true,
           },
