@@ -187,6 +187,8 @@ export default function ChatLabPreviewMobileAssistiveBall({
 
   return (
     <Button
+                variant="text"
+                size="small"
       ref={ballRef}
       type="button"
       className={cn(

@@ -21,15 +21,12 @@ export default function ModalCloseButton({ onClick, "aria-label": ariaLabel, cla
   return (
     <Button
       type="button"
+      variant="text"
+      shape="square"
+      size="small"
       aria-label={label}
       onClick={onClick}
-      className={cn(
-        "os-modal-close inline-flex size-10 shrink-0 items-center justify-center rounded-[11px] border border-transparent",
-        "text-[var(--os-text-muted)] transition-[background,color] duration-150 ease-out",
-        "hover:bg-[#e05454] hover:text-white",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
-        className,
-      )}
+      className={cn("os-modal-close shrink-0", className)}
     >
       <CloseGlyph />
     </Button>

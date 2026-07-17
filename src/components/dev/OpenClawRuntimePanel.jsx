@@ -27,7 +27,8 @@ export default function OpenClawRuntimePanel({ defaultOpen = false }) {
     <aside className="dev-panel">
       <Button
         type="button"
-        className="dev-panel__toggle btn-ghost"
+        variant="text"
+        className="dev-panel__toggle"
         onClick={() => setOpen((v) => !v)}
       >
         {t("openclaw.runtimeToggle")} {open ? "▾" : "▸"}

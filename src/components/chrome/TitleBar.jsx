@@ -72,11 +72,13 @@ export default function TitleBar() {
           )}
           {shell ? (
             <div className="flex h-full shrink-0 items-stretch" style={{ WebkitAppRegion: "no-drag" }}>
-              <Button type="button" className="os-titlebar__btn" aria-label={t("titlebar.minimize")} onClick={onMinimize}>
+              <Button type="button" variant="text" shape="square" className="os-titlebar__btn" aria-label={t("titlebar.minimize")} onClick={onMinimize}>
                 <WinIconMinimize className="opacity-85" />
               </Button>
               <Button
                 type="button"
+                variant="text"
+                shape="square"
                 className="os-titlebar__btn"
                 aria-label={maximized ? t("titlebar.restore") : t("titlebar.maximize")}
                 onClick={onToggleMax}
@@ -85,6 +87,8 @@ export default function TitleBar() {
               </Button>
               <Button
                 type="button"
+                variant="text"
+                shape="square"
                 className="os-titlebar__btn os-titlebar__btn--close"
                 aria-label={t("titlebar.close")}
                 onClick={onClose}

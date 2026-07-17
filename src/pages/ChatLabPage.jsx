@@ -1,5 +1,5 @@
 import { memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@open-studio/udesign";
+import { Button, Input } from "@open-studio/udesign";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -3934,6 +3934,8 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         >
           {composerLongTextMode ? (
             <Button
+                variant="text"
+                size="small"
               type="button"
               className="chat-lab__shell-resize-close"
               onPointerDown={(e) => e.stopPropagation()}
@@ -4043,6 +4045,8 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
                 <div key={a.id} className="chat-lab__composer-att-thumb">
                   <img src={a.dataUrl} alt="" className="chat-lab__composer-att-img" />
                   <Button
+                variant="text"
+                size="small"
                     type="button"
                     className="chat-lab__composer-att-remove"
                     onClick={() => setComposerAttachments((prev) => prev.filter((x) => x.id !== a.id))}
@@ -4202,6 +4206,8 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
               <span className="chat-lab__composer-edit-tag" role="status">
                 <span className="chat-lab__composer-edit-tag-label">{t("chatLab.composerEditingMessageTag")}</span>
                 <Button
+                variant="text"
+                size="small"
                   type="button"
                   className="chat-lab__composer-edit-tag-dismiss"
                   onClick={() => setPendingEditMessageId(null)}
@@ -4225,6 +4231,8 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
             />
             <Button
               type="button"
+              variant="text"
+              shape="circle"
               className={cn(
                 "chat-lab__send-round",
                 gatewayStreaming || orchestrationStreamBusy ? "chat-lab__send-round--stop" : "chat-lab__send-round--send",
@@ -5742,6 +5750,8 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
       </div>
       {showCollapsed ? (
         <Button
+                variant="text"
+                size="small"
           type="button"
           className="chat-lab__user-body-expand"
           onClick={() => onExpandedChange(true)}
@@ -5830,19 +5840,19 @@ const AssistantQuestionnaireCard = memo(function AssistantQuestionnaireCard({
                   <label className="chat-lab__questionnaire-card__prompt" htmlFor={inputId}>
                     {it.prompt}
                   </label>
-                  <input
+                  <Input
                     id={inputId}
                     name={it.id}
-                    type="text"
-                    className="chat-lab__questionnaire-card__input"
-                    autoComplete="off"
+                    size="small"
+                    block
+                    autocomplete="off"
                     value={answers[it.id] ?? ""}
                     placeholder={t("chatLab.questionnaireAnswerPlaceholder")}
                     disabled={disabled || sent}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setAnswers((prev) => ({
                         ...prev,
-                        [it.id]: e.target.value,
+                        [it.id]: value,
                       }))
                     }
                   />
@@ -5854,6 +5864,7 @@ const AssistantQuestionnaireCard = memo(function AssistantQuestionnaireCard({
         <div className="chat-lab__questionnaire__actions">
           <Button
             type="submit"
+            variant="text"
             className="chat-lab__questionnaire-submit"
             disabled={disabled || sent || !canSubmit}
           >
@@ -5979,6 +5990,8 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
         {pager ? (
           <div className="chat-lab__quick-replies__header-nav">
             <Button
+                variant="text"
+                size="small"
               type="button"
               className="chat-lab__quick-replies__pager-btn"
               disabled={frozen || viewIndex <= 0}
@@ -5991,6 +6004,8 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
               {t("chatLab.quickReplyStepCount", { current: viewIndex + 1, total: tiers.length })}
             </span>
             <Button
+                variant="text"
+                size="small"
               type="button"
               className="chat-lab__quick-replies__pager-btn"
               disabled={frozen || viewIndex >= tiers.length - 1}
@@ -6044,6 +6059,8 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
               return (
                 <div key={o.id} className="chat-lab__quick-reply-row">
                   <Button
+                variant="text"
+                block
                     type="button"
                     role="radio"
                     aria-checked={Boolean(isSent)}
@@ -6597,6 +6614,8 @@ const MessageBubble = memo(function MessageBubble({
           ) : null}
           {isUser && userLongFoldable && userLongExpanded ? (
             <Button
+                variant="text"
+                size="small"
               type="button"
               className="chat-lab__msg-collapse-btn"
               onClick={() => setUserLongExpanded(false)}
@@ -6609,6 +6628,9 @@ const MessageBubble = memo(function MessageBubble({
             aria-label={fileRefs.length > 0 ? t("chatLab.messageFileRefsLabel") : undefined}
           >
             <Button
+                variant="text"
+                shape="square"
+                size="small"
               type="button"
               className={cn("chat-lab__msg-action-btn", copiedPulse && "chat-lab__msg-action-btn--copied")}
               onClick={handleCopy}
@@ -6620,6 +6642,9 @@ const MessageBubble = memo(function MessageBubble({
             </Button>
             {!isUser && showOrchestrationFlowEntry && onOpenOrchestrationFlow ? (
               <Button
+                variant="text"
+                shape="square"
+                size="small"
                 type="button"
                 className="chat-lab__msg-action-btn chat-lab__msg-action-btn--flow"
                 onClick={onOpenOrchestrationFlow}
@@ -6631,6 +6656,8 @@ const MessageBubble = memo(function MessageBubble({
             ) : null}
             {fileRefs.map((ref, idx) => (
               <Button
+                variant="text"
+                size="small"
                 key={`${message.id}-fref-${idx}`}
                 type="button"
                 className="chat-lab__msg-file-ref"
@@ -6646,6 +6673,9 @@ const MessageBubble = memo(function MessageBubble({
             ))}
             {isUser ? (
               <Button
+                variant="text"
+                shape="square"
+                size="small"
                 type="button"
                 className="chat-lab__msg-action-btn"
                 onClick={startComposerEdit}

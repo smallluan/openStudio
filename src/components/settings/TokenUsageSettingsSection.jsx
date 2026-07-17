@@ -26,7 +26,7 @@ function SegmentedControl({ options, value, onChange, ariaLabel }) {
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className="inline-flex flex-wrap gap-0.5 rounded-xl border border-[color-mix(in_srgb,var(--os-border)_80%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-subtle)_92%,transparent)] p-0.5"
+      className="token-usage-settings__segmented inline-flex flex-wrap gap-0.5 rounded-xl border border-[color-mix(in_srgb,var(--os-border)_80%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-subtle)_92%,transparent)] p-0.5"
     >
       {options.map((opt) => {
         const active = opt.value === value;
@@ -36,13 +36,10 @@ function SegmentedControl({ options, value, onChange, ariaLabel }) {
             type="button"
             role="tab"
             aria-selected={active}
+            variant={active ? "base" : "text"}
+            size="small"
             onClick={() => onChange(opt.value)}
-            className={cn(
-              "rounded-[0.65rem] px-2.5 py-1.5 text-[0.8125rem] font-medium transition-colors",
-              active
-                ? "bg-[var(--os-bg-elevated)] text-[var(--os-text)] shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
-                : "text-[var(--os-text-muted)] hover:text-[var(--os-text)]",
-            )}
+            className={cn("token-usage-settings__segment", active && "token-usage-settings__segment--active")}
           >
             {opt.label}
           </Button>
@@ -502,11 +499,7 @@ export default function TokenUsageSettingsSection() {
           value={range}
           onChange={(v) => setRange(v === "7d" || v === "all" ? v : "30d")}
         />
-        <Button
-          type="button"
-          onClick={() => void onReset()}
-          className="rounded-lg px-2.5 py-1.5 text-[0.8125rem] font-medium text-[var(--os-text-muted)] transition-colors hover:bg-[color-mix(in_srgb,var(--os-bg-subtle)_88%,transparent)] hover:text-[var(--os-text)]"
-        >
+        <Button type="button" variant="text" size="small" onClick={() => void onReset()}>
           {t("settings.usage.reset")}
         </Button>
       </div>
@@ -566,11 +559,7 @@ export default function TokenUsageSettingsSection() {
             </p>
           </div>
           {selectedConversationId ? (
-            <Button
-              type="button"
-              onClick={() => setSelectedConversationId("")}
-              className="rounded-lg px-2.5 py-1.5 text-[0.8125rem] font-medium text-[var(--os-text-muted)] hover:text-[var(--os-text)]"
-            >
+            <Button type="button" variant="text" size="small" onClick={() => setSelectedConversationId("")}>
               {t("settings.usage.clearFilter")}
             </Button>
           ) : null}
@@ -631,12 +620,13 @@ export default function TokenUsageSettingsSection() {
                         <td className="max-w-[14rem] px-4 py-3 sm:px-5">
                           <Button
                             type="button"
+                            variant="text"
+                            size="small"
+                            block
                             onClick={() => conversationId && setSelectedConversationId(conversationId)}
                             className={cn(
-                              "block w-full truncate text-left",
-                              conversationId
-                                ? "cursor-pointer text-[var(--os-text)] hover:underline"
-                                : "cursor-default text-[var(--os-text-muted)]",
+                              "w-full truncate text-left",
+                              !conversationId && "cursor-default",
                             )}
                             title={preview}
                           >
@@ -659,10 +649,12 @@ export default function TokenUsageSettingsSection() {
                           {breakdownAvailable ? (
                             <Button
                               type="button"
+                              variant="text"
+                              theme="primary"
+                              size="small"
                               onClick={() =>
                                 setExpandedRecordId(expanded ? "" : recordId)
                               }
-                              className="rounded-md px-2 py-1 text-[0.75rem] font-medium text-[var(--os-accent,_#6366f1)] hover:bg-[color-mix(in_srgb,var(--os-bg-subtle)_80%,transparent)]"
                               aria-expanded={expanded}
                             >
                               {callHint || (expanded ? t("settings.usage.breakdownCollapse") : t("settings.usage.breakdownExpand"))}

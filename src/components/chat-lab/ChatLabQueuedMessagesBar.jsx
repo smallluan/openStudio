@@ -91,6 +91,8 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
             #1 {singleSummary}
           </span>
           <Button
+                variant="text"
+                size="small"
             type="button"
             className="chat-lab__queued-trigger-cancel"
             onClick={(e) => handleCancel(single.id, e)}
@@ -103,6 +105,9 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
       ) : (
         <>
           <Button
+                variant="outline"
+                shape="round"
+                size="small"
             ref={triggerRef}
             type="button"
             className={cn("chat-lab__context-trigger chat-lab__queued-trigger", open && "chat-lab__context-trigger--open")}
@@ -149,6 +154,8 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
                               {summary}
                             </span>
                             <Button
+                variant="text"
+                size="small"
                               type="button"
                               className="chat-lab__queued-popover-cancel"
                               onClick={(e) => handleCancel(q.id, e)}

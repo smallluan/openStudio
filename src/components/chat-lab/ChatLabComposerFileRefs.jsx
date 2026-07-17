@@ -21,6 +21,8 @@ export function ComposerFileRefChip({ row, onClear, disabled, t }) {
       </span>
       <span className="chat-lab__skill-chip-label">{row.name}</span>
       <Button
+                variant="text"
+                size="small"
         type="button"
         className="chat-lab__skill-chip-x"
         disabled={disabled}

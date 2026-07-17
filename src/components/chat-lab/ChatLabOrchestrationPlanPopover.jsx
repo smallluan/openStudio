@@ -149,6 +149,9 @@ export default function ChatLabOrchestrationPlanPopover({
   return (
     <>
       <Button
+                variant="outline"
+                shape="round"
+                size="small"
         ref={refs.setReference}
         type="button"
         className={cn(

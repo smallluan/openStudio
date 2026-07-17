@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { Button } from "@open-studio/udesign";
+import { Button, Input } from "@open-studio/udesign";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useStudio } from "../context/StudioContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -61,7 +61,7 @@ function AgentSkillPicker({
   return (
     <div className="flex min-h-0 flex-col gap-2">
       <TextField
-        className="h-8 max-w-full text-[0.75rem]"
+        size="small"
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
         placeholder={filterPlaceholder}
@@ -368,25 +368,21 @@ export default function LobsterManagementPage() {
       </header>
 
       <div className="mb-4 flex min-h-0 shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Button
-          type="button"
-          className="w-fit rounded-[11px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-on-accent,#fff)] shadow-sm transition hover:opacity-95"
-          onClick={openCreateModal}
-        >
+        <Button type="button" theme="primary" size="small" onClick={openCreateModal}>
           {t("lobsterPage.actions.create")}
         </Button>
-        <label className="relative flex w-full min-w-[220px] max-w-md sm:w-72">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--os-text-muted)]">
-            <SearchSparkleIcon className="opacity-75" />
-          </span>
-          <TextField
-            className="h-10 pl-9 text-[0.8125rem]"
+        <div className="w-full min-w-[220px] max-w-md sm:w-72">
+          <Input
+            size="large"
+            type="search"
+            prefixIcon={<SearchSparkleIcon className="opacity-75" aria-hidden />}
+            clearable
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(value) => setQuery(value)}
             placeholder={t("lobsterPage.searchPlaceholder")}
             aria-label={t("lobsterPage.searchPlaceholder")}
           />
-        </label>
+        </div>
       </div>
 
       {provisionNote ? (
@@ -448,17 +444,15 @@ export default function LobsterManagementPage() {
                         "group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
                       )}
                     >
-                      <Button
-                        type="button"
-                        className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] px-2 py-1 text-[0.7rem] font-medium text-[var(--os-text-muted)] transition hover:border-[var(--os-border)] hover:text-[var(--os-text)]"
-                        onClick={() => openDetail(a.id)}
-                      >
+                      <Button type="button" variant="outline" size="small" onClick={() => openDetail(a.id)}>
                         {t("lobsterPage.actions.edit")}
                       </Button>
                       {!a.isMain ? (
                         <Button
                           type="button"
-                          className="rounded-lg px-2 py-1 text-[0.7rem] font-medium text-[#c45a5a] transition hover:opacity-80"
+                          theme="danger"
+                          variant="text"
+                          size="small"
                           onClick={() => setDeleteTargetId(a.id)}
                         >
                           {t("lobsterPage.actions.delete")}
@@ -498,23 +492,23 @@ export default function LobsterManagementPage() {
                     onDelete={detailAgent.avatar ? handleAvatarClear : undefined}
                   />
                   <div className="relative mt-2 flex items-center justify-center">
-                    <input
-                      type="text"
+                    <Input
+                      borderless
+                      align="center"
+                      autoWidth
+                      size="small"
                       value={detailAgent.name}
-                      onChange={(e) => patchAgentMeta(detailAgent.id, { name: e.target.value })}
-                      className="text-center text-[0.9rem] font-semibold text-[var(--os-text)] bg-transparent border-0 border-b border-transparent focus-visible:border-b-[var(--os-accent)] focus-visible:outline-none hover:border-b-[var(--os-border)] transition-colors"
+                      onChange={(name) => patchAgentMeta(detailAgent.id, { name })}
                       placeholder="输入名称"
                     />
-                    <Button
-                      type="button"
-                      className="absolute -right-6 rounded p-0.5 text-[var(--os-text-muted)] transition hover:text-[var(--os-accent)]"
-                      title="编辑名称"
-                    >
+                    <div className="absolute -right-6">
+                      <Button type="button" variant="text" size="small" title="编辑名称">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
                         <path d="m15 5 4 4"/>
                       </svg>
-                    </Button>
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -523,7 +517,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setEditSidebarField("identity")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑身份
                 </Button>
@@ -557,14 +552,15 @@ export default function LobsterManagementPage() {
                   </label>
                   <label className="flex flex-row items-center gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                     <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldOrchestrationDomain")}</span>
-                    <TextField
-                      className="flex-1"
-                      value={detailAgent.orchestrationDomain || ""}
-                      onChange={(e) =>
-                        patchAgentMeta(detailAgent.id, { orchestrationDomain: e.target.value })
-                      }
-                      placeholder={t("lobsterPage.orchestrationDomainPlaceholder")}
-                    />
+                    <div className="min-w-0 flex-1">
+                      <TextField
+                        value={detailAgent.orchestrationDomain || ""}
+                        onChange={(e) =>
+                          patchAgentMeta(detailAgent.id, { orchestrationDomain: e.target.value })
+                        }
+                        placeholder={t("lobsterPage.orchestrationDomainPlaceholder")}
+                      />
+                    </div>
                   </label>
                 </>
               ) : null}
@@ -574,7 +570,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setEditSidebarField("description")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑简介
                 </Button>
@@ -585,7 +582,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setEditSidebarField("soul")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑性格
                 </Button>
@@ -596,7 +594,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setEditSidebarField("agents")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -607,7 +606,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setEditSidebarField("user")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -618,7 +618,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setEditSidebarField("tools")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -629,7 +630,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setEditSidebarField("memory")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -688,7 +690,9 @@ export default function LobsterManagementPage() {
                       window.setTimeout(() => setProvisionNote(null), 5000);
                     }
                   }}
-                  className="rounded-md border border-[var(--os-accent)] px-2.5 py-1 text-[0.75rem] font-medium text-[var(--os-accent)] transition hover:bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  theme="primary"
+                  variant="outline"
+                  size="small"
                 >
                   从文件夹导入
                 </Button>
@@ -700,7 +704,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setSkillDialogOpen(true)}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   {t("lobsterPage.selectSkills")}
                 </Button>
@@ -716,7 +721,8 @@ export default function LobsterManagementPage() {
                   <Button
                     type="button"
                     onClick={() => setEditSidebarField(null)}
-                    className="rounded p-1 text-[var(--os-text-muted)] transition hover:text-[var(--os-text)] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_50%,transparent)]"
+                    variant="text"
+                    size="small"
                   >
                     ✕
                   </Button>
@@ -755,22 +761,22 @@ export default function LobsterManagementPage() {
           </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
               {!detailAgent.isMain ? (
-                <Button
-                  type="button"
-                  className="mr-auto rounded-[10px] border border-[color-mix(in_srgb,var(--os-danger,#b91c1c)_35%,var(--os-border))] px-3 py-2 text-[0.8rem] font-medium text-[var(--os-danger,#b91c1c)] transition hover:bg-[color-mix(in_srgb,var(--os-danger,#b91c1c)_8%,transparent)]"
-                  onClick={() => {
-                    closeDetail();
-                    setDeleteTargetId(detailAgent.id);
-                  }}
-                >
-                  {t("lobsterPage.actions.delete")}
-                </Button>
+                <div className="mr-auto">
+                  <Button
+                    type="button"
+                    theme="danger"
+                    variant="text"
+                    size="small"
+                    onClick={() => {
+                      closeDetail();
+                      setDeleteTargetId(detailAgent.id);
+                    }}
+                  >
+                    {t("lobsterPage.actions.delete")}
+                  </Button>
+                </div>
               ) : null}
-              <Button
-                type="button"
-                className="rounded-[10px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8rem] font-medium text-[var(--os-on-accent,#fff)]"
-                onClick={closeDetail}
-              >
+              <Button type="button" theme="primary" onClick={closeDetail}>
                 {t("skillsPage.close")}
               </Button>
             </div>
@@ -803,31 +809,30 @@ export default function LobsterManagementPage() {
                     onDelete={createForm.avatar ? handleCreateAvatarClear : undefined}
                   />
                   <div className="relative mt-2 flex items-center justify-center">
-                    <input
-                      type="text"
+                    <Input
+                      borderless
+                      align="center"
+                      autoWidth
+                      size="small"
                       value={createForm.name}
-                      onChange={(e) => {
-                        const name = e.target.value;
+                      onChange={(name) => {
                         setCreateForm((prev) => ({
                           ...prev,
                           name,
                           identityMd: syncIdentityNameLine(name, prev.identityMd),
                         }));
                       }}
-                      className="text-center text-[0.9rem] font-semibold text-[var(--os-text)] bg-transparent border-0 border-b border-transparent focus-visible:border-b-[var(--os-accent)] focus-visible:outline-none hover:border-b-[var(--os-border)] transition-colors"
                       placeholder="输入名称"
-                      autoFocus
+                      autofocus
                     />
-                    <Button
-                      type="button"
-                      className="absolute -right-6 rounded p-0.5 text-[var(--os-text-muted)] transition hover:text-[var(--os-accent)]"
-                      title="编辑名称"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-                        <path d="m15 5 4 4"/>
-                      </svg>
-                    </Button>
+                    <div className="absolute -right-6">
+                      <Button type="button" variant="text" size="small" title="编辑名称">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                          <path d="m15 5 4 4"/>
+                        </svg>
+                      </Button>
+                    </div>
                   </div>
                 </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
@@ -835,7 +840,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setCreateSidebarField("identity")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -845,7 +851,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setCreateSidebarField("description")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -855,7 +862,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setCreateSidebarField("soul")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -865,7 +873,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setCreateSidebarField("agents")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -875,7 +884,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setCreateSidebarField("user")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -885,7 +895,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setCreateSidebarField("tools")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -895,7 +906,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setCreateSidebarField("memory")}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   编辑
                 </Button>
@@ -905,7 +917,9 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={handleImportFromFolder}
-                  className="rounded-md border border-[var(--os-accent)] px-2.5 py-1 text-[0.75rem] font-medium text-[var(--os-accent)] transition hover:bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  theme="primary"
+                  variant="outline"
+                  size="small"
                 >
                   从文件夹导入
                 </Button>
@@ -915,7 +929,8 @@ export default function LobsterManagementPage() {
                 <Button
                   type="button"
                   onClick={() => setCreateSkillDialogOpen(true)}
-                  className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
+                  variant="outline"
+                  size="small"
                 >
                   {t("lobsterPage.selectSkills")}
                 </Button>
@@ -936,7 +951,8 @@ export default function LobsterManagementPage() {
                   <Button
                     type="button"
                     onClick={() => setCreateSidebarField(null)}
-                    className="rounded p-1 text-[var(--os-text-muted)] transition hover:text-[var(--os-text)] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_50%,transparent)]"
+                    variant="text"
+                    size="small"
                   >
                     ✕
                   </Button>
@@ -974,17 +990,12 @@ export default function LobsterManagementPage() {
             )}
           </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <Button
-                type="button"
-                className="rounded-[10px] px-3 py-2 text-[0.8rem] text-[var(--os-text-muted)]"
-                disabled={createBusy}
-                onClick={() => setCreateOpen(false)}
-              >
+              <Button type="button" variant="text" disabled={createBusy} onClick={() => setCreateOpen(false)}>
                 {t("skillsPage.cancel")}
               </Button>
               <Button
                 type="button"
-                className="rounded-[10px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8rem] font-medium text-[var(--os-on-accent,#fff)] disabled:opacity-60"
+                theme="primary"
                 disabled={createBusy}
                 onClick={() => void onConfirmCreate()}
               >
@@ -1010,16 +1021,12 @@ export default function LobsterManagementPage() {
               })}
             </p>
             <div className="flex justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <Button
-                type="button"
-                className="rounded-[10px] px-3 py-2 text-[0.8rem] text-[var(--os-text-muted)]"
-                onClick={() => setDeleteTargetId(null)}
-              >
+              <Button type="button" variant="text" onClick={() => setDeleteTargetId(null)}>
                 {t("skillsPage.cancel")}
               </Button>
               <Button
                 type="button"
-                className="rounded-[10px] bg-[var(--os-danger,#b91c1c)] px-3.5 py-2 text-[0.8rem] font-medium text-white"
+                theme="danger"
                 onClick={() => {
                   removeAgent(deleteTarget.id);
                   setDeleteTargetId(null);

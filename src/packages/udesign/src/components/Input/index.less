@@ -1,0 +1,377 @@
+@import '../../styles/variables.less';
+
+// 尺寸变量（与 Button 对齐）
+@input-size-small: 24px;
+@input-size-medium: 32px;
+@input-size-large: 40px;
+
+@input-padding-small: 0 8px;
+@input-padding-medium: 0 12px;
+@input-padding-large: 0 16px;
+
+@input-font-size-small: @font-size-xs;
+@input-font-size-medium: @font-size-base;
+@input-font-size-large: @font-size-md;
+
+@input-icon-size-small: 14px;
+@input-icon-size-medium: 16px;
+@input-icon-size-large: 18px;
+
+.udesign-input-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  gap: @spacing-xs;
+  font-family: @font-family;
+  vertical-align: middle;
+
+  &--block {
+    display: flex;
+    width: 100%;
+  }
+}
+
+.udesign-input {
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid @border-color;
+  border-radius: @border-radius-base;
+  background-color: @bg-base;
+  color: @text-primary;
+  transition:
+    border-color @motion-duration-base @motion-ease-in-out,
+    box-shadow @motion-duration-base @motion-ease-in-out;
+
+  &:hover:not(.udesign-input--disabled):not(.udesign-input--readonly) {
+    border-color: @brand-4;
+  }
+
+  &--focused:not(.udesign-input--disabled) {
+    border-color: @brand-6;
+    box-shadow: 0 0 0 2px fade(@brand-6, 15%);
+  }
+
+  // 尺寸
+  &--size-small {
+    height: @input-size-small;
+    font-size: @input-font-size-small;
+
+    .udesign-input__inner {
+      padding: @input-padding-small;
+    }
+
+    .udesign-input__prefix,
+    .udesign-input__suffix,
+    .udesign-input__suffix-icon,
+    .udesign-input__limit {
+      font-size: @input-icon-size-small;
+    }
+
+    &.udesign-input--clearable .udesign-input__inner {
+      padding-right: 24px;
+    }
+
+    .udesign-input__clear {
+      right: 4px;
+      font-size: @input-icon-size-small;
+    }
+
+    .udesign-input__label {
+      padding-left: 8px;
+      font-size: @input-font-size-small;
+    }
+  }
+
+  &--size-medium {
+    height: @input-size-medium;
+    font-size: @input-font-size-medium;
+
+    .udesign-input__inner {
+      padding: @input-padding-medium;
+    }
+
+    .udesign-input__prefix,
+    .udesign-input__suffix,
+    .udesign-input__suffix-icon,
+    .udesign-input__limit {
+      font-size: @input-icon-size-medium;
+    }
+
+    &.udesign-input--clearable .udesign-input__inner {
+      padding-right: 28px;
+    }
+
+    .udesign-input__clear {
+      right: 6px;
+      font-size: @input-icon-size-medium;
+    }
+
+    .udesign-input__label {
+      padding-left: 12px;
+      font-size: @input-font-size-medium;
+    }
+  }
+
+  &--size-large {
+    height: @input-size-large;
+    font-size: @input-font-size-large;
+
+    .udesign-input__inner {
+      padding: @input-padding-large;
+    }
+
+    .udesign-input__prefix,
+    .udesign-input__suffix,
+    .udesign-input__suffix-icon,
+    .udesign-input__limit {
+      font-size: @input-icon-size-large;
+    }
+
+    &.udesign-input--clearable .udesign-input__inner {
+      padding-right: 32px;
+    }
+
+    .udesign-input__clear {
+      right: 8px;
+      font-size: @input-icon-size-large;
+    }
+
+    .udesign-input__label {
+      padding-left: 16px;
+      font-size: @input-font-size-large;
+    }
+  }
+
+  // 文本对齐
+  &--align-left .udesign-input__inner {
+    text-align: left;
+  }
+
+  &--align-center .udesign-input__inner {
+    text-align: center;
+  }
+
+  &--align-right .udesign-input__inner {
+    text-align: right;
+  }
+
+  // 状态
+  &--status-success {
+    border-color: @success-6;
+
+    &.udesign-input--focused {
+      box-shadow: 0 0 0 2px fade(@success-6, 15%);
+    }
+  }
+
+  &--status-warning {
+    border-color: @warning-6;
+
+    &.udesign-input--focused {
+      box-shadow: 0 0 0 2px fade(@warning-6, 15%);
+    }
+  }
+
+  &--status-error {
+    border-color: @error-6;
+
+    &.udesign-input--focused {
+      box-shadow: 0 0 0 2px fade(@error-6, 15%);
+    }
+  }
+
+  // 无边框
+  &--borderless {
+    border-color: transparent;
+    background-color: transparent;
+
+    &:hover:not(.udesign-input--disabled):not(.udesign-input--readonly) {
+      border-color: transparent;
+      background-color: @neutral-2;
+    }
+
+    &.udesign-input--focused:not(.udesign-input--disabled) {
+      border-color: transparent;
+      background-color: @neutral-2;
+      box-shadow: none;
+    }
+  }
+
+  // 禁用
+  &--disabled {
+    cursor: not-allowed;
+    background-color: @neutral-2;
+    color: @text-disabled;
+
+    .udesign-input__inner {
+      cursor: not-allowed;
+      color: @text-disabled;
+    }
+  }
+
+  // 只读
+  &--readonly {
+    .udesign-input__inner {
+      cursor: default;
+    }
+  }
+
+  // 自适应宽度
+  &--auto-width {
+    width: auto;
+
+    .udesign-input__inner {
+      width: auto;
+      min-width: 20px;
+    }
+  }
+
+  // 子元素
+  &__label {
+    flex-shrink: 0;
+    color: @text-secondary;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  &__prefix,
+  &__suffix,
+  &__suffix-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    color: @text-tertiary;
+    line-height: 1;
+  }
+
+  &__prefix {
+    padding-left: 8px;
+  }
+
+  &__suffix {
+    padding-right: 4px;
+    color: @text-secondary;
+  }
+
+  &__suffix-icon {
+    padding-right: 8px;
+  }
+
+  &__inner-wrap {
+    position: relative;
+    display: flex;
+    flex: 1;
+    align-items: center;
+    min-width: 0;
+    height: 100%;
+  }
+
+  &__inner {
+    box-sizing: border-box;
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: @line-height-base;
+
+    &::placeholder {
+      color: @text-tertiary;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+    }
+
+    &[type='search']::-webkit-search-cancel-button {
+      display: none;
+    }
+
+    &[type='number']::-webkit-inner-spin-button,
+    &[type='number']::-webkit-outer-spin-button {
+      margin: 0;
+      appearance: none;
+    }
+  }
+
+  &__mirror {
+    position: absolute;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+    height: 0;
+    overflow: hidden;
+    white-space: pre;
+    font-family: inherit;
+    font-size: inherit;
+    pointer-events: none;
+  }
+
+  &__limit {
+    flex-shrink: 0;
+    padding-right: 8px;
+    color: @text-tertiary;
+    font-size: 0.85em;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  &__clear {
+    position: absolute;
+    top: 50%;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: @text-tertiary;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-50%);
+    transition:
+      color @motion-duration-fast @motion-ease-in-out,
+      opacity @motion-duration-fast @motion-ease-in-out;
+
+    &--visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    &:hover {
+      color: @text-secondary;
+    }
+  }
+
+  &__clear-icon {
+    display: block;
+  }
+
+  &__tips {
+    font-size: @font-size-xs;
+    line-height: @line-height-base;
+    color: @text-tertiary;
+
+    &--success {
+      color: @success-6;
+    }
+
+    &--warning {
+      color: @warning-6;
+    }
+
+    &--error {
+      color: @error-6;
+    }
+  }
+}

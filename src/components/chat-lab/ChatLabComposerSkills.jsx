@@ -10,8 +10,9 @@ import {
   useInteractions,
   useRole,
 } from "@floating-ui/react";
+import { Search } from "lucide-react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@open-studio/udesign";
+import { Button, Input } from "@open-studio/udesign";
 import { filterSkillPickList } from "../../skills/skillRegistry.js";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { cn } from "../../ui/cn.js";
@@ -42,6 +43,9 @@ export function ComposerSkillChip({ row, onClear, disabled, t }) {
       <span className="chat-lab__skill-chip-label">{row.label}</span>
       <Button
         type="button"
+        variant="text"
+        shape="circle"
+        size="small"
         className="chat-lab__skill-chip-x"
         disabled={disabled}
         onClick={onClear}
@@ -145,6 +149,9 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
       <Button
         ref={refs.setReference}
         type="button"
+        variant="outline"
+        shape="round"
+        size="small"
         className={cn("chat-lab__pill-btn", selected && "chat-lab__pill-btn--liquid")}
         disabled={disabled}
         title={t("chatLab.toolbarSkillHint")}
@@ -186,23 +193,28 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
                 <div className="text-[0.68rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]">
                   {t("chatLab.skillPickerTitle")}
                 </div>
-                <input
-                  className={cn(
-                    "mt-1.5 box-border h-8 w-full rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2 text-[0.8125rem]",
-                    "text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
-                  )}
-                  autoFocus
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder={t("chatLab.skillPickerSearch")}
-                  aria-label={t("chatLab.skillPickerSearch")}
-                />
+                <div className="mt-1.5">
+                  <Input
+                    block
+                    clearable
+                    size="small"
+                    type="search"
+                    autofocus
+                    prefixIcon={<Search size={14} aria-hidden />}
+                    value={q}
+                    onChange={(value) => setQ(value)}
+                    placeholder={t("chatLab.skillPickerSearch")}
+                    aria-label={t("chatLab.skillPickerSearch")}
+                  />
+                </div>
               </div>
               <div id={listId} role="listbox" className="max-h-[min(52vh,280px)] overflow-y-auto py-1">
                 <Button
                   type="button"
                   role="option"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[0.8rem] text-[var(--os-text-muted)] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_55%,transparent)]"
+                  variant="text"
+                  block
+                  className="chat-lab__skill-popover-option w-full"
                   onClick={() => {
                     onSelect(null);
                     setOpen(false);
@@ -223,9 +235,11 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
                       }}
                       type="button"
                       role="option"
+                      variant="text"
+                      block
                       aria-selected={index === highlightIndex}
                       className={cn(
-                        "chat-lab__skill-popover-option flex w-full items-start gap-2.5 px-3 py-2 text-left",
+                        "chat-lab__skill-popover-option w-full",
                         index === highlightIndex && "chat-lab__skill-popover-option--active",
                       )}
                       onMouseEnter={() => setHighlightIndex(index)}
@@ -343,6 +357,8 @@ export function ComposerSkillSlashPopover({
           ) : (
             filtered.map((row, index) => (
               <Button
+                variant="text"
+                block
                 key={row.id}
                 ref={(node) => {
                   optionRefs.current[index] = node;
@@ -351,7 +367,7 @@ export function ComposerSkillSlashPopover({
                 role="option"
                 aria-selected={index === highlightIndex}
                 className={cn(
-                  "chat-lab__skill-popover-option flex w-full items-start gap-2.5 px-3 py-2 text-left",
+                  "chat-lab__skill-popover-option w-full",
                   index === highlightIndex && "chat-lab__skill-popover-option--active",
                 )}
                 onMouseEnter={() => onHighlightIndexChange?.(index)}

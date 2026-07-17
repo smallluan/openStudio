@@ -45,7 +45,7 @@ export default function ChatLabOrchestrationPanel({ run, agents, onResume, t }) 
           </span>
         ) : null}
         {run?.status === "paused" && onResume ? (
-          <Button type="button" className="orch-panel__resume" onClick={onResume}>
+          <Button type="button" theme="primary" variant="outline" size="small" className="orch-panel__resume" onClick={onResume}>
             {t("orchestration.panel.resume")}
           </Button>
         ) : null}

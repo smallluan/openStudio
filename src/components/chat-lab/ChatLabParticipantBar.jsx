@@ -119,6 +119,9 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
   return (
     <>
       <Button
+                variant="outline"
+                shape="round"
+                size="small"
         ref={refs.setReference}
         type="button"
         className={cn(
@@ -184,7 +187,11 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
                           {!a.isMain ? (
                             <Button
                               type="button"
-                              className="chat-lab__members-grid-remove absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-600"
+                              theme="danger"
+                              variant="text"
+                              shape="circle"
+                              size="small"
+                              className="chat-lab__members-grid-remove absolute -top-1.5 -right-1.5"
                               disabled={disabled}
                               aria-label={t("chatLab.participantRemove", { name: agentDisplayLabel(a) })}
                               onClick={() => removeAgent(a.id)}
@@ -206,6 +213,8 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
                       </div>
                     ))}
                     <Button
+                variant="text"
+                block
                       type="button"
                       className="chat-lab__members-grid-add relative flex flex-col items-center w-16 group cursor-pointer"
                       disabled={disabled}

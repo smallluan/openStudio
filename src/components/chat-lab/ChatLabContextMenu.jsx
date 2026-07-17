@@ -206,6 +206,8 @@ export default function ChatLabContextMenu({
                 >
                   <div ref={(node) => setMenuItemRef(item.id, node)} className="fluid-popup-menu__measure">
                     <Button
+                variant="text"
+                size="small"
                       type="button"
                       className={cn(
                         "chat-history-card__menu-item w-full min-w-0",

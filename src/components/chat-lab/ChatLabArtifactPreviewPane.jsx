@@ -85,6 +85,8 @@ export default function ChatLabArtifactPreviewPane({
       {showToggle ? (
         <div className="chat-lab-artifact-preview__toolbar flex shrink-0 items-center gap-1 border-b px-2 py-1.5">
           <Button
+                variant="text"
+                size="small"
             type="button"
             className={cn(
               "chat-lab-artifact-preview__mode-btn",
@@ -95,6 +97,8 @@ export default function ChatLabArtifactPreviewPane({
             {t("chatLab.previewViewRender")}
           </Button>
           <Button
+                variant="text"
+                size="small"
             type="button"
             className={cn(
               "chat-lab-artifact-preview__mode-btn",

@@ -59,6 +59,8 @@ export default function ChatLabPreviewFileTree({ nodes, selectedPath, artifactOp
         return (
           <li key={`dir:${normPath}`} className="chat-lab-preview-dock__tree-node">
             <Button
+                variant="text"
+                size="small"
               type="button"
               className="chat-lab-preview-dock__tree-item chat-lab-preview-dock__tree-item--dir"
               style={{ paddingLeft: `${0.45 + depth * 0.65}rem` }}
@@ -86,6 +88,8 @@ export default function ChatLabPreviewFileTree({ nodes, selectedPath, artifactOp
       return (
         <li key={`file:${normPath}`} className="chat-lab-preview-dock__tree-node">
           <Button
+                variant="text"
+                size="small"
             type="button"
             className={cn(
               "chat-lab-preview-dock__tree-item chat-lab-preview-dock__tree-item--file",

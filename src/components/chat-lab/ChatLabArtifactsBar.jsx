@@ -83,6 +83,8 @@ function ArtifactOpRow({ op, label, items, disabled, onOpen }) {
         >
           {items.map((a) => (
             <Button
+                variant="text"
+                size="small"
               key={a.path}
               type="button"
               role="listitem"

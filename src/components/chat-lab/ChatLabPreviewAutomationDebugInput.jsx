@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { Button } from "@open-studio/udesign";
+import { Button, Input } from "@open-studio/udesign";
 import { Play } from "lucide-react";
 import { normalizeAutomationSteps } from "../../chat/chatLabPreviewAutomation.js";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -92,46 +92,47 @@ export default function ChatLabPreviewAutomationDebugInput({ onRun, disabled = f
     }
   }, [disabled, draft, onRun, running, t]);
 
-  const onKeyDown = useCallback(
-    /** @param {import("react").KeyboardEvent<HTMLInputElement>} e */
-    (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        void runDraft();
-      }
-    },
-    [runDraft],
-  );
+  const inputStatus =
+    statusKind === "ok" ? "success"
+    : statusKind === "err" ? "error"
+    : "default";
 
   return (
-    <div className="chat-lab-preview-dock__automation-input-wrap min-w-0 flex-1">
-      <input
+    <div
+      className={cn(
+        "chat-lab-preview-dock__automation-input-wrap min-w-0 flex-1",
+        statusKind === "running" && "chat-lab-preview-dock__automation-input-wrap--running",
+      )}
+    >
+      <Input
         ref={inputRef}
-        type="text"
-        className={cn(
-          "chat-lab-preview-dock__automation-input",
-          statusKind === "ok" && "chat-lab-preview-dock__automation-input--ok",
-          statusKind === "err" && "chat-lab-preview-dock__automation-input--err",
-          statusKind === "running" && "chat-lab-preview-dock__automation-input--running",
-        )}
+        block
+        borderless
+        size="small"
+        status={inputStatus}
         value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value);
+        onChange={(value) => {
+          setDraft(value);
           if (statusKind !== "idle") {
             setStatusKind("idle");
             setStatusMessage("");
           }
         }}
-        onKeyDown={onKeyDown}
+        onEnter={() => {
+          void runDraft();
+        }}
         placeholder={t("chatLab.previewAutomationDebugPlaceholder")}
         aria-label={t("chatLab.previewAutomationDebugAria")}
         title={statusMessage || t("chatLab.previewAutomationDebugAria")}
         disabled={disabled || running}
         spellCheck={false}
-        autoComplete="off"
+        autocomplete="off"
       />
       <Button
         type="button"
+        variant="text"
+        shape="square"
+        size="small"
         className={cn(
           "chat-lab-preview-dock__icon-btn chat-lab-preview-dock__automation-run",
           running && "chat-lab-preview-dock__automation-run--busy",

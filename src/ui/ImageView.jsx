@@ -218,7 +218,9 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
     >
       <Button
         type="button"
-        className="os-image-view__backdrop absolute inset-0 cursor-default border-0 p-0"
+        variant="text"
+        block
+        className="os-image-view__backdrop absolute inset-0"
         aria-label={t("modal.closeDialog")}
         onClick={onClose}
       />
@@ -237,6 +239,9 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
         <div className="flex items-center gap-1">
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className="os-image-view__action"
             title={t("image.zoomOut")}
             aria-label={t("image.zoomOut")}
@@ -247,6 +252,9 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
           </Button>
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className="os-image-view__action"
             title={t("image.zoomIn")}
             aria-label={t("image.zoomIn")}
@@ -257,6 +265,9 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
           </Button>
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className="os-image-view__action"
             title={t("image.rotateLeft")}
             aria-label={t("image.rotateLeft")}
@@ -267,6 +278,9 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
           </Button>
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className="os-image-view__action"
             title={t("image.rotateRight")}
             aria-label={t("image.rotateRight")}
@@ -277,6 +291,9 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
           </Button>
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className="os-image-view__action"
             title={t("image.resetView")}
             aria-label={t("image.resetView")}
@@ -287,6 +304,9 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
           </Button>
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className="os-image-view__action"
             title={t("image.saveImage")}
             aria-label={t("image.saveImage")}
@@ -321,6 +341,9 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
           <>
             <Button
               type="button"
+              variant="text"
+              shape="square"
+              size="small"
               className="os-image-view__nav os-image-view__nav--prev"
               onClick={goPrev}
               aria-label={t("image.previewPrevious")}
@@ -329,6 +352,9 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
             </Button>
             <Button
               type="button"
+              variant="text"
+              shape="square"
+              size="small"
               className="os-image-view__nav os-image-view__nav--next"
               onClick={goNext}
               aria-label={t("image.previewNext")}
@@ -388,6 +414,9 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
               <Button
                 key={`${item.src}-${idx}`}
                 type="button"
+                variant="text"
+                shape="square"
+                size="small"
                 className={cn(
                   "os-image-view__thumb",
                   idx === index && "os-image-view__thumb--active",

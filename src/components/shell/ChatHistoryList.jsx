@@ -154,6 +154,8 @@ function ChatHistoryGroupHead({
     >
       <Button
         type="button"
+        variant="text"
+        block
         className="chat-history-group__head-main"
         onClick={() => {
           if (!deleteMode) onToggleCollapsed();
@@ -179,6 +181,8 @@ function ChatHistoryGroupHead({
           <>
             <Button
               type="button"
+              variant="text"
+              size="small"
               className="chat-history-group__action-btn chat-history-group__action-btn--text"
               onClick={onCancelDeleteMode}
             >
@@ -186,6 +190,8 @@ function ChatHistoryGroupHead({
             </Button>
             <Button
               type="button"
+              variant="text"
+              size="small"
               className={cn(
                 "chat-history-group__action-btn chat-history-group__action-btn--text",
                 selectedCount < 1 && "chat-history-group__action-btn--disabled",
@@ -200,6 +206,9 @@ function ChatHistoryGroupHead({
           <>
             <Button
               type="button"
+              variant="text"
+              shape="square"
+              size="small"
               className="chat-history-group__action-btn"
               aria-label={t("nav.chatHistoryGroupDeleteSelectAria")}
               title={t("nav.chatHistoryGroupDeleteSelectAria")}
@@ -212,6 +221,9 @@ function ChatHistoryGroupHead({
             </Button>
             <Button
               type="button"
+              variant="text"
+              shape="square"
+              size="small"
               className="chat-history-group__action-btn"
               aria-label={focused ? t("nav.chatHistoryGroupShrinkAria") : t("nav.chatHistoryGroupExpandAria")}
               title={focused ? t("nav.chatHistoryGroupShrinkAria") : t("nav.chatHistoryGroupExpandAria")}
@@ -231,6 +243,9 @@ function ChatHistoryGroupHead({
       </div>
       <Button
         type="button"
+        variant="text"
+        shape="square"
+        size="small"
         className="chat-history-group__caret-btn"
         onClick={() => {
           if (!deleteMode) onToggleCollapsed();
@@ -362,12 +377,13 @@ function HistorySessionRow({
         {selectMode ? (
           <Button
             type="button"
+            variant="text"
+            block
             title={displayTitle}
             disabled={selectDisabled}
             className={cn(
-              "chat-history-card__link flex min-w-0 flex-1 items-center gap-1.5 rounded-lg py-1 pl-0.5 pr-1 leading-tight text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
-              selectDisabled && "cursor-not-allowed opacity-50",
-              selected && "bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)]",
+              "chat-history-card__link flex min-w-0 flex-1 items-center gap-1.5 text-left",
+              selectDisabled && "cursor-not-allowed",
             )}
             onClick={() => {
               if (!selectDisabled) onToggleSelect?.();
@@ -425,11 +441,12 @@ function HistorySessionRow({
         {!selectMode ? (
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className={cn(
-              "chat-history-card__more flex h-7 w-7 shrink-0 items-center justify-center self-center rounded-md text-[0.9375rem] font-bold leading-none text-[var(--os-text-muted)] transition-colors hover:bg-transparent hover:text-[var(--os-text)]",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
-              present &&
-                "bg-[color-mix(in_srgb,var(--os-border)_22%,transparent)] text-[var(--os-text)] hover:bg-[color-mix(in_srgb,var(--os-border)_22%,transparent)]",
+              "chat-history-card__more shrink-0 self-center",
+              present && "chat-history-card__more--open",
             )}
             ref={refs.setReference}
             aria-label={t("nav.chatHistoryMore")}
@@ -474,7 +491,7 @@ function HistorySessionRow({
                   />
                   <div className="chat-history-card__menu-row" onPointerEnter={() => setMenuHoverKey("rename")}>
                     <div ref={(node) => setMenuItemRef("rename", node)} className="fluid-popup-menu__measure">
-                      <Button type="button" className="chat-history-card__menu-item w-full min-w-0" onClick={handleRename}>
+                      <Button type="button" variant="text" block className="chat-history-card__menu-item w-full min-w-0" onClick={handleRename}>
                         <PencilIcon className="text-[var(--os-text-muted)]" />
                         {t("nav.chatHistoryRename")}
                       </Button>
@@ -484,6 +501,9 @@ function HistorySessionRow({
                     <div ref={(node) => setMenuItemRef("delete", node)} className="fluid-popup-menu__measure">
                       <Button
                         type="button"
+                        theme="danger"
+                        variant="text"
+                        block
                         className="chat-history-card__menu-item chat-history-card__menu-item--danger w-full min-w-0"
                         onClick={handleDelete}
                       >

@@ -126,6 +126,9 @@ export default function ChatLabConvHeader({
             />
           ) : null}
           <Button
+                variant="outline"
+                shape="round"
+                size="small"
             ref={refs.setReference}
             type="button"
             className={cn("chat-lab__turn-nav-icon-btn", present && "chat-lab__turn-nav-icon-btn--open")}
@@ -139,6 +142,9 @@ export default function ChatLabConvHeader({
             <Route size={16} strokeWidth={2.1} aria-hidden />
           </Button>
           <Button
+                variant="outline"
+                shape="round"
+                size="small"
             type="button"
             className="chat-lab__turn-nav-icon-btn"
             aria-label="打开侧边栏"
@@ -179,6 +185,8 @@ export default function ChatLabConvHeader({
                         return (
                           <li key={turn.id} className="chat-lab__turn-nav-item">
                             <Button
+                variant="text"
+                size="small"
                               type="button"
                               className={cn("chat-lab__turn-nav-row", active && "chat-lab__turn-nav-row--active")}
                               data-turn-id={turn.id}

@@ -19,7 +19,7 @@ export default function StudioStage() {
         <LobsterLayer />
       </div>
       <div className="studio-stage__toolbar">
-        <Button type="button" className="btn-ghost" onClick={() => rotateDemoMode()}>
+        <Button type="button" variant="text" ghost size="small" onClick={() => rotateDemoMode()}>
           {t("studio.demoRotateMode", {
             mode: (() => {
               const mode = agents[0]?.mode;

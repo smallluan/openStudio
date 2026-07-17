@@ -101,14 +101,10 @@ export default function FluidTabBar({ items, value, onChange, className, tabList
                 type="button"
                 role="tab"
                 aria-selected={selected}
-                className={cn(
-                  "relative z-[1] rounded-full border-none bg-transparent px-3 py-1.5 text-[0.78rem] outline-none",
-                  "transition-[color,font-weight] duration-[0.45s] ease-[cubic-bezier(0.34,1.2,0.52,1)]",
-                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--os-focus-ring)] focus-visible:outline-offset-2",
-                  selected
-                    ? "font-semibold text-[var(--os-text)]"
-                    : "font-medium text-[var(--os-text-muted)] hover:bg-[var(--os-bg-hover)] hover:text-[var(--os-text)]",
-                )}
+                variant="text"
+                size="small"
+                shape="round"
+                className={cn("fluid-tab-bar__tab relative z-[1]", selected && "fluid-tab-bar__tab--selected")}
                 onClick={() => onChange(item.id)}
               >
                 {item.label}

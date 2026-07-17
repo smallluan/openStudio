@@ -181,15 +181,19 @@ function EditOverlay({ size, onUpload, uploading, visible }) {
       {uploading ?
         <div className="os-image__spinner" />
       : showActions ?
-        <Button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onUpload();
-          }}
-          className="rounded-lg bg-white/20 p-1.5 backdrop-blur-sm transition-colors hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-          aria-label="Upload avatar"
-        >
+      <Button
+        type="button"
+        variant="text"
+        ghost
+        shape="square"
+        size="small"
+        onClick={(e) => {
+          e.stopPropagation();
+          onUpload();
+        }}
+        className="os-avatar__overlay-upload"
+        aria-label="Upload avatar"
+      >
           <Camera size={iconSize * 0.6} className="text-white" />
         </Button>
       : (
@@ -215,17 +219,15 @@ function DeleteButton({ size, onDelete }) {
   return (
     <Button
       type="button"
+      theme="danger"
+      variant="text"
+      shape="circle"
+      size="small"
       onClick={(e) => {
         e.stopPropagation();
         onDelete();
       }}
-      className={cn(
-        "absolute flex items-center justify-center z-20",
-        "rounded-full bg-[var(--os-bg-panel)] text-[var(--os-text-muted)]",
-        "shadow-sm ring-1 ring-[var(--os-border)]",
-        "transition-colors hover:bg-red-50 hover:text-red-500 hover:ring-red-200",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
-      )}
+      className="os-avatar__delete-btn absolute z-20"
       style={{
         width: buttonSize,
         height: buttonSize,
@@ -775,14 +777,11 @@ export function AvatarUpload({
       <div className="flex gap-2">
         <Button
           type="button"
+          theme="primary"
+          size="small"
           onClick={handleUploadClick}
           disabled={uploading}
-          className={cn(
-            "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-            "bg-[var(--os-accent)] text-white hover:brightness-110",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-          )}
+          loading={uploading}
         >
           {uploading ? "Uploading..." : "Upload Photo"}
         </Button>
@@ -790,14 +789,10 @@ export function AvatarUpload({
         {onDelete && displaySrc && (
           <Button
             type="button"
+            variant="outline"
+            size="small"
             onClick={handleDelete}
             disabled={uploading}
-            className={cn(
-              "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-              "bg-[var(--os-bg-subtle)] text-[var(--os-text)] hover:bg-[var(--os-bg-hover)]",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
-              "disabled:cursor-not-allowed disabled:opacity-50",
-            )}
           >
             Remove
           </Button>

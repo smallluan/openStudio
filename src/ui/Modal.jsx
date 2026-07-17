@@ -71,12 +71,9 @@ export default function Modal({ children, className, labelledBy, onClose }) {
     >
       <Button
         type="button"
-        className={cn(
-          "os-modal-backdrop absolute inset-0 cursor-default border-0 p-0",
-          "motion-safe:transition-opacity motion-safe:duration-[220ms] motion-safe:ease-out",
-          open ? "motion-safe:opacity-100" : "opacity-0 motion-safe:opacity-0",
-          "motion-reduce:opacity-100",
-        )}
+        variant="text"
+        block
+        className={cn("os-modal-backdrop absolute inset-0", open && "os-modal-backdrop--open")}
         aria-label={t("modal.closeDialog")}
         onClick={beginClose}
       />

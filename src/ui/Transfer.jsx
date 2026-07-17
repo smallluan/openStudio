@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search } from "lucide-react";
-import { Button } from "@open-studio/udesign";
+import { Button, Input } from "@open-studio/udesign";
 import { useCallback, useMemo, useState } from "react";
 import { useI18n } from "../context/I18nContext.jsx";
 import { getColorFromString, getInitials } from "./Avatar.jsx";
@@ -230,17 +230,22 @@ export default function Transfer({
           />
         </div>
         {showSearch ? (
-          <label className="os-transfer__search">
-            <Search className="os-transfer__search-icon" aria-hidden />
-            <input
-              type="search"
-              className="os-transfer__search-input"
-              value={query}
-              placeholder={resolvedSearchPlaceholder}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label={resolvedSearchPlaceholder}
-            />
-          </label>
+          <div className="os-transfer__search">
+            <div className="min-w-0 flex-1">
+              <Input
+                block
+                borderless
+                clearable
+                size="small"
+                type="search"
+                prefixIcon={<Search className="os-transfer__search-icon" aria-hidden />}
+                value={query}
+                placeholder={resolvedSearchPlaceholder}
+                onChange={(value) => setQuery(value)}
+                aria-label={resolvedSearchPlaceholder}
+              />
+            </div>
+          </div>
         ) : null}
         <ul className="os-transfer__list" role="listbox" aria-multiselectable="true" style={{ maxHeight: '360px', overflowY: 'auto' }}>
           {sourceItems.length ? (
@@ -251,6 +256,8 @@ export default function Transfer({
                   <Button
                     type="button"
                     role="option"
+                    variant="text"
+                    block
                     aria-selected={checked}
                     className={cn("os-transfer__row", checked && "os-transfer__row--selected")}
                     onClick={() => toggleSource(item.key)}
@@ -291,6 +298,9 @@ export default function Transfer({
       <div className="os-transfer__actions" aria-label={t("transfer.actionsAria")}>
         <Button
           type="button"
+          variant="outline"
+          shape="square"
+          size="small"
           className="os-transfer__action-btn"
           disabled={sourceSelected.size === 0}
           aria-label={t("transfer.moveSelectedRight")}
@@ -301,6 +311,9 @@ export default function Transfer({
         </Button>
         <Button
           type="button"
+          variant="outline"
+          shape="square"
+          size="small"
           className="os-transfer__action-btn"
           disabled={selectableSourceKeys.length === 0}
           aria-label={t("transfer.moveAllRight")}
@@ -311,6 +324,9 @@ export default function Transfer({
         </Button>
         <Button
           type="button"
+          variant="outline"
+          shape="square"
+          size="small"
           className="os-transfer__action-btn"
           disabled={targetSelected.size === 0}
           aria-label={t("transfer.moveSelectedLeft")}
@@ -321,6 +337,9 @@ export default function Transfer({
         </Button>
         <Button
           type="button"
+          variant="outline"
+          shape="square"
+          size="small"
           className="os-transfer__action-btn"
           disabled={removableTargetKeys.length === 0}
           aria-label={t("transfer.moveAllLeft")}
@@ -357,6 +376,8 @@ export default function Transfer({
                   <Button
                     type="button"
                     role="option"
+                    variant="text"
+                    block
                     aria-selected={checked}
                     aria-disabled={locked || undefined}
                     disabled={locked}

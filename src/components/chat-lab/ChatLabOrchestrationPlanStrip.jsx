@@ -67,7 +67,7 @@ export default function ChatLabOrchestrationPlanStrip({
           </span>
         ) : null}
         {run.status === "paused" && onResume ? (
-          <Button type="button" className="chat-lab__orch-plan-strip-resume" onClick={onResume} disabled={disabled}>
+          <Button type="button" theme="primary" variant="outline" size="small" className="chat-lab__orch-plan-strip-resume" onClick={onResume} disabled={disabled}>
             {t("orchestration.panel.resume")}
           </Button>
         ) : null}
@@ -114,6 +114,8 @@ export default function ChatLabOrchestrationPlanStrip({
             <>
               <Button
                 type="button"
+                theme="primary"
+                size="small"
                 className="chat-lab__orch-plan-strip-btn chat-lab__orch-plan-strip-btn--primary"
                 disabled={disabled}
                 onClick={onApprove}
@@ -122,6 +124,8 @@ export default function ChatLabOrchestrationPlanStrip({
               </Button>
               <Button
                 type="button"
+                variant="outline"
+                size="small"
                 className="chat-lab__orch-plan-strip-btn"
                 disabled={disabled}
                 onClick={() => setReviseOpen(true)}
@@ -130,6 +134,9 @@ export default function ChatLabOrchestrationPlanStrip({
               </Button>
               <Button
                 type="button"
+                theme="danger"
+                variant="outline"
+                size="small"
                 className="chat-lab__orch-plan-strip-btn chat-lab__orch-plan-strip-btn--danger"
                 disabled={disabled}
                 onClick={onReject}
@@ -150,6 +157,8 @@ export default function ChatLabOrchestrationPlanStrip({
               <div className="chat-lab__orch-plan-strip-revise-actions">
                 <Button
                   type="button"
+                  theme="primary"
+                  size="small"
                   className="chat-lab__orch-plan-strip-btn chat-lab__orch-plan-strip-btn--primary"
                   disabled={disabled || !reviseNotes.trim()}
                   onClick={() => {
@@ -162,6 +171,8 @@ export default function ChatLabOrchestrationPlanStrip({
                 </Button>
                 <Button
                   type="button"
+                  variant="outline"
+                  size="small"
                   className="chat-lab__orch-plan-strip-btn"
                   disabled={disabled}
                   onClick={() => {

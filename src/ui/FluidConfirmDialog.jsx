@@ -232,6 +232,9 @@ export default function FluidConfirmDialog({
               </p>
               <Button
                 type="button"
+                variant="text"
+                shape="square"
+                size="small"
                 className="fluid-dialog__close"
                 aria-label={t("dialog.closeAria")}
                 onClick={handleCancel}
@@ -266,6 +269,7 @@ export default function FluidConfirmDialog({
                 >
                   <Button
                     type="button"
+                    theme={danger ? "danger" : "primary"}
                     className={cn(
                       "fluid-dialog__btn-hit",
                       danger ? "fluid-dialog__btn-hit--danger" : "fluid-dialog__btn-hit--accent",
@@ -284,6 +288,7 @@ export default function FluidConfirmDialog({
                   <Button
                     ref={cancelBtnRef}
                     type="button"
+                    variant="text"
                     className="fluid-dialog__btn-hit fluid-dialog__btn-hit--ghost"
                     onClick={handleCancel}
                     onFocus={() => setFooterHoverKey("cancel")}

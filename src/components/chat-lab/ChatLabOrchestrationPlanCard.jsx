@@ -70,6 +70,8 @@ export default function ChatLabOrchestrationPlanCard({
             <>
               <Button
                 type="button"
+                theme="primary"
+                size="small"
                 className="orch-plan-card__btn orch-plan-card__btn--primary"
                 disabled={disabled}
                 onClick={onApprove}
@@ -78,6 +80,8 @@ export default function ChatLabOrchestrationPlanCard({
               </Button>
               <Button
                 type="button"
+                variant="outline"
+                size="small"
                 className="orch-plan-card__btn"
                 disabled={disabled}
                 onClick={() => setReviseOpen(true)}
@@ -86,6 +90,9 @@ export default function ChatLabOrchestrationPlanCard({
               </Button>
               <Button
                 type="button"
+                theme="danger"
+                variant="outline"
+                size="small"
                 className="orch-plan-card__btn orch-plan-card__btn--danger"
                 disabled={disabled}
                 onClick={onReject}
@@ -106,6 +113,8 @@ export default function ChatLabOrchestrationPlanCard({
               <div className="orch-plan-card__revise-actions">
                 <Button
                   type="button"
+                  theme="primary"
+                  size="small"
                   className="orch-plan-card__btn orch-plan-card__btn--primary"
                   disabled={disabled || !reviseNotes.trim()}
                   onClick={() => {
@@ -118,6 +127,8 @@ export default function ChatLabOrchestrationPlanCard({
                 </Button>
                 <Button
                   type="button"
+                  variant="outline"
+                  size="small"
                   className="orch-plan-card__btn"
                   disabled={disabled}
                   onClick={() => {

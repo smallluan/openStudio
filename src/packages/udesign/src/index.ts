@@ -32,5 +32,20 @@ export type {
   PopupOverlayStyle,
 } from './components/Popup/type';
 
+export { default as Input } from './components/Input';
+export type {
+  InputProps,
+  InputValue,
+  InputFormatType,
+  InputAlign,
+  InputStatus,
+  InputType,
+  InputChangeTrigger,
+  InputChangeContext,
+  InputValidateContext,
+  InputEventContext,
+  InputPasteContext,
+} from './components/Input/type';
+
 export type { AttachNode, ClassName, Styles } from './common/types';
 export { cx, resolveAttach, resolveDelay } from './common/types';

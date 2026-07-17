@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Button } from "@open-studio/udesign";
+import { Button, Input } from "@open-studio/udesign";
+import { cn } from "../../ui/cn.js";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { useStudio } from "../../context/StudioContext.jsx";
 import { AgentMode } from "../../studio/modes.js";
@@ -31,18 +32,19 @@ export default function StudioChatBar() {
         <span className="muted">{t("studio.chat.placeholderNote")}</span>
       </div>
       <div className="studio-chat__row">
-        <input
-          className="studio-chat__input"
-          placeholder={t("studio.chat.inputPlaceholder")}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") send();
-          }}
-        />
+        <div className="min-w-0 flex-1">
+          <Input
+            block
+            value={text}
+            onChange={(value) => setText(value)}
+            placeholder={t("studio.chat.inputPlaceholder")}
+            onEnter={() => send()}
+          />
+        </div>
         <Button
           type="button"
-          className={`btn-primary studio-chat__send ${canSend ? "studio-chat__send--ready" : ""}`}
+          theme="primary"
+          className={cn("studio-chat__send", canSend && "studio-chat__send--ready")}
           onClick={send}
           disabled={!canSend}
         >

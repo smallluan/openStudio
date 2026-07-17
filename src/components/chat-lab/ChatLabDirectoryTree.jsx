@@ -102,6 +102,8 @@ export default function ChatLabDirectoryTree({ root, className }) {
           <li key={key} className="chat-lab__md-tree-node">
             {hasChildren ? (
               <Button
+                variant="text"
+                size="small"
                 type="button"
                 className={rowClass}
                 style={indentStyle}
@@ -155,6 +157,8 @@ export default function ChatLabDirectoryTree({ root, className }) {
           {rootIsDir ? (
             rootHasChildren ? (
               <Button
+                variant="text"
+                size="small"
                 type="button"
                 className="chat-lab__md-tree-item chat-lab__md-tree-item--dir chat-lab__md-tree-item--root"
                 onClick={() => toggleDir(root.name)}

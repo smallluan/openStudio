@@ -9,7 +9,6 @@ import {
   modelProfileSummaryLine,
   useModelSettings,
 } from "../../context/ModelSettingsContext.jsx";
-import { cn } from "../../ui/cn.js";
 import ModelProfileEditorDialog from "./ModelProfileEditorDialog.jsx";
 import ModelProfileEditorForm from "./ModelProfileEditorForm.jsx";
 
@@ -123,11 +122,7 @@ export default function ModelProfilesPanel() {
         <span className="text-[0.8125rem] font-medium text-[var(--os-text)]">
           {t("userConfig.providersColumnTitle")}
         </span>
-        <Button
-          type="button"
-          onClick={openAdd}
-          className="border-none bg-transparent p-0 text-[0.75rem] font-medium text-[var(--os-text-muted)] underline-offset-2 hover:text-[var(--os-text)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]"
-        >
+        <Button type="button" variant="text" size="small" onClick={openAdd}>
           + {t("userConfig.addProfile")}
         </Button>
       </div>
@@ -144,11 +139,7 @@ export default function ModelProfilesPanel() {
             hideDecoration
             title={t("userConfig.emptyStateNoProfiles")}
             action={
-              <Button
-                type="button"
-                className="text-[0.8125rem] font-medium text-[var(--os-accent)] underline-offset-2 hover:underline"
-                onClick={openAdd}
-              >
+              <Button type="button" theme="primary" variant="text" size="small" onClick={openAdd}>
                 {t("userConfig.addProfile")}
               </Button>
             }
@@ -172,10 +163,9 @@ export default function ModelProfilesPanel() {
                   <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                     <Button
                       type="button"
-                      className={cn(
-                        "flex size-7 items-center justify-center border-none bg-transparent text-[var(--os-text-muted)] outline-none",
-                        "hover:text-[var(--os-text)] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
-                      )}
+                      variant="text"
+                      shape="square"
+                      size="small"
                       aria-label={t("userConfig.profileDetailHeading")}
                       title={t("userConfig.profileDetailHeading")}
                       onClick={() => openEdit(p.id)}
@@ -184,10 +174,10 @@ export default function ModelProfilesPanel() {
                     </Button>
                     <Button
                       type="button"
-                      className={cn(
-                        "flex size-7 items-center justify-center border-none bg-transparent text-[var(--os-text-muted)] outline-none",
-                        "hover:text-[var(--os-accent)] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]",
-                      )}
+                      theme="primary"
+                      variant="text"
+                      shape="square"
+                      size="small"
                       aria-label={t("userConfig.removeProfile")}
                       title={t("userConfig.removeProfile")}
                       onClick={() => handleDelete(p.id)}

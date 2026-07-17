@@ -263,6 +263,8 @@ export default function FluidNavMenu({
         <div key={item.id} ref={(node) => setFluidAnchor(item.id, node)} className="fluid-nav__measure">
           <Button
             type="button"
+            variant="text"
+            block
             className={shellClass}
             title={item.title}
             aria-current={fluidTargetId === item.id ? "page" : undefined}

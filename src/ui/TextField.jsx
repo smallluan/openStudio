@@ -1,18 +1,97 @@
-import { cn } from "./cn.js";
+import { Input } from "@open-studio/udesign";
 
-/** Native text/password input styled for dense forms (settings, model profiles). */
-export default function TextField({ className, type = "text", ...props }) {
-  return (
-    <input
+/**
+ * @param {import("react").ChangeEvent<HTMLInputElement>} value
+ * @param {{ e?: import("react").SyntheticEvent }} [ctx]
+ */
+function toDomChangeEvent(value, ctx) {
+  const e = ctx?.e;
+  if (
+    e &&
+    typeof e === "object" &&
+    "target" in e &&
+    e.target &&
+    typeof e.target === "object" &&
+    "value" in e.target
+  ) {
+    return /** @type {import("react").ChangeEvent<HTMLInputElement>} */ (e);
+  }
+  return /** @type {import("react").ChangeEvent<HTMLInputElement>} */ ({
+    target: { value },
+    currentTarget: { value },
+  });
+}
+
+/** Native input compatibility wrapper around UDesign Input. */
+export default function TextField({
+  className,
+  block = true,
+  size,
+  type = "text",
+  onChange,
+  onBlur,
+  onFocus,
+  onKeyDown,
+  onKeyPress,
+  onKeyUp,
+  autoFocus,
+  autoComplete,
+  spellCheck,
+  readOnly,
+  ...props
+}) {
+  const input = (
+    <Input
+      block={block}
+      size={size}
       type={type}
-      className={cn(
-        "box-border h-8 min-h-8 min-w-0 w-full rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 text-[0.8125rem] leading-8 text-[var(--os-text)] shadow-[var(--os-control-inset)]",
-        "placeholder:text-[var(--os-text-faint)]",
-        "transition-[border-color,box-shadow] duration-150",
-        "focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]",
-        className,
-      )}
+      autofocus={autoFocus}
+      autocomplete={autoComplete}
+      spellCheck={spellCheck}
+      readOnly={readOnly}
+      onChange={
+        onChange ?
+          (value, ctx) => onChange(toDomChangeEvent(value, ctx))
+        : undefined
+      }
+      onBlur={
+        onBlur ?
+          (value, ctx) => onBlur(toDomChangeEvent(value, ctx))
+        : undefined
+      }
+      onFocus={
+        onFocus ?
+          (value, ctx) => onFocus(toDomChangeEvent(value, ctx))
+        : undefined
+      }
+      onKeydown={
+        onKeyDown ?
+          (_value, ctx) => {
+            if (ctx?.e) onKeyDown(ctx.e);
+          }
+        : undefined
+      }
+      onKeypress={
+        onKeyPress ?
+          (_value, ctx) => {
+            if (ctx?.e) onKeyPress(ctx.e);
+          }
+        : undefined
+      }
+      onKeyup={
+        onKeyUp ?
+          (_value, ctx) => {
+            if (ctx?.e) onKeyUp(ctx.e);
+          }
+        : undefined
+      }
       {...props}
     />
   );
+
+  if (className) {
+    return <div className={className}>{input}</div>;
+  }
+
+  return input;
 }

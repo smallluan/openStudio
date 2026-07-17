@@ -145,6 +145,8 @@ export default function ChatLabAgentMentionPopover({
               <>
                 {everyoneVisible ? (
                   <Button
+                variant="text"
+                block
                     ref={(node) => {
                       optionRefs.current[0] = node;
                     }}
@@ -152,7 +154,7 @@ export default function ChatLabAgentMentionPopover({
                     role="option"
                     aria-selected={highlightIndex === 0}
                     className={cn(
-                      "chat-lab__mention-item chat-lab__mention-item--everyone flex w-full items-center gap-2.5 px-3 py-2 text-left",
+                      "chat-lab__mention-item chat-lab__mention-item--everyone w-full",
                       highlightIndex === 0 && "chat-lab__mention-item--active",
                     )}
                     onMouseEnter={() => onHighlightIndexChange?.(0)}
@@ -170,6 +172,8 @@ export default function ChatLabAgentMentionPopover({
                   const optionIndex = index + (everyoneVisible ? 1 : 0);
                   return (
                     <Button
+                variant="text"
+                block
                       key={a.id}
                       ref={(node) => {
                         optionRefs.current[optionIndex] = node;
@@ -178,7 +182,7 @@ export default function ChatLabAgentMentionPopover({
                       role="option"
                       aria-selected={optionIndex === highlightIndex}
                       className={cn(
-                        "chat-lab__mention-item flex w-full items-center gap-2.5 px-3 py-2 text-left",
+                        "chat-lab__mention-item w-full",
                         optionIndex === highlightIndex && "chat-lab__mention-item--active",
                       )}
                       onMouseEnter={() => onHighlightIndexChange?.(optionIndex)}

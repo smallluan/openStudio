@@ -93,16 +93,13 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
         ref={refs.setReference}
         id={id}
         type="button"
+        variant="outline"
+        size="small"
+        block
         aria-label={ariaLabel}
         disabled={disabled}
         {...getReferenceProps()}
-        className={cn(
-          "flex h-8 w-full min-w-[10rem] items-center justify-between gap-2 rounded-lg border border-[var(--os-border)]",
-          "bg-[var(--os-bg-elevated)] px-2.5 text-left text-[0.8125rem] font-medium text-[var(--os-text)] shadow-[var(--os-control-inset)]",
-          "transition-[border-color,box-shadow] duration-150 hover:border-[color-mix(in_srgb,var(--os-accent)_32%,var(--os-border))]",
-          "focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]",
-          disabled && "cursor-not-allowed opacity-55 hover:border-[var(--os-border)]",
-        )}
+        className="w-full min-w-[10rem]"
       >
         <span className="min-w-0 truncate">{selected?.label ?? "—"}</span>
         <Chevron open={present} />
@@ -153,12 +150,12 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
                         <Button
                           ref={(node) => setItemRef(String(opt.value), node)}
                           type="button"
+                          variant="text"
+                          size="small"
+                          block
                           className={cn(
-                            "fluid-select__hit flex h-8 w-full items-center rounded-md border-none px-2.5 text-left text-[0.8125rem] outline-none transition-colors duration-[0.45s] ease-[cubic-bezier(0.34,1.2,0.52,1)]",
-                            "bg-transparent",
-                            opt.value === value ?
-                              "fluid-select__hit--selected font-semibold"
-                            : "font-medium text-[var(--os-text-muted)] hover:text-[var(--os-text)]",
+                            "fluid-select__hit w-full",
+                            opt.value === value && "fluid-select__hit--selected",
                           )}
                           onClick={() => {
                             onChange(opt.value);

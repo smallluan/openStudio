@@ -27,6 +27,8 @@ export function ComposerFollowUpChip({
   return (
     <span className={cn("chat-lab__follow-up-chip", className)}>
       <Button
+                variant="text"
+                size="small"
         type="button"
         className="chat-lab__follow-up-chip-main"
         disabled={disabled}
@@ -39,6 +41,8 @@ export function ComposerFollowUpChip({
       </Button>
       {onClear ?
         <Button
+                variant="text"
+                size="small"
           type="button"
           className="chat-lab__follow-up-chip-x"
           disabled={disabled}
@@ -66,6 +70,8 @@ export function MessageFollowUpTag({ followUpRef, onNavigate, className }) {
   const preview = followUpPreviewText(followUpRef.quoteText);
   return (
     <Button
+                variant="text"
+                size="small"
       type="button"
       className={cn("chat-lab__msg-follow-up-pill", className)}
       onClick={onNavigate}

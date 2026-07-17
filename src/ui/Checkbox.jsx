@@ -9,18 +9,15 @@ export default function Checkbox({ id, checked, onCheckedChange, label, disabled
       id={id}
       type="button"
       role="checkbox"
+      variant="text"
+      size="small"
       aria-checked={checked}
       disabled={disabled}
       title={title}
       className={cn(
         toolbarTone
           ? className
-          : [
-              "inline-flex items-center gap-2 rounded-lg py-1 text-[0.8rem] font-medium text-[var(--os-text-muted)] transition-colors",
-              "hover:text-[var(--os-text)]",
-              disabled && "cursor-not-allowed opacity-50",
-              className,
-            ],
+          : ["inline-flex items-center gap-2", className],
       )}
       onClick={() => !disabled && onCheckedChange?.(!checked)}
     >

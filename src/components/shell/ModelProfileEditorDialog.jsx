@@ -41,7 +41,8 @@ export default function ModelProfileEditorDialog({
   return createPortal(
     <div className="fixed inset-0 z-[260] flex items-center justify-center p-4 sm:p-6" role="presentation">
       <Button
-        type="button"
+        tag="div"
+        variant="text"
         className="os-modal-backdrop absolute inset-0"
         aria-label={t("dialog.cancel")}
         onClick={onCancel}
@@ -59,7 +60,7 @@ export default function ModelProfileEditorDialog({
           <h2 id="model-profile-editor-title" className="min-w-0 truncate text-[0.9rem] font-semibold tracking-tight">
             {title}
           </h2>
-          <ModalCloseButton onClick={onCancel} className="size-8 rounded-[9px]" aria-label={t("dialog.cancel")} />
+          <ModalCloseButton onClick={onCancel} aria-label={t("dialog.cancel")} />
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-1 pt-0">{children}</div>
@@ -71,16 +72,13 @@ export default function ModelProfileEditorDialog({
         : null}
 
         <footer className="flex shrink-0 items-center justify-end gap-2 px-4 pb-2.5 pt-2">
-          <Button
-            type="button"
-            className="rounded-md border-none bg-transparent px-3 py-1.5 text-[0.8125rem] font-medium text-[var(--os-text-muted)] hover:text-[var(--os-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]"
-            onClick={onCancel}
-          >
+          <Button type="button" variant="text" size="small" onClick={onCancel}>
             {t("dialog.cancel")}
           </Button>
           <Button
             type="button"
-            className="btn-primary px-4 py-1.5 text-[0.8125rem] disabled:cursor-not-allowed disabled:opacity-45"
+            theme="primary"
+            size="small"
             disabled={confirmDisabled}
             onClick={onConfirm}
           >

@@ -70,6 +70,8 @@ export function ChatLabImageGrid({ images, className }) {
           <GridCell key={`${img.src}-${idx}`} img={img} idx={idx} previewGroup={previewGroup} />
         ))}
         <Button
+                variant="text"
+                size="small"
           type="button"
           className="chat-lab__md-image-grid__cell chat-lab__md-image-grid__more"
           onClick={() => setExpanded(true)}

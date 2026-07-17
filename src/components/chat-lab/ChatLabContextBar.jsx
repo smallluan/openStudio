@@ -11,7 +11,7 @@ import {
   useRole,
 } from "@floating-ui/react";
 import { ChevronDown, Folder, FolderOpen, GitBranch, Search, X } from "lucide-react";
-import { Button } from "@open-studio/udesign";
+import { Button, Input } from "@open-studio/udesign";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import SearchSparkleIcon from "../../assets/svg/SearchSparkleIcon.jsx";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
@@ -137,24 +137,31 @@ function ContextPopover({
             )}
           >
             <div className="chat-lab__context-popover-search">
-              <SearchSparkleIcon className="chat-lab__context-popover-search-icon" aria-hidden />
-              <input
-                ref={inputRef}
-                type="search"
-                className="chat-lab__context-popover-input"
-                placeholder={
-                  kind === "branch"
-                    ? t("chatLab.contextBar.branchSearchPlaceholder")
-                    : t("chatLab.contextBar.workspaceSearchPlaceholder")
-                }
-                value={query}
-                onChange={(e) => onQueryChange(e.target.value)}
-                aria-label={
-                  kind === "branch"
-                    ? t("chatLab.contextBar.branchSearchPlaceholder")
-                    : t("chatLab.contextBar.workspaceSearchPlaceholder")
-                }
-              />
+              <div className="min-w-0 flex-1">
+                <Input
+                  ref={inputRef}
+                  block
+                  borderless
+                  clearable
+                  size="small"
+                  type="search"
+                  prefixIcon={
+                    <SearchSparkleIcon className="chat-lab__context-popover-search-icon" aria-hidden />
+                  }
+                  placeholder={
+                    kind === "branch"
+                      ? t("chatLab.contextBar.branchSearchPlaceholder")
+                      : t("chatLab.contextBar.workspaceSearchPlaceholder")
+                  }
+                  value={query}
+                  onChange={(value) => onQueryChange(value)}
+                  aria-label={
+                    kind === "branch"
+                      ? t("chatLab.contextBar.branchSearchPlaceholder")
+                      : t("chatLab.contextBar.workspaceSearchPlaceholder")
+                  }
+                />
+              </div>
             </div>
 
             <div className="chat-lab__context-popover-body" role="listbox">
@@ -177,6 +184,8 @@ function ContextPopover({
                           )}
                         >
                           <Button
+                variant="text"
+                block
                             type="button"
                             className={cn(
                               "chat-lab__context-popover-item",
@@ -190,6 +199,8 @@ function ContextPopover({
                           {isSelected ? (
                             <div className="chat-lab__context-item-suffix">
                               <Button
+                variant="text"
+                size="small"
                                 type="button"
                                 className="chat-lab__context-clear-btn"
                                 aria-label={t("chatLab.contextBar.clearSelection")}
@@ -225,6 +236,8 @@ function ContextPopover({
                       {fileEntries.map((ent) => (
                         <li key={ent.path}>
                           <Button
+                variant="text"
+                block
                             type="button"
                             className="chat-lab__context-popover-item"
                             onClick={() => onPickFile(ent.path)}
@@ -248,6 +261,8 @@ function ContextPopover({
                       {branches.map((b) => (
                         <li key={b}>
                           <Button
+                variant="text"
+                block
                             type="button"
                             className={cn(
                               "chat-lab__context-popover-item",
@@ -277,7 +292,7 @@ function ContextPopover({
 
             {kind === "workspace" ? (
               <div className="chat-lab__context-popover-footer">
-                <Button type="button" className="chat-lab__context-popover-footer-btn" onClick={onOpenFolder}>
+                <Button type="button" variant="outline" size="small" block className="chat-lab__context-popover-footer-btn" onClick={onOpenFolder}>
                   <FolderOpen className="chat-lab__context-popover-item-icon" aria-hidden />
                   {t("chatLab.contextBar.openFolder")}
                 </Button>
@@ -447,6 +462,9 @@ function ChatLabContextBarInner({ workspace }) {
   return (
     <div className="chat-lab__context-bar" role="toolbar" aria-label={t("chatLab.contextBar.toolbarAria")}>
       <Button
+                variant="outline"
+                shape="round"
+                size="small"
         ref={workspaceBtnRef}
         type="button"
         className={cn(
@@ -463,6 +481,9 @@ function ChatLabContextBarInner({ workspace }) {
 
       {gitRepo && hasSelection ? (
         <Button
+                variant="outline"
+                shape="round"
+                size="small"
           ref={branchBtnRef}
           type="button"
           className={cn("chat-lab__context-trigger", panel === "branch" && "chat-lab__context-trigger--open")}

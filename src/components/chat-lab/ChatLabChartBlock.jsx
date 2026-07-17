@@ -22,6 +22,8 @@ function CodeCopyBtn({ text, t }) {
 
   return (
     <Button
+                variant="text"
+                size="small"
       type="button"
       className={cn("chat-lab__code-copy", state === "copied" && "chat-lab__code-copy--done")}
       onClick={onCopy}
@@ -73,6 +75,8 @@ function ChartDownloadBtn({ chartRef, disabled = false, t }) {
 
   return (
     <Button
+                variant="text"
+                size="small"
       type="button"
       className="chat-lab__code-copy"
       onClick={() => chartRef.current?.download?.()}

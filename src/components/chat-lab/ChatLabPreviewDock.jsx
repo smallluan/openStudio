@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@open-studio/udesign";
+import { Button, Input } from "@open-studio/udesign";
 import { Code, ExternalLink, Monitor, RefreshCw, Smartphone, X } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
 import { cn } from "../../ui/cn.js";
@@ -361,16 +361,19 @@ export default function ChatLabPreviewDock({ extension = null }) {
         {showAutomationDebugInput ? (
           <div className="chat-lab-preview-dock__head-main min-w-0 flex flex-1 flex-col gap-1">
             <form className="chat-lab-preview-dock__url-bar" onSubmit={handleUrlSubmit}>
-              <input
+              <Input
                 ref={urlInputRef}
+                block
+                borderless
+                clearable
+                size="small"
                 type="text"
-                className="chat-lab-preview-dock__url-input"
                 value={urlInputValue}
-                onChange={(e) => setUrlInputValue(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleUrlSubmit(e); }}
+                onChange={(value) => setUrlInputValue(value)}
+                onEnter={() => handleUrlSubmit()}
                 placeholder="https://example.com"
                 spellCheck={false}
-                autoComplete="off"
+                autocomplete="off"
                 aria-label={t("chatLab.previewUrlBar")}
               />
             </form>
@@ -390,16 +393,19 @@ export default function ChatLabPreviewDock({ extension = null }) {
           </div>
         ) : (
           <form className="chat-lab-preview-dock__url-bar flex-1" onSubmit={handleUrlSubmit}>
-            <input
+            <Input
               ref={urlInputRef}
+              block
+              borderless
+              clearable
+              size="small"
               type="text"
-              className="chat-lab-preview-dock__url-input"
               value={urlInputValue}
-              onChange={(e) => setUrlInputValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleUrlSubmit(e); }}
+              onChange={(value) => setUrlInputValue(value)}
+              onEnter={() => handleUrlSubmit()}
               placeholder="https://example.com"
               spellCheck={false}
-              autoComplete="off"
+              autocomplete="off"
               aria-label={t("chatLab.previewUrlBar")}
             />
           </form>
@@ -415,6 +421,9 @@ export default function ChatLabPreviewDock({ extension = null }) {
           >
             <Button
               type="button"
+              variant="text"
+              shape="square"
+              size="small"
               className={cn(
                 "chat-lab-preview-dock__icon-btn chat-lab-preview-dock__device-btn",
                 api?.deviceMode === "desktop" && "chat-lab-preview-dock__device-btn--active",
@@ -428,6 +437,9 @@ export default function ChatLabPreviewDock({ extension = null }) {
             </Button>
             <Button
               type="button"
+              variant="text"
+              shape="square"
+              size="small"
               className={cn(
                 "chat-lab-preview-dock__icon-btn chat-lab-preview-dock__device-btn",
                 api?.deviceMode === "mobile" && "chat-lab-preview-dock__device-btn--active",
@@ -444,6 +456,9 @@ export default function ChatLabPreviewDock({ extension = null }) {
         {viewSession?.kind === "iframe" ? (
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className="chat-lab-preview-dock__icon-btn"
             onClick={onReloadPreview}
             title={t("chatLab.previewReload")}
@@ -455,6 +470,9 @@ export default function ChatLabPreviewDock({ extension = null }) {
         {viewSession?.kind === "iframe" && viewSession.useWebview ? (
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className="chat-lab-preview-dock__icon-btn"
             onClick={() => api?.openWebviewDevTools?.()}
             title={t("chatLab.previewOpenDevTools")}
@@ -466,6 +484,9 @@ export default function ChatLabPreviewDock({ extension = null }) {
         {viewSession?.kind === "iframe" && viewSession.externalUrl && api?.linkOpenMode === "sidebar" ? (
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className="chat-lab-preview-dock__icon-btn"
             onClick={onOpenExternal}
             title={t("chatLab.previewOpenExternal")}
@@ -477,6 +498,9 @@ export default function ChatLabPreviewDock({ extension = null }) {
         {(viewExtension || viewSession) ? (
           <Button
             type="button"
+            variant="text"
+            shape="square"
+            size="small"
             className="chat-lab-preview-dock__icon-btn"
             onClick={api.close}
             title={t("chatLab.previewClose")}
@@ -507,7 +531,8 @@ export default function ChatLabPreviewDock({ extension = null }) {
                   role="tab"
                   aria-selected={active}
                   aria-label={tab.label}
-                  className="chat-lab-preview-dock__tab-label flex-1 min-w-0 truncate text-left px-2.5 py-1.5 text-[0.73rem]"
+                  variant="text"
+                  className="chat-lab-preview-dock__tab-label flex-1 min-w-0 truncate text-left"
                   onClick={() => api?.activatePreviewTab?.(tab.id)}
                   title={tab.src || tab.label}
                 >
@@ -515,7 +540,11 @@ export default function ChatLabPreviewDock({ extension = null }) {
                 </Button>
                 <Button
                   type="button"
-                  className="chat-lab-preview-dock__tab-close flex shrink-0 items-center justify-center"
+                  role="tab"
+                  variant="text"
+                  shape="square"
+                  size="small"
+                  className="chat-lab-preview-dock__tab-close shrink-0"
                   onClick={(e) => {
                     e.stopPropagation();
                     api?.closePreviewTab?.(tab.id);
@@ -566,6 +595,8 @@ export default function ChatLabPreviewDock({ extension = null }) {
                       <li key={file.path}>
                         <Button
                           type="button"
+                          variant="text"
+                          block
                           className={cn(
                             "chat-lab-preview-dock__tree-item",
                             active && "chat-lab-preview-dock__tree-item--active",

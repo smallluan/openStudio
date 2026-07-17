@@ -174,6 +174,8 @@ function CodeCopyBtn({ text, t }) {
   return (
     <Button
       type="button"
+      variant="text"
+      size="small"
       className={cn(
         "chat-lab__code-copy",
         state === "copied" && "chat-lab__code-copy--done",
@@ -219,6 +221,8 @@ function FencePreviewBtn({ onClick, t }) {
   return (
     <Button
       type="button"
+      variant="text"
+      size="small"
       className="chat-lab__code-preview"
       onClick={onClick}
       aria-label={t("chatLab.previewOpen")}
@@ -749,7 +753,7 @@ function ChatLabMarkdownLocalPathButton({ children, className, node, type, onCli
 
   if (!isLocalPath) {
     return (
-      <Button type={type ?? "button"} className={className} onClick={onClick} {...rest}>
+      <Button type={type ?? "button"} variant="text" className={className} onClick={onClick} {...rest}>
         {children}
       </Button>
     );
@@ -767,6 +771,8 @@ function ChatLabMarkdownLocalPathButton({ children, className, node, type, onCli
   return (
     <Button
       type="button"
+      variant="text"
+      size="small"
       className={cn("chat-lab__md-local-path", className)}
       onClick={handleClick}
       title={localPath}

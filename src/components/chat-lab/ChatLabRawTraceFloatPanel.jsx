@@ -224,6 +224,8 @@ export default function ChatLabRawTraceFloatPanel({ rounds, onClear }) {
     >
       {!open ? (
         <Button
+                variant="text"
+                size="small"
           type="button"
           className={cn("chat-lab-raw-trace-float__launcher", dragging && "chat-lab-raw-trace-float__launcher--dragging")}
           onPointerDown={startDrag}
@@ -243,6 +245,8 @@ export default function ChatLabRawTraceFloatPanel({ rounds, onClear }) {
             <strong className="chat-lab-raw-trace-float__title">Agent Raw Trace</strong>
             <div className="chat-lab-raw-trace-float__head-actions">
               <Button
+                variant="text"
+                size="small"
                 type="button"
                 className="chat-lab-raw-trace-float__head-btn"
                 onClick={onClear}
@@ -252,6 +256,8 @@ export default function ChatLabRawTraceFloatPanel({ rounds, onClear }) {
                 Clear
               </Button>
               <Button
+                variant="text"
+                size="small"
                 type="button"
                 className="chat-lab-raw-trace-float__head-btn"
                 onClick={() => setOpen(false)}
@@ -300,6 +306,8 @@ export default function ChatLabRawTraceFloatPanel({ rounds, onClear }) {
                 <div className="chat-lab-raw-trace-float__event-list">
                   {selectedRound.events.map((evt, idx) => (
                     <Button
+                variant="text"
+                size="small"
                       key={evt.id}
                       type="button"
                       className={cn(

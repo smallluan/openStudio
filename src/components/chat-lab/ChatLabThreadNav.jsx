@@ -125,6 +125,8 @@ export default function ChatLabThreadNav({
           <div className="chat-lab__scroll-jump" aria-hidden={false}>
             {showScrollTop ? (
               <Button
+                variant="text"
+                size="small"
                 type="button"
                 className="chat-lab__scroll-jump-btn"
                 aria-label={t("chatLab.scrollToTop")}
@@ -136,6 +138,8 @@ export default function ChatLabThreadNav({
             ) : null}
             {showScrollBottom ? (
               <Button
+                variant="text"
+                size="small"
                 type="button"
                 className="chat-lab__scroll-jump-btn"
                 aria-label={t("chatLab.scrollToBottom")}
