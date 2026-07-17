@@ -1,22 +1,10 @@
-import {
-  FloatingFocusManager,
-  FloatingPortal,
-  autoUpdate,
-  flip,
-  offset,
-  shift,
-  useDismiss,
-  useFloating,
-  useInteractions,
-  useRole,
-} from "@floating-ui/react";
 import { ChevronDown, X } from "lucide-react";
+import { Popup } from "tdesign-react";
 import { Button } from "@open-studio/udesign";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
-import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
+import { OS_POPUP_INNER_CLASS, OS_POPUP_OVERLAY_CLASS, osPopupPopperOptions } from "../../ui/osPopupShared.js";
 import { cn } from "../../ui/cn.js";
-import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 
 /** @param {{ text: string; attachments?: unknown[]; fileRefs?: unknown[] }} q @param {(key: string, opts?: object) => string} t */
 function summarizeQueuedMessage(q, t) {
@@ -40,28 +28,7 @@ function summarizeQueuedMessage(q, t) {
  */
 export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, onCancel }) {
   const { t } = useI18n();
-  const triggerRef = useRef(/** @type {HTMLButtonElement | null} */ (null));
   const [open, setOpen] = useState(false);
-  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
-
-  const { refs, floatingStyles, context } = useFloating({
-    open: present,
-    onOpenChange: setOpen,
-    placement: "top-end",
-    strategy: "fixed",
-    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  });
-
-  useLayoutEffect(() => {
-    if (present && triggerRef.current) {
-      refs.setReference(triggerRef.current);
-    }
-  }, [present, refs]);
-
-  const dismiss = useDismiss(context);
-  const role = useRole(context, { role: "dialog" });
-  const { getFloatingProps } = useInteractions([dismiss, role]);
 
   const handleCancel = useCallback(
     (id, e) => {
@@ -78,6 +45,44 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
   const singleSummary = single ? summarizeQueuedMessage(single, t) : "";
   const multiLabel = t("chatLab.queuedMessagesCount", { count: messages.length });
 
+  const popupContent = (
+    <div
+      className={cn(
+        "chat-lab__context-popover chat-lab__queued-popover",
+        "flex w-full flex-col overflow-hidden rounded-[14px] border",
+        "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
+        "shadow-[var(--os-shadow-soft)]",
+      )}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <p className="chat-lab__context-popover-section">{t("chatLab.queuedMessagesLabel")}</p>
+      <ul className="chat-lab__context-popover-list chat-lab__queued-popover-list" role="listbox">
+        {messages.map((q, idx) => {
+          const summary = summarizeQueuedMessage(q, t);
+          return (
+            <li key={q.id} className="chat-lab__queued-popover-row">
+              <span className="chat-lab__queued-popover-index">#{idx + 1}</span>
+              <span className="chat-lab__queued-popover-summary" title={q.text || summary}>
+                {summary}
+              </span>
+              <Button
+                variant="text"
+                size="small"
+                type="button"
+                className="chat-lab__queued-popover-cancel"
+                onClick={(e) => handleCancel(q.id, e)}
+                title={t("chatLab.cancelQueuedMessage")}
+                aria-label={t("chatLab.cancelQueuedMessage")}
+              >
+                <X aria-hidden />
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+
   return (
     <div className="chat-lab__queued-bar" aria-live="polite">
       {single ? (
@@ -91,8 +96,8 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
             #1 {singleSummary}
           </span>
           <Button
-                variant="text"
-                size="small"
+            variant="text"
+            size="small"
             type="button"
             className="chat-lab__queued-trigger-cancel"
             onClick={(e) => handleCancel(single.id, e)}
@@ -103,15 +108,25 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
           </Button>
         </div>
       ) : (
-        <>
+        <Popup
+          visible={open}
+          trigger="click"
+          placement="top-end"
+          attach="body"
+          zIndex={400}
+          destroyOnClose={false}
+          overlayClassName={OS_POPUP_OVERLAY_CLASS}
+          overlayInnerClassName={OS_POPUP_INNER_CLASS}
+          popperOptions={osPopupPopperOptions(8, 8)}
+          content={popupContent}
+          onVisibleChange={setOpen}
+        >
           <Button
-                variant="outline"
-                shape="round"
-                size="small"
-            ref={triggerRef}
+            variant="outline"
+            shape="round"
+            size="small"
             type="button"
             className={cn("chat-lab__context-trigger chat-lab__queued-trigger", open && "chat-lab__context-trigger--open")}
-            onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-haspopup="dialog"
             aria-label={t("chatLab.queuedMessagesLabel")}
@@ -119,61 +134,7 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
             <span className="chat-lab__context-trigger-label">{multiLabel}</span>
             <ChevronDown className="chat-lab__context-trigger-chevron" aria-hidden />
           </Button>
-
-          {present ? (
-            <FloatingPortal>
-              <FloatingFocusManager context={context} modal={false} initialFocus={-1}>
-                <div
-                  ref={refs.setFloating}
-                  style={floatingStyles}
-                  className="outline-none z-[400]"
-                  onMouseDown={(e) => e.preventDefault()}
-                  {...getFloatingProps()}
-                >
-                  <FluidPopupAnimatedSurface
-                    key={surfaceKey}
-                    leaving={leaving}
-                    finishLeave={finishLeave}
-                    placement={context.placement}
-                    morphBr="14px"
-                    className={cn(
-                      "chat-lab__context-popover chat-lab__queued-popover",
-                      "flex w-full flex-col overflow-hidden rounded-[14px] border",
-                      "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
-                      "shadow-[var(--os-shadow-soft)]",
-                    )}
-                  >
-                    <p className="chat-lab__context-popover-section">{t("chatLab.queuedMessagesLabel")}</p>
-                    <ul className="chat-lab__context-popover-list chat-lab__queued-popover-list" role="listbox">
-                      {messages.map((q, idx) => {
-                        const summary = summarizeQueuedMessage(q, t);
-                        return (
-                          <li key={q.id} className="chat-lab__queued-popover-row">
-                            <span className="chat-lab__queued-popover-index">#{idx + 1}</span>
-                            <span className="chat-lab__queued-popover-summary" title={q.text || summary}>
-                              {summary}
-                            </span>
-                            <Button
-                variant="text"
-                size="small"
-                              type="button"
-                              className="chat-lab__queued-popover-cancel"
-                              onClick={(e) => handleCancel(q.id, e)}
-                              title={t("chatLab.cancelQueuedMessage")}
-                              aria-label={t("chatLab.cancelQueuedMessage")}
-                            >
-                              <X aria-hidden />
-                            </Button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </FluidPopupAnimatedSurface>
-                </div>
-              </FloatingFocusManager>
-            </FloatingPortal>
-          ) : null}
-        </>
+        </Popup>
       )}
     </div>
   );

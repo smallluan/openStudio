@@ -1,21 +1,8 @@
-import {
-  FloatingFocusManager,
-  FloatingPortal,
-  autoUpdate,
-  flip,
-  offset,
-  shift,
-  useClick,
-  useDismiss,
-  useFloating,
-  useInteractions,
-  useRole,
-} from "@floating-ui/react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Popup } from "tdesign-react";
 import { Button } from "@open-studio/udesign";
-import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
+import { OS_POPUP_INNER_CLASS, OS_POPUP_OVERLAY_CLASS, osPopupPopperOptions } from "../../ui/osPopupShared.js";
 import { cn } from "../../ui/cn.js";
-import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 import ChatLabOrchestrationPlanStrip from "./ChatLabOrchestrationPlanStrip.jsx";
 
 function PlanChevron({ open }) {
@@ -82,7 +69,6 @@ export default function ChatLabOrchestrationPlanPopover({
   const autoId = useId();
   const panelId = `${autoId}-orch-plan`;
   const [open, setOpen] = useState(false);
-  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
   const approvalAutoOpenRef = useRef(/** @type {string | null} */ (null));
 
   const awaiting = run.status === "awaiting_approval";
@@ -130,29 +116,55 @@ export default function ChatLabOrchestrationPlanPopover({
     [onRevise],
   );
 
-  const { refs, floatingStyles, context } = useFloating({
-    open: present,
-    onOpenChange: setOpen,
-    placement: "top-start",
-    strategy: "fixed",
-    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  });
-
-  const click = useClick(context);
-  const dismiss = useDismiss(context);
-  const role = useRole(context, { role: "dialog" });
-  const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role]);
-
   if (!orchVisible) return null;
 
+  const popupContent = (
+    <div
+      className={cn(
+        "chat-lab__orch-plan-popover flex w-full flex-col overflow-hidden rounded-[14px] border",
+        "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
+        "shadow-[var(--os-shadow-soft)]",
+      )}
+    >
+      <div id={panelId} className="chat-lab__orch-plan-popover-inner">
+        {plan && (total > 0 || run.status === "awaiting_approval") ? (
+          <ChatLabOrchestrationPlanStrip
+            plan={plan}
+            run={run}
+            agents={agents}
+            onApprove={handleApprove}
+            onReject={handleReject}
+            onRevise={handleRevise}
+            onResume={onResume}
+            disabled={actionsDisabled}
+            t={t}
+            variant="popup"
+          />
+        ) : (
+          <OrchestrationPlanStatusPanel run={run} t={t} />
+        )}
+      </div>
+    </div>
+  );
+
   return (
-    <>
+    <Popup
+      visible={open}
+      trigger="click"
+      placement="top-start"
+      attach="body"
+      zIndex={400}
+      destroyOnClose={false}
+      overlayClassName={OS_POPUP_OVERLAY_CLASS}
+      overlayInnerClassName={cn(OS_POPUP_INNER_CLASS, "w-[min(100vw-2rem,380px)]")}
+      popperOptions={osPopupPopperOptions(8, 8)}
+      content={popupContent}
+      onVisibleChange={setOpen}
+    >
       <Button
-                variant="outline"
-                shape="round"
-                size="small"
-        ref={refs.setReference}
+        variant="outline"
+        shape="round"
+        size="small"
         type="button"
         className={cn(
           "chat-lab__pill-btn chat-lab__orch-plan-pill",
@@ -162,9 +174,8 @@ export default function ChatLabOrchestrationPlanPopover({
         title={awaiting ? t("orchestration.planProgress.awaitingHint") : t("orchestration.planProgress.hint")}
         aria-label={awaiting ? t("orchestration.planProgress.awaitingHint") : t("orchestration.planProgress.hint")}
         aria-haspopup="dialog"
-        aria-expanded={present}
-        aria-controls={present ? panelId : undefined}
-        {...getReferenceProps()}
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
       >
         {pillBusy ? (
           <span
@@ -178,53 +189,8 @@ export default function ChatLabOrchestrationPlanPopover({
           <span className="chat-lab__orch-plan-pill-dot" aria-hidden />
         )}
         <span className="chat-lab__orch-plan-pill-label">{progressLabel}</span>
-        <PlanChevron open={present} />
+        <PlanChevron open={open} />
       </Button>
-
-      {present ? (
-        <FloatingPortal>
-          <FloatingFocusManager context={context} modal={false} initialFocus={-1} returnFocus>
-            <div
-              ref={refs.setFloating}
-              style={floatingStyles}
-              className="outline-none z-[400] w-[min(100vw-2rem,380px)] max-w-[min(100vw-2rem,380px)]"
-              {...getFloatingProps()}
-            >
-              <FluidPopupAnimatedSurface
-                key={surfaceKey}
-                leaving={leaving}
-                finishLeave={finishLeave}
-                placement={context.placement}
-                morphBr="14px"
-                className={cn(
-                  "chat-lab__orch-plan-popover flex w-full flex-col overflow-hidden rounded-[14px] border",
-                  "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
-                  "shadow-[var(--os-shadow-soft)]",
-                )}
-              >
-                <div id={panelId} className="chat-lab__orch-plan-popover-inner">
-                  {plan && (total > 0 || run.status === "awaiting_approval") ? (
-                    <ChatLabOrchestrationPlanStrip
-                      plan={plan}
-                      run={run}
-                      agents={agents}
-                      onApprove={handleApprove}
-                      onReject={handleReject}
-                      onRevise={handleRevise}
-                      onResume={onResume}
-                      disabled={actionsDisabled}
-                      t={t}
-                      variant="popup"
-                    />
-                  ) : (
-                    <OrchestrationPlanStatusPanel run={run} t={t} />
-                  )}
-                </div>
-              </FluidPopupAnimatedSurface>
-            </div>
-          </FloatingFocusManager>
-        </FloatingPortal>
-      ) : null}
-    </>
+    </Popup>
   );
 }

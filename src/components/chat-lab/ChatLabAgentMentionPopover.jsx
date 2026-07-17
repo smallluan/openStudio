@@ -1,22 +1,17 @@
-import {
-  FloatingPortal,
-  autoUpdate,
-  flip,
-  offset,
-  shift,
-  useDismiss,
-  useFloating,
-  useInteractions,
-  useRole,
-} from "@floating-ui/react";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
+import { Popup } from "tdesign-react";
 import { Button } from "@open-studio/udesign";
 import { agentAvatarGlyph, agentDisplayLabel } from "../../studio/agents.js";
 import Avatar from "../../ui/Avatar.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
-import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
+import {
+  OS_POPUP_ANCHOR_CLASS,
+  OS_POPUP_INNER_CLASS,
+  OS_POPUP_OVERLAY_CLASS,
+  osPopupPopperOptions,
+} from "../../ui/osPopupShared.js";
+import { useVirtualPopupAnchor } from "../../ui/useVirtualPopupAnchor.js";
 import { cn } from "../../ui/cn.js";
-import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 
 /**
  * @param {import("../../studio/agents.js").LobsterAgent} agent
@@ -61,6 +56,7 @@ export default function ChatLabAgentMentionPopover({
   const autoId = useId();
   const listId = `${autoId}-mention-agents`;
   const optionRefs = useRef(/** @type {Array<HTMLButtonElement | null>} */ ([]));
+  const popupRef = useRef(/** @type {import("tdesign-react").PopupInstanceFunctions | null} */ (null));
   const mainFallback = t("agents.defaultName");
 
   const filtered = useMemo(() => {
@@ -89,125 +85,104 @@ export default function ChatLabAgentMentionPopover({
     optionRefs.current[highlightIndex]?.scrollIntoView({ block: "nearest" });
   }, [highlightIndex, optionCount]);
 
-  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
+  const getRect = () => textareaRef.current?.getBoundingClientRect() ?? null;
+  const { anchorRef } = useVirtualPopupAnchor({ open, getRect, popupRef });
 
-  const { refs, floatingStyles, context } = useFloating({
-    open: present,
-    onOpenChange: (v) => {
-      if (!v) onClose();
-    },
-    placement: "top-start",
-    strategy: "fixed",
-    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  });
-
-  useLayoutEffect(() => {
-    const el = textareaRef.current;
-    if (present && el) refs.setReference(el);
-  }, [present, refs.setReference, textareaRef]);
-
-  const dismiss = useDismiss(context);
-  const role = useRole(context, { role: "listbox" });
-  const { getFloatingProps } = useInteractions([dismiss, role]);
-
-  if (!present) return null;
+  const popupContent = (
+    <div
+      className={cn(
+        "chat-lab__mention-popover-surface flex w-full flex-col overflow-hidden rounded-[14px] border",
+        "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
+        "shadow-[var(--os-shadow-soft)]",
+      )}
+      onMouseDown={(e) => e.preventDefault()}
+      data-mention-popover=""
+    >
+      <div className="border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-2.5 py-1.5 text-[0.68rem] text-[var(--os-text-faint)]">
+        {t("chatLab.mentionPickerAria")}
+      </div>
+      <div id={listId} role="listbox" aria-label={t("chatLab.mentionPickerAria")} className="max-h-[min(44vh,240px)] overflow-y-auto py-1">
+        {optionCount === 0 ? (
+          <p className="chat-lab__mention-empty">{t("chatLab.mentionEmpty")}</p>
+        ) : (
+          <>
+            {everyoneVisible ? (
+              <Button
+                variant="text"
+                block
+                ref={(node) => {
+                  optionRefs.current[0] = node;
+                }}
+                type="button"
+                role="option"
+                aria-selected={highlightIndex === 0}
+                className={cn(
+                  "chat-lab__mention-item chat-lab__mention-item--everyone w-full",
+                  highlightIndex === 0 && "chat-lab__mention-item--active",
+                )}
+                onMouseEnter={() => onHighlightIndexChange?.(0)}
+                onClick={() => onPickEveryone?.()}
+              >
+                <span className="chat-lab__participant-avatar" aria-hidden>
+                  👥
+                </span>
+                <span className="chat-lab__mention-item-name min-w-0 flex-1 truncate">@{everyoneLabel}</span>
+              </Button>
+            ) : null}
+            {filtered.map((a, index) => {
+              const optionIndex = index + (everyoneVisible ? 1 : 0);
+              return (
+                <Button
+                  variant="text"
+                  block
+                  key={a.id}
+                  ref={(node) => {
+                    optionRefs.current[optionIndex] = node;
+                  }}
+                  type="button"
+                  role="option"
+                  aria-selected={optionIndex === highlightIndex}
+                  className={cn(
+                    "chat-lab__mention-item w-full",
+                    optionIndex === highlightIndex && "chat-lab__mention-item--active",
+                  )}
+                  onMouseEnter={() => onHighlightIndexChange?.(optionIndex)}
+                  onClick={() => onPick(a)}
+                >
+                  <Avatar src={agentAvatarGlyph(a)} name={agentDisplayLabel(a)} size="xs" shape="rounded" />
+                  <span className="chat-lab__mention-item-name min-w-0 flex-1 truncate">
+                    {mentionLabel(a, mainFallback)}
+                  </span>
+                  {a.isMain ? (
+                    <span className="chat-lab__mention-item-badge shrink-0">{t("agents.mainBadge")}</span>
+                  ) : null}
+                </Button>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <FloatingPortal>
-        <div
-          ref={refs.setFloating}
-          style={floatingStyles}
-          className="outline-none z-[400] w-[min(100vw-2rem,300px)] max-w-[min(100vw-2rem,300px)]"
-          onMouseDown={(e) => e.preventDefault()}
-          data-mention-popover=""
-          {...getFloatingProps()}
-        >
-        <FluidPopupAnimatedSurface
-          key={surfaceKey}
-          leaving={leaving}
-          finishLeave={finishLeave}
-          placement={context.placement}
-          morphBr="14px"
-          className={cn(
-            "chat-lab__mention-popover-surface flex w-full flex-col overflow-hidden rounded-[14px] border",
-            "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
-            "shadow-[var(--os-shadow-soft)]",
-          )}
-        >
-          <div className="border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-2.5 py-1.5 text-[0.68rem] text-[var(--os-text-faint)]">
-            {t("chatLab.mentionPickerAria")}
-          </div>
-          <div id={listId} role="listbox" aria-label={t("chatLab.mentionPickerAria")} className="max-h-[min(44vh,240px)] overflow-y-auto py-1">
-            {optionCount === 0 ? (
-              <p className="chat-lab__mention-empty">{t("chatLab.mentionEmpty")}</p>
-            ) : (
-              <>
-                {everyoneVisible ? (
-                  <Button
-                variant="text"
-                block
-                    ref={(node) => {
-                      optionRefs.current[0] = node;
-                    }}
-                    type="button"
-                    role="option"
-                    aria-selected={highlightIndex === 0}
-                    className={cn(
-                      "chat-lab__mention-item chat-lab__mention-item--everyone w-full",
-                      highlightIndex === 0 && "chat-lab__mention-item--active",
-                    )}
-                    onMouseEnter={() => onHighlightIndexChange?.(0)}
-                    onClick={() => onPickEveryone?.()}
-                  >
-                    <span className="chat-lab__participant-avatar" aria-hidden>
-                      👥
-                    </span>
-                    <span className="chat-lab__mention-item-name min-w-0 flex-1 truncate">
-                      @{everyoneLabel}
-                    </span>
-                  </Button>
-                ) : null}
-                {filtered.map((a, index) => {
-                  const optionIndex = index + (everyoneVisible ? 1 : 0);
-                  return (
-                    <Button
-                variant="text"
-                block
-                      key={a.id}
-                      ref={(node) => {
-                        optionRefs.current[optionIndex] = node;
-                      }}
-                      type="button"
-                      role="option"
-                      aria-selected={optionIndex === highlightIndex}
-                      className={cn(
-                        "chat-lab__mention-item w-full",
-                        optionIndex === highlightIndex && "chat-lab__mention-item--active",
-                      )}
-                      onMouseEnter={() => onHighlightIndexChange?.(optionIndex)}
-                      onClick={() => onPick(a)}
-                    >
-                      <Avatar
-                        src={agentAvatarGlyph(a)}
-                        name={agentDisplayLabel(a)}
-                        size="xs"
-                        shape="rounded"
-                      />
-                      <span className="chat-lab__mention-item-name min-w-0 flex-1 truncate">
-                        {mentionLabel(a, mainFallback)}
-                      </span>
-                      {a.isMain ? (
-                        <span className="chat-lab__mention-item-badge shrink-0">{t("agents.mainBadge")}</span>
-                      ) : null}
-                    </Button>
-                  );
-                })}
-              </>
-            )}
-          </div>
-        </FluidPopupAnimatedSurface>
-      </div>
-    </FloatingPortal>
+    <Popup
+      ref={popupRef}
+      visible={open}
+      attach="body"
+      placement="top-start"
+      trigger="click"
+      zIndex={400}
+      destroyOnClose={false}
+      overlayClassName={OS_POPUP_OVERLAY_CLASS}
+      overlayInnerClassName={cn(OS_POPUP_INNER_CLASS, "w-[min(100vw-2rem,300px)]")}
+      popperOptions={osPopupPopperOptions(8, 8)}
+      content={popupContent}
+      onVisibleChange={(visible) => {
+        if (!visible) onClose();
+      }}
+    >
+      <span ref={anchorRef} className={OS_POPUP_ANCHOR_CLASS} aria-hidden />
+    </Popup>
   );
 }

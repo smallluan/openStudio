@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@open-studio/udesign";
-import { Camera, Plus, Trash2, User, X } from "lucide-react";
+import { Avatar as TAvatar } from "tdesign-react";
+import { Camera, Plus, User, X } from "lucide-react";
 import { cn } from "./cn.js";
 
 /** @typedef {"xs" | "sm" | "md" | "lg" | "xl" | "2xl" | "3xl"} AvatarSize */
@@ -90,6 +91,12 @@ const DEFAULT_COLORS = [
   "bg-cyan-200",
   "bg-emerald-200",
 ];
+
+const TDESIGN_SHAPE_MAP = /** @type {const} */ ({
+  circle: "circle",
+  rounded: "round",
+  square: "round",
+});
 
 // ============================================================================
 // Utility Functions
@@ -428,19 +435,16 @@ export default function Avatar({
 
   // Generate initials and color for text avatar
   const initials = useMemo(() => getInitials(name || ""), [name]);
-  const backgroundColor = useMemo(() => getColorFromString(name || ""), [name]);
 
   // Get size config
   const sizeConfig = SIZE_MAP[size];
   const containerSize = sizeConfig.container;
-  const textSize = sizeConfig.text;
   const iconSize = sizeConfig.icon;
   const statusDotSize = sizeConfig.status;
 
-  // Determine what to render
-  const hasImage = src && status !== "error";
-  const showTextAvatar = !hasImage && initials;
-  const showFallback = !hasImage && !initials;
+  // Determine what to render (prefer native tdesign avatar behavior)
+  const hasImage = Boolean(src);
+  const showTextAvatar = !hasImage && Boolean(initials);
 
   const clickable = Boolean(onClick);
   const ContainerTag = clickable ? "button" : "div";
@@ -461,52 +465,31 @@ export default function Avatar({
       onMouseLeave={editable ? () => setIsHovering(false) : undefined}
       aria-label={alt || name || "Avatar"}
     >
-      {/* Image Avatar */}
-      {hasImage && (
-        <div className={cn("absolute inset-0 overflow-hidden", SHAPE_MAP[shape])}>
-          <img
-            src={src}
-            alt={alt || name || "Avatar"}
-            width={containerSize}
-            height={containerSize}
-            loading={loading}
-            decoding="async"
-            className={cn(
-              "h-full w-full object-cover",
-              status !== "loaded" && "invisible",
-              imgClassName,
-            )}
-            onLoad={handleLoad}
-            onError={handleError}
-          />
-        </div>
-      )}
+      <TAvatar
+        image={hasImage ? src : undefined}
+        shape={TDESIGN_SHAPE_MAP[shape]}
+        size={`${containerSize}px`}
+        hideOnLoadFailed={false}
+        alt={alt || name || "Avatar"}
+        content={showTextAvatar ? initials : undefined}
+        icon={!showTextAvatar ? (fallback ?? <User size={iconSize} />) : undefined}
+        style={
+          shape === "square"
+            ? { borderRadius: 0, overflow: "hidden" }
+            : { overflow: "hidden" }
+        }
+        imageProps={{
+          loading,
+          decoding: "async",
+          className: cn(imgClassName),
+          onLoad: handleLoad,
+          onError: handleError,
+        }}
+      />
 
-      {/* Loading Spinner */}
       {(status === "loading" || uploading) && (
         <div className={cn("absolute inset-0 flex items-center justify-center bg-[var(--os-bg-subtle)]", SHAPE_MAP[shape])}>
           <div className="os-image__spinner" />
-        </div>
-      )}
-
-      {/* Text Avatar */}
-      {showTextAvatar && (
-        <div
-          className={cn("absolute inset-0 flex items-center justify-center font-semibold text-gray-700 overflow-hidden", SHAPE_MAP[shape], backgroundColor)}
-          style={{ fontSize: textSize }}
-          aria-hidden
-        >
-          {initials}
-        </div>
-      )}
-
-      {/* Fallback Icon */}
-      {showFallback && (
-        <div
-          className={cn("absolute inset-0 flex items-center justify-center bg-[var(--os-bg-subtle)] text-[var(--os-text-muted)] overflow-hidden", SHAPE_MAP[shape])}
-          aria-hidden
-        >
-          {fallback ?? <User size={iconSize} />}
         </div>
       )}
 

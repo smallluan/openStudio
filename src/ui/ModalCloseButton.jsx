@@ -1,6 +1,8 @@
+import { useContext } from "react";
 import { useI18n } from "../context/I18nContext.jsx";
 import { Button } from "@open-studio/udesign";
 import { cn } from "./cn.js";
+import { ModalCloseContext } from "./Modal.jsx";
 
 function CloseGlyph({ className }) {
   return (
@@ -17,7 +19,9 @@ function CloseGlyph({ className }) {
 
 export default function ModalCloseButton({ onClick, "aria-label": ariaLabel, className }) {
   const { t } = useI18n();
+  const requestClose = useContext(ModalCloseContext);
   const label = ariaLabel ?? t("modalClose.close");
+  const handleClick = requestClose ?? onClick;
   return (
     <Button
       type="button"
@@ -25,7 +29,7 @@ export default function ModalCloseButton({ onClick, "aria-label": ariaLabel, cla
       shape="square"
       size="small"
       aria-label={label}
-      onClick={onClick}
+      onClick={handleClick}
       className={cn("os-modal-close shrink-0", className)}
     >
       <CloseGlyph />

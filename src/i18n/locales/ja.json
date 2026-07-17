@@ -53,6 +53,8 @@
     "chatHistoryTimeDays": "{{n}} 日前",
     "lobster": "エージェント",
     "skills": "スキル",
+    "automation": "自動化",
+    "webExplore": "ウェブ探索",
     "settings": "設定",
     "profile": "アカウント",
     "help": "ヘルプ",
@@ -217,6 +219,12 @@
     "generating": "チャートを生成中…",
     "updating": "チャートを更新中…",
     "saveImage": "画像として保存"
+  },
+  "automationPage": {
+    "placeholder": "スケジュールタスクと自動化 — 近日公開。"
+  },
+  "webExplorePage": {
+    "placeholder": "ウェブ探索 — 近日公開。"
   },
   "lobsterPage": {
     "title": "エージェント管理",
@@ -408,6 +416,16 @@
     "thinking": "思考",
     "thinkingHint": "一部のゲートウェイは reasoning_content などをストリームします",
     "streaming": "生成中…",
+    "streamingWriting": "返信を執筆中…",
+    "streamingThinking": "思考中…",
+    "streamingSearching": "検索中…",
+    "streamingRunningCommand": "コマンドを実行中…",
+    "streamingReadingFile": "ファイルを読み込み中…",
+    "streamingEditingFile": "ファイルを編集中…",
+    "streamingPreparing": "準備中…",
+    "streamingWorking": "処理中…",
+    "streamingOrchestrating": "タスクを調整中…",
+    "streamingFetching": "ページを取得中…",
     "emptyAssistantReply": "このターンではモデルから本文が返ってきませんでした（推論チャネルのみ、またはゲートウェイがテキストデルタを送らなかった可能性があります）。",
     "unknownError": "不明なエラー",
     "gatewayLine": "ゲートウェイ: {{url}}{{tokenBadge}} · セッション {{sessionKey}}",

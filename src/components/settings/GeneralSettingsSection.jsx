@@ -8,25 +8,18 @@ import {
   readLinkOpenModeLocal,
   writeLinkOpenModeLocal,
 } from "../../chat/chatLabLinkOpenPreference.js";
-import { Switch } from "@open-studio/udesign";
-import Select from "../../ui/Select.jsx";
-import { cn } from "../../ui/cn.js";
+import { Select as TSelect, Switch, Typography } from "tdesign-react";
+
+const SETTINGS_SELECT_POPUP = { attach: () => document.body, zIndex: 2600 };
 
 /**
  * @param {{ title: string; children: import("react").ReactNode; last?: boolean }} props
  */
-function GeneralSettingRow({ title, children, last = false }) {
+function GeneralSettingRow({ title, children }) {
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-4 px-4 py-3.5 sm:px-5 sm:py-4",
-        !last && "border-b border-[color-mix(in_srgb,var(--os-border)_72%,transparent)]",
-      )}
-    >
-      <span className="min-w-0 shrink-0 text-[0.9375rem] font-semibold tracking-tight text-[var(--os-text)]">
-        {title}
-      </span>
-      <div className="flex min-w-0 shrink-0 items-center justify-end">{children}</div>
+    <div className="general-setting-row">
+      <Typography.Text className="general-setting-row__label">{title}</Typography.Text>
+      <div className="general-setting-row__control">{children}</div>
     </div>
   );
 }
@@ -191,58 +184,60 @@ export default function GeneralSettingsSection() {
   );
 
   return (
-    <div className="general-settings mx-auto w-full max-w-md">
-      <div className="overflow-hidden rounded-2xl border border-[color-mix(in_srgb,var(--os-border)_88%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-elevated)_96%,var(--os-bg-subtle))] shadow-[0_1px_0_rgba(255,255,255,0.45)_inset,0_8px_28px_rgba(15,23,42,0.04)]">
+    <div className="general-settings w-full">
         <GeneralSettingRow title={t("settings.appearance")}>
-          <Select
+          <TSelect
             id="settings-appearance"
-            ariaLabel={t("settings.appearanceAria")}
+            borderless
             value={theme}
             onChange={(v) => setTheme(v)}
             options={themeOptions}
-            className="min-w-[8.5rem]"
+            popupProps={SETTINGS_SELECT_POPUP}
+            className="settings-select"
           />
         </GeneralSettingRow>
 
         <GeneralSettingRow title={t("settings.languageShort")}>
-          <Select
+          <TSelect
             id="settings-language"
-            ariaLabel={t("settings.languageAria")}
+            borderless
             value={locale}
             onChange={(v) => isLocaleId(v) && setLocale(v)}
             options={languageOptions}
-            className="min-w-[8.5rem]"
+            popupProps={SETTINGS_SELECT_POPUP}
+            className="settings-select"
           />
         </GeneralSettingRow>
 
         <GeneralSettingRow title={t("settings.uiMotionShort")}>
-          <Select
+          <TSelect
             id="settings-ui-motion"
-            ariaLabel={t("settings.uiMotionAria")}
+            borderless
             value={uiMotion}
             onChange={(v) => {
               if (v === "full" || v === "system" || v === "reduced") setUiMotion(v);
             }}
             options={uiMotionOptions}
-            className="min-w-[8.5rem]"
+            popupProps={SETTINGS_SELECT_POPUP}
+            className="settings-select"
           />
         </GeneralSettingRow>
 
         <GeneralSettingRow title={t("settings.linkOpenModeShort")}>
-          <Select
+          <TSelect
             id="settings-link-open-mode"
-            ariaLabel={t("settings.linkOpenModeAria")}
+            borderless
             value={linkOpenMode}
             onChange={(v) => void persistLinkOpenMode(v)}
             options={linkOpenModeOptions}
-            className="min-w-[8.5rem]"
+            popupProps={SETTINGS_SELECT_POPUP}
+            className="settings-select"
           />
         </GeneralSettingRow>
 
         <GeneralSettingRow title={t("settings.rawTraceEnabled")}>
           <Switch
             id="settings-raw-trace"
-            size="small"
             aria-label={t("settings.rawTraceEnabledTitle")}
             value={rawTraceEnabled}
             onChange={(v) => void persistRawTraceEnabled(Boolean(v))}
@@ -252,7 +247,6 @@ export default function GeneralSettingsSection() {
         <GeneralSettingRow title={t("settings.autoSummarize")}>
           <Switch
             id="settings-auto-summarize"
-            size="small"
             aria-label={t("settings.autoSummarizeTitle")}
             value={chatLabAutoTitle}
             onChange={(v) => void persistChatLabAutoTitle(Boolean(v))}
@@ -262,23 +256,20 @@ export default function GeneralSettingsSection() {
         <GeneralSettingRow title={t("settings.groupContinuousConversation")}>
           <Switch
             id="settings-group-continuous-conversation"
-            size="small"
             aria-label={t("settings.groupContinuousConversationAria")}
             value={chatLabGroupContinuousConversation}
             onChange={(v) => void persistChatLabGroupContinuousConversation(Boolean(v))}
           />
         </GeneralSettingRow>
 
-        <GeneralSettingRow title={t("settings.showAutomationDebugInput")} last>
+        <GeneralSettingRow title={t("settings.showAutomationDebugInput")}>
           <Switch
             id="settings-show-automation-debug-input"
-            size="small"
             aria-label={t("settings.showAutomationDebugInputTitle")}
             value={showAutomationDebugInput}
             onChange={(v) => void persistShowAutomationDebugInput(Boolean(v))}
           />
         </GeneralSettingRow>
-      </div>
     </div>
   );
 }

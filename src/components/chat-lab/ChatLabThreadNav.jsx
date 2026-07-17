@@ -1,5 +1,4 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { Button } from "@open-studio/udesign";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   buildUserTurnAnchors,
@@ -8,6 +7,7 @@ import {
   scrollThreadToTop,
 } from "../../chat/chatLabThreadScroll.js";
 import { useI18n } from "../../context/I18nContext.jsx";
+import { cn } from "../../ui/cn.js";
 import ChatLabConvHeader from "./ChatLabConvHeader.jsx";
 
 /**
@@ -41,6 +41,7 @@ export default function ChatLabThreadNav({
   const { t } = useI18n();
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [canScroll, setCanScroll] = useState(false);
   const [activeTurnId, setActiveTurnId] = useState(/** @type {string | null} */ (null));
 
   const userTurns = useMemo(() => buildUserTurnAnchors(messages, 64), [messages]);
@@ -52,6 +53,7 @@ export default function ChatLabThreadNav({
   const syncScrollUi = useCallback(() => {
     const el = messagesScrollRef.current;
     const metrics = getThreadScrollMetrics(el);
+    setCanScroll(metrics.canScroll);
     setShowScrollTop(!metrics.atTop && metrics.canScroll);
     setShowScrollBottom(!metrics.atBottom && metrics.canScroll);
 
@@ -121,34 +123,44 @@ export default function ChatLabThreadNav({
       <ChatLabConvHeader {...convHeaderProps} />
       <div className="chat-lab__messages-stage">
         {children}
-        {showScrollTop || showScrollBottom ? (
-          <div className="chat-lab__scroll-jump" aria-hidden={false}>
-            {showScrollTop ? (
-              <Button
-                variant="text"
-                size="small"
-                type="button"
-                className="chat-lab__scroll-jump-btn"
-                aria-label={t("chatLab.scrollToTop")}
-                title={t("chatLab.scrollToTop")}
-                onClick={handleScrollTop}
-              >
-                <ChevronUp size={18} strokeWidth={2.2} aria-hidden />
-              </Button>
-            ) : null}
-            {showScrollBottom ? (
-              <Button
-                variant="text"
-                size="small"
-                type="button"
-                className="chat-lab__scroll-jump-btn"
-                aria-label={t("chatLab.scrollToBottom")}
-                title={t("chatLab.scrollToBottom")}
-                onClick={handleScrollBottom}
-              >
-                <ChevronDown size={18} strokeWidth={2.2} aria-hidden />
-              </Button>
-            ) : null}
+        {canScroll ? (
+          <div
+            className={cn(
+              "chat-lab__scroll-jump",
+              showScrollTop && showScrollBottom && "chat-lab__scroll-jump--both",
+              showScrollTop && !showScrollBottom && "chat-lab__scroll-jump--top-only",
+              !showScrollTop && showScrollBottom && "chat-lab__scroll-jump--bottom-only",
+            )}
+            aria-hidden={false}
+          >
+            <button
+              type="button"
+              className={cn(
+                "chat-lab__scroll-jump-btn",
+                showScrollTop && "chat-lab__scroll-jump-btn--visible",
+              )}
+              aria-label={t("chatLab.scrollToTop")}
+              title={t("chatLab.scrollToTop")}
+              aria-hidden={!showScrollTop}
+              tabIndex={showScrollTop ? 0 : -1}
+              onClick={handleScrollTop}
+            >
+              <ChevronUp size={15} strokeWidth={2.3} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "chat-lab__scroll-jump-btn",
+                showScrollBottom && "chat-lab__scroll-jump-btn--visible",
+              )}
+              aria-label={t("chatLab.scrollToBottom")}
+              title={t("chatLab.scrollToBottom")}
+              aria-hidden={!showScrollBottom}
+              tabIndex={showScrollBottom ? 0 : -1}
+              onClick={handleScrollBottom}
+            >
+              <ChevronDown size={15} strokeWidth={2.3} aria-hidden />
+            </button>
           </div>
         ) : null}
       </div>

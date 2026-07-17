@@ -36,6 +36,8 @@ export default function ChatLabSelectionToolbar({
   const previewApi = useContext(ChatLabPreviewContext);
   const [open, setOpen] = useState(false);
   const selectedTextRef = useRef("");
+  const anchorRectRef = useRef(/** @type {DOMRect | null} */ (null));
+  const followUpPayloadRef = useRef(/** @type {FollowUpSelectionPayload | null} */ (null));
   const [selectionAddress, setSelectionAddress] = useState(
     /** @type {ReturnType<typeof classifySelectionAddress>} */ (null),
   );
@@ -43,44 +45,86 @@ export default function ChatLabSelectionToolbar({
     /** @type {import("@floating-ui/react").Placement} */ ("bottom-end"),
   );
 
+  const resolveFollowUpPayload = useCallback(() => {
+    const hit = readChatTextSelection();
+    if (!hit) return null;
+
+    const sel = window.getSelection();
+    const anchorNode = sel?.anchorNode;
+    if (!anchorNode) return null;
+
+    /** @param {Node} node */
+    const asElement = (node) =>
+      node.nodeType === Node.TEXT_NODE ? node.parentElement : /** @type {Element} */ (node);
+
+    const msgEl = asElement(anchorNode)?.closest("[data-message-id]");
+    if (!msgEl) return null;
+
+    const sourceMessageId = msgEl.getAttribute("data-message-id") ?? "";
+    const sourceRole = msgEl.getAttribute("data-message-role");
+    if (!sourceMessageId || (sourceRole !== "user" && sourceRole !== "assistant")) return null;
+
+    const sourceAgentId = msgEl.getAttribute("data-message-agent-id");
+
+    return {
+      quoteText: hit.text,
+      sourceMessageId,
+      sourceRole,
+      ...(sourceAgentId ? { sourceAgentId } : {}),
+    };
+  }, []);
+
   const syncFromSelection = useCallback(() => {
     const hit = readChatTextSelection();
     if (!hit) {
       setOpen(false);
       setSelectionAddress(null);
+      anchorRectRef.current = null;
+      followUpPayloadRef.current = null;
       return;
     }
     selectedTextRef.current = hit.text;
+    anchorRectRef.current = hit.popupAnchorRect;
+    followUpPayloadRef.current = resolveFollowUpPayload();
     setSelectionAddress(classifySelectionAddress(hit.text));
     setPlacement(hit.placement);
     setOpen(true);
-  }, []);
+  }, [resolveFollowUpPayload]);
 
-  const getAnchorRect = useCallback(() => readChatTextSelection()?.popupAnchorRect ?? null, []);
+  const getAnchorRect = useCallback(() => anchorRectRef.current, []);
 
   const flipFallbackPlacements = useMemo(
     () => selectionToolbarFlipFallbacks(placement),
     [placement],
   );
 
+  const handleOpenChange = useCallback((next) => {
+    setOpen(next);
+    if (!next) {
+      anchorRectRef.current = null;
+      followUpPayloadRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     /** @param {MouseEvent} e */
     const onMouseUp = (e) => {
       const target = /** @type {HTMLElement | null} */ (e.target instanceof HTMLElement ? e.target : null);
       if (target?.closest(".chat-lab__context-menu")) return;
-      requestAnimationFrame(syncFromSelection);
+      // Defer until after TDesign Popup's document-click dismiss handler on the same mouseup.
+      window.setTimeout(syncFromSelection, 0);
     };
 
     /** @param {MouseEvent} e */
     const onMouseDown = (e) => {
       const target = /** @type {HTMLElement | null} */ (e.target instanceof HTMLElement ? e.target : null);
       if (target?.closest(".chat-lab__context-menu")) return;
-      setOpen(false);
+      handleOpenChange(false);
     };
 
     /** @param {KeyboardEvent} e */
     const onKeyDown = (e) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") handleOpenChange(false);
     };
 
     /** @param {TouchEvent} e */
@@ -89,16 +133,14 @@ export default function ChatLabSelectionToolbar({
         e.target instanceof HTMLElement ? e.target : null
       );
       if (target?.closest(".chat-lab__context-menu")) return;
-      requestAnimationFrame(syncFromSelection);
+      window.setTimeout(syncFromSelection, 0);
     };
 
     const onSelectionChange = () => {
       if (!open) return;
       const hit = readChatTextSelection();
-      if (!hit) {
-        setOpen(false);
-        return;
-      }
+      if (!hit) return;
+      anchorRectRef.current = hit.popupAnchorRect;
       setPlacement(hit.placement);
     };
 
@@ -115,11 +157,11 @@ export default function ChatLabSelectionToolbar({
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("selectionchange", onSelectionChange);
     };
-  }, [open, syncFromSelection]);
+  }, [handleOpenChange, open, syncFromSelection]);
 
   const close = useCallback(() => {
-    setOpen(false);
-  }, []);
+    handleOpenChange(false);
+  }, [handleOpenChange]);
 
   const clearSelection = useCallback(() => {
     window.getSelection()?.removeAllRanges();
@@ -151,7 +193,7 @@ export default function ChatLabSelectionToolbar({
 
   const handleFollowUp = useCallback(() => {
     if (followUpDisabled || !onFollowUp) return;
-    const payload = resolveFollowUpFromSelection();
+    const payload = followUpPayloadRef.current ?? resolveFollowUpFromSelection();
     if (!payload) return;
     onFollowUp(payload);
     close();
@@ -250,13 +292,14 @@ export default function ChatLabSelectionToolbar({
   return (
     <ChatLabContextMenu
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={handleOpenChange}
       getAnchorRect={getAnchorRect}
       items={items}
       ariaLabel={t("chatLab.selectionToolbarAria")}
       placement={placement}
       flipFallbackPlacements={flipFallbackPlacements}
       scrollRootRef={scrollContainerRef}
+      ignoreDocumentDismissMs={300}
     />
   );
 }

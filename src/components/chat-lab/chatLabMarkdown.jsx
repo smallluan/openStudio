@@ -170,12 +170,14 @@ function CodeCopyBtn({ text, t }) {
   }, [text]);
 
   const label = state === "copied" ? t("chatLab.codeCopied") : t("chatLab.codeCopy");
+  const icon = state === "copied" ? <CodeCopiedIcon /> : <CodeCopyIcon />;
 
   return (
     <Button
       type="button"
       variant="text"
       size="small"
+      icon={icon}
       className={cn(
         "chat-lab__code-copy",
         state === "copied" && "chat-lab__code-copy--done",
@@ -184,11 +186,6 @@ function CodeCopyBtn({ text, t }) {
       aria-label={label}
       title={label}
     >
-      {state === "copied" ? (
-        <CodeCopiedIcon />
-      ) : (
-        <CodeCopyIcon />
-      )}
       <span className="chat-lab__code-copy-label">{label}</span>
     </Button>
   );

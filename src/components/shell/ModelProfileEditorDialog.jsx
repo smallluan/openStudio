@@ -1,9 +1,5 @@
-import { createPortal } from "react-dom";
-import { Button } from "@open-studio/udesign";
-import { useEffect } from "react";
+import { Dialog } from "tdesign-react";
 import { useI18n } from "../../context/I18nContext.jsx";
-import ModalCloseButton from "../../ui/ModalCloseButton.jsx";
-import { cn } from "../../ui/cn.js";
 
 /**
  * @param {{
@@ -27,66 +23,30 @@ export default function ModelProfileEditorDialog({
 }) {
   const { t } = useI18n();
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
-
-  if (!open || typeof document === "undefined") return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-[260] flex items-center justify-center p-4 sm:p-6" role="presentation">
-      <Button
-        tag="div"
-        variant="text"
-        className="os-modal-backdrop absolute inset-0"
-        aria-label={t("dialog.cancel")}
-        onClick={onCancel}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="model-profile-editor-title"
-        className={cn(
-          "os-modal-panel relative flex max-h-[min(84vh,560px)] w-full max-w-[27rem] flex-col overflow-hidden rounded-xl",
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="flex shrink-0 items-center justify-between gap-2 px-4 pb-1 pt-2.5">
-          <h2 id="model-profile-editor-title" className="min-w-0 truncate text-[0.9rem] font-semibold tracking-tight">
-            {title}
-          </h2>
-          <ModalCloseButton onClick={onCancel} aria-label={t("dialog.cancel")} />
-        </header>
-
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-1 pt-0">{children}</div>
-
-        {error ?
-          <p role="alert" className="shrink-0 px-4 pb-1 text-[0.72rem] leading-snug text-[var(--os-accent)]">
-            {error}
-          </p>
-        : null}
-
-        <footer className="flex shrink-0 items-center justify-end gap-2 px-4 pb-2.5 pt-2">
-          <Button type="button" variant="text" size="small" onClick={onCancel}>
-            {t("dialog.cancel")}
-          </Button>
-          <Button
-            type="button"
-            theme="primary"
-            size="small"
-            disabled={confirmDisabled}
-            onClick={onConfirm}
-          >
-            {t("dialog.confirm")}
-          </Button>
-        </footer>
-      </div>
-    </div>,
-    document.body,
+  return (
+    <Dialog
+      visible={open}
+      attach="body"
+      placement="center"
+      header={title}
+      width={432}
+      zIndex={2600}
+      destroyOnClose={false}
+      closeOnOverlayClick
+      closeOnEscKeydown
+      dialogClassName="os-tdesign-dialog os-tdesign-dialog--model-profile"
+      onClose={onCancel}
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+      confirmBtn={{ content: t("dialog.confirm"), disabled: confirmDisabled }}
+      cancelBtn={{ content: t("dialog.cancel"), variant: "outline" }}
+    >
+      {error ?
+        <p role="alert" className="mb-2 text-[0.72rem] leading-snug text-[var(--os-accent)]">
+          {error}
+        </p>
+      : null}
+      {children}
+    </Dialog>
   );
 }

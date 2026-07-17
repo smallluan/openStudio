@@ -1,22 +1,16 @@
-import {
-  FloatingFocusManager,
-  FloatingPortal,
-  autoUpdate,
-  flip,
-  offset,
-  shift,
-  useDismiss,
-  useFloating,
-  useInteractions,
-  useRole,
-} from "@floating-ui/react";
 import { Search } from "lucide-react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Popup } from "tdesign-react";
 import { Button, Input } from "@open-studio/udesign";
 import { filterSkillPickList } from "../../skills/skillRegistry.js";
-import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
+import {
+  OS_POPUP_ANCHOR_CLASS,
+  OS_POPUP_INNER_CLASS,
+  OS_POPUP_OVERLAY_CLASS,
+  osPopupPopperOptions,
+} from "../../ui/osPopupShared.js";
+import { useVirtualPopupAnchor } from "../../ui/useVirtualPopupAnchor.js";
 import { cn } from "../../ui/cn.js";
-import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 
 function Chevron({ open }) {
   return (
@@ -72,11 +66,11 @@ export function ComposerSkillChip({ row, onClear, disabled, t }) {
 export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disabled, t }) {
   const autoId = useId();
   const listId = `${autoId}-skill-list`;
+  const inputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [highlightIndex, setHighlightIndex] = useState(0);
   const optionRefs = useRef(/** @type {Array<HTMLButtonElement | null>} */ ([]));
-  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
 
   const filtered = useMemo(() => filterSkillPickList(skills, q), [skills, q]);
 
@@ -95,6 +89,15 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
     optionRefs.current[highlightIndex]?.scrollIntoView({ block: "nearest" });
   }, [highlightIndex, filtered.length]);
 
+  useEffect(() => {
+    if (open) {
+      const id = requestAnimationFrame(() => inputRef.current?.focus());
+      return () => cancelAnimationFrame(id);
+    }
+    setQ("");
+    return undefined;
+  }, [open]);
+
   const confirmHighlighted = useCallback(() => {
     const row = filtered[highlightIndex];
     if (!row) return;
@@ -105,7 +108,7 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
   const onPopoverKeyDown = useCallback(
     /** @param {import('react').KeyboardEvent} e */
     (e) => {
-      if (!present || filtered.length === 0 || e.nativeEvent.isComposing) return;
+      if (!open || filtered.length === 0 || e.nativeEvent.isComposing) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setHighlightIndex((i) => (i + 1) % filtered.length);
@@ -121,33 +124,110 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
         confirmHighlighted();
       }
     },
-    [confirmHighlighted, filtered.length, present],
+    [confirmHighlighted, filtered.length, open],
   );
 
-  const { refs, floatingStyles, context } = useFloating({
-    open: present,
-    onOpenChange: (v) => {
-      setOpen(v);
-      if (!v) setQ("");
-    },
-    placement: "top-start",
-    strategy: "fixed",
-    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  });
-
-  const dismiss = useDismiss(context);
-  const role = useRole(context, { role: "listbox" });
-  const { getReferenceProps, getFloatingProps } = useInteractions([dismiss, role]);
-
-  useEffect(() => {
-    if (!open) setQ("");
-  }, [open]);
+  const popupContent = (
+    <div
+      className={cn(
+        "chat-lab__skill-popover flex w-full flex-col overflow-hidden rounded-[14px] border",
+        "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
+        "shadow-[var(--os-shadow-soft)]",
+      )}
+      onKeyDown={onPopoverKeyDown}
+    >
+      <div className="border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-2.5 py-2">
+        <div className="text-[0.68rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]">
+          {t("chatLab.skillPickerTitle")}
+        </div>
+        <div className="mt-1.5">
+          <Input
+            ref={inputRef}
+            block
+            clearable
+            size="small"
+            type="search"
+            prefixIcon={<Search size={14} aria-hidden />}
+            value={q}
+            onChange={(value) => setQ(value)}
+            placeholder={t("chatLab.skillPickerSearch")}
+            aria-label={t("chatLab.skillPickerSearch")}
+          />
+        </div>
+      </div>
+      <div id={listId} role="listbox" className="max-h-[min(52vh,280px)] overflow-y-auto py-1">
+        <Button
+          type="button"
+          role="option"
+          variant="text"
+          block
+          className="chat-lab__skill-popover-option w-full"
+          onClick={() => {
+            onSelect(null);
+            setOpen(false);
+          }}
+        >
+          {t("chatLab.skillPickerClear")}
+        </Button>
+        {filtered.length === 0 ? (
+          <div className="px-3 py-4 text-center text-[0.78rem] text-[var(--os-text-faint)]">
+            {t("chatLab.skillPickerEmpty")}
+          </div>
+        ) : (
+          filtered.map((row, index) => (
+            <Button
+              key={row.id}
+              ref={(node) => {
+                optionRefs.current[index] = node;
+              }}
+              type="button"
+              role="option"
+              variant="text"
+              block
+              aria-selected={index === highlightIndex}
+              className={cn(
+                "chat-lab__skill-popover-option w-full",
+                index === highlightIndex && "chat-lab__skill-popover-option--active",
+              )}
+              onMouseEnter={() => setHighlightIndex(index)}
+              onClick={() => {
+                onSelect(row);
+                setOpen(false);
+              }}
+            >
+              <span className="text-lg leading-none" aria-hidden>
+                {row.emoji}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[0.82rem] font-medium text-[var(--os-text)]">{row.label}</span>
+                <span className="mt-0.5 line-clamp-2 text-[0.72rem] text-[var(--os-text-muted)]">{row.description}</span>
+              </span>
+            </Button>
+          ))
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <>
+    <Popup
+      visible={open}
+      trigger="click"
+      placement="top-start"
+      attach="body"
+      zIndex={400}
+      disabled={disabled}
+      destroyOnClose={false}
+      overlayClassName={OS_POPUP_OVERLAY_CLASS}
+      overlayInnerClassName={cn(OS_POPUP_INNER_CLASS, "w-[min(100vw-2rem,320px)]")}
+      popperOptions={osPopupPopperOptions(8, 8)}
+      content={popupContent}
+      onVisibleChange={(visible) => {
+        setOpen(visible);
+        if (!visible) setQ("");
+      }}
+    >
       <Button
-        ref={refs.setReference}
         type="button"
         variant="outline"
         shape="round"
@@ -156,115 +236,54 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
         disabled={disabled}
         title={t("chatLab.toolbarSkillHint")}
         aria-haspopup="listbox"
-        aria-expanded={present}
-        aria-controls={present ? listId : undefined}
-        {...getReferenceProps()}
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
       >
         <span className="chat-lab__pill-ico" aria-hidden>
           {selected ? selected.emoji : "✦"}
         </span>
         {selected ? selected.label : t("chatLab.toolbarSkill")}
-        <Chevron open={present} />
+        <Chevron open={open} />
       </Button>
+    </Popup>
+  );
+}
 
-      {present ? (
-        <FloatingPortal>
-          <FloatingFocusManager context={context} modal={false} initialFocus={-1} returnFocus>
-            <div
-              ref={refs.setFloating}
-              style={floatingStyles}
-              className="outline-none z-[400] w-[min(100vw-2rem,320px)] max-w-[min(100vw-2rem,320px)]"
-              onKeyDown={onPopoverKeyDown}
-              {...getFloatingProps()}
-            >
-              <FluidPopupAnimatedSurface
-                key={surfaceKey}
-                leaving={leaving}
-                finishLeave={finishLeave}
-                placement={context.placement}
-                morphBr="14px"
-                className={cn(
-                  "chat-lab__skill-popover flex w-full flex-col overflow-hidden rounded-[14px] border",
-                  "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
-                  "shadow-[var(--os-shadow-soft)]",
-                )}
-              >
-              <div className="border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-2.5 py-2">
-                <div className="text-[0.68rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]">
-                  {t("chatLab.skillPickerTitle")}
-                </div>
-                <div className="mt-1.5">
-                  <Input
-                    block
-                    clearable
-                    size="small"
-                    type="search"
-                    autofocus
-                    prefixIcon={<Search size={14} aria-hidden />}
-                    value={q}
-                    onChange={(value) => setQ(value)}
-                    placeholder={t("chatLab.skillPickerSearch")}
-                    aria-label={t("chatLab.skillPickerSearch")}
-                  />
-                </div>
-              </div>
-              <div id={listId} role="listbox" className="max-h-[min(52vh,280px)] overflow-y-auto py-1">
-                <Button
-                  type="button"
-                  role="option"
-                  variant="text"
-                  block
-                  className="chat-lab__skill-popover-option w-full"
-                  onClick={() => {
-                    onSelect(null);
-                    setOpen(false);
-                  }}
-                >
-                  {t("chatLab.skillPickerClear")}
-                </Button>
-                {filtered.length === 0 ? (
-                  <div className="px-3 py-4 text-center text-[0.78rem] text-[var(--os-text-faint)]">
-                    {t("chatLab.skillPickerEmpty")}
-                  </div>
-                ) : (
-                  filtered.map((row, index) => (
-                    <Button
-                      key={row.id}
-                      ref={(node) => {
-                        optionRefs.current[index] = node;
-                      }}
-                      type="button"
-                      role="option"
-                      variant="text"
-                      block
-                      aria-selected={index === highlightIndex}
-                      className={cn(
-                        "chat-lab__skill-popover-option w-full",
-                        index === highlightIndex && "chat-lab__skill-popover-option--active",
-                      )}
-                      onMouseEnter={() => setHighlightIndex(index)}
-                      onClick={() => {
-                        onSelect(row);
-                        setOpen(false);
-                      }}
-                    >
-                      <span className="text-lg leading-none" aria-hidden>
-                        {row.emoji}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[0.82rem] font-medium text-[var(--os-text)]">{row.label}</span>
-                        <span className="mt-0.5 line-clamp-2 text-[0.72rem] text-[var(--os-text-muted)]">{row.description}</span>
-                      </span>
-                    </Button>
-                  ))
-                )}
-              </div>
-              </FluidPopupAnimatedSurface>
-            </div>
-          </FloatingFocusManager>
-        </FloatingPortal>
-      ) : null}
-    </>
+/**
+ * @param {{
+ *   row: import("../../skills/skillRegistry.js").SkillPickRow;
+ *   index: number;
+ *   highlightIndex: number;
+ *   onHighlightIndexChange?: (index: number) => void;
+ *   onPick: (row: import("../../skills/skillRegistry.js").SkillPickRow) => void;
+ *   optionRef?: (node: HTMLButtonElement | null) => void;
+ * }} props
+ */
+function SkillSlashPopoverOption({ row, index, highlightIndex, onHighlightIndexChange, onPick, optionRef }) {
+  return (
+    <button
+      ref={optionRef}
+      type="button"
+      role="option"
+      aria-selected={index === highlightIndex}
+      className={cn(
+        "chat-lab__skill-popover-option",
+        index === highlightIndex && "chat-lab__skill-popover-option--active",
+      )}
+      onMouseEnter={() => onHighlightIndexChange?.(index)}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => onPick(row)}
+    >
+      <span className="chat-lab__skill-popover-option-emoji" aria-hidden>
+        {row.emoji}
+      </span>
+      <span className="chat-lab__skill-popover-option-body">
+        <span className="chat-lab__skill-popover-option-label">{row.label}</span>
+        {row.description ? (
+          <span className="chat-lab__skill-popover-option-desc">{row.description}</span>
+        ) : null}
+      </span>
+    </button>
   );
 }
 
@@ -295,99 +314,65 @@ export function ComposerSkillSlashPopover({
 }) {
   const autoId = useId();
   const listId = `${autoId}-slash-skills`;
+  const popupRef = useRef(/** @type {import("tdesign-react").PopupInstanceFunctions | null} */ (null));
   const optionRefs = useRef(/** @type {Array<HTMLButtonElement | null>} */ ([]));
   const filtered = useMemo(() => filterSkillPickList(skills, filterQuery), [skills, filterQuery]);
 
+  const getRect = useCallback(() => textareaRef.current?.getBoundingClientRect() ?? null, [textareaRef]);
+  const { anchorRef } = useVirtualPopupAnchor({ open, getRect, popupRef });
+
   useEffect(() => {
     optionRefs.current[highlightIndex]?.scrollIntoView({ block: "nearest" });
-  }, [highlightIndex, filtered.length]);
+  }, [highlightIndex, filtered.length, open]);
 
-  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
-
-  const { refs, floatingStyles, context } = useFloating({
-    open: present,
-    onOpenChange: (v) => {
-      if (!v) onClose();
-    },
-    placement: "top-start",
-    strategy: "fixed",
-    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  });
-
-  useLayoutEffect(() => {
-    const el = textareaRef.current;
-    if (present && el) refs.setReference(el);
-  }, [present, refs.setReference, textareaRef]);
-
-  const dismiss = useDismiss(context);
-  const role = useRole(context, { role: "listbox" });
-  const { getFloatingProps } = useInteractions([dismiss, role]);
-
-  if (!present) return null;
+  const popupContent = (
+    <div
+      className="chat-lab__skill-popover"
+      onMouseDown={(e) => e.preventDefault()}
+      onPointerDown={(e) => e.preventDefault()}
+    >
+      <div className="chat-lab__skill-popover-header">{t("chatLab.skillPickerTitle")}</div>
+      <div id={listId} role="listbox" className="chat-lab__skill-popover-list">
+        {filtered.length === 0 ? (
+          <div className="chat-lab__skill-popover-empty">{t("chatLab.skillPickerEmpty")}</div>
+        ) : (
+          filtered.map((row, index) => (
+            <SkillSlashPopoverOption
+              key={row.id}
+              row={row}
+              index={index}
+              highlightIndex={highlightIndex}
+              onHighlightIndexChange={onHighlightIndexChange}
+              onPick={onPick}
+              optionRef={(node) => {
+                optionRefs.current[index] = node;
+              }}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <FloatingPortal>
-      <div
-        ref={refs.setFloating}
-        style={floatingStyles}
-        className="outline-none z-[400] w-[min(100vw-2rem,300px)] max-w-[min(100vw-2rem,300px)]"
-        {...getFloatingProps()}
-        onMouseDownCapture={(e) => e.preventDefault()}
-        onPointerDownCapture={(e) => e.preventDefault()}
-      >
-        <FluidPopupAnimatedSurface
-          key={surfaceKey}
-          leaving={leaving}
-          finishLeave={finishLeave}
-          placement={context.placement}
-          morphBr="14px"
-          className={cn(
-            "chat-lab__skill-popover flex w-full flex-col overflow-hidden rounded-[14px] border",
-            "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
-            "shadow-[var(--os-shadow-soft)]",
-          )}
-        >
-        <div className="border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-2.5 py-1.5 text-[0.68rem] text-[var(--os-text-faint)]">
-          {t("chatLab.skillPickerTitle")}
-        </div>
-        <div id={listId} role="listbox" className="max-h-[min(44vh,240px)] overflow-y-auto py-1">
-          {filtered.length === 0 ? (
-            <div className="px-3 py-4 text-center text-[0.78rem] text-[var(--os-text-faint)]">{t("chatLab.skillPickerEmpty")}</div>
-          ) : (
-            filtered.map((row, index) => (
-              <Button
-                variant="text"
-                block
-                key={row.id}
-                ref={(node) => {
-                  optionRefs.current[index] = node;
-                }}
-                type="button"
-                role="option"
-                aria-selected={index === highlightIndex}
-                className={cn(
-                  "chat-lab__skill-popover-option w-full",
-                  index === highlightIndex && "chat-lab__skill-popover-option--active",
-                )}
-                onMouseEnter={() => onHighlightIndexChange?.(index)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onPick(row)}
-              >
-                <span className="text-lg leading-none" aria-hidden>
-                  {row.emoji}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[0.82rem] font-medium text-[var(--os-text)]">{row.label}</span>
-                  <span className="mt-0.5 line-clamp-2 text-[0.72rem] text-[var(--os-text-muted)]">{row.description}</span>
-                </span>
-              </Button>
-            ))
-          )}
-        </div>
-        </FluidPopupAnimatedSurface>
-      </div>
-    </FloatingPortal>
+    <Popup
+      ref={popupRef}
+      visible={open}
+      attach="body"
+      placement="top-left"
+      trigger="click"
+      zIndex={4000}
+      destroyOnClose={false}
+      overlayClassName={OS_POPUP_OVERLAY_CLASS}
+      overlayInnerClassName={cn(OS_POPUP_INNER_CLASS, "w-[min(100vw-2rem,320px)]")}
+      popperOptions={osPopupPopperOptions(8, 8)}
+      content={popupContent}
+      onVisibleChange={(visible) => {
+        if (!visible) onClose();
+      }}
+    >
+      <span ref={anchorRef} className={OS_POPUP_ANCHOR_CLASS} aria-hidden />
+    </Popup>
   );
 }
 

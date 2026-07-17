@@ -1,20 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@open-studio/udesign";
+import { useCallback, useEffect, useRef } from "react";
+import { Popup } from "tdesign-react";
 import {
-  autoUpdate,
-  flip,
-  FloatingFocusManager,
-  FloatingPortal,
-  offset,
-  shift,
-  useDismiss,
-  useFloating,
-  useInteractions,
-  useRole,
-} from "@floating-ui/react";
-import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
-import { useFluidPopupBlob } from "../../ui/useFluidPopupBlob.js";
-import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
+  OS_POPUP_ANCHOR_CLASS,
+  OS_POPUP_INNER_CLASS,
+  OS_POPUP_OVERLAY_CLASS,
+} from "../../ui/osPopupShared.js";
+import { useVirtualPopupAnchor } from "../../ui/useVirtualPopupAnchor.js";
 import { cn } from "../../ui/cn.js";
 
 /**
@@ -38,9 +29,10 @@ import { cn } from "../../ui/cn.js";
  *   referenceRef?: import("react").RefObject<HTMLElement | null>;
  *   items: ChatLabContextMenuItem[];
  *   ariaLabel?: string;
- *   placement?: import("@floating-ui/react").Placement;
- *   flipFallbackPlacements?: import("@floating-ui/react").Placement[];
+ *   placement?: import("tdesign-react").PopupProps["placement"];
+ *   flipFallbackPlacements?: import("tdesign-react").PopupProps["placement"][];
  *   scrollRootRef?: import("react").RefObject<HTMLElement | null>;
+ *   ignoreDocumentDismissMs?: number;
  * }} props
  */
 export default function ChatLabContextMenu({
@@ -54,17 +46,21 @@ export default function ChatLabContextMenu({
   placement = "bottom-start",
   flipFallbackPlacements,
   scrollRootRef,
+  ignoreDocumentDismissMs = 0,
 }) {
-  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
+  const popupRef = useRef(/** @type {import("tdesign-react").PopupInstanceFunctions | null} */ (null));
   const virtualRectRef = useRef(/** @type {DOMRect | null} */ (null));
-  const [hoverKey, setHoverKey] = useState(/** @type {string | null} */ (null));
+  const openedAtRef = useRef(0);
   const usesElementRect = Boolean(getAnchorRect || referenceRef);
 
   useEffect(() => {
-    if (!open) setHoverKey(null);
+    if (open) openedAtRef.current = Date.now();
   }, [open]);
 
   const resolveAnchorRect = useCallback(() => {
+    if (referenceRef?.current) {
+      return referenceRef.current.getBoundingClientRect();
+    }
     if (getAnchorRect) {
       const live = getAnchorRect();
       if (live) {
@@ -83,156 +79,103 @@ export default function ChatLabContextMenu({
       return virtualRectRef.current;
     }
     return virtualRectRef.current;
-  }, [anchorPoint, getAnchorRect]);
+  }, [anchorPoint, getAnchorRect, referenceRef]);
 
-  const virtualElRef = useRef({
-    getBoundingClientRect: () =>
-      resolveAnchorRect() ?? DOMRect.fromRect({ x: 0, y: 0, width: 0, height: 0 }),
-  });
+  const getRect = useCallback(() => resolveAnchorRect(), [resolveAnchorRect]);
 
-  const { refs, floatingStyles, context, update } = useFloating({
-    open: present,
-    onOpenChange,
-    placement,
-    strategy: "fixed",
-    middleware: [
-      offset(usesElementRect ? 6 : 4),
-      flip({
-        padding: 8,
-        fallbackPlacements:
-          flipFallbackPlacements ??
-          (usesElementRect
-            ? ["left-start", "bottom-start", "top-start", "right-end", "left-end"]
-            : undefined),
-      }),
-      shift({ padding: 8 }),
+  const { anchorRef } = useVirtualPopupAnchor({ open, getRect, popupRef, scrollRootRef });
+
+  const handleVisibleChange = useCallback(
+    /** @param {boolean} visible @param {{ trigger?: string }} [context] */
+    (visible, context) => {
+      if (
+        !visible &&
+        ignoreDocumentDismissMs > 0 &&
+        context?.trigger === "document" &&
+        Date.now() - openedAtRef.current < ignoreDocumentDismissMs
+      ) {
+        return;
+      }
+      onOpenChange(visible);
+    },
+    [ignoreDocumentDismissMs, onOpenChange],
+  );
+
+  const popupContent = (
+    <div
+      className="chat-history-card__menu chat-lab__context-menu"
+      role="menu"
+      aria-label={ariaLabel}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {items.map((item) => (
+        <div
+          key={item.id}
+          className={cn(
+            "chat-history-card__menu-row",
+            item.dividerBefore && "chat-history-card__menu-row--with-divider",
+          )}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className={cn(
+              "chat-history-card__menu-item",
+              item.danger && "chat-history-card__menu-item--danger",
+            )}
+            disabled={item.disabled}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (item.disabled) return;
+              onOpenChange(false);
+              item.onClick();
+            }}
+          >
+            {item.icon ? <span className="chat-history-card__menu-item-icon">{item.icon}</span> : null}
+            <span className="chat-history-card__menu-item-label">{item.label}</span>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  const popperOptions = {
+    modifiers: [
+      { name: "offset", options: { offset: [0, usesElementRect ? 6 : 4] } },
+      {
+        name: "flip",
+        options: {
+          padding: 8,
+          fallbackPlacements:
+            flipFallbackPlacements ??
+            (usesElementRect
+              ? ["left-start", "bottom-start", "top-start", "right-end", "left-end"]
+              : undefined),
+        },
+      },
+      { name: "preventOverflow", options: { padding: 8 } },
     ],
-    whileElementsMounted: (reference, floating, updateFn) =>
-      autoUpdate(reference, floating, updateFn, {
-        ancestorScroll: true,
-        ancestorResize: true,
-        elementResize: true,
-        layoutShift: true,
-      }),
-  });
-
-  useEffect(() => {
-    const el = referenceRef?.current ?? null;
-    if (el) {
-      refs.setReference(el);
-      return;
-    }
-    refs.setReference(virtualElRef.current);
-  }, [refs, anchorPoint, open, getAnchorRect, referenceRef]);
-
-  useEffect(() => {
-    if (!open || (!getAnchorRect && !referenceRef)) return undefined;
-    const onRelayout = () => {
-      if (referenceRef?.current) {
-        void update();
-        return;
-      }
-      if (getAnchorRect && !getAnchorRect()) {
-        onOpenChange(false);
-        return;
-      }
-      void update();
-    };
-    const scrollEl = scrollRootRef?.current ?? null;
-    scrollEl?.addEventListener("scroll", onRelayout, { passive: true });
-    window.addEventListener("resize", onRelayout, { passive: true });
-    return () => {
-      scrollEl?.removeEventListener("scroll", onRelayout);
-      window.removeEventListener("resize", onRelayout);
-    };
-  }, [open, getAnchorRect, referenceRef, scrollRootRef, onOpenChange, update]);
-
-  const dismiss = useDismiss(context);
-  const role = useRole(context, { role: "menu" });
-  const { getFloatingProps } = useInteractions([dismiss, role]);
-
-  const { rootRef: menuBlobRootRef, setItemRef: setMenuItemRef, blobStyle: menuBlobStyle } =
-    useFluidPopupBlob({
-      open,
-      hoverKey,
-      fallbackKey: null,
-      layoutKey: items.map((i) => i.id).join(","),
-    });
-
-  const anchorRect = referenceRef?.current?.getBoundingClientRect() ?? resolveAnchorRect();
-  const canShow = present && (anchorRect || referenceRef?.current || leaving);
-  if (!canShow) return null;
-
-  const floatingProps = getFloatingProps();
+  };
 
   return (
-    <FloatingPortal>
-      <FloatingFocusManager context={context} modal={false} initialFocus={-1}>
-        <div
-          ref={refs.setFloating}
-          style={floatingStyles}
-          className="outline-none"
-          {...floatingProps}
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          onPointerLeave={(e) => {
-            floatingProps.onPointerLeave?.(e);
-            setHoverKey(null);
-          }}
-        >
-          <FluidPopupAnimatedSurface
-            key={surfaceKey}
-            leaving={leaving}
-            finishLeave={finishLeave}
-            placement={context.placement}
-            morphBr="11px"
-            className="chat-history-card__menu chat-lab__context-menu"
-            aria-label={ariaLabel}
-          >
-            <div ref={menuBlobRootRef} className="relative w-full chat-history-card__menu-blob-scope">
-              <div
-                aria-hidden
-                className="fluid-nav__blob fluid-popup-menu__blob pointer-events-none absolute top-0 left-0 z-0"
-                style={menuBlobStyle}
-              />
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className={cn(
-                    "chat-history-card__menu-row",
-                    item.dividerBefore && "chat-history-card__menu-row--with-divider",
-                  )}
-                  onPointerEnter={() => setHoverKey(item.id)}
-                >
-                  <div ref={(node) => setMenuItemRef(item.id, node)} className="fluid-popup-menu__measure">
-                    <Button
-                variant="text"
-                size="small"
-                      type="button"
-                      className={cn(
-                        "chat-history-card__menu-item w-full min-w-0",
-                        item.danger && "chat-history-card__menu-item--danger",
-                      )}
-                      disabled={item.disabled}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (item.disabled) return;
-                        onOpenChange(false);
-                        item.onClick();
-                      }}
-                    >
-                      {item.icon}
-                      {item.label}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </FluidPopupAnimatedSurface>
-        </div>
-      </FloatingFocusManager>
-    </FloatingPortal>
+    <Popup
+      ref={popupRef}
+      visible={open}
+      attach="body"
+      placement={placement}
+      trigger="click"
+      zIndex={5000}
+      destroyOnClose={false}
+      overlayClassName={OS_POPUP_OVERLAY_CLASS}
+      overlayInnerClassName={OS_POPUP_INNER_CLASS}
+      popperOptions={popperOptions}
+      content={popupContent}
+      onVisibleChange={handleVisibleChange}
+    >
+      <span ref={anchorRef} className={OS_POPUP_ANCHOR_CLASS} aria-hidden />
+    </Popup>
   );
 }

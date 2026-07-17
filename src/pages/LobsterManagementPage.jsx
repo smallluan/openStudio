@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
+import { Plus } from "lucide-react";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useStudio } from "../context/StudioContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -362,18 +363,9 @@ export default function LobsterManagementPage() {
 
   return (
     <div className="route-page route-page--plain flex min-h-0 flex-1 flex-col bg-[color-mix(in_srgb,var(--os-bg-base)_96%,var(--os-bg-panel))]">
-      <header className="route-page__header shrink-0">
-        <h1 className="route-page__title">{t("lobsterPage.title")}</h1>
-        {t("lobsterPage.desc") && <p className="route-page__desc muted">{t("lobsterPage.desc")}</p>}
-      </header>
-
       <div className="mb-4 flex min-h-0 shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Button type="button" theme="primary" size="small" onClick={openCreateModal}>
-          {t("lobsterPage.actions.create")}
-        </Button>
         <div className="w-full min-w-[220px] max-w-md sm:w-72">
           <Input
-            size="large"
             type="search"
             prefixIcon={<SearchSparkleIcon className="opacity-75" aria-hidden />}
             clearable
@@ -383,6 +375,9 @@ export default function LobsterManagementPage() {
             aria-label={t("lobsterPage.searchPlaceholder")}
           />
         </div>
+        <Button type="button" theme="primary" icon={<Plus size={16} />} onClick={openCreateModal}>
+          {t("lobsterPage.actions.create")}
+        </Button>
       </div>
 
       {provisionNote ? (

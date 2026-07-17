@@ -1,26 +1,20 @@
-import {
-  FloatingFocusManager,
-  FloatingPortal,
-  autoUpdate,
-  flip,
-  offset,
-  shift,
-  useDismiss,
-  useFloating,
-  useInteractions,
-  useRole,
-} from "@floating-ui/react";
 import { ChevronDown, Folder, FolderOpen, GitBranch, Search, X } from "lucide-react";
+import { Popup } from "tdesign-react";
 import { Button, Input } from "@open-studio/udesign";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SearchSparkleIcon from "../../assets/svg/SearchSparkleIcon.jsx";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
 import { useOptionalChatLabWorkspace } from "../../context/ChatLabWorkspaceContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
-import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
+import {
+  OS_POPUP_ANCHOR_CLASS,
+  OS_POPUP_INNER_CLASS,
+  OS_POPUP_OVERLAY_CLASS,
+  osPopupPopperOptions,
+} from "../../ui/osPopupShared.js";
+import { useVirtualPopupAnchor } from "../../ui/useVirtualPopupAnchor.js";
 import { cn } from "../../ui/cn.js";
 import { useDebouncedValue } from "../../ui/useDebouncedValue.js";
-import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
 
 /** @typedef {"workspace" | "branch"} PanelKind */
 
@@ -76,232 +70,213 @@ function ContextPopover({
 }) {
   const { t } = useI18n();
   const inputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
-  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
+  const popupRef = useRef(/** @type {import("tdesign-react").PopupInstanceFunctions | null} */ (null));
 
-  const { refs, floatingStyles, context } = useFloating({
-    open: present,
-    onOpenChange: (v) => {
-      if (!v) onClose();
-    },
-    placement: "top-start",
-    strategy: "fixed",
-    middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  });
-
-  useLayoutEffect(() => {
-    if (present && anchorRef.current) {
-      refs.setReference(anchorRef.current);
-    }
-  }, [present, anchorRef, refs]);
-
-  const dismiss = useDismiss(context);
-  const role = useRole(context, { role: "dialog" });
-  const { getFloatingProps } = useInteractions([dismiss, role]);
+  const getRect = useCallback(() => anchorRef.current?.getBoundingClientRect() ?? null, [anchorRef]);
+  const { anchorRef: virtualAnchorRef } = useVirtualPopupAnchor({ open, getRect, popupRef });
 
   useEffect(() => {
-    if (present) {
+    if (open) {
       const id = requestAnimationFrame(() => inputRef.current?.focus());
       return () => cancelAnimationFrame(id);
     }
     return undefined;
-  }, [present, kind]);
+  }, [open, kind]);
 
   const showRecents = kind === "workspace" && !query.trim();
   const showFiles = kind === "workspace" && query.trim().length > 0;
   const showBranches = kind === "branch";
 
-  if (!present) return null;
+  const popupContent = (
+    <div
+      className={cn(
+        "chat-lab__context-popover",
+        "flex w-full flex-col overflow-hidden rounded-[14px] border",
+        "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
+        "shadow-[var(--os-shadow-soft)]",
+      )}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <div className="chat-lab__context-popover-search">
+        <div className="min-w-0 flex-1">
+          <Input
+            ref={inputRef}
+            block
+            borderless
+            clearable
+            size="small"
+            type="search"
+            prefixIcon={<SearchSparkleIcon className="chat-lab__context-popover-search-icon" aria-hidden />}
+            placeholder={
+              kind === "branch"
+                ? t("chatLab.contextBar.branchSearchPlaceholder")
+                : t("chatLab.contextBar.workspaceSearchPlaceholder")
+            }
+            value={query}
+            onChange={(value) => onQueryChange(value)}
+            aria-label={
+              kind === "branch"
+                ? t("chatLab.contextBar.branchSearchPlaceholder")
+                : t("chatLab.contextBar.workspaceSearchPlaceholder")
+            }
+          />
+        </div>
+      </div>
+
+      <div className="chat-lab__context-popover-body" role="listbox">
+        {loading ? <p className="chat-lab__context-popover-empty">{t("chatLab.contextBar.loading")}</p> : null}
+
+        {showRecents ? (
+          <>
+            <p className="chat-lab__context-popover-section">{t("chatLab.contextBar.recents")}</p>
+            <ul className="chat-lab__context-popover-list">
+              {recentPaths.map((p) => {
+                const isSelected = p === selectedRoot;
+                return (
+                  <li
+                    key={p}
+                    className={cn(
+                      "chat-lab__context-popover-row",
+                      isSelected && "chat-lab__context-popover-row--selected",
+                    )}
+                  >
+                    <Button
+                      variant="text"
+                      block
+                      type="button"
+                      className={cn(
+                        "chat-lab__context-popover-item",
+                        isSelected && "chat-lab__context-popover-item--active",
+                      )}
+                      onClick={() => onPickWorkspace(p)}
+                    >
+                      <Folder className="chat-lab__context-popover-item-icon" aria-hidden />
+                      <span className="chat-lab__context-popover-item-label">{p}</span>
+                    </Button>
+                    {isSelected ? (
+                      <div className="chat-lab__context-item-suffix">
+                        <Button
+                          variant="text"
+                          size="small"
+                          type="button"
+                          className="chat-lab__context-clear-btn"
+                          aria-label={t("chatLab.contextBar.clearSelection")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onClearSelection();
+                          }}
+                        >
+                          <X aria-hidden />
+                        </Button>
+                        <span className="chat-lab__context-popover-check" aria-hidden>
+                          ✓
+                        </span>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+              {!recentPaths.length && !hasSelection ? (
+                <li>
+                  <p className="chat-lab__context-popover-empty">{t("chatLab.contextBar.noSelectionHint")}</p>
+                </li>
+              ) : null}
+            </ul>
+          </>
+        ) : null}
+
+        {showFiles ? (
+          <>
+            <p className="chat-lab__context-popover-section">{t("chatLab.contextBar.files")}</p>
+            {fileEntries.length ? (
+              <ul className="chat-lab__context-popover-list">
+                {fileEntries.map((ent) => (
+                  <li key={ent.path}>
+                    <Button
+                      variant="text"
+                      block
+                      type="button"
+                      className="chat-lab__context-popover-item"
+                      onClick={() => onPickFile(ent.path)}
+                    >
+                      <Search className="chat-lab__context-popover-item-icon" aria-hidden />
+                      <span className="chat-lab__context-popover-item-label">{ent.rel}</span>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="chat-lab__context-popover-empty">{t("chatLab.contextBar.noResults")}</p>
+            )}
+          </>
+        ) : null}
+
+        {showBranches ? (
+          gitRepo ? (
+            branches.length ? (
+              <ul className="chat-lab__context-popover-list">
+                {branches.map((b) => (
+                  <li key={b}>
+                    <Button
+                      variant="text"
+                      block
+                      type="button"
+                      className={cn(
+                        "chat-lab__context-popover-item",
+                        b === currentBranch && "chat-lab__context-popover-item--active",
+                      )}
+                      onClick={() => onPickBranch(b)}
+                    >
+                      <GitBranch className="chat-lab__context-popover-item-icon" aria-hidden />
+                      <span className="chat-lab__context-popover-item-label">{b}</span>
+                      {b === currentBranch ? (
+                        <span className="chat-lab__context-popover-check" aria-hidden>
+                          ✓
+                        </span>
+                      ) : null}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="chat-lab__context-popover-empty">{t("chatLab.contextBar.noResults")}</p>
+            )
+          ) : (
+            <p className="chat-lab__context-popover-empty">{t("chatLab.contextBar.notGitRepo")}</p>
+          )
+        ) : null}
+      </div>
+
+      {kind === "workspace" ? (
+        <div className="chat-lab__context-popover-footer">
+          <Button type="button" variant="outline" size="small" block className="chat-lab__context-popover-footer-btn" onClick={onOpenFolder}>
+            <FolderOpen className="chat-lab__context-popover-item-icon" aria-hidden />
+            {t("chatLab.contextBar.openFolder")}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
-    <FloatingPortal>
-      <FloatingFocusManager context={context} modal={false} initialFocus={inputRef}>
-        <div
-          ref={refs.setFloating}
-          style={floatingStyles}
-          className="outline-none z-[400]"
-          onMouseDown={(e) => e.preventDefault()}
-          {...getFloatingProps()}
-        >
-          <FluidPopupAnimatedSurface
-            key={surfaceKey}
-            leaving={leaving}
-            finishLeave={finishLeave}
-            placement={context.placement}
-            morphBr="14px"
-            className={cn(
-              "chat-lab__context-popover",
-              "flex w-full flex-col overflow-hidden rounded-[14px] border",
-              "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
-              "shadow-[var(--os-shadow-soft)]",
-            )}
-          >
-            <div className="chat-lab__context-popover-search">
-              <div className="min-w-0 flex-1">
-                <Input
-                  ref={inputRef}
-                  block
-                  borderless
-                  clearable
-                  size="small"
-                  type="search"
-                  prefixIcon={
-                    <SearchSparkleIcon className="chat-lab__context-popover-search-icon" aria-hidden />
-                  }
-                  placeholder={
-                    kind === "branch"
-                      ? t("chatLab.contextBar.branchSearchPlaceholder")
-                      : t("chatLab.contextBar.workspaceSearchPlaceholder")
-                  }
-                  value={query}
-                  onChange={(value) => onQueryChange(value)}
-                  aria-label={
-                    kind === "branch"
-                      ? t("chatLab.contextBar.branchSearchPlaceholder")
-                      : t("chatLab.contextBar.workspaceSearchPlaceholder")
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="chat-lab__context-popover-body" role="listbox">
-              {loading ? (
-                <p className="chat-lab__context-popover-empty">{t("chatLab.contextBar.loading")}</p>
-              ) : null}
-
-              {showRecents ? (
-                <>
-                  <p className="chat-lab__context-popover-section">{t("chatLab.contextBar.recents")}</p>
-                  <ul className="chat-lab__context-popover-list">
-                    {recentPaths.map((p) => {
-                      const isSelected = p === selectedRoot;
-                      return (
-                        <li
-                          key={p}
-                          className={cn(
-                            "chat-lab__context-popover-row",
-                            isSelected && "chat-lab__context-popover-row--selected",
-                          )}
-                        >
-                          <Button
-                variant="text"
-                block
-                            type="button"
-                            className={cn(
-                              "chat-lab__context-popover-item",
-                              isSelected && "chat-lab__context-popover-item--active",
-                            )}
-                            onClick={() => onPickWorkspace(p)}
-                          >
-                            <Folder className="chat-lab__context-popover-item-icon" aria-hidden />
-                            <span className="chat-lab__context-popover-item-label">{p}</span>
-                          </Button>
-                          {isSelected ? (
-                            <div className="chat-lab__context-item-suffix">
-                              <Button
-                variant="text"
-                size="small"
-                                type="button"
-                                className="chat-lab__context-clear-btn"
-                                aria-label={t("chatLab.contextBar.clearSelection")}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onClearSelection();
-                                }}
-                              >
-                                <X aria-hidden />
-                              </Button>
-                              <span className="chat-lab__context-popover-check" aria-hidden>
-                                ✓
-                              </span>
-                            </div>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                      {!recentPaths.length && !hasSelection ? (
-                        <li>
-                          <p className="chat-lab__context-popover-empty">{t("chatLab.contextBar.noSelectionHint")}</p>
-                        </li>
-                      ) : null}
-                    </ul>
-                </>
-              ) : null}
-
-              {showFiles ? (
-                <>
-                  <p className="chat-lab__context-popover-section">{t("chatLab.contextBar.files")}</p>
-                  {fileEntries.length ? (
-                    <ul className="chat-lab__context-popover-list">
-                      {fileEntries.map((ent) => (
-                        <li key={ent.path}>
-                          <Button
-                variant="text"
-                block
-                            type="button"
-                            className="chat-lab__context-popover-item"
-                            onClick={() => onPickFile(ent.path)}
-                          >
-                            <Search className="chat-lab__context-popover-item-icon" aria-hidden />
-                            <span className="chat-lab__context-popover-item-label">{ent.rel}</span>
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="chat-lab__context-popover-empty">{t("chatLab.contextBar.noResults")}</p>
-                  )}
-                </>
-              ) : null}
-
-              {showBranches ? (
-                gitRepo ? (
-                  branches.length ? (
-                    <ul className="chat-lab__context-popover-list">
-                      {branches.map((b) => (
-                        <li key={b}>
-                          <Button
-                variant="text"
-                block
-                            type="button"
-                            className={cn(
-                              "chat-lab__context-popover-item",
-                              b === currentBranch && "chat-lab__context-popover-item--active",
-                            )}
-                            onClick={() => onPickBranch(b)}
-                          >
-                            <GitBranch className="chat-lab__context-popover-item-icon" aria-hidden />
-                            <span className="chat-lab__context-popover-item-label">{b}</span>
-                            {b === currentBranch ? (
-                              <span className="chat-lab__context-popover-check" aria-hidden>
-                                ✓
-                              </span>
-                            ) : null}
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="chat-lab__context-popover-empty">{t("chatLab.contextBar.noResults")}</p>
-                  )
-                ) : (
-                  <p className="chat-lab__context-popover-empty">{t("chatLab.contextBar.notGitRepo")}</p>
-                )
-              ) : null}
-            </div>
-
-            {kind === "workspace" ? (
-              <div className="chat-lab__context-popover-footer">
-                <Button type="button" variant="outline" size="small" block className="chat-lab__context-popover-footer-btn" onClick={onOpenFolder}>
-                  <FolderOpen className="chat-lab__context-popover-item-icon" aria-hidden />
-                  {t("chatLab.contextBar.openFolder")}
-                </Button>
-              </div>
-            ) : null}
-          </FluidPopupAnimatedSurface>
-        </div>
-      </FloatingFocusManager>
-    </FloatingPortal>
+    <Popup
+      ref={popupRef}
+      visible={open}
+      attach="body"
+      placement="top-start"
+      trigger="click"
+      zIndex={400}
+      destroyOnClose={false}
+      overlayClassName={OS_POPUP_OVERLAY_CLASS}
+      overlayInnerClassName={OS_POPUP_INNER_CLASS}
+      popperOptions={osPopupPopperOptions(8, 8)}
+      content={popupContent}
+      onVisibleChange={(visible) => {
+        if (!visible) onClose();
+      }}
+    >
+      <span ref={virtualAnchorRef} className={OS_POPUP_ANCHOR_CLASS} aria-hidden />
+    </Popup>
   );
 }
 

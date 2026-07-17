@@ -1,65 +1,88 @@
-import { Menu } from "@open-studio/udesign";
+import { Button } from "@open-studio/udesign";
+import { Tooltip } from "tdesign-react";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
-import { useCallback, useMemo } from "react";
-import { useTheme } from "../../context/ThemeContext.jsx";
+import { useCallback } from "react";
+import { cn } from "../../ui/cn.js";
 
 /**
  * @param {import("react-router-dom").Location} location
- * @param {Array<{ id: string; to?: string; end?: boolean; isActive?: (loc: import("react-router-dom").Location) => boolean }>} items
+ * @param {{ to?: string; end?: boolean; isActive?: (loc: import("react-router-dom").Location) => boolean }} item
  */
-function resolveActiveItemId(location, items) {
-  for (const item of items) {
-    if (!item.to) continue;
-    if (typeof item.isActive === "function") {
-      try {
-        if (item.isActive(location)) return item.id;
-      } catch {
-        /* ignore */
-      }
-      continue;
-    }
-    const matched = matchPath({ path: item.to, end: item.end ?? false }, location.pathname);
-    if (matched) return item.id;
+function isRailItemActive(location, item) {
+  if (typeof item.isActive === "function") {
+    return item.isActive(location);
   }
-  return undefined;
+  if (!item.to) return false;
+  return Boolean(matchPath({ path: item.to, end: item.end ?? false }, location.pathname));
 }
 
 /**
  * @param {{
  *   collapsed?: boolean;
- *   items: Array<{ id: string; label: string; icon?: import("react").ReactNode; to?: string; end?: boolean; state?: unknown; isActive?: (loc: import("react-router-dom").Location) => boolean }>;
+ *   items: Array<{
+ *     id: string;
+ *     label: string;
+ *     icon?: import("react").ReactNode;
+ *     to?: string;
+ *     end?: boolean;
+ *     state?: unknown;
+ *     isActive?: (loc: import("react-router-dom").Location) => boolean;
+ *   }>;
  * }} props
  */
 export default function PrimaryRailMenu({ collapsed = false, items }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { theme } = useTheme();
 
-  const activeValue = useMemo(() => resolveActiveItemId(location, items), [items, location]);
-
-  const handleChange = useCallback(
-    (value) => {
-      const item = items.find((entry) => entry.id === value);
-      if (!item?.to) return;
+  const handleNavigate = useCallback(
+    (item) => {
+      if (!item.to) return;
       navigate(item.to, { state: item.state });
     },
-    [items, navigate],
+    [navigate],
   );
 
   return (
-    <Menu
-      className="app-rail-menu"
-      collapsed={collapsed}
-      width="100%"
-      theme={theme === "dark" ? "dark" : "light"}
-      value={activeValue}
-      onChange={handleChange}
+    <nav
+      className={cn("app-rail-nav", collapsed && "app-rail-nav--collapsed")}
+      aria-label="Primary navigation"
     >
-      {items.map((item) => (
-        <Menu.MenuItem key={item.id} value={item.id} icon={item.icon}>
-          {item.label}
-        </Menu.MenuItem>
-      ))}
-    </Menu>
+      {items.map((item) => {
+        if (!item.to) return null;
+        const active = isRailItemActive(location, item);
+        const button = (
+          <Button
+            type="button"
+            variant="text"
+            block={!collapsed}
+            aria-label={item.label}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "app-rail-nav-item",
+              collapsed && "app-rail-nav-item--collapsed",
+              active && "app-rail-nav-item--active",
+            )}
+            onClick={() => handleNavigate(item)}
+          >
+            {collapsed ? (
+              item.icon
+            ) : (
+              <span className="app-rail-nav-item__inner">
+                {item.icon}
+                <span className="app-rail-nav-item__label">{item.label}</span>
+              </span>
+            )}
+          </Button>
+        );
+
+        if (!collapsed) return button;
+
+        return (
+          <Tooltip key={item.id} content={item.label} placement="right" destroyOnClose>
+            {button}
+          </Tooltip>
+        );
+      })}
+    </nav>
   );
 }

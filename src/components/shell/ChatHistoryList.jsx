@@ -1,17 +1,5 @@
-import {
-  FloatingFocusManager,
-  FloatingPortal,
-  autoUpdate,
-  flip,
-  offset,
-  shift,
-  useClick,
-  useDismiss,
-  useFloating,
-  useInteractions,
-  useRole,
-} from "@floating-ui/react";
 import { ChevronDown, Maximize2, Minimize2, Trash2 } from "lucide-react";
+import { Popup } from "tdesign-react";
 import { Button } from "@open-studio/udesign";
 import {
   Fragment,
@@ -40,9 +28,7 @@ import { useI18n } from "../../context/I18nContext.jsx";
 import { useTheme } from "../../context/ThemeContext.jsx";
 import EmptyState from "../../ui/EmptyState.jsx";
 import FluidConfirmDialog from "../../ui/FluidConfirmDialog.jsx";
-import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
-import { useFluidPopupBlob } from "../../ui/useFluidPopupBlob.js";
-import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
+import { OS_POPUP_INNER_CLASS, OS_POPUP_OVERLAY_CLASS, osPopupPopperOptions } from "../../ui/osPopupShared.js";
 import { cn } from "../../ui/cn.js";
 import {
   CHAT_HISTORY_ROW_COLLAPSE_MS,
@@ -161,18 +147,20 @@ function ChatHistoryGroupHead({
         aria-expanded={!collapsed}
         disabled={deleteMode}
       >
-        <span className="chat-history-group__logo" aria-hidden>
-          {isWechat ? (
-            <WechatIcon className="chat-history-group__logo-wechat" />
-          ) : (
-            <img
-              className="chat-history-group__logo-img"
-              src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
-              alt=""
-            />
-          )}
+        <span className="chat-history-group__head-inner">
+          <span className="chat-history-group__logo" aria-hidden>
+            {isWechat ? (
+              <WechatIcon className="chat-history-group__logo-wechat" />
+            ) : (
+              <img
+                className="chat-history-group__logo-img"
+                src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
+                alt=""
+              />
+            )}
+          </span>
+          <span className="chat-history-group__label">{label}</span>
         </span>
-        <span className="chat-history-group__label">{label}</span>
       </Button>
       <div className="chat-history-group__actions">
         {deleteMode ? (
@@ -301,35 +289,6 @@ function HistorySessionRow({
   const location = useLocation();
   const activeC = new URLSearchParams(location.search).get("c");
   const [open, setOpen] = useState(false);
-  const [menuHoverKey, setMenuHoverKey] = useState(/** @type {"rename" | "delete" | null} */ (null));
-  const { present, leaving, finishLeave, surfaceKey } = useFloatingPresence(open);
-
-  const { rootRef: menuBlobRootRef, setItemRef: setMenuItemRef, blobStyle: menuBlobStyle } = useFluidPopupBlob({
-    open,
-    hoverKey: menuHoverKey,
-    fallbackKey: null,
-    layoutKey: "",
-  });
-
-  useEffect(() => {
-    if (!open) setMenuHoverKey(null);
-  }, [open]);
-
-  const { refs, floatingStyles, context } = useFloating({
-    open: present,
-    onOpenChange: setOpen,
-    placement: "bottom-end",
-    strategy: "fixed",
-    middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  });
-
-  const click = useClick(context);
-  const dismiss = useDismiss(context);
-  const role = useRole(context, { role: "menu" });
-  const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role]);
-
-  const floatingProps = getFloatingProps();
 
   const handleRename = () => {
     setOpen(false);
@@ -347,6 +306,32 @@ function HistorySessionRow({
     onAfterDelete();
     if (activeC === sessionId) navigate("/chat", { replace: true });
   };
+
+  const menuContent = (
+    <div className={cn("chat-history-card__menu")} role="menu">
+      <div className="chat-history-card__menu-row">
+        <button type="button" role="menuitem" className="chat-history-card__menu-item" onClick={handleRename}>
+          <span className="chat-history-card__menu-item-icon">
+            <PencilIcon className="text-[var(--os-text-muted)]" />
+          </span>
+          <span className="chat-history-card__menu-item-label">{t("nav.chatHistoryRename")}</span>
+        </button>
+      </div>
+      <div className="chat-history-card__menu-row chat-history-card__menu-row--with-divider">
+        <button
+          type="button"
+          role="menuitem"
+          className="chat-history-card__menu-item chat-history-card__menu-item--danger"
+          onClick={handleDelete}
+        >
+          <span className="chat-history-card__menu-item-icon">
+            <TrashIcon className="shrink-0" />
+          </span>
+          <span className="chat-history-card__menu-item-label">{t("nav.chatHistoryDelete")}</span>
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <li
@@ -434,85 +419,41 @@ function HistorySessionRow({
           </NavLink>
         )}
         {!selectMode ? (
-          <Button
-            type="button"
-            variant="text"
-            shape="square"
-            size="small"
-            className={cn(
-              "chat-history-card__more shrink-0 self-center",
-              present && "chat-history-card__more--open",
-            )}
-            ref={refs.setReference}
-            aria-label={t("nav.chatHistoryMore")}
-            aria-haspopup="menu"
-            aria-expanded={present}
-            {...getReferenceProps()}
-            onPointerDown={(e) => e.stopPropagation()}
+          <Popup
+            visible={open}
+            trigger="click"
+            placement="bottom-end"
+            attach="body"
+            zIndex={400}
+            destroyOnClose={false}
+            overlayClassName={OS_POPUP_OVERLAY_CLASS}
+            overlayInnerClassName={OS_POPUP_INNER_CLASS}
+            popperOptions={osPopupPopperOptions(6, 8)}
+            content={menuContent}
+            onVisibleChange={setOpen}
           >
-            <span className="translate-y-[-1px]" aria-hidden>
-              ⋮
-            </span>
-          </Button>
+            <Button
+              type="button"
+              variant="text"
+              shape="square"
+              size="small"
+              className={cn(
+                "chat-history-card__more shrink-0 self-center",
+                open && "chat-history-card__more--open",
+              )}
+              aria-label={t("nav.chatHistoryMore")}
+              aria-haspopup="menu"
+              aria-expanded={open}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <span className="translate-y-[-1px]" aria-hidden>
+                ⋮
+              </span>
+            </Button>
+          </Popup>
         ) : null}
       </div>
       </div>
-      {present ? (
-        <FloatingPortal>
-          <FloatingFocusManager context={context} modal={false} initialFocus={-1} returnFocus>
-            <div
-              ref={refs.setFloating}
-              style={floatingStyles}
-              className="outline-none"
-              {...floatingProps}
-              onPointerLeave={(e) => {
-                floatingProps.onPointerLeave?.(e);
-                setMenuHoverKey(null);
-              }}
-            >
-              <FluidPopupAnimatedSurface
-                key={surfaceKey}
-                leaving={leaving}
-                finishLeave={finishLeave}
-                placement={context.placement}
-                morphBr="11px"
-                className={cn("chat-history-card__menu")}
-              >
-                <div ref={menuBlobRootRef} className="relative w-full chat-history-card__menu-blob-scope">
-                  <div
-                    aria-hidden
-                    className="fluid-nav__blob fluid-popup-menu__blob pointer-events-none absolute top-0 left-0 z-0"
-                    style={menuBlobStyle}
-                  />
-                  <div className="chat-history-card__menu-row" onPointerEnter={() => setMenuHoverKey("rename")}>
-                    <div ref={(node) => setMenuItemRef("rename", node)} className="fluid-popup-menu__measure">
-                      <Button type="button" variant="text" block className="chat-history-card__menu-item w-full min-w-0" onClick={handleRename}>
-                        <PencilIcon className="text-[var(--os-text-muted)]" />
-                        {t("nav.chatHistoryRename")}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="chat-history-card__menu-row chat-history-card__menu-row--with-divider" onPointerEnter={() => setMenuHoverKey("delete")}>
-                    <div ref={(node) => setMenuItemRef("delete", node)} className="fluid-popup-menu__measure">
-                      <Button
-                        type="button"
-                        theme="danger"
-                        variant="text"
-                        block
-                        className="chat-history-card__menu-item chat-history-card__menu-item--danger w-full min-w-0"
-                        onClick={handleDelete}
-                      >
-                        <TrashIcon className="shrink-0" />
-                        {t("nav.chatHistoryDelete")}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </FluidPopupAnimatedSurface>
-            </div>
-          </FloatingFocusManager>
-        </FloatingPortal>
-      ) : null}
     </li>
   );
 }
@@ -925,12 +866,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   }
 
   return (
-    <div className="chat-history-rail flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden border-t border-[color-mix(in_srgb,var(--os-border)_80%,transparent)] px-0.5 pt-2.5">
-      <div className="chat-history-rail__heading-row flex shrink-0 items-center gap-2 px-2">
-        <div className="chat-history-rail__heading min-w-0 truncate text-[0.72rem] font-semibold uppercase tracking-wide">
-          {t("nav.chatHistory")}
-        </div>
-      </div>
+    <div className="chat-history-rail flex min-h-0 flex-1 flex-col overflow-hidden border-t border-[color-mix(in_srgb,var(--os-border)_80%,transparent)] px-0.5 pt-1.5">
       <div className="chat-history-rail__scroll-clip relative min-h-0 flex-1">
         <div
           ref={scrollRootRef}

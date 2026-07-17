@@ -1,6 +1,5 @@
-import { useState } from "react";
-import { useFloating, useInteractions, useHover, useDismiss, useRole, offset, shift } from "@floating-ui/react";
-import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
+import { Popup } from "tdesign-react";
+import { OS_POPUP_INNER_CLASS, OS_POPUP_OVERLAY_CLASS, osPopupPopperOptions } from "../../ui/osPopupShared.js";
 import { cn } from "../../ui/cn.js";
 
 /**
@@ -8,39 +7,6 @@ import { cn } from "../../ui/cn.js";
  * @param {{ ratio: number; ariaSummary: string; percentText: string; line1: string; line2: string }} props
  */
 export function ChatLabContextMeter({ ratio, ariaSummary, percentText, line1, line2 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [leaving, setLeaving] = useState(false);
-
-  const { refs, floatingStyles, context } = useFloating({
-    open: isOpen,
-    onOpenChange: (open) => {
-      if (open) {
-        setLeaving(false);
-        setIsOpen(true);
-      } else {
-        setLeaving(true);
-      }
-    },
-    placement: "top",
-    middleware: [
-      offset(8),
-      shift({
-        padding: 8,
-      }),
-    ],
-  });
-
-  const hover = useHover(context, { move: false });
-  const dismiss = useDismiss(context);
-  const role = useRole(context, { role: "tooltip" });
-
-  const { getReferenceProps, getFloatingProps } = useInteractions([hover, dismiss, role]);
-
-  const finishLeave = () => {
-    setLeaving(false);
-    setIsOpen(false);
-  };
-
   const r = 10;
   const hi = ratio >= 0.92;
   const c = 2 * Math.PI * r;
@@ -48,14 +14,36 @@ export function ChatLabContextMeter({ ratio, ariaSummary, percentText, line1, li
   const mid = !hi && ratio >= 0.78;
   const stroke = hi ? "#e53935" : mid ? "#d97706" : "color-mix(in srgb, var(--os-accent) 82%, var(--os-text-muted))";
 
+  const popupContent = (
+    <div
+      className={cn(
+        "flex flex-col gap-1 px-3 py-2",
+        "rounded-[10px] border",
+        "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)]",
+        "bg-[var(--os-bg-modal)]",
+        "shadow-[var(--os-shadow-soft)]",
+      )}
+    >
+      <div className="text-[0.8125rem] leading-snug text-[var(--os-text)]">{line1}</div>
+      <div className="text-[0.75rem] leading-snug text-[var(--os-text-muted)]">{line2}</div>
+    </div>
+  );
+
   return (
-    <>
+    <Popup
+      trigger="hover"
+      placement="top"
+      showArrow={false}
+      zIndex={500}
+      overlayClassName={OS_POPUP_OVERLAY_CLASS}
+      overlayInnerClassName={OS_POPUP_INNER_CLASS}
+      popperOptions={osPopupPopperOptions(8, 8)}
+      content={popupContent}
+    >
       <span
-        ref={refs.setReference}
         className="chat-lab__ctx-ring-wrap chat-lab__ctx-ring-wrap--standalone"
         role="img"
         aria-label={ariaSummary}
-        {...getReferenceProps()}
       >
         <svg className="chat-lab__ctx-ring-svg" width="34" height="34" viewBox="0 0 34 34" aria-hidden>
           <circle
@@ -81,32 +69,6 @@ export function ChatLabContextMeter({ ratio, ariaSummary, percentText, line1, li
           />
         </svg>
       </span>
-
-      {isOpen && (
-        <div
-          ref={refs.setFloating}
-          style={floatingStyles}
-          className="z-[500]"
-          {...getFloatingProps()}
-        >
-          <FluidPopupAnimatedSurface
-            leaving={leaving}
-            finishLeave={finishLeave}
-            placement={context.placement}
-            morphBr="10px"
-            className={cn(
-              "flex flex-col gap-1 px-3 py-2",
-              "rounded-[10px] border",
-              "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)]",
-              "bg-[var(--os-bg-modal)]",
-              "shadow-[var(--os-shadow-soft)]",
-            )}
-          >
-            <div className="text-[0.8125rem] leading-snug text-[var(--os-text)]">{line1}</div>
-            <div className="text-[0.75rem] leading-snug text-[var(--os-text-muted)]">{line2}</div>
-          </FluidPopupAnimatedSurface>
-        </div>
-      )}
-    </>
+    </Popup>
   );
 }

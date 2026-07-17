@@ -53,6 +53,8 @@
     "chatHistoryTimeDays": "{{n}} 天前",
     "lobster": "智慧體",
     "skills": "技能",
+    "automation": "自動化",
+    "webExplore": "網頁漫遊",
     "settings": "設定",
     "profile": "帳戶",
     "help": "幫助",
@@ -217,6 +219,12 @@
     "generating": "圖表生成中…",
     "updating": "圖表更新中…",
     "saveImage": "儲存為圖片"
+  },
+  "automationPage": {
+    "placeholder": "定時任務與自動化能力，即將推出。"
+  },
+  "webExplorePage": {
+    "placeholder": "網頁漫遊，即將推出。"
   },
   "lobsterPage": {
     "title": "智慧體管理",
@@ -409,6 +417,16 @@
     "thinking": "思考過程",
     "thinkingHint": "部分閘道／模型會串流 reasoning_content",
     "streaming": "產生中…",
+    "streamingWriting": "正在撰寫回覆…",
+    "streamingThinking": "正在思考…",
+    "streamingSearching": "正在查詢…",
+    "streamingRunningCommand": "正在執行命令…",
+    "streamingReadingFile": "正在讀取檔案…",
+    "streamingEditingFile": "正在編輯檔案…",
+    "streamingPreparing": "正在準備…",
+    "streamingWorking": "正在處理…",
+    "streamingOrchestrating": "正在協調任務…",
+    "streamingFetching": "正在取得網頁…",
     "emptyAssistantReply": "本輪助手沒有顯示可見正文（可能只在推理通道輸出，或閘道已完成但未推送文字片段）。",
     "unknownError": "未知錯誤",
     "gatewayLine": "閘道：{{url}}{{tokenBadge}} · 工作階段 {{sessionKey}}",

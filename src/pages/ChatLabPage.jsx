@@ -1,5 +1,6 @@
 import { memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
+import { Select as TSelect } from "tdesign-react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -159,7 +160,6 @@ import {
   scrollThreadToMessage,
 } from "../chat/chatLabThreadScroll.js";
 import { cn } from "../ui/cn.js";
-import Select from "../ui/Select.jsx";
 import Checkbox from "../ui/Checkbox.jsx";
 
 /** Below this count, skip virtual scroll — avoids row-height drift on some Electron/GPU setups. */
@@ -4140,9 +4140,11 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         />
         <div className="chat-lab__shell-toolbar">
           <ChatLabToolbarScroll>
-            <Select
+            <TSelect
               id="chat-toolbar-model"
-              ariaLabel={t("chatLab.toolbarAuto")}
+              borderless
+              // size="small"
+              autoWidth={false}
               value={enabledModelOptions.length > 0 ? toolbarModelId : "__model_not_configured__"}
               onChange={(v) => {
                 if (enabledModelOptions.length === 0) return;
@@ -4229,10 +4231,8 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
               line1={contextMeterLines.line1}
               line2={contextMeterLines.line2}
             />
-            <Button
+            <button
               type="button"
-              variant="text"
-              shape="circle"
               className={cn(
                 "chat-lab__send-round",
                 gatewayStreaming || orchestrationStreamBusy ? "chat-lab__send-round--stop" : "chat-lab__send-round--send",
@@ -4250,12 +4250,12 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
               aria-label={gatewayStreaming || orchestrationStreamBusy ? t("chatLab.stop") : t("chatLab.send")}
             >
               <span className="chat-lab__send-round-icon" aria-hidden>
-                <Send />
+                <Send size={15} strokeWidth={2.25} />
               </span>
               <span className="chat-lab__send-round-stop-icon" aria-hidden>
                 <ChatStreamPauseIcon />
               </span>
-            </Button>
+            </button>
           </div>
         </div>
         </div>
@@ -4537,31 +4537,305 @@ function ChatLabAutoLinkPreview({ conversationId, messages }) {
 function ChatStreamPauseIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="7" y="6" width="3.5" height="12" rx="1" fill="currentColor" />
-      <rect x="13.5" y="6" width="3.5" height="12" rx="1" fill="currentColor" />
+      <rect x="8" y="6" width="3" height="12" rx="0.75" fill="currentColor" />
+      <rect x="13" y="6" width="3" height="12" rx="0.75" fill="currentColor" />
     </svg>
   );
 }
 
-function ChatStreamingSparkle({ className }) {
+/** @param {import("../chat/toolTraceMerge.js").ActivityRow} row */
+function formatActivityHeadline(row) {
+  const stream = truncateOneLine(String(row.stream ?? "").trim(), 64);
+  const titleRaw = String(row.title ?? "").trim();
+  const phase = String(row.phase ?? "").trim();
+  const headline =
+    stream.toLowerCase() === "lifecycle" && phase
+      ? `${titleRaw || stream} · ${phase}`
+      : titleRaw || stream || "";
+  return truncateOneLine(headline, 104);
+}
+
+/** @param {import("../chat/toolTraceMerge.js").ToolTraceRow | undefined} row */
+function isRunningToolRow(row) {
+  if (!row) return false;
+  const done =
+    Boolean(row.done) || /^(end|complete|completed|ok|result)$/i.test(String(row.phase ?? "").trim());
+  const failed = Boolean(row.error && String(row.error).trim());
+  return !done && !failed;
+}
+
+/** @param {import("../chat/toolTraceMerge.js").ActivityRow | undefined} row */
+function isRunningActivityRow(row) {
+  if (!row || Boolean(row.orchestrationInterrupted)) return false;
+  if (Boolean(row.workerStreaming)) return true;
+  const phase = String(row.phase ?? "").trim();
+  if (phase === "running") return true;
+  if (!phase) return false;
+  return !isCompletedActivityPhase(phase);
+}
+
+/** @param {string | undefined} text */
+function looksLikeDevTraceLabel(text) {
+  const s = String(text ?? "").trim();
+  if (!s) return true;
+  if (/^[\w.-]+\s·\s[\w.-]+$/i.test(s)) return true;
+  if (/^(lifecycle|orchestration|assistant|tool|session|agent|run|item)([_.:\s-]|$)/i.test(s)) return true;
+  if (/^[a-z][a-z0-9_]*$/i.test(s) && s.includes("_")) return true;
+  return false;
+}
+
+/** @param {string | undefined} text */
+function looksLikeShellCommand(text) {
+  const s = String(text ?? "").trim();
+  if (!s || s.length > 400) return false;
+  if (
+    /^(curl|wget|npm|pnpm|yarn|git|docker|powershell|pwsh|cmd|bash|sh|python|node|npx|pip|make|cmake|gcc|go|cargo)\b/i.test(
+      s,
+    )
+  ) {
+    return true;
+  }
+  if (/\bcurl(\.exe)?(\s|$)/i.test(s)) return true;
+  if (/\.exe\s+["'`/[\-]/i.test(s)) return true;
+  if (/^[a-z][\w.-]*(\.exe)?\s+/.test(s) && /["'`$]/.test(s) && !/^https?:\/\//i.test(s)) return true;
+  return false;
+}
+
+/** @param {import("../chat/toolTraceMerge.js").ToolTraceRow} row */
+function pickToolCommandHint(row) {
+  const tool = String(row.toolName ?? "").trim();
+  const sum = typeof row.summary === "string" ? row.summary.trim() : "";
+  const lab = typeof row.label === "string" ? row.label.trim() : "";
+  const status = typeof row.status === "string" ? row.status.trim() : "";
+  const partial = typeof row.partialResult === "string" ? row.partialResult.trim() : "";
+  /** @type {Record<string, unknown> | undefined} */
+  const args =
+    row.args && typeof row.args === "object" ? /** @type {Record<string, unknown>} */ (row.args) : undefined;
+  const candidates = [pickCommandSnippet(args), tool, sum, lab, status, partial].filter(Boolean);
+  for (const c of candidates) {
+    if (looksLikeShellCommand(c)) return c;
+  }
+  return pickCommandSnippet(args) || sum || lab || status || partial || tool;
+}
+
+/** @param {string | undefined} toolName @param {string | undefined} cmdHint */
+function isShellExecToolName(toolName, cmdHint) {
+  if (looksLikeShellCommand(toolName) || looksLikeShellCommand(cmdHint)) return true;
+  const n = String(toolName ?? "").toLowerCase();
+  if (
+    n.includes("exec") ||
+    n.includes("run_terminal") ||
+    n.includes("bash") ||
+    n.includes("shell") ||
+    n.includes("command") ||
+    n === "run" ||
+    n.includes("powershell") ||
+    n.includes("spawn") ||
+    n.includes("subprocess")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** @param {string | undefined} toolName */
+function isFileWriteTool(toolName) {
+  const n = String(toolName ?? "").toLowerCase();
   return (
-    <svg className={className} width="14" height="14" viewBox="0 0 24 24" aria-hidden>
-      <path
-        fill="currentColor"
-        d="M12 2 13.9 8.2 20 10l-6.1 1.8L12 22l-1.9-8.2L4 10l6.1-1.8L12 2z"
-      />
-    </svg>
+    /\b(write|edit|patch|replace|save|create|delete|remove|mkdir|rename|move|apply_patch|str_replace)\b/.test(
+      n,
+    ) ||
+    n.includes("write_file") ||
+    n.includes("edit_file") ||
+    n.includes("search_replace")
   );
 }
 
-/** Lightweight “thinking” affordance — two sparkles scale while trading places (see qclaw-style references). */
+/** @param {string | undefined} toolName */
+function isFileReadTool(toolName) {
+  const n = String(toolName ?? "").toLowerCase();
+  return (
+    /\b(read|fetch|view|open|load|grep|list_dir|glob|find)\b/.test(n) ||
+    n.includes("read_file") ||
+    n.includes("readfile")
+  );
+}
+
+/**
+ * User-facing in-flight label for a tool row (not dev trace copy).
+ * @param {import("../chat/toolTraceMerge.js").ToolTraceRow} row
+ * @param {(key: string, vars?: Record<string, string | number>) => string} t
+ */
+function getStreamingBusyLabelFromTool(row, t) {
+  const tool = String(row.toolName || "").trim();
+  const nameLower = tool.toLowerCase();
+  const cmdHint = pickToolCommandHint(row);
+  if (isShellExecToolName(tool, cmdHint)) {
+    return t("chatLab.streamingRunningCommand");
+  }
+
+  const pres = getToolTracePresentation(row, t);
+  /** @type {Record<string, unknown> | undefined} */
+  const args =
+    row.args && typeof row.args === "object" ? /** @type {Record<string, unknown>} */ (row.args) : undefined;
+
+  if (pres.kind === "search") return t("chatLab.streamingSearching");
+  if (pres.kind === "exec") return t("chatLab.streamingRunningCommand");
+  if (pres.kind === "session") return t("chatLab.streamingPreparing");
+  if (looksLikeShellCommand(pres.brief)) return t("chatLab.streamingRunningCommand");
+
+  const hasPath = Boolean(
+    pickArgString(args, [
+      "path",
+      "file_path",
+      "filepath",
+      "target_file",
+      "absolute_path",
+      "file",
+      "uri",
+      "resolvedPath",
+    ]),
+  );
+  if (pres.kind === "file" || hasPath) {
+    if (isFileWriteTool(tool)) return t("chatLab.streamingEditingFile");
+    if (isFileReadTool(tool)) return t("chatLab.streamingReadingFile");
+    return t("chatLab.streamingEditingFile");
+  }
+
+  if (/browser|navigate|web_fetch|webfetch|\bfetch\b|http/i.test(nameLower)) {
+    return t("chatLab.streamingFetching");
+  }
+
+  return t("chatLab.streamingWorking");
+}
+
+/**
+ * User-facing in-flight label for an activity row (not dev trace copy).
+ * @param {import("../chat/toolTraceMerge.js").ActivityRow} row
+ * @param {(key: string, vars?: Record<string, string | number>) => string} t
+ */
+function getStreamingBusyLabelFromActivity(row, t) {
+  const stream = String(row.stream ?? "").trim().toLowerCase();
+  const phase = String(row.phase ?? "").trim().toLowerCase();
+  const title = String(row.title ?? "").trim();
+  const textRaw = typeof row.text === "string" ? row.text.trim() : "";
+
+  if (Boolean(row.workerStreaming)) return t("chatLab.streamingWriting");
+
+  if (/^(command|exec|shell|terminal|bash|powershell|process)$/.test(stream)) {
+    return t("chatLab.streamingRunningCommand");
+  }
+  if (looksLikeShellCommand(title) || looksLikeShellCommand(textRaw)) {
+    return t("chatLab.streamingRunningCommand");
+  }
+
+  if (stream === "lifecycle") {
+    if (phase === "start" || phase === "init" || phase === "bootstrap") {
+      return t("chatLab.streamingPreparing");
+    }
+    return t("chatLab.streamingWorking");
+  }
+
+  if (stream === "orchestration" || Boolean(row.orchestrationLeadStep)) {
+    if (title && !looksLikeDevTraceLabel(title) && !looksLikeShellCommand(title)) {
+      return truncateOneLine(title, 64);
+    }
+    return t("chatLab.streamingOrchestrating");
+  }
+
+  if (title && !looksLikeDevTraceLabel(title) && !looksLikeShellCommand(title)) {
+    return truncateOneLine(title, 64);
+  }
+  if (phase === "running") return t("chatLab.streamingWorking");
+  return t("chatLab.streamingPreparing");
+}
+
+/**
+ * @param {import("../chat/toolTraceMerge.js").ActivityRow[] | undefined} rows
+ * @param {(key: string, vars?: Record<string, string | number>) => string} t
+ */
+function findRunningActivityBusyLabel(rows, t) {
+  if (!Array.isArray(rows) || !rows.length) return "";
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const row = rows[i];
+    const nestedTools = Array.isArray(row.toolTrace) ? row.toolTrace : [];
+    for (let j = nestedTools.length - 1; j >= 0; j--) {
+      const tool = nestedTools[j];
+      if (isRunningToolRow(tool)) {
+        return getStreamingBusyLabelFromTool(tool, t);
+      }
+    }
+    if (isRunningActivityRow(row)) {
+      return getStreamingBusyLabelFromActivity(row, t);
+    }
+    const nested = findRunningActivityBusyLabel(row.nestedActivity, t);
+    if (nested) return nested;
+  }
+  return "";
+}
+
+/**
+ * @param {{
+ *   streaming?: boolean;
+ *   timeline?: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[];
+ *   toolRows?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
+ *   activityRows?: import("../chat/toolTraceMerge.js").ActivityRow[];
+ *   thinking?: string;
+ *   content?: string;
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ *   fallback?: string;
+ * }} opts
+ */
+function resolveStreamingBusyLabel(opts) {
+  const fallback = String(opts.fallback ?? opts.t("chatLab.streaming")).trim();
+  if (!opts.streaming) return fallback;
+
+  const toolRows = Array.isArray(opts.toolRows) ? opts.toolRows : [];
+  const activityRows = Array.isArray(opts.activityRows) ? opts.activityRows : [];
+  const timeline = Array.isArray(opts.timeline) ? opts.timeline : [];
+  const toolMap = new Map(toolRows.map((r) => [r.id, r]));
+  const activityMap = new Map(activityRows.map((r) => [r.id, r]));
+
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    const seg = timeline[i];
+    if (!seg) continue;
+    if (seg.kind === "text") {
+      if (String(seg.body ?? "").trim()) return opts.t("chatLab.streamingWriting");
+      continue;
+    }
+    if (seg.kind === "thinking") {
+      if (String(seg.body ?? "").trim()) return opts.t("chatLab.streamingThinking");
+      continue;
+    }
+    if (seg.kind === "tool") {
+      const row = toolMap.get(seg.refId);
+      if (isRunningToolRow(row)) return getStreamingBusyLabelFromTool(row, opts.t);
+      continue;
+    }
+    if (seg.kind === "activity") {
+      const row = activityMap.get(seg.refId);
+      if (isRunningActivityRow(row)) return getStreamingBusyLabelFromActivity(row, opts.t);
+    }
+  }
+
+  for (let i = toolRows.length - 1; i >= 0; i--) {
+    const row = toolRows[i];
+    if (isRunningToolRow(row)) return getStreamingBusyLabelFromTool(row, opts.t);
+  }
+
+  const activityLabel = findRunningActivityBusyLabel(activityRows, opts.t);
+  if (activityLabel) return activityLabel;
+
+  if (String(opts.thinking ?? "").trim()) return opts.t("chatLab.streamingThinking");
+  if (String(opts.content ?? "").trim()) return opts.t("chatLab.streamingWriting");
+
+  return fallback;
+}
+
+/** Shimmer label for in-flight assistant work (tools, steps, writing). */
 function ChatStreamingIndicator({ label }) {
   return (
-    <span className="chat-lab__streaming muted" role="status" aria-live="polite">
-      <span className="chat-lab__streaming-stars" aria-hidden>
-        <ChatStreamingSparkle className="chat-lab__streaming-star chat-lab__streaming-star--a" />
-        <ChatStreamingSparkle className="chat-lab__streaming-star chat-lab__streaming-star--b" />
-      </span>
+    <span className="chat-lab__streaming" role="status" aria-live="polite">
       <span className="chat-lab__streaming-label">{label}</span>
     </span>
   );
@@ -5302,11 +5576,7 @@ function ActivityRow({
   const showEnterAnim = isOrchRow ? false : showEnterAnimRaw;
   const titleRaw = String(row.title ?? "").trim();
   const phase = String(row.phase ?? "").trim();
-  const headline =
-    stream.toLowerCase() === "lifecycle" && phase
-      ? `${titleRaw || stream} · ${phase}`
-      : titleRaw || stream || "—";
-  const title = truncateOneLine(headline, 104);
+  const title = formatActivityHeadline(row) || "—";
   const textRaw = typeof row.text === "string" ? row.text.trim() : "";
   const truncatedText = textRaw.length > 2000 ? `${textRaw.slice(0, 2000)}…` : textRaw;
   const nestedToolRows = Array.isArray(row.toolTrace) ? row.toolTrace : [];
@@ -6252,6 +6522,28 @@ const MessageBubble = memo(function MessageBubble({
   );
   const activityRows = Array.isArray(message.activityLog) ? message.activityLog : [];
 
+  const streamingBusyLabel = useMemo(
+    () =>
+      resolveStreamingBusyLabel({
+        streaming: Boolean(message.streaming),
+        timeline,
+        toolRows,
+        activityRows,
+        thinking: message.thinking,
+        content: message.content,
+        t,
+      }),
+    [
+      message.streaming,
+      message.thinking,
+      message.content,
+      timeline,
+      toolRows,
+      activityRows,
+      t,
+    ],
+  );
+
   const timeLabel =
     typeof message.createdAt === "number" ? formatMessageTimestamp(message.createdAt, locale) : "";
   const timeIso =
@@ -6425,7 +6717,7 @@ const MessageBubble = memo(function MessageBubble({
         : {})}
       onAnimationEnd={shouldEnterAnim ? handleUserEnterAnimEnd : undefined}
     >
-      {isUser && (message.followUpRef || message.skillMeta) ?
+      {isUser && (message.followUpRef || message.skillMeta || fileRefs.length > 0) ?
         <div className="chat-lab__msg-meta-tags">
           {message.followUpRef && onFollowUpNavigate ?
             <MessageFollowUpTag
@@ -6441,6 +6733,21 @@ const MessageBubble = memo(function MessageBubble({
               <span className="chat-lab__msg-skill-label">{message.skillMeta.label}</span>
             </div>
           : null}
+          {fileRefs.map((ref, idx) => (
+            <button
+              key={`${message.id}-fref-${idx}`}
+              type="button"
+              className="chat-lab__msg-skill-pill chat-lab__msg-file-pill"
+              onClick={() => handleOpenFileRef(ref)}
+              title={`${t("chatLab.messageFileRefOpen")}\n${ref.path}`}
+              aria-label={t("chatLab.messageFileRefOpenNamed", { name: ref.name })}
+            >
+              <span className="chat-lab__msg-skill-emoji" aria-hidden>
+                {emojiForFileRefKind(ref.kind === "directory" ? "directory" : "file")}
+              </span>
+              <span className="chat-lab__msg-skill-label">{ref.name}</span>
+            </button>
+          ))}
         </div>
       : null}
       {!isUser && agentName && !orchestrationSidePanel ? (
@@ -6476,7 +6783,7 @@ const MessageBubble = memo(function MessageBubble({
         ) : null}
         {isOrchAnchor && message.streaming ? (
           <div className="chat-lab__orch-streaming-tail">
-            <ChatStreamingIndicator label={t("chatLab.streaming")} />
+            <ChatStreamingIndicator label={streamingBusyLabel} />
           </div>
         ) : null}
         {isOrchAnchor && message.error ? (
@@ -6547,7 +6854,7 @@ const MessageBubble = memo(function MessageBubble({
               t={t}
               streaming={Boolean(message.streaming)}
               tailBusy={Boolean(interleavedTailBusy)}
-              tailBusyLabel={t("chatLab.streaming")}
+              tailBusyLabel={streamingBusyLabel}
               keepTraceCollapsed={collapseTracePanels}
             />
             {message.error ? (
@@ -6564,7 +6871,7 @@ const MessageBubble = memo(function MessageBubble({
                 components={mdComponents}
               />
             ) : showTyping ? (
-              <ChatStreamingIndicator label={t("chatLab.streaming")} />
+              <ChatStreamingIndicator label={streamingBusyLabel} />
             ) : sidebarAutomationPending ? (
               <ChatStreamingIndicator label={t("chatLab.sidebarAutomationRunning")} />
             ) : !message.thinking &&
@@ -6623,10 +6930,7 @@ const MessageBubble = memo(function MessageBubble({
               {t("chatLab.userMessageCollapse")}
             </Button>
           ) : null}
-          <div
-            className={cn("chat-lab__msg-actions", fileRefs.length > 0 && "chat-lab__msg-actions--with-files")}
-            aria-label={fileRefs.length > 0 ? t("chatLab.messageFileRefsLabel") : undefined}
-          >
+          <div className="chat-lab__msg-actions">
             <Button
                 variant="text"
                 shape="square"
@@ -6654,23 +6958,6 @@ const MessageBubble = memo(function MessageBubble({
                 {t("orchestration.dock.title")}
               </Button>
             ) : null}
-            {fileRefs.map((ref, idx) => (
-              <Button
-                variant="text"
-                size="small"
-                key={`${message.id}-fref-${idx}`}
-                type="button"
-                className="chat-lab__msg-file-ref"
-                onClick={() => handleOpenFileRef(ref)}
-                title={`${t("chatLab.messageFileRefOpen")}\n${ref.path}`}
-                aria-label={t("chatLab.messageFileRefOpenNamed", { name: ref.name })}
-              >
-                <span className="chat-lab__msg-file-ref-emoji" aria-hidden>
-                  {emojiForFileRefKind(ref.kind === "directory" ? "directory" : "file")}
-                </span>
-                <span className="chat-lab__msg-file-ref-label">{ref.name}</span>
-              </Button>
-            ))}
             {isUser ? (
               <Button
                 variant="text"
@@ -7363,7 +7650,7 @@ function ChatLabVirtualMessageList({
   const estimateSize = useCallback((index) => {
     const m = messagesEstRef.current[index];
     if (m?.role === "user") {
-      let h = m.skillMeta || m.followUpRef ? 118 : 96;
+      let h = m.skillMeta || m.followUpRef || (Array.isArray(m.fileRefs) && m.fileRefs.length > 0) ? 118 : 96;
       const textLen = String(m.content ?? "").length;
       h += Math.min(480, Math.ceil(textLen / 3.2));
       const n = Array.isArray(m.imageAttachments) ? m.imageAttachments.length : 0;

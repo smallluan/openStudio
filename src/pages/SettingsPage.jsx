@@ -49,32 +49,27 @@ export default function SettingsPage() {
     <ModelSettingsProvider>
       <div className="settings-sheet">
         <aside className="settings-sheet__aside">
-          <div className="settings-sheet__aside-inner">
-            <p className="settings-sheet__aside-title">{t("settings.title")}</p>
-            <Menu
-              className="settings-sheet__menu"
-              collapsed={false}
-              width="100%"
-              theme={theme === "dark" ? "dark" : "light"}
-              value={section}
-              onChange={(id) => setSection(id)}
-            >
-              {settingsNavItems.map((item) => (
-                <Menu.MenuItem key={item.id} value={item.id} icon={item.icon}>
-                  {item.label}
-                </Menu.MenuItem>
-              ))}
-            </Menu>
-          </div>
+          <Menu
+            className="settings-sheet__menu"
+            collapsed={false}
+            width="100%"
+            theme={theme === "dark" ? "dark" : "light"}
+            value={section}
+            onChange={(id) => setSection(id)}
+          >
+            {settingsNavItems.map((item) => (
+              <Menu.MenuItem key={item.id} value={item.id} icon={item.icon}>
+                {item.label}
+              </Menu.MenuItem>
+            ))}
+          </Menu>
         </aside>
 
         <div className="settings-sheet__main">
           <header className="settings-sheet__header">
-            <div className="settings-sheet__header-title-wrap">
-              <h1 id="settings-modal-title" className="settings-sheet__header-title">
-                {sectionTitle}
-              </h1>
-            </div>
+            <h1 id="settings-modal-title" className="sr-only">
+              {sectionTitle}
+            </h1>
             <ModalCloseButton onClick={onClose} aria-label={t("settings.closeAria")} />
           </header>
 
@@ -85,7 +80,7 @@ export default function SettingsPage() {
             )}
           >
             {section === "general" ? (
-              <div className="settings-sheet__section settings-sheet__section--narrow">
+              <div className="settings-sheet__section">
                 <GeneralSettingsSection />
               </div>
             ) : null}

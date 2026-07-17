@@ -5,6 +5,8 @@ import SkillMarketPage from "./pages/SkillMarketPage.jsx";
 import SettingsModalShell from "./routes/SettingsModalShell.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import ChatLabPage from "./pages/ChatLabPage.jsx";
+import AutomationPage from "./pages/AutomationPage.jsx";
+import WebExplorePage from "./pages/WebExplorePage.jsx";
 
 export default function App() {
   const location = useLocation();
@@ -24,6 +26,8 @@ export default function App() {
           <Route path="chat" element={<ChatLabPage />} />
           <Route path="lobster" element={<LobsterManagementPage />} />
           <Route path="skills" element={<SkillMarketPage />} />
+          <Route path="automation" element={<AutomationPage />} />
+          <Route path="explore" element={<WebExplorePage />} />
         </Route>
       </Routes>
       {isSettings ? (

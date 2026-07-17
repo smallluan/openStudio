@@ -87,16 +87,16 @@
   --os-studio-canvas: radial-gradient(ellipse 88% 62% at 70% 16%, rgba(0, 82, 217, 0.06), transparent 52%),
     linear-gradient(168deg, #f7f9fd 0%, #ebeff7 46%, #f3f6fb 100%);
 
-  /** Conversation rail — pale gray strip (lighter than #ebebeb for softer contrast). */
-  --os-rail-surface: #f7f8fa;
+  /** Conversation rail — unified white with menu / title bar. */
+  --os-rail-surface: #ffffff;
   --os-rail-bg: transparent;
   /** Typography tuned for `--os-rail-surface` / settings aside. */
   --os-rail-text: rgba(30, 34, 42, 0.92);
   --os-rail-text-muted: rgba(30, 34, 42, 0.52);
   --os-rail-text-faint: rgba(30, 34, 42, 0.34);
-  --os-rail-hover-bg: rgba(255, 255, 255, 0.55);
+  --os-rail-hover-bg: rgba(15, 23, 42, 0.055);
   /** Active chat row “card” on the rail */
-  --os-rail-active-card: #ffffff;
+  --os-rail-active-card: rgba(15, 23, 42, 0.045);
 
   /** Sidebar scrollbars (solid RGBA — Fluent/WebKit sometimes skips color-mix on scrollbar pseudos). */
   --os-rail-scrollbar-thumb: rgba(30, 34, 42, 0.22);

@@ -1,8 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Tooltip } from "tdesign-react";
 import { Button, Input } from "@open-studio/udesign";
-import { Code, ExternalLink, Monitor, RefreshCw, Smartphone, X } from "lucide-react";
+import { Code, ExternalLink, FolderOpen, Monitor, RefreshCw, Smartphone, X } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
 import { cn } from "../../ui/cn.js";
+import { openChatLabLocalPath } from "../../chat/chatLabSelectionAddress.js";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import ChatLabArtifactPreviewPane from "./ChatLabArtifactPreviewPane.jsx";
@@ -320,6 +322,22 @@ export default function ChatLabPreviewDock({ extension = null }) {
     [api, urlInputValue],
   );
 
+  const artifactSelectedPath = String(
+    selectedArtifact?.path ?? viewArtifacts?.selectedPath ?? "",
+  ).trim();
+
+  const canRevealArtifactPath = useMemo(() => {
+    if (!artifactSelectedPath) return false;
+    const isAbsolute = /^(?:[a-zA-Z]:[\\/]|\\\\|file:|\/|~)/i.test(artifactSelectedPath);
+    if (isAbsolute) return Boolean(bridge?.revealLocalPath);
+    return Boolean(api?.openFromWorkspacePath);
+  }, [api?.openFromWorkspacePath, artifactSelectedPath, bridge]);
+
+  const onRevealArtifactPath = useCallback(() => {
+    if (!artifactSelectedPath) return;
+    openChatLabLocalPath(artifactSelectedPath, api);
+  }, [api, artifactSelectedPath]);
+
   const runAutomationDebug = useCallback(
     async (steps) => {
       if (!api?.runSidebarAutomation) {
@@ -358,7 +376,44 @@ export default function ChatLabPreviewDock({ extension = null }) {
         onActiveChange={setPanelDragging}
       />
       <header className="chat-lab-preview-dock__head flex shrink-0 items-center gap-2 border-b px-2.5 py-2 pr-3">
-        {showAutomationDebugInput ? (
+        {viewArtifacts ? (
+          <>
+            <span
+              className="chat-lab-preview-dock__artifact-path min-w-0 flex-1 truncate text-[0.75rem]"
+              title={artifactSelectedPath || previewTitle}
+            >
+              {selectedArtifact?.label ?? artifactSelectedPath ?? previewTitle}
+            </span>
+            {canRevealArtifactPath ? (
+              <Tooltip content={t("chatLab.selectionOpenFileLocation")} placement="bottom">
+                <Button
+                  type="button"
+                  variant="text"
+                  shape="square"
+                  size="small"
+                  className="chat-lab-preview-dock__icon-btn shrink-0"
+                  onClick={onRevealArtifactPath}
+                  aria-label={t("chatLab.selectionOpenFileLocation")}
+                >
+                  <FolderOpen size={15} strokeWidth={1.75} aria-hidden />
+                </Button>
+              </Tooltip>
+            ) : null}
+            <Tooltip content={t("chatLab.previewClose")} placement="bottom">
+              <Button
+                type="button"
+                variant="text"
+                shape="square"
+                size="small"
+                className="chat-lab-preview-dock__icon-btn shrink-0"
+                onClick={api.close}
+                aria-label={t("chatLab.previewClose")}
+              >
+                <X size={15} strokeWidth={1.75} aria-hidden />
+              </Button>
+            </Tooltip>
+          </>
+        ) : showAutomationDebugInput ? (
           <div className="chat-lab-preview-dock__head-main min-w-0 flex flex-1 flex-col gap-1">
             <form className="chat-lab-preview-dock__url-bar" onSubmit={handleUrlSubmit}>
               <Input
@@ -410,10 +465,10 @@ export default function ChatLabPreviewDock({ extension = null }) {
             />
           </form>
         )}
-        {viewExtension?.meta ? (
+        {!viewArtifacts && viewExtension?.meta ? (
           <span className="chat-lab-preview-dock__meta shrink-0 text-[0.76rem]">{viewExtension.meta}</span>
         ) : null}
-        {showDeviceToggle ? (
+        {!viewArtifacts && showDeviceToggle ? (
           <div
             className="chat-lab-preview-dock__device-toggle flex shrink-0 items-center gap-0.5"
             role="group"
@@ -453,7 +508,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             </Button>
           </div>
         ) : null}
-        {viewSession?.kind === "iframe" ? (
+        {!viewArtifacts && viewSession?.kind === "iframe" ? (
           <Button
             type="button"
             variant="text"
@@ -467,7 +522,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             <RefreshCw size={15} strokeWidth={1.75} aria-hidden />
           </Button>
         ) : null}
-        {viewSession?.kind === "iframe" && viewSession.useWebview ? (
+        {!viewArtifacts && viewSession?.kind === "iframe" && viewSession.useWebview ? (
           <Button
             type="button"
             variant="text"
@@ -481,7 +536,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             <Code size={15} strokeWidth={1.75} aria-hidden />
           </Button>
         ) : null}
-        {viewSession?.kind === "iframe" && viewSession.externalUrl && api?.linkOpenMode === "sidebar" ? (
+        {!viewArtifacts && viewSession?.kind === "iframe" && viewSession.externalUrl && api?.linkOpenMode === "sidebar" ? (
           <Button
             type="button"
             variant="text"
@@ -495,7 +550,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             <ExternalLink size={15} strokeWidth={1.75} aria-hidden />
           </Button>
         ) : null}
-        {(viewExtension || viewSession) ? (
+        {!viewArtifacts && (viewExtension || viewSession) ? (
           <Button
             type="button"
             variant="text"

@@ -53,6 +53,8 @@
     "chatHistoryBulkDeleteConfirm": "确定删除 {{n}} 条会话吗？此操作无法撤销。",
     "lobster": "智能体",
     "skills": "技能",
+    "automation": "自动化",
+    "webExplore": "网页漫游",
     "settings": "设置",
     "profile": "账户",
     "help": "帮助",
@@ -219,6 +221,12 @@
     "generating": "图表生成中…",
     "updating": "图表更新中…",
     "saveImage": "保存为图片"
+  },
+  "automationPage": {
+    "placeholder": "定时任务与自动化能力，即将推出。"
+  },
+  "webExplorePage": {
+    "placeholder": "网页漫游，即将推出。"
   },
   "lobsterPage": {
     "title": "智能体管理",
@@ -423,6 +431,16 @@
     "thinking": "思考过程",
     "thinkingHint": "兼容网关 / DeepSeek-R1 等会流式推送 reasoning_content",
     "streaming": "正在生成…",
+    "streamingWriting": "正在撰写回复…",
+    "streamingThinking": "正在思考…",
+    "streamingSearching": "正在查询…",
+    "streamingRunningCommand": "正在执行命令…",
+    "streamingReadingFile": "正在读取文件…",
+    "streamingEditingFile": "正在编辑文件…",
+    "streamingPreparing": "正在准备…",
+    "streamingWorking": "正在处理…",
+    "streamingOrchestrating": "正在协调任务…",
+    "streamingFetching": "正在获取网页…",
     "emptyAssistantReply": "本轮助手未返回可见正文（可能仅在推理通道输出，或网关已完成但未推送文本片段）。",
     "streamAbortedBeforeReply": "回复流在网关返回前被中断（常见于多智能体并行冲突，请重试或分批 @）。",
     "streamEmptyBeforeGatewayReply": "网关未返回任何内容（会话预热失败或连接异常，请重启应用后重试）。",

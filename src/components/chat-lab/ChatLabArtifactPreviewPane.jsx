@@ -1,5 +1,7 @@
 import { useMemo } from "react";
+import { Image, ImageViewer } from "tdesign-react";
 import { Button } from "@open-studio/udesign";
+import { saveImage } from "../../chat/imageActions.js";
 import ChatLabMarkdownBody from "./ChatLabMarkdownBody.jsx";
 import ChatLabArtifactCodeView from "./ChatLabArtifactCodeView.jsx";
 import ChatLabArtifactSourceView from "./ChatLabArtifactSourceView.jsx";
@@ -121,7 +123,23 @@ export default function ChatLabArtifactPreviewPane({
           <p className="muted px-3 py-3 text-[0.82rem] leading-relaxed">{t("chatLab.previewOfficeLocalBinary")}</p>
         ) : previewKind === "image" && payload.blobUrl ? (
           <div className="chat-lab-artifact-preview__image-wrap h-full overflow-auto p-3">
-            <img src={payload.blobUrl} alt={label} className="chat-lab-artifact-preview__image max-w-full" />
+            <ImageViewer
+              attach="body"
+              images={[{ mainImage: payload.blobUrl, download: true }]}
+              onDownload={(url) => {
+                const src = typeof url === "string" ? url : "";
+                if (!src) return;
+                void saveImage(src, label).catch(() => {});
+              }}
+              trigger={
+                <Image
+                  src={payload.blobUrl}
+                  alt={label}
+                  fit="contain"
+                  className="chat-lab-artifact-preview__image max-w-full"
+                />
+              }
+            />
           </div>
         ) : previewKind === "pdf" && payload.blobUrl ? (
           <iframe

@@ -1,21 +1,23 @@
 import { useCallback, useId, useMemo, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
-import { useNavigate } from "react-router-dom";
+import { Space, Tabs } from "tdesign-react";
+import { AddIcon, FolderIcon } from "tdesign-icons-react";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { filterUsableBundledSkills } from "../skills/skillAvailability.js";
 import { pathBasename, userSkillDisplayTitle } from "../skills/skillDisplay.js";
-import { BUILTIN_CATEGORY_IDS, BUILTIN_SKILL_DEFS } from "../skills/skillsCatalog.js";
+import { BUILTIN_SKILL_DEFS } from "../skills/skillsCatalog.js";
 import { OPENCLAW_BUNDLED_SKILLS, formatSkillTitle } from "../skills/skillRegistry.js";
 import { useSkillEnvironment } from "../skills/useSkillEnvironment.js";
 import { useSkillLibrary } from "../skills/useSkillLibrary.js";
-import FluidTabBar from "../ui/FluidTabBar.jsx";
 import Modal from "../ui/Modal.jsx";
 import ModalCloseButton from "../ui/ModalCloseButton.jsx";
 import TextField from "../ui/TextField.jsx";
 import { cn } from "../ui/cn.js";
 
 const ALL_FILTER = "__all__";
+const BUILTIN_FILTER = "__builtin__";
+const OTHER_FILTER = "__other__";
 
 /** Bundled card body: prefer `skillsPage.openclawDesc.<skillId>` when present. */
 function openclawCardDescription(skillId, manifestDescription, t) {
@@ -42,35 +44,23 @@ function SkillCardShell({ className, children }) {
 
 export default function SkillMarketPage() {
   const { t } = useI18n();
-  const navigate = useNavigate();
-  const { lib, addUserSkill, removeUserSkill, addUserCategory, removeUserCategory } = useSkillLibrary();
+  const { lib, addUserSkill, removeUserSkill, addUserCategory } = useSkillLibrary();
   const skillEnv = useSkillEnvironment();
   const canOpenFolder = Boolean(typeof window !== "undefined" && window.studioBridge?.openSkillDirectory);
-  const titleId = useId();
+  const uploadTitleId = useId();
+  const addCategoryTitleId = useId();
 
   const [filterId, setFilterId] = useState(ALL_FILTER);
   const [query, setQuery] = useState("");
 
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [catOpen, setCatOpen] = useState(false);
+  const [addCategoryOpen, setAddCategoryOpen] = useState(false);
+  const [newCategoryLabel, setNewCategoryLabel] = useState("");
 
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadDesc, setUploadDesc] = useState("");
   const [uploadPath, setUploadPath] = useState("");
-  const [uploadCategoryId, setUploadCategoryId] = useState(BUILTIN_CATEGORY_IDS.GENERAL);
-
-  const [newCatLabel, setNewCatLabel] = useState("");
-
-  const builtinCategoryList = useMemo(
-    () => [
-      BUILTIN_CATEGORY_IDS.OPENCLAW_BUNDLED,
-      BUILTIN_CATEGORY_IDS.GENERAL,
-      BUILTIN_CATEGORY_IDS.DEV,
-      BUILTIN_CATEGORY_IDS.OFFICE,
-      BUILTIN_CATEGORY_IDS.DATA,
-    ],
-    [],
-  );
+  const [uploadCategoryId, setUploadCategoryId] = useState(OTHER_FILTER);
 
   const openclawSkillById = useMemo(() => new Map(OPENCLAW_BUNDLED_SKILLS.map((s) => [s.id, s])), []);
 
@@ -100,24 +90,22 @@ export default function SkillMarketPage() {
     }
   }, [t]);
 
-  const categoryRows = useMemo(() => {
-    const builtins = builtinCategoryList.map((id) => ({
-      id,
-      label: t(`skillsPage.categoryLabels.${id}`),
-      removable: false,
-    }));
-    const users = lib.userCategories.map((c) => ({
-      id: c.id,
-      label: c.label,
-      removable: true,
-    }));
-    return [...builtins, ...users];
-  }, [builtinCategoryList, lib.userCategories, t]);
+  const customCategoryMap = useMemo(() => {
+    return new Map(lib.userCategories.map((c) => [c.id, c.label]));
+  }, [lib.userCategories]);
 
-  const filterTabs = useMemo(
-    () => [{ id: ALL_FILTER, label: t("skillsPage.filterAll") }, ...categoryRows.map((row) => ({ id: row.id, label: row.label }))],
-    [categoryRows, t],
-  );
+  const categoryTabs = useMemo(() => {
+    return [
+      { id: ALL_FILTER, label: "全部" },
+      { id: BUILTIN_FILTER, label: "内置" },
+      { id: OTHER_FILTER, label: "其他" },
+      ...lib.userCategories.map((c) => ({ id: c.id, label: c.label })),
+    ];
+  }, [lib.userCategories]);
+
+  const uploadCategoryOptions = useMemo(() => {
+    return [{ id: OTHER_FILTER, label: "其他" }, ...lib.userCategories];
+  }, [lib.userCategories]);
 
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -133,7 +121,7 @@ export default function SkillMarketPage() {
 
   const filteredBuiltin = useMemo(() => {
     return usableBuiltinDefs.filter((def) => {
-      if (filterId !== ALL_FILTER && def.categoryId !== filterId) return false;
+      if (filterId !== ALL_FILTER && filterId !== BUILTIN_FILTER) return false;
       const meta = openclawSkillById.get(def.id);
       const title = meta ? formatSkillTitle(meta.name) : def.id;
       const manifestDesc = meta?.description ?? "";
@@ -144,17 +132,19 @@ export default function SkillMarketPage() {
 
   const filteredUser = useMemo(() => {
     return lib.userSkills.filter((s) => {
-      if (filterId !== ALL_FILTER && s.categoryId !== filterId) return false;
+      const categoryId = customCategoryMap.has(s.categoryId) ? s.categoryId : OTHER_FILTER;
+      if (filterId === BUILTIN_FILTER) return false;
+      if (filterId !== ALL_FILTER && filterId !== categoryId) return false;
       const title = userSkillDisplayTitle(s);
       return matchesQuery(title, s.description);
     });
-  }, [filterId, lib.userSkills, matchesQuery]);
+  }, [customCategoryMap, filterId, lib.userSkills, matchesQuery]);
 
   const resetUploadForm = useCallback(() => {
     setUploadTitle("");
     setUploadDesc("");
     setUploadPath("");
-    setUploadCategoryId(BUILTIN_CATEGORY_IDS.GENERAL);
+    setUploadCategoryId(OTHER_FILTER);
   }, []);
 
   const onConfirmUpload = useCallback(() => {
@@ -166,7 +156,7 @@ export default function SkillMarketPage() {
     addUserSkill({
       title,
       description: uploadDesc.trim(),
-      categoryId: uploadCategoryId,
+      categoryId: uploadCategoryId || OTHER_FILTER,
       localPath,
       fromNl: false,
     });
@@ -175,75 +165,73 @@ export default function SkillMarketPage() {
   }, [addUserSkill, resetUploadForm, t, uploadCategoryId, uploadDesc, uploadPath, uploadTitle]);
 
   const onAddCategory = useCallback(() => {
-    const label = newCatLabel.trim();
+    setNewCategoryLabel("");
+    setAddCategoryOpen(true);
+  }, []);
+
+  const onConfirmAddCategory = useCallback(() => {
+    const label = newCategoryLabel.trim();
     if (!label) return;
-    addUserCategory(label);
-    setNewCatLabel("");
-  }, [addUserCategory, newCatLabel]);
+    if (["全部", "内置", "其他"].includes(label)) {
+      window.alert("该分类名已被占用");
+      return;
+    }
+    const exists = lib.userCategories.some((c) => c.label.trim().toLowerCase() === label.toLowerCase());
+    if (exists) {
+      window.alert("分类已存在");
+      return;
+    }
+    const id = addUserCategory(label);
+    if (id) {
+      setFilterId(id);
+      setAddCategoryOpen(false);
+      setNewCategoryLabel("");
+    }
+  }, [addUserCategory, lib.userCategories, newCategoryLabel]);
 
   return (
     <div className="route-page route-page--plain flex min-h-0 flex-1 flex-col bg-[color-mix(in_srgb,var(--os-bg-base)_96%,var(--os-bg-panel))]">
-      <header className="route-page__header shrink-0">
-        <h1 className="route-page__title">{t("skillsPage.title")}</h1>
-        {/* <p className="route-page__desc muted">{t("skillsPage.desc")}</p> */}
-      </header>
-
-      <div className="mb-4 flex min-h-0 shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" theme="primary" size="small" onClick={() => setUploadOpen(true)}>
-            {t("skillsPage.actions.upload")}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="small"
-            onClick={() => navigate("/chat?composeSkill=skill-creator")}
-          >
-            {t("skillsPage.actions.createNl")}
-          </Button>
-          <Button type="button" variant="text" size="small" onClick={() => setCatOpen(true)}>
-            {t("skillsPage.actions.manageCategories")}
-          </Button>
-        </div>
-
-        <div className="w-full min-w-[220px] max-w-md sm:w-72">
-          <Input
-            size="large"
-            type="search"
-            prefixIcon={<SearchSparkleIcon className="opacity-75" aria-hidden />}
-            clearable
-            value={query}
-            onChange={(value) => setQuery(value)}
-            placeholder={t("skillsPage.searchPlaceholder")}
-            aria-label={t("skillsPage.searchPlaceholder")}
-          />
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ minWidth: 0, flex: "1 1 auto", maxWidth: "calc(100% - 380px)" }}>
+            <Space align="center" size={6}>
+              <div style={{ minWidth: 0 }}>
+                <Tabs
+                  value={filterId}
+                  list={categoryTabs.map((tab) => ({ value: tab.id, label: tab.label }))}
+                  onChange={(value) => setFilterId(String(value))}
+                />
+              </div>
+              <Button type="button" variant="text" shape="square" size="small" icon={<AddIcon />} onClick={onAddCategory} aria-label="新增分类" />
+            </Space>
+          </div>
+          <Space align="center" size={8} style={{ flexShrink: 0 }}>
+            <Input
+              type="search"
+              style={{ width: 220 }}
+              prefixIcon={<SearchSparkleIcon aria-hidden />}
+              clearable
+              value={query}
+              onChange={(value) => setQuery(value)}
+              placeholder={t("skillsPage.searchPlaceholder")}
+              aria-label={t("skillsPage.searchPlaceholder")}
+            />
+            <Button type="button" theme="primary" icon={<AddIcon />} onClick={() => setUploadOpen(true)}>
+              {t("skillsPage.actions.upload")}
+            </Button>
+          </Space>
         </div>
       </div>
 
-      <FluidTabBar
-        className="mb-4 shrink-0"
-        ariaLabel={t("skillsPage.filterTabsAria")}
-        items={filterTabs}
-        value={filterId}
-        onChange={setFilterId}
-      />
-
-      <div className="min-h-0 flex-1 space-y-8 overflow-auto pb-10">
-        <section aria-label={t("skillsPage.sectionBuiltin")}>
-          <h2 className="mb-3 text-[0.72rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]">
-            {t("skillsPage.sectionBuiltin")}  
-          </h2>
-          {/* <p className="mb-3 text-[0.7rem] leading-snug text-[var(--os-text-faint)]">
-            {t("skillsPage.openclawBuiltinDescHint")}
-          </p> */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-            {filteredBuiltin.map((def) => {
-              const meta = openclawSkillById.get(def.id);
-              const title = meta ? formatSkillTitle(meta.name) : def.id;
-              const manifestDesc = meta?.description ?? "";
-              const desc = openclawCardDescription(def.id, manifestDesc, t);
-              return (
-              <SkillCardShell key={def.id}>
+      <div className="min-h-0 flex-1 overflow-auto pb-10">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {filteredBuiltin.map((def) => {
+            const meta = openclawSkillById.get(def.id);
+            const title = meta ? formatSkillTitle(meta.name) : def.id;
+            const manifestDesc = meta?.description ?? "";
+            const desc = openclawCardDescription(def.id, manifestDesc, t);
+            return (
+              <SkillCardShell key={def.id} className="group">
                 <div className="flex items-start gap-2.5">
                   <span className="text-xl leading-none" aria-hidden>
                     {def.icon}
@@ -265,11 +253,19 @@ export default function SkillMarketPage() {
                     {t("skillsPage.badgeBuiltin")}
                   </span>
                   {canOpenFolder ? (
-                    <div className="ml-auto">
+                    <div
+                      className={cn(
+                        "ml-auto flex shrink-0 items-center",
+                        "opacity-0 transition-opacity duration-200 ease-in-out",
+                        "pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
+                        "group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
+                      )}
+                    >
                       <Button
                         type="button"
                         variant="outline"
                         size="small"
+                        icon={<FolderIcon />}
                         onClick={() => openSkillFolder({ kind: "bundled", skillId: def.id })}
                       >
                         {t("skillsPage.openFolder")}
@@ -278,22 +274,13 @@ export default function SkillMarketPage() {
                   ) : null}
                 </div>
               </SkillCardShell>
-            );})}
-          </div>
-          {filteredBuiltin.length === 0 ? (
-            <p className="mt-3 text-[0.82rem] text-[var(--os-text-muted)]">{t("skillsPage.emptyBuiltin")}</p>
-          ) : null}
-        </section>
-
-        <section aria-label={t("skillsPage.sectionUser")}>
-          <h2 className="mb-3 text-[0.72rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]">
-            {t("skillsPage.sectionUser")}
-          </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-            {filteredUser.map((s) => {
-              const displayTitle = userSkillDisplayTitle(s);
-              const canOpenUserFolder = canOpenFolder && Boolean(s.localPath?.trim());
-              return (
+            );
+          })}
+          {filteredUser.map((s) => {
+            const displayTitle = userSkillDisplayTitle(s);
+            const canOpenUserFolder = canOpenFolder && Boolean(s.localPath?.trim());
+            const badgeLabel = customCategoryMap.get(s.categoryId) || "其他";
+            return (
               <SkillCardShell key={s.id} className="group relative">
                 <div className="flex items-start gap-2.5">
                   <span className="text-xl leading-none" aria-hidden>
@@ -316,17 +303,26 @@ export default function SkillMarketPage() {
                 ) : null}
                 <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] pt-2.5">
                   <span className="rounded-md bg-[color-mix(in_srgb,var(--os-text-muted)_10%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-text-muted)]">
-                    {t("skillsPage.badgeUser")}
+                    {badgeLabel}
                   </span>
                   {canOpenUserFolder ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="small"
-                      onClick={() => openSkillFolder({ kind: "user", localPath: s.localPath })}
+                    <div
+                      className={cn(
+                        "opacity-0 transition-opacity duration-200 ease-in-out",
+                        "pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
+                        "group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
+                      )}
                     >
-                      {t("skillsPage.openFolder")}
-                    </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="small"
+                        icon={<FolderIcon />}
+                        onClick={() => openSkillFolder({ kind: "user", localPath: s.localPath })}
+                      >
+                        {t("skillsPage.openFolder")}
+                      </Button>
+                    </div>
                   ) : null}
                   <div className="ml-auto">
                     <Button
@@ -341,19 +337,19 @@ export default function SkillMarketPage() {
                   </div>
                 </div>
               </SkillCardShell>
-            );})}
-          </div>
-          {filteredUser.length === 0 ? (
-            <p className="mt-3 text-[0.82rem] text-[var(--os-text-muted)]">{t("skillsPage.emptyUser")}</p>
-          ) : null}
-        </section>
+            );
+          })}
+        </div>
+        {filteredBuiltin.length + filteredUser.length === 0 ? (
+          <p className="mt-3 text-[0.82rem] text-[var(--os-text-muted)]">{t("skillsPage.emptyBuiltin")}</p>
+        ) : null}
       </div>
 
       {uploadOpen ? (
-        <Modal onClose={() => { setUploadOpen(false); resetUploadForm(); }} labelledBy={titleId}>
+        <Modal onClose={() => { setUploadOpen(false); resetUploadForm(); }} labelledBy={uploadTitleId}>
           <div className="flex w-full min-w-[min(100vw-2rem,440px)] flex-col bg-[var(--os-bg-modal)]">
             <div className="flex items-center justify-between border-b border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <h2 id={titleId} className="text-base font-semibold">
+              <h2 id={uploadTitleId} className="text-base font-semibold">
                 {t("skillsPage.upload.title")}
               </h2>
               <ModalCloseButton
@@ -392,7 +388,7 @@ export default function SkillMarketPage() {
                   value={uploadCategoryId}
                   onChange={(e) => setUploadCategoryId(e.target.value)}
                 >
-                  {categoryRows.map((c) => (
+                  {uploadCategoryOptions.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.label}
                     </option>
@@ -419,65 +415,27 @@ export default function SkillMarketPage() {
         </Modal>
       ) : null}
 
-      {catOpen ? (
-        <Modal onClose={() => setCatOpen(false)} labelledBy={`${titleId}-cat`}>
-          <div className="flex w-full min-w-[min(100vw-2rem,420px)] flex-col bg-[var(--os-bg-modal)]">
-            <div className="flex items-center justify-between border-b border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <h2 id={`${titleId}-cat`} className="text-base font-semibold">
-                {t("skillsPage.catModal.title")}
-              </h2>
-              <ModalCloseButton onClick={() => setCatOpen(false)} />
+      {addCategoryOpen ? (
+        <Modal onClose={() => setAddCategoryOpen(false)} labelledBy={addCategoryTitleId} width="360px">
+          <div className="flex w-full flex-col bg-[var(--os-bg-modal)]">
+            <div className="flex items-center justify-between px-3 py-2">
+              <h2 id={addCategoryTitleId} className="text-sm font-semibold">新增分类</h2>
+              <ModalCloseButton onClick={() => setAddCategoryOpen(false)} />
             </div>
-            <div className="max-h-[min(60vh,360px)] space-y-2 overflow-auto px-5 py-4">
-              <p className="text-[0.78rem] text-[var(--os-text-muted)]">{t("skillsPage.catModal.builtinHint")}</p>
-              <ul className="space-y-1.5">
-                {categoryRows.map((row) => (
-                  <li
-                    key={row.id}
-                    className="flex items-center justify-between rounded-lg border border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-elevated)_80%,transparent)] px-3 py-2 text-[0.8125rem]"
-                  >
-                    <span>{row.label}</span>
-                    {row.removable ? (
-                      <Button
-                        type="button"
-                        theme="danger"
-                        variant="text"
-                        size="small"
-                        onClick={() => removeUserCategory(row.id)}
-                      >
-                        {t("skillsPage.delete")}
-                      </Button>
-                    ) : (
-                      <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("skillsPage.catModal.builtin")}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+            <div className="px-3 pb-2">
+              <TextField
+                value={newCategoryLabel}
+                onChange={(e) => setNewCategoryLabel(e.target.value)}
+                placeholder="输入分类名称"
+              />
             </div>
-            <div className="flex flex-col gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <div className="flex gap-2">
-                <div className="min-w-0 flex-1">
-                  <TextField
-                    value={newCatLabel}
-                    onChange={(e) => setNewCatLabel(e.target.value)}
-                    placeholder={t("skillsPage.catModal.newPlaceholder")}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  theme="primary"
-                  size="small"
-                  disabled={!newCatLabel.trim()}
-                  onClick={onAddCategory}
-                >
-                  {t("skillsPage.catModal.add")}
-                </Button>
-              </div>
-              <div className="self-end">
-                <Button type="button" variant="text" onClick={() => setCatOpen(false)}>
-                  {t("skillsPage.close")}
-                </Button>
-              </div>
+            <div className="flex justify-end gap-2 px-3 pb-3">
+              <Button type="button" variant="text" onClick={() => setAddCategoryOpen(false)}>
+                {t("skillsPage.cancel")}
+              </Button>
+              <Button type="button" theme="primary" disabled={!newCategoryLabel.trim()} onClick={onConfirmAddCategory}>
+                确认
+              </Button>
             </div>
           </div>
         </Modal>

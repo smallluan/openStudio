@@ -1,7 +1,40 @@
 import { useEffect, useMemo, useState } from "react";
+import { Transfer } from "tdesign-react";
 import { useI18n } from "../context/I18nContext.jsx";
 import FluidConfirmDialog from "./FluidConfirmDialog.jsx";
-import Transfer from "./Transfer.jsx";
+
+/**
+ * @typedef {object} TransferItem
+ * @property {string} key
+ * @property {import("react").ReactNode} label
+ * @property {import("react").ReactNode} [description]
+ * @property {import("react").ReactNode | string} [icon]
+ * @property {string} [searchText]
+ * @property {boolean} [disabled]
+ * @property {boolean} [locked]
+ */
+
+function TransferRowIcon({ icon }) {
+  if (!icon) return null;
+  const isUrl =
+    typeof icon === "string" &&
+    (icon.startsWith("data:") ||
+      icon.startsWith("http://") ||
+      icon.startsWith("https://") ||
+      icon.startsWith("file:") ||
+      (icon.startsWith("/") && !icon.startsWith("//")));
+  if (isUrl) {
+    return (
+      <img
+        src={icon}
+        alt=""
+        draggable={false}
+        style={{ width: 20, height: 20, borderRadius: 6, objectFit: "cover", flexShrink: 0 }}
+      />
+    );
+  }
+  return <span style={{ display: "inline-flex", flexShrink: 0 }}>{icon}</span>;
+}
 
 /**
  * Modal wrapper for {@link Transfer} with draft state and confirm/cancel.
@@ -10,7 +43,7 @@ import Transfer from "./Transfer.jsx";
  *   open: boolean;
  *   onOpenChange: (open: boolean) => void;
  *   title?: string;
- *   items: import("./Transfer.jsx").TransferItem[];
+ *   items: TransferItem[];
  *   targetKeys: string[];
  *   lockedKeys?: string[];
  *   onConfirm: (targetKeys: string[]) => void;
@@ -49,7 +82,11 @@ export default function TransferDialog({
   const normalizedItems = useMemo(
     () =>
       items.map((item) => ({
-        ...item,
+        value: item.key,
+        label: item.label,
+        icon: item.icon,
+        description: item.description,
+        searchText: item.searchText,
         locked: item.locked || lockedSet.has(item.key),
         disabled: item.disabled || lockedSet.has(item.key),
       })),
@@ -62,7 +99,7 @@ export default function TransferDialog({
   }, [open, lockedKeys, targetKeys]);
 
   const handleDraftChange = (next) => {
-    setDraftKeys([...new Set([...lockedKeys, ...next])]);
+    setDraftKeys([...new Set([...lockedKeys, ...next.map(String)])]);
   };
 
   const handleConfirm = () => {
@@ -79,19 +116,41 @@ export default function TransferDialog({
       onConfirm={handleConfirm}
       onCancel={() => onOpenChange(false)}
       morphBr="16px"
-      size="wide"
+      size="transfer"
     >
+      <div className="os-transfer-dialog__wrap">
       <Transfer
-        items={normalizedItems}
-        targetKeys={draftKeys}
+        data={normalizedItems}
+        value={draftKeys}
+        title={[sourceTitle ?? t("transfer.sourceTitle"), targetTitle ?? t("transfer.targetTitle")]}
+        empty={[emptySource ?? t("transfer.emptySource"), emptyTarget ?? t("transfer.emptyTarget")]}
+        search={
+          showSearch
+            ? [
+                { placeholder: searchPlaceholder ?? t("transfer.searchPlaceholder") },
+                { placeholder: searchPlaceholder ?? t("transfer.searchPlaceholder") },
+              ]
+            : false
+        }
+        keys={{ value: "value", label: "label" }}
+        transferItem={({ data }) => (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <TransferRowIcon icon={data.icon} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, lineHeight: "18px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {data.label}
+              </div>
+              {data.description ? (
+                <div style={{ fontSize: 12, lineHeight: "16px", opacity: 0.72, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {data.description}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
         onChange={handleDraftChange}
-        sourceTitle={sourceTitle}
-        targetTitle={targetTitle}
-        searchPlaceholder={searchPlaceholder}
-        emptySource={emptySource}
-        emptyTarget={emptyTarget}
-        showSearch={showSearch}
       />
+      </div>
     </FluidConfirmDialog>
   );
 }

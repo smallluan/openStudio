@@ -53,6 +53,8 @@
     "chatHistoryTimeDays": "{{n}} days ago",
     "lobster": "Agents",
     "skills": "Skills",
+    "automation": "Automation",
+    "webExplore": "Web Explore",
     "settings": "Settings",
     "profile": "Profile",
     "help": "Help",
@@ -219,6 +221,12 @@
     "generating": "Generating chart…",
     "updating": "Updating chart…",
     "saveImage": "Save as image"
+  },
+  "automationPage": {
+    "placeholder": "Scheduled tasks and automation — coming soon."
+  },
+  "webExplorePage": {
+    "placeholder": "Web explore — coming soon."
   },
   "lobsterPage": {
     "title": "Agent management",
@@ -422,6 +430,16 @@
     "thinking": "Thinking",
     "thinkingHint": "Some gateways/models stream reasoning deltas (e.g. reasoning_content)",
     "streaming": "Generating…",
+    "streamingWriting": "Writing reply…",
+    "streamingThinking": "Thinking…",
+    "streamingSearching": "Searching…",
+    "streamingRunningCommand": "Running command…",
+    "streamingReadingFile": "Reading file…",
+    "streamingEditingFile": "Editing file…",
+    "streamingPreparing": "Getting ready…",
+    "streamingWorking": "Working…",
+    "streamingOrchestrating": "Coordinating tasks…",
+    "streamingFetching": "Fetching page…",
     "emptyAssistantReply": "The assistant finished without visible reply text (it may only have streamed reasoning, or the gateway completed without text deltas).",
     "streamAbortedBeforeReply": "The reply stream was aborted before the gateway responded (often a multi-agent fan-out race — retry or mention fewer agents at once).",
     "streamEmptyBeforeGatewayReply": "The gateway returned no content (session prep or connection issue — restart the app and try again).",

@@ -41,6 +41,7 @@ export function useSkillLibrary() {
       ...prev,
       userCategories: [...prev.userCategories, { id, label: label.trim() }],
     }));
+    return id;
   }, []);
 
   const removeUserCategory = useCallback((id) => {
