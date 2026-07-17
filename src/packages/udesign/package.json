@@ -14,7 +14,9 @@
     "src"
   ],
   "scripts": {
+    "storybook:clean": "node ./scripts/clean-storybook-cache.mjs",
     "storybook": "storybook dev -p 6060 --no-open",
+    "storybook:reset": "pnpm storybook:clean && pnpm storybook",
     "build-storybook": "storybook build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.storybook.json",
     "typecheck:src": "tsc --noEmit -p tsconfig.json",
@@ -25,6 +27,7 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
+    "@floating-ui/react": "^0.27.19",
     "lucide-react": "^1.17.0"
   },
   "devDependencies": {

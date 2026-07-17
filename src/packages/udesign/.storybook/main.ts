@@ -1,4 +1,5 @@
 import type { StorybookConfig } from '@storybook/react-vite';
+import { mergeConfig } from 'vite';
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
@@ -19,8 +20,7 @@ const config: StorybookConfig = {
     reactDocgen: 'react-docgen-typescript',
   },
   async viteFinal(config) {
-    return {
-      ...config,
+    return mergeConfig(config, {
       css: {
         ...config.css,
         preprocessorOptions: {
@@ -30,7 +30,30 @@ const config: StorybookConfig = {
           },
         },
       },
-    };
+      resolve: {
+        ...config.resolve,
+        dedupe: ['react', 'react-dom'],
+      },
+      server: {
+        ...config.server,
+        headers: {
+          ...config.server?.headers,
+          'Cache-Control': 'no-store',
+        },
+      },
+      optimizeDeps: {
+        ...config.optimizeDeps,
+        include: [
+          ...(config.optimizeDeps?.include ?? []),
+          '@floating-ui/react',
+          'react',
+          'react-dom',
+          'react-dom/client',
+          'react/jsx-runtime',
+          'react/jsx-dev-runtime',
+        ],
+      },
+    });
   },
 };
 

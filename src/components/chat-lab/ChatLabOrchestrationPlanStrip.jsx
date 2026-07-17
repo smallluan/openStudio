@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { agentDisplayLabel } from "../../studio/agents.js";
 import { orchestrationRoleLabel } from "../../studio/orchestrationRoles.js";
 import { cn } from "../../ui/cn.js";
@@ -66,9 +67,9 @@ export default function ChatLabOrchestrationPlanStrip({
           </span>
         ) : null}
         {run.status === "paused" && onResume ? (
-          <button type="button" className="chat-lab__orch-plan-strip-resume" onClick={onResume} disabled={disabled}>
+          <Button type="button" className="chat-lab__orch-plan-strip-resume" onClick={onResume} disabled={disabled}>
             {t("orchestration.panel.resume")}
-          </button>
+          </Button>
         ) : null}
       </div>
       {showSummary ? <p className="chat-lab__orch-plan-strip-summary">{plan.summary}</p> : null}
@@ -111,30 +112,30 @@ export default function ChatLabOrchestrationPlanStrip({
         <div className="chat-lab__orch-plan-strip-actions">
           {!reviseOpen ? (
             <>
-              <button
+              <Button
                 type="button"
                 className="chat-lab__orch-plan-strip-btn chat-lab__orch-plan-strip-btn--primary"
                 disabled={disabled}
                 onClick={onApprove}
               >
                 {t("orchestration.planCard.approve")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="chat-lab__orch-plan-strip-btn"
                 disabled={disabled}
                 onClick={() => setReviseOpen(true)}
               >
                 {t("orchestration.planCard.revise")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="chat-lab__orch-plan-strip-btn chat-lab__orch-plan-strip-btn--danger"
                 disabled={disabled}
                 onClick={onReject}
               >
                 {t("orchestration.planCard.reject")}
-              </button>
+              </Button>
             </>
           ) : (
             <div className="chat-lab__orch-plan-strip-revise">
@@ -147,7 +148,7 @@ export default function ChatLabOrchestrationPlanStrip({
                 disabled={disabled}
               />
               <div className="chat-lab__orch-plan-strip-revise-actions">
-                <button
+                <Button
                   type="button"
                   className="chat-lab__orch-plan-strip-btn chat-lab__orch-plan-strip-btn--primary"
                   disabled={disabled || !reviseNotes.trim()}
@@ -158,8 +159,8 @@ export default function ChatLabOrchestrationPlanStrip({
                   }}
                 >
                   {t("orchestration.planCard.reviseSubmit")}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   className="chat-lab__orch-plan-strip-btn"
                   disabled={disabled}
@@ -169,7 +170,7 @@ export default function ChatLabOrchestrationPlanStrip({
                   }}
                 >
                   {t("orchestration.planCard.reviseCancel")}
-                </button>
+                </Button>
               </div>
             </div>
           )}

@@ -11,6 +11,7 @@ import {
   isValidElement,
 } from "react";
 import ReactMarkdown from "react-markdown";
+import { Button } from "@open-studio/udesign";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { cn } from "../../ui/cn.js";
@@ -171,7 +172,7 @@ function CodeCopyBtn({ text, t }) {
   const label = state === "copied" ? t("chatLab.codeCopied") : t("chatLab.codeCopy");
 
   return (
-    <button
+    <Button
       type="button"
       className={cn(
         "chat-lab__code-copy",
@@ -187,7 +188,7 @@ function CodeCopyBtn({ text, t }) {
         <CodeCopyIcon />
       )}
       <span className="chat-lab__code-copy-label">{label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -216,7 +217,7 @@ function CodeCopyIcon() {
 /** @param {{ onClick: () => void; t: (k: string) => string }} props */
 function FencePreviewBtn({ onClick, t }) {
   return (
-    <button
+    <Button
       type="button"
       className="chat-lab__code-preview"
       onClick={onClick}
@@ -235,7 +236,7 @@ function FencePreviewBtn({ onClick, t }) {
         </svg>
       </span>
       <span className="chat-lab__code-preview-label">{t("chatLab.previewOpen")}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -748,9 +749,9 @@ function ChatLabMarkdownLocalPathButton({ children, className, node, type, onCli
 
   if (!isLocalPath) {
     return (
-      <button type={type ?? "button"} className={className} onClick={onClick} {...rest}>
+      <Button type={type ?? "button"} className={className} onClick={onClick} {...rest}>
         {children}
-      </button>
+      </Button>
     );
   }
 
@@ -764,7 +765,7 @@ function ChatLabMarkdownLocalPathButton({ children, className, node, type, onCli
   };
 
   return (
-    <button
+    <Button
       type="button"
       className={cn("chat-lab__md-local-path", className)}
       onClick={handleClick}
@@ -772,7 +773,7 @@ function ChatLabMarkdownLocalPathButton({ children, className, node, type, onCli
       {...rest}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "../../ui/cn.js";
 import { isAsciiTreeDir } from "../../chat/chatLabAsciiTree.js";
@@ -100,7 +101,7 @@ export default function ChatLabDirectoryTree({ root, className }) {
         return (
           <li key={key} className="chat-lab__md-tree-node">
             {hasChildren ? (
-              <button
+              <Button
                 type="button"
                 className={rowClass}
                 style={indentStyle}
@@ -109,7 +110,7 @@ export default function ChatLabDirectoryTree({ root, className }) {
                 title={node.name}
               >
                 {rowBody}
-              </button>
+              </Button>
             ) : (
               <div className={rowClass} style={indentStyle} title={node.name}>
                 {rowBody}
@@ -153,7 +154,7 @@ export default function ChatLabDirectoryTree({ root, className }) {
         <div className="chat-lab__md-tree-root">
           {rootIsDir ? (
             rootHasChildren ? (
-              <button
+              <Button
                 type="button"
                 className="chat-lab__md-tree-item chat-lab__md-tree-item--dir chat-lab__md-tree-item--root"
                 onClick={() => toggleDir(root.name)}
@@ -166,7 +167,7 @@ export default function ChatLabDirectoryTree({ root, className }) {
                 </span>
                 <span className="chat-lab__md-tree-name">{rootDisplayName}</span>
                 {root.comment ? <span className="chat-lab__md-tree-comment">{root.comment}</span> : null}
-              </button>
+              </Button>
             ) : (
               <div
                 className="chat-lab__md-tree-item chat-lab__md-tree-item--dir chat-lab__md-tree-item--root chat-lab__md-tree-item--leaf"

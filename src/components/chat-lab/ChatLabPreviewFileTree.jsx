@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { ChevronDown, ChevronRight, File, Folder } from "lucide-react";
 import { cn } from "../../ui/cn.js";
 
@@ -57,7 +58,7 @@ export default function ChatLabPreviewFileTree({ nodes, selectedPath, artifactOp
       if (isDir) {
         return (
           <li key={`dir:${normPath}`} className="chat-lab-preview-dock__tree-node">
-            <button
+            <Button
               type="button"
               className="chat-lab-preview-dock__tree-item chat-lab-preview-dock__tree-item--dir"
               style={{ paddingLeft: `${0.45 + depth * 0.65}rem` }}
@@ -70,7 +71,7 @@ export default function ChatLabPreviewFileTree({ nodes, selectedPath, artifactOp
               </span>
               <Folder size={13} strokeWidth={1.75} className="chat-lab-preview-dock__tree-icon" aria-hidden />
               <span className="chat-lab-preview-dock__tree-name">{node.name}</span>
-            </button>
+            </Button>
             {isOpen && node.children?.length ? (
               <ul className="chat-lab-preview-dock__tree-list chat-lab-preview-dock__tree-list--nested">
                 {renderNodes(node.children, depth + 1)}
@@ -84,7 +85,7 @@ export default function ChatLabPreviewFileTree({ nodes, selectedPath, artifactOp
 
       return (
         <li key={`file:${normPath}`} className="chat-lab-preview-dock__tree-node">
-          <button
+          <Button
             type="button"
             className={cn(
               "chat-lab-preview-dock__tree-item chat-lab-preview-dock__tree-item--file",
@@ -112,7 +113,7 @@ export default function ChatLabPreviewFileTree({ nodes, selectedPath, artifactOp
               <File size={13} strokeWidth={1.75} className="chat-lab-preview-dock__tree-icon" aria-hidden />
             )}
             <span className="chat-lab-preview-dock__tree-name">{node.name}</span>
-          </button>
+          </Button>
         </li>
       );
     });

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
+import { Button, Switch } from "@open-studio/udesign";
 import { Pencil, Trash2 } from "lucide-react";
 import EmptyState from "../../ui/EmptyState.jsx";
-import Switch from "../../ui/Switch.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import {
   emptyModelProfileDraft,
@@ -123,13 +123,13 @@ export default function ModelProfilesPanel() {
         <span className="text-[0.8125rem] font-medium text-[var(--os-text)]">
           {t("userConfig.providersColumnTitle")}
         </span>
-        <button
+        <Button
           type="button"
           onClick={openAdd}
           className="border-none bg-transparent p-0 text-[0.75rem] font-medium text-[var(--os-text-muted)] underline-offset-2 hover:text-[var(--os-text)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]"
         >
           + {t("userConfig.addProfile")}
-        </button>
+        </Button>
       </div>
 
       {feedback && !editor ?
@@ -144,13 +144,13 @@ export default function ModelProfilesPanel() {
             hideDecoration
             title={t("userConfig.emptyStateNoProfiles")}
             action={
-              <button
+              <Button
                 type="button"
                 className="text-[0.8125rem] font-medium text-[var(--os-accent)] underline-offset-2 hover:underline"
                 onClick={openAdd}
               >
                 {t("userConfig.addProfile")}
-              </button>
+              </Button>
             }
           />
         : <ul className="m-0 list-none p-0">
@@ -170,7 +170,7 @@ export default function ModelProfilesPanel() {
                   </div>
 
                   <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                    <button
+                    <Button
                       type="button"
                       className={cn(
                         "flex size-7 items-center justify-center border-none bg-transparent text-[var(--os-text-muted)] outline-none",
@@ -181,8 +181,8 @@ export default function ModelProfilesPanel() {
                       onClick={() => openEdit(p.id)}
                     >
                       <Pencil size={14} strokeWidth={1.6} aria-hidden />
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       className={cn(
                         "flex size-7 items-center justify-center border-none bg-transparent text-[var(--os-text-muted)] outline-none",
@@ -193,15 +193,15 @@ export default function ModelProfilesPanel() {
                       onClick={() => handleDelete(p.id)}
                     >
                       <Trash2 size={14} strokeWidth={1.6} aria-hidden />
-                    </button>
+                    </Button>
                   </div>
 
                   <div className="shrink-0" onMouseDown={(e) => e.preventDefault()}>
                     <Switch
-                      compact
-                      label={t("userConfig.enabledAria")}
-                      checked={isEnabled}
-                      onCheckedChange={(v) => void toggleEnabled(p.id, v)}
+                      size="small"
+                      aria-label={t("userConfig.enabledAria")}
+                      value={isEnabled}
+                      onChange={(v) => void toggleEnabled(p.id, Boolean(v))}
                     />
                   </div>
                 </li>

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { Download } from "lucide-react";
 import { cn } from "../../ui/cn.js";
 import ChatLabEchartsFenceView from "./ChatLabEchartsFenceView.jsx";
@@ -20,7 +21,7 @@ function CodeCopyBtn({ text, t }) {
   const label = state === "copied" ? t("chatLab.codeCopied") : t("chatLab.codeCopy");
 
   return (
-    <button
+    <Button
       type="button"
       className={cn("chat-lab__code-copy", state === "copied" && "chat-lab__code-copy--done")}
       onClick={onCopy}
@@ -56,7 +57,7 @@ function CodeCopyBtn({ text, t }) {
         </svg>
       }
       <span className="chat-lab__code-copy-label">{label}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -71,7 +72,7 @@ function ChartDownloadBtn({ chartRef, disabled = false, t }) {
   const label = t("chart.saveImage");
 
   return (
-    <button
+    <Button
       type="button"
       className="chat-lab__code-copy"
       onClick={() => chartRef.current?.download?.()}
@@ -81,7 +82,7 @@ function ChartDownloadBtn({ chartRef, disabled = false, t }) {
     >
       <Download size={14} strokeWidth={1.75} aria-hidden />
       <span className="chat-lab__code-copy-label">{label}</span>
-    </button>
+    </Button>
   );
 }
 

@@ -11,6 +11,7 @@ import {
   useRole,
 } from "@floating-ui/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { filterSkillPickList } from "../../skills/skillRegistry.js";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { cn } from "../../ui/cn.js";
@@ -39,7 +40,7 @@ export function ComposerSkillChip({ row, onClear, disabled, t }) {
         {row.emoji}
       </span>
       <span className="chat-lab__skill-chip-label">{row.label}</span>
-      <button
+      <Button
         type="button"
         className="chat-lab__skill-chip-x"
         disabled={disabled}
@@ -50,7 +51,7 @@ export function ComposerSkillChip({ row, onClear, disabled, t }) {
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
           <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
-      </button>
+      </Button>
     </span>
   );
 }
@@ -141,7 +142,7 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
 
   return (
     <>
-      <button
+      <Button
         ref={refs.setReference}
         type="button"
         className={cn("chat-lab__pill-btn", selected && "chat-lab__pill-btn--liquid")}
@@ -157,7 +158,7 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
         </span>
         {selected ? selected.label : t("chatLab.toolbarSkill")}
         <Chevron open={present} />
-      </button>
+      </Button>
 
       {present ? (
         <FloatingPortal>
@@ -198,7 +199,7 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
                 />
               </div>
               <div id={listId} role="listbox" className="max-h-[min(52vh,280px)] overflow-y-auto py-1">
-                <button
+                <Button
                   type="button"
                   role="option"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-[0.8rem] text-[var(--os-text-muted)] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_55%,transparent)]"
@@ -208,14 +209,14 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
                   }}
                 >
                   {t("chatLab.skillPickerClear")}
-                </button>
+                </Button>
                 {filtered.length === 0 ? (
                   <div className="px-3 py-4 text-center text-[0.78rem] text-[var(--os-text-faint)]">
                     {t("chatLab.skillPickerEmpty")}
                   </div>
                 ) : (
                   filtered.map((row, index) => (
-                    <button
+                    <Button
                       key={row.id}
                       ref={(node) => {
                         optionRefs.current[index] = node;
@@ -240,7 +241,7 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
                         <span className="block truncate text-[0.82rem] font-medium text-[var(--os-text)]">{row.label}</span>
                         <span className="mt-0.5 line-clamp-2 text-[0.72rem] text-[var(--os-text-muted)]">{row.description}</span>
                       </span>
-                    </button>
+                    </Button>
                   ))
                 )}
               </div>
@@ -341,7 +342,7 @@ export function ComposerSkillSlashPopover({
             <div className="px-3 py-4 text-center text-[0.78rem] text-[var(--os-text-faint)]">{t("chatLab.skillPickerEmpty")}</div>
           ) : (
             filtered.map((row, index) => (
-              <button
+              <Button
                 key={row.id}
                 ref={(node) => {
                   optionRefs.current[index] = node;
@@ -364,7 +365,7 @@ export function ComposerSkillSlashPopover({
                   <span className="block truncate text-[0.82rem] font-medium text-[var(--os-text)]">{row.label}</span>
                   <span className="mt-0.5 line-clamp-2 text-[0.72rem] text-[var(--os-text-muted)]">{row.description}</span>
                 </span>
-              </button>
+              </Button>
             ))
           )}
         </div>

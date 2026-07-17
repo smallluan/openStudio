@@ -1,4 +1,5 @@
 import { memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -3932,7 +3933,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
           onPointerCancel={onComposerResizePointerUp}
         >
           {composerLongTextMode ? (
-            <button
+            <Button
               type="button"
               className="chat-lab__shell-resize-close"
               onPointerDown={(e) => e.stopPropagation()}
@@ -3951,7 +3952,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
                   strokeLinecap="round"
                 />
               </svg>
-            </button>
+            </Button>
           ) : composerResizeSnapHint ? (
             <div className="chat-lab__shell-resize-hint-inline" role="status">
               {t("chatLab.composerReleaseLongEdit")}
@@ -4041,7 +4042,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
               {composerAttachments.map((a) => (
                 <div key={a.id} className="chat-lab__composer-att-thumb">
                   <img src={a.dataUrl} alt="" className="chat-lab__composer-att-img" />
-                  <button
+                  <Button
                     type="button"
                     className="chat-lab__composer-att-remove"
                     onClick={() => setComposerAttachments((prev) => prev.filter((x) => x.id !== a.id))}
@@ -4052,7 +4053,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
                       <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                     </svg>
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>
@@ -4200,7 +4201,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
             {pendingEditMessageId ? (
               <span className="chat-lab__composer-edit-tag" role="status">
                 <span className="chat-lab__composer-edit-tag-label">{t("chatLab.composerEditingMessageTag")}</span>
-                <button
+                <Button
                   type="button"
                   className="chat-lab__composer-edit-tag-dismiss"
                   onClick={() => setPendingEditMessageId(null)}
@@ -4210,7 +4211,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
                     <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
-                </button>
+                </Button>
               </span>
             ) : null}
           </ChatLabToolbarScroll>
@@ -4222,7 +4223,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
               line1={contextMeterLines.line1}
               line2={contextMeterLines.line2}
             />
-            <button
+            <Button
               type="button"
               className={cn(
                 "chat-lab__send-round",
@@ -4246,7 +4247,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
               <span className="chat-lab__send-round-stop-icon" aria-hidden>
                 <ChatStreamPauseIcon />
               </span>
-            </button>
+            </Button>
           </div>
         </div>
         </div>
@@ -5740,7 +5741,7 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
         ) : null}
       </div>
       {showCollapsed ? (
-        <button
+        <Button
           type="button"
           className="chat-lab__user-body-expand"
           onClick={() => onExpandedChange(true)}
@@ -5751,7 +5752,7 @@ const UserMessageCollapsibleBody = memo(function UserMessageCollapsibleBody({
           <span className="chat-lab__user-body-expand__ico">
             <UserMessageExpandChevronIcon />
           </span>
-        </button>
+        </Button>
       ) : null}
     </div>
   );
@@ -5851,13 +5852,13 @@ const AssistantQuestionnaireCard = memo(function AssistantQuestionnaireCard({
           })}
         </div>
         <div className="chat-lab__questionnaire__actions">
-          <button
+          <Button
             type="submit"
             className="chat-lab__questionnaire-submit"
             disabled={disabled || sent || !canSubmit}
           >
             {t("chatLab.questionnaireSubmit")}
-          </button>
+          </Button>
         </div>
       </form>
       </div>
@@ -5977,7 +5978,7 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
       >
         {pager ? (
           <div className="chat-lab__quick-replies__header-nav">
-            <button
+            <Button
               type="button"
               className="chat-lab__quick-replies__pager-btn"
               disabled={frozen || viewIndex <= 0}
@@ -5985,11 +5986,11 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
               onClick={() => setViewIndex((vi) => Math.max(0, vi - 1))}
             >
               {t("chatLab.quickReplyPrev")}
-            </button>
+            </Button>
             <span className="chat-lab__quick-replies__pager-count">
               {t("chatLab.quickReplyStepCount", { current: viewIndex + 1, total: tiers.length })}
             </span>
-            <button
+            <Button
               type="button"
               className="chat-lab__quick-replies__pager-btn"
               disabled={frozen || viewIndex >= tiers.length - 1}
@@ -5997,7 +5998,7 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
               onClick={() => setViewIndex((vi) => Math.min(tiers.length - 1, vi + 1))}
             >
               {t("chatLab.quickReplyNext")}
-            </button>
+            </Button>
           </div>
         ) : (
           <span className="chat-lab__quick-replies__header-spacer" aria-hidden />
@@ -6042,7 +6043,7 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
 
               return (
                 <div key={o.id} className="chat-lab__quick-reply-row">
-                  <button
+                  <Button
                     type="button"
                     role="radio"
                     aria-checked={Boolean(isSent)}
@@ -6066,7 +6067,7 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
                       <span className="chat-lab__quick-reply-card__kicker">{o.badge}</span>
                       <span className="chat-lab__quick-reply-card__label">{o.label}</span>
                     </span>
-                  </button>
+                  </Button>
                 </div>
               );
             })}
@@ -6595,19 +6596,19 @@ const MessageBubble = memo(function MessageBubble({
             </time>
           ) : null}
           {isUser && userLongFoldable && userLongExpanded ? (
-            <button
+            <Button
               type="button"
               className="chat-lab__msg-collapse-btn"
               onClick={() => setUserLongExpanded(false)}
             >
               {t("chatLab.userMessageCollapse")}
-            </button>
+            </Button>
           ) : null}
           <div
             className={cn("chat-lab__msg-actions", fileRefs.length > 0 && "chat-lab__msg-actions--with-files")}
             aria-label={fileRefs.length > 0 ? t("chatLab.messageFileRefsLabel") : undefined}
           >
-            <button
+            <Button
               type="button"
               className={cn("chat-lab__msg-action-btn", copiedPulse && "chat-lab__msg-action-btn--copied")}
               onClick={handleCopy}
@@ -6616,9 +6617,9 @@ const MessageBubble = memo(function MessageBubble({
               aria-label={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
             >
               {copiedPulse ? <MessageMetaCopiedIcon /> : <MessageMetaCopyIcon />}
-            </button>
+            </Button>
             {!isUser && showOrchestrationFlowEntry && onOpenOrchestrationFlow ? (
-              <button
+              <Button
                 type="button"
                 className="chat-lab__msg-action-btn chat-lab__msg-action-btn--flow"
                 onClick={onOpenOrchestrationFlow}
@@ -6626,10 +6627,10 @@ const MessageBubble = memo(function MessageBubble({
                 aria-label={t("orchestration.dock.viewFlow")}
               >
                 {t("orchestration.dock.title")}
-              </button>
+              </Button>
             ) : null}
             {fileRefs.map((ref, idx) => (
-              <button
+              <Button
                 key={`${message.id}-fref-${idx}`}
                 type="button"
                 className="chat-lab__msg-file-ref"
@@ -6641,10 +6642,10 @@ const MessageBubble = memo(function MessageBubble({
                   {emojiForFileRefKind(ref.kind === "directory" ? "directory" : "file")}
                 </span>
                 <span className="chat-lab__msg-file-ref-label">{ref.name}</span>
-              </button>
+              </Button>
             ))}
             {isUser ? (
-              <button
+              <Button
                 type="button"
                 className="chat-lab__msg-action-btn"
                 onClick={startComposerEdit}
@@ -6653,7 +6654,7 @@ const MessageBubble = memo(function MessageBubble({
                 aria-label={t("chatLab.messageEdit")}
               >
                 <MessageMetaEditIcon />
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { Button } from "@open-studio/udesign";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useI18n } from "../context/I18nContext.jsx";
 import FluidPopupAnimatedSurface from "./FluidPopupAnimatedSurface.jsx";
@@ -229,14 +230,14 @@ export default function FluidConfirmDialog({
               <p id={titleId} className="fluid-dialog__title">
                 {resolvedTitle}
               </p>
-              <button
+              <Button
                 type="button"
                 className="fluid-dialog__close"
                 aria-label={t("dialog.closeAria")}
                 onClick={handleCancel}
               >
                 <DialogCloseGlyph />
-              </button>
+              </Button>
             </header>
             <div id={descId} className="fluid-dialog__body">
               {children}
@@ -263,7 +264,7 @@ export default function FluidConfirmDialog({
                   className="fluid-dialog__btn-measure"
                   onPointerEnter={() => setFooterHoverKey("confirm")}
                 >
-                  <button
+                  <Button
                     type="button"
                     className={cn(
                       "fluid-dialog__btn-hit",
@@ -273,14 +274,14 @@ export default function FluidConfirmDialog({
                     onFocus={() => setFooterHoverKey("confirm")}
                   >
                     {confirmText}
-                  </button>
+                  </Button>
                 </div>
                 <div
                   ref={cancelWrapRef}
                   className="fluid-dialog__btn-measure"
                   onPointerEnter={() => setFooterHoverKey("cancel")}
                 >
-                  <button
+                  <Button
                     ref={cancelBtnRef}
                     type="button"
                     className="fluid-dialog__btn-hit fluid-dialog__btn-hit--ghost"
@@ -288,7 +289,7 @@ export default function FluidConfirmDialog({
                     onFocus={() => setFooterHoverKey("cancel")}
                   >
                     {cancelText}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>

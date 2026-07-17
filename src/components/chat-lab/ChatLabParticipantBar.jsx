@@ -12,6 +12,7 @@ import {
   useRole,
 } from "@floating-ui/react";
 import { Users } from "lucide-react";
+import { Button } from "@open-studio/udesign";
 import { useId, useMemo, useState } from "react";
 import { agentAvatarGlyph, agentDisplayLabel } from "../../studio/agents.js";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -117,7 +118,7 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
 
   return (
     <>
-      <button
+      <Button
         ref={refs.setReference}
         type="button"
         className={cn(
@@ -146,7 +147,7 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
             <MembersChevron open={present} />
           </>
         )}
-      </button>
+      </Button>
 
       {present ? (
         <FloatingPortal>
@@ -181,7 +182,7 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
                             shape="rounded"
                           />
                           {!a.isMain ? (
-                            <button
+                            <Button
                               type="button"
                               className="chat-lab__members-grid-remove absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-600"
                               disabled={disabled}
@@ -196,7 +197,7 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
                                   strokeLinecap="round"
                                 />
                               </svg>
-                            </button>
+                            </Button>
                           ) : null}
                         </div>
                         <span className="chat-lab__members-grid-name mt-1.5 text-xs text-center text-[var(--os-text-muted)] truncate w-full">
@@ -204,7 +205,7 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
                         </span>
                       </div>
                     ))}
-                    <button
+                    <Button
                       type="button"
                       className="chat-lab__members-grid-add relative flex flex-col items-center w-16 group cursor-pointer"
                       disabled={disabled}
@@ -223,7 +224,7 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
                         </svg>
                       </div>
                       <span className="mt-1.5 text-xs text-center text-[var(--os-text-muted)]">添加</span>
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </FluidPopupAnimatedSurface>

@@ -12,6 +12,7 @@ import {
   useRole,
 } from "@floating-ui/react";
 import { ChevronDown, Maximize2, Minimize2, Trash2 } from "lucide-react";
+import { Button } from "@open-studio/udesign";
 import {
   Fragment,
   useCallback,
@@ -151,7 +152,7 @@ function ChatHistoryGroupHead({
         (deleteMode || focused) && "chat-history-group__head--actions-visible",
       )}
     >
-      <button
+      <Button
         type="button"
         className="chat-history-group__head-main"
         onClick={() => {
@@ -172,18 +173,18 @@ function ChatHistoryGroupHead({
           )}
         </span>
         <span className="chat-history-group__label">{label}</span>
-      </button>
+      </Button>
       <div className="chat-history-group__actions">
         {deleteMode ? (
           <>
-            <button
+            <Button
               type="button"
               className="chat-history-group__action-btn chat-history-group__action-btn--text"
               onClick={onCancelDeleteMode}
             >
               {t("dialog.cancel")}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               className={cn(
                 "chat-history-group__action-btn chat-history-group__action-btn--text",
@@ -193,11 +194,11 @@ function ChatHistoryGroupHead({
               onClick={onConfirmDelete}
             >
               {t("nav.chatHistoryDeleteSelected", { n: selectedCount })}
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <button
+            <Button
               type="button"
               className="chat-history-group__action-btn"
               aria-label={t("nav.chatHistoryGroupDeleteSelectAria")}
@@ -208,8 +209,8 @@ function ChatHistoryGroupHead({
               }}
             >
               <Trash2 className="size-3.5" strokeWidth={2} aria-hidden />
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               className="chat-history-group__action-btn"
               aria-label={focused ? t("nav.chatHistoryGroupShrinkAria") : t("nav.chatHistoryGroupExpandAria")}
@@ -224,11 +225,11 @@ function ChatHistoryGroupHead({
               ) : (
                 <Maximize2 className="size-3.5" strokeWidth={2} aria-hidden />
               )}
-            </button>
+            </Button>
           </>
         )}
       </div>
-      <button
+      <Button
         type="button"
         className="chat-history-group__caret-btn"
         onClick={() => {
@@ -243,7 +244,7 @@ function ChatHistoryGroupHead({
           strokeWidth={2.25}
           aria-hidden
         />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -359,7 +360,7 @@ function HistorySessionRow({
         )}
       >
         {selectMode ? (
-          <button
+          <Button
             type="button"
             title={displayTitle}
             disabled={selectDisabled}
@@ -397,7 +398,7 @@ function HistorySessionRow({
                 {formatSessionRelativeTime(t, updatedAt)}
               </span>
             </span>
-          </button>
+          </Button>
         ) : (
           <NavLink
             to={to}
@@ -422,7 +423,7 @@ function HistorySessionRow({
           </NavLink>
         )}
         {!selectMode ? (
-          <button
+          <Button
             type="button"
             className={cn(
               "chat-history-card__more flex h-7 w-7 shrink-0 items-center justify-center self-center rounded-md text-[0.9375rem] font-bold leading-none text-[var(--os-text-muted)] transition-colors hover:bg-transparent hover:text-[var(--os-text)]",
@@ -440,7 +441,7 @@ function HistorySessionRow({
             <span className="translate-y-[-1px]" aria-hidden>
               ⋮
             </span>
-          </button>
+          </Button>
         ) : null}
       </div>
       </div>
@@ -473,22 +474,22 @@ function HistorySessionRow({
                   />
                   <div className="chat-history-card__menu-row" onPointerEnter={() => setMenuHoverKey("rename")}>
                     <div ref={(node) => setMenuItemRef("rename", node)} className="fluid-popup-menu__measure">
-                      <button type="button" className="chat-history-card__menu-item w-full min-w-0" onClick={handleRename}>
+                      <Button type="button" className="chat-history-card__menu-item w-full min-w-0" onClick={handleRename}>
                         <PencilIcon className="text-[var(--os-text-muted)]" />
                         {t("nav.chatHistoryRename")}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   <div className="chat-history-card__menu-row chat-history-card__menu-row--with-divider" onPointerEnter={() => setMenuHoverKey("delete")}>
                     <div ref={(node) => setMenuItemRef("delete", node)} className="fluid-popup-menu__measure">
-                      <button
+                      <Button
                         type="button"
                         className="chat-history-card__menu-item chat-history-card__menu-item--danger w-full min-w-0"
                         onClick={handleDelete}
                       >
                         <TrashIcon className="shrink-0" />
                         {t("nav.chatHistoryDelete")}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </div>

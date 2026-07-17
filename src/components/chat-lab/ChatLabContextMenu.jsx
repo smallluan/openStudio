@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import {
   autoUpdate,
   flip,
@@ -204,7 +205,7 @@ export default function ChatLabContextMenu({
                   onPointerEnter={() => setHoverKey(item.id)}
                 >
                   <div ref={(node) => setMenuItemRef(item.id, node)} className="fluid-popup-menu__measure">
-                    <button
+                    <Button
                       type="button"
                       className={cn(
                         "chat-history-card__menu-item w-full min-w-0",
@@ -222,7 +223,7 @@ export default function ChatLabContextMenu({
                     >
                       {item.icon}
                       {item.label}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}

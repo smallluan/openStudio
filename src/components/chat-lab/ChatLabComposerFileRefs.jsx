@@ -1,4 +1,5 @@
 import { cn } from "../../ui/cn.js";
+import { Button } from "@open-studio/udesign";
 import { emojiForFileRefKind } from "../../chat/chatLabComposerFileRefs.js";
 
 /**
@@ -19,7 +20,7 @@ export function ComposerFileRefChip({ row, onClear, disabled, t }) {
         {emoji}
       </span>
       <span className="chat-lab__skill-chip-label">{row.name}</span>
-      <button
+      <Button
         type="button"
         className="chat-lab__skill-chip-x"
         disabled={disabled}
@@ -30,7 +31,7 @@ export function ComposerFileRefChip({ row, onClear, disabled, t }) {
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
           <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
-      </button>
+      </Button>
     </span>
   );
 }

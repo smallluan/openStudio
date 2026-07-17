@@ -12,6 +12,7 @@ import {
   useRole,
 } from "@floating-ui/react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { cn } from "../../ui/cn.js";
 import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
@@ -147,7 +148,7 @@ export default function ChatLabOrchestrationPlanPopover({
 
   return (
     <>
-      <button
+      <Button
         ref={refs.setReference}
         type="button"
         className={cn(
@@ -175,7 +176,7 @@ export default function ChatLabOrchestrationPlanPopover({
         )}
         <span className="chat-lab__orch-plan-pill-label">{progressLabel}</span>
         <PlanChevron open={present} />
-      </button>
+      </Button>
 
       {present ? (
         <FloatingPortal>

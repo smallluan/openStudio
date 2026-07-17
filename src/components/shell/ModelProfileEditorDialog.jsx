@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { Button } from "@open-studio/udesign";
 import { useEffect } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import ModalCloseButton from "../../ui/ModalCloseButton.jsx";
@@ -39,7 +40,7 @@ export default function ModelProfileEditorDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-[260] flex items-center justify-center p-4 sm:p-6" role="presentation">
-      <button
+      <Button
         type="button"
         className="os-modal-backdrop absolute inset-0"
         aria-label={t("dialog.cancel")}
@@ -70,21 +71,21 @@ export default function ModelProfileEditorDialog({
         : null}
 
         <footer className="flex shrink-0 items-center justify-end gap-2 px-4 pb-2.5 pt-2">
-          <button
+          <Button
             type="button"
             className="rounded-md border-none bg-transparent px-3 py-1.5 text-[0.8125rem] font-medium text-[var(--os-text-muted)] hover:text-[var(--os-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--os-focus-ring)]"
             onClick={onCancel}
           >
             {t("dialog.cancel")}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className="btn-primary px-4 py-1.5 text-[0.8125rem] disabled:cursor-not-allowed disabled:opacity-45"
             disabled={confirmDisabled}
             onClick={onConfirm}
           >
             {t("dialog.confirm")}
-          </button>
+          </Button>
         </footer>
       </div>
     </div>,

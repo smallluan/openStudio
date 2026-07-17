@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { useStudio } from "../../context/StudioContext.jsx";
 import { AgentMode } from "../../studio/modes.js";
@@ -39,14 +40,14 @@ export default function StudioChatBar() {
             if (e.key === "Enter") send();
           }}
         />
-        <button
+        <Button
           type="button"
           className={`btn-primary studio-chat__send ${canSend ? "studio-chat__send--ready" : ""}`}
           onClick={send}
           disabled={!canSend}
         >
           {t("studio.chat.send")}
-        </button>
+        </Button>
       </div>
     </footer>
   );

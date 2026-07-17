@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { Code, ExternalLink, Monitor, RefreshCw, Smartphone, X } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
 import { cn } from "../../ui/cn.js";
@@ -412,7 +413,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             role="group"
             aria-label={t("chatLab.previewDeviceModeAria")}
           >
-            <button
+            <Button
               type="button"
               className={cn(
                 "chat-lab-preview-dock__icon-btn chat-lab-preview-dock__device-btn",
@@ -424,8 +425,8 @@ export default function ChatLabPreviewDock({ extension = null }) {
               aria-pressed={api?.deviceMode === "desktop"}
             >
               <Monitor size={15} strokeWidth={1.75} aria-hidden />
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               className={cn(
                 "chat-lab-preview-dock__icon-btn chat-lab-preview-dock__device-btn",
@@ -437,11 +438,11 @@ export default function ChatLabPreviewDock({ extension = null }) {
               aria-pressed={api?.deviceMode === "mobile"}
             >
               <Smartphone size={15} strokeWidth={1.75} aria-hidden />
-            </button>
+            </Button>
           </div>
         ) : null}
         {viewSession?.kind === "iframe" ? (
-          <button
+          <Button
             type="button"
             className="chat-lab-preview-dock__icon-btn"
             onClick={onReloadPreview}
@@ -449,10 +450,10 @@ export default function ChatLabPreviewDock({ extension = null }) {
             aria-label={t("chatLab.previewReload")}
           >
             <RefreshCw size={15} strokeWidth={1.75} aria-hidden />
-          </button>
+          </Button>
         ) : null}
         {viewSession?.kind === "iframe" && viewSession.useWebview ? (
-          <button
+          <Button
             type="button"
             className="chat-lab-preview-dock__icon-btn"
             onClick={() => api?.openWebviewDevTools?.()}
@@ -460,10 +461,10 @@ export default function ChatLabPreviewDock({ extension = null }) {
             aria-label={t("chatLab.previewOpenDevTools")}
           >
             <Code size={15} strokeWidth={1.75} aria-hidden />
-          </button>
+          </Button>
         ) : null}
         {viewSession?.kind === "iframe" && viewSession.externalUrl && api?.linkOpenMode === "sidebar" ? (
-          <button
+          <Button
             type="button"
             className="chat-lab-preview-dock__icon-btn"
             onClick={onOpenExternal}
@@ -471,10 +472,10 @@ export default function ChatLabPreviewDock({ extension = null }) {
             data-preview-bypass="true"
           >
             <ExternalLink size={15} strokeWidth={1.75} aria-hidden />
-          </button>
+          </Button>
         ) : null}
         {(viewExtension || viewSession) ? (
-          <button
+          <Button
             type="button"
             className="chat-lab-preview-dock__icon-btn"
             onClick={api.close}
@@ -482,7 +483,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
             aria-label={t("chatLab.previewClose")}
           >
             ×
-          </button>
+          </Button>
         ) : null}
       </header>
       {showPreviewTabs ? (
@@ -501,7 +502,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
                   active && "chat-lab-preview-dock__tab-card--active",
                 )}
               >
-                <button
+                <Button
                   type="button"
                   role="tab"
                   aria-selected={active}
@@ -511,8 +512,8 @@ export default function ChatLabPreviewDock({ extension = null }) {
                   title={tab.src || tab.label}
                 >
                   {tab.label}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   className="chat-lab-preview-dock__tab-close flex shrink-0 items-center justify-center"
                   onClick={(e) => {
@@ -523,7 +524,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
                   aria-label={t("chatLab.previewTabClose")}
                 >
                   <X size={12} strokeWidth={2} aria-hidden />
-                </button>
+                </Button>
               </div>
             );
           })}
@@ -563,7 +564,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
                     const active = file.path === viewArtifacts.selectedPath;
                     return (
                       <li key={file.path}>
-                        <button
+                        <Button
                           type="button"
                           className={cn(
                             "chat-lab-preview-dock__tree-item",
@@ -585,7 +586,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
                             {file.op === "created" ? "+" : file.op === "modified" ? "~" : "↗"}
                           </span>
                           <span className="chat-lab-preview-dock__tree-name">{file.label}</span>
-                        </button>
+                        </Button>
                       </li>
                     );
                   })}

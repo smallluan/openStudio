@@ -85,6 +85,9 @@ const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch(
     value,
     defaultValue,
     onChange,
+    id,
+    'aria-label': ariaLabel,
+    'aria-labelledby': ariaLabelledby,
   } = props;
 
   const [onValue, offValue] = customValue;
@@ -180,11 +183,14 @@ const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch(
   return (
     <button
       ref={ref}
+      id={id}
       type="button"
       role="switch"
       aria-checked={checked}
       aria-disabled={isDisabled || undefined}
       aria-busy={isLoading || undefined}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledby}
       disabled={disabled}
       className={classNames}
       style={style}

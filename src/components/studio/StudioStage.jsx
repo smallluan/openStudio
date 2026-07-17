@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { useStudio } from "../../context/StudioContext.jsx";
 import ZoneDebugLayer from "./ZoneDebugLayer.jsx";
@@ -18,7 +19,7 @@ export default function StudioStage() {
         <LobsterLayer />
       </div>
       <div className="studio-stage__toolbar">
-        <button type="button" className="btn-ghost" onClick={() => rotateDemoMode()}>
+        <Button type="button" className="btn-ghost" onClick={() => rotateDemoMode()}>
           {t("studio.demoRotateMode", {
             mode: (() => {
               const mode = agents[0]?.mode;
@@ -27,7 +28,7 @@ export default function StudioStage() {
               return lbl === `modes.${mode}` ? mode : lbl;
             })(),
           })}
-        </button>
+        </Button>
         <Checkbox
           id="chk-zones"
           checked={debugZones}

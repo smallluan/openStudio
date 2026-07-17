@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
 
@@ -71,25 +72,25 @@ export default function TitleBar() {
           )}
           {shell ? (
             <div className="flex h-full shrink-0 items-stretch" style={{ WebkitAppRegion: "no-drag" }}>
-              <button type="button" className="os-titlebar__btn" aria-label={t("titlebar.minimize")} onClick={onMinimize}>
+              <Button type="button" className="os-titlebar__btn" aria-label={t("titlebar.minimize")} onClick={onMinimize}>
                 <WinIconMinimize className="opacity-85" />
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="os-titlebar__btn"
                 aria-label={maximized ? t("titlebar.restore") : t("titlebar.maximize")}
                 onClick={onToggleMax}
               >
                 {maximized ? <WinIconRestore className="opacity-85" /> : <WinIconMaximize className="opacity-85" />}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="os-titlebar__btn os-titlebar__btn--close"
                 aria-label={t("titlebar.close")}
                 onClick={onClose}
               >
                 <WinIconClose className="opacity-95" />
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>

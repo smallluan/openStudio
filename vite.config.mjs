@@ -147,6 +147,29 @@ function restoreBackdropFilterUnprefixed() {
 }
 
 export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        find: "@open-studio/udesign/styles/css-variables.css",
+        replacement: path.resolve(__dirname, "src/packages/udesign/src/styles/css-variables.css"),
+      },
+      {
+        find: "@open-studio/udesign/styles/variables.less",
+        replacement: path.resolve(__dirname, "src/packages/udesign/src/styles/variables.less"),
+      },
+      {
+        find: "@open-studio/udesign",
+        replacement: path.resolve(__dirname, "src/packages/udesign/src/index.ts"),
+      },
+    ],
+  },
+  css: {
+    preprocessorOptions: {
+      less: {
+        javascriptEnabled: true,
+      },
+    },
+  },
   plugins: [
     openclawBundledSkillsFallback(),
     orchestrationCjsForBrowser(),

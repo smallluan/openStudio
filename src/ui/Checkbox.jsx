@@ -1,10 +1,11 @@
 import { cn } from "./cn.js";
 
+import { Button } from "@open-studio/udesign";
 /** @param {{ id?: string; checked?: boolean; onCheckedChange?: (v: boolean) => void; label?: import("react").ReactNode; disabled?: boolean; className?: string; title?: string; tone?: "default" | "toolbar" }} props */
 export default function Checkbox({ id, checked, onCheckedChange, label, disabled, className, title, tone = "default" }) {
   const toolbarTone = tone === "toolbar";
   return (
-    <button
+    <Button
       id={id}
       type="button"
       role="checkbox"
@@ -42,6 +43,6 @@ export default function Checkbox({ id, checked, onCheckedChange, label, disabled
         ) : null}
       </span>
       <span>{label}</span>
-    </button>
+    </Button>
   );
 }

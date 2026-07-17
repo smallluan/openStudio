@@ -1,4 +1,5 @@
 import WechatIcon from "../../assets/svg/WechatIcon.jsx";
+import { Button } from "@open-studio/udesign";
 import { useWechatChannelAuth } from "../../chat/useWechatChannelAuth.js";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
@@ -41,20 +42,20 @@ export default function WechatChannelSettings() {
               {t("chatLab.wechatBoundAs", { name: status.accountName || "WeChat" })}
             </p>
             <div className="flex flex-wrap gap-2">
-              <button
+              <Button
                 type="button"
                 className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_88%,transparent)] bg-[var(--os-bg-elevated)] px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-text)] transition hover:bg-[color-mix(in_srgb,var(--os-bg-subtle)_70%,var(--os-bg-elevated))]"
                 onClick={() => void refreshStatus()}
               >
                 {t("chatLab.wechatRefreshStatus")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="rounded-lg border border-[color-mix(in_srgb,var(--os-danger,#dc2626)_40%,transparent)] bg-[color-mix(in_srgb,var(--os-danger,#dc2626)_10%,transparent)] px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-danger,#dc2626)] transition hover:bg-[color-mix(in_srgb,var(--os-danger,#dc2626)_16%,transparent)]"
                 onClick={() => void disconnect()}
               >
                 {t("chatLab.wechatDisconnect")}
-              </button>
+              </Button>
             </div>
           </>
         ) : (
@@ -77,21 +78,21 @@ export default function WechatChannelSettings() {
               )}
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
+              <Button
                 type="button"
                 className="rounded-lg bg-[var(--os-accent)] px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-accent-fg,#fff)] transition hover:opacity-90 disabled:opacity-50"
                 disabled={qrLoading}
                 onClick={() => void startAuth()}
               >
                 {t("chatLab.wechatStartAuth")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_88%,transparent)] bg-[var(--os-bg-elevated)] px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-text)] transition hover:bg-[color-mix(in_srgb,var(--os-bg-subtle)_70%,var(--os-bg-elevated))]"
                 onClick={() => void refreshStatus()}
               >
                 {t("chatLab.wechatRefreshStatus")}
-              </button>
+              </Button>
             </div>
           </>
         )}

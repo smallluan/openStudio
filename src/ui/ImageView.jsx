@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import {
   ChevronLeft,
   ChevronRight,
@@ -215,7 +216,7 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
       aria-modal="true"
       aria-label={t("image.previewTitle")}
     >
-      <button
+      <Button
         type="button"
         className="os-image-view__backdrop absolute inset-0 cursor-default border-0 p-0"
         aria-label={t("modal.closeDialog")}
@@ -234,7 +235,7 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
           : null}
         </div>
         <div className="flex items-center gap-1">
-          <button
+          <Button
             type="button"
             className="os-image-view__action"
             title={t("image.zoomOut")}
@@ -243,8 +244,8 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
             disabled={status !== "loaded"}
           >
             <ZoomOut size={16} strokeWidth={1.75} aria-hidden />
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className="os-image-view__action"
             title={t("image.zoomIn")}
@@ -253,8 +254,8 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
             disabled={status !== "loaded"}
           >
             <ZoomIn size={16} strokeWidth={1.75} aria-hidden />
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className="os-image-view__action"
             title={t("image.rotateLeft")}
@@ -263,8 +264,8 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
             disabled={status !== "loaded"}
           >
             <RotateCcw size={16} strokeWidth={1.75} aria-hidden />
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className="os-image-view__action"
             title={t("image.rotateRight")}
@@ -273,8 +274,8 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
             disabled={status !== "loaded"}
           >
             <RotateCw size={16} strokeWidth={1.75} aria-hidden />
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className="os-image-view__action"
             title={t("image.resetView")}
@@ -283,8 +284,8 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
             disabled={status !== "loaded"}
           >
             <RefreshCw size={16} strokeWidth={1.75} aria-hidden />
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className="os-image-view__action"
             title={t("image.saveImage")}
@@ -293,7 +294,7 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
             disabled={status !== "loaded"}
           >
             <Download size={16} strokeWidth={1.75} aria-hidden />
-          </button>
+          </Button>
           {current?.src ?
             <a
               href={current.src}
@@ -318,22 +319,22 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
       <div className="relative z-[1] flex min-h-0 flex-1 items-center justify-center px-3 pb-3 sm:px-6 sm:pb-6">
         {hasMultiple ?
           <>
-            <button
+            <Button
               type="button"
               className="os-image-view__nav os-image-view__nav--prev"
               onClick={goPrev}
               aria-label={t("image.previewPrevious")}
             >
               <ChevronLeft size={22} strokeWidth={1.75} aria-hidden />
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               className="os-image-view__nav os-image-view__nav--next"
               onClick={goNext}
               aria-label={t("image.previewNext")}
             >
               <ChevronRight size={22} strokeWidth={1.75} aria-hidden />
-            </button>
+            </Button>
           </>
         : null}
 
@@ -384,7 +385,7 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
         <div className="os-image-view__thumbs relative z-[1] shrink-0 px-3 pb-3 sm:px-6 sm:pb-4">
           <div className="os-image-view__thumbs-track">
             {list.map((item, idx) => (
-              <button
+              <Button
                 key={`${item.src}-${idx}`}
                 type="button"
                 className={cn(
@@ -396,7 +397,7 @@ export default function ImageView({ images, initialIndex = 0, onClose }) {
                 aria-current={idx === index ? "true" : undefined}
               >
                 <img src={item.src} alt="" className="os-image-view__thumb-img" loading="lazy" draggable={false} />
-              </button>
+              </Button>
             ))}
           </div>
         </div>

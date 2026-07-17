@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { Button } from "@open-studio/udesign";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   buildUserTurnAnchors,
@@ -123,7 +124,7 @@ export default function ChatLabThreadNav({
         {showScrollTop || showScrollBottom ? (
           <div className="chat-lab__scroll-jump" aria-hidden={false}>
             {showScrollTop ? (
-              <button
+              <Button
                 type="button"
                 className="chat-lab__scroll-jump-btn"
                 aria-label={t("chatLab.scrollToTop")}
@@ -131,10 +132,10 @@ export default function ChatLabThreadNav({
                 onClick={handleScrollTop}
               >
                 <ChevronUp size={18} strokeWidth={2.2} aria-hidden />
-              </button>
+              </Button>
             ) : null}
             {showScrollBottom ? (
-              <button
+              <Button
                 type="button"
                 className="chat-lab__scroll-jump-btn"
                 aria-label={t("chatLab.scrollToBottom")}
@@ -142,7 +143,7 @@ export default function ChatLabThreadNav({
                 onClick={handleScrollBottom}
               >
                 <ChevronDown size={18} strokeWidth={2.2} aria-hidden />
-              </button>
+              </Button>
             ) : null}
           </div>
         ) : null}

@@ -59,4 +59,10 @@ export interface SwitchProps<T extends SwitchValue = SwitchValue> {
   defaultValue?: T;
   /** 数据发生变化时触发 */
   onChange?: (value: T, context: SwitchChangeContext) => void;
+  /** 原生 id，可用于表单或 aria-labelledby */
+  id?: string;
+  /** 无障碍：无可见文案时的可读名称 */
+  'aria-label'?: string;
+  /** 无障碍：关联外部 label 元素 */
+  'aria-labelledby'?: string;
 }

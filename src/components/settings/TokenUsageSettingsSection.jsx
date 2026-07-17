@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import echarts from "../../chat/chatLabEchartsRuntime.js";
 import { getChatLabEchartsTheme } from "../../chat/chatLabEchartsTheme.js";
 import {
@@ -30,7 +31,7 @@ function SegmentedControl({ options, value, onChange, ariaLabel }) {
       {options.map((opt) => {
         const active = opt.value === value;
         return (
-          <button
+          <Button
             key={opt.value}
             type="button"
             role="tab"
@@ -44,7 +45,7 @@ function SegmentedControl({ options, value, onChange, ariaLabel }) {
             )}
           >
             {opt.label}
-          </button>
+          </Button>
         );
       })}
     </div>
@@ -501,13 +502,13 @@ export default function TokenUsageSettingsSection() {
           value={range}
           onChange={(v) => setRange(v === "7d" || v === "all" ? v : "30d")}
         />
-        <button
+        <Button
           type="button"
           onClick={() => void onReset()}
           className="rounded-lg px-2.5 py-1.5 text-[0.8125rem] font-medium text-[var(--os-text-muted)] transition-colors hover:bg-[color-mix(in_srgb,var(--os-bg-subtle)_88%,transparent)] hover:text-[var(--os-text)]"
         >
           {t("settings.usage.reset")}
-        </button>
+        </Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -565,13 +566,13 @@ export default function TokenUsageSettingsSection() {
             </p>
           </div>
           {selectedConversationId ? (
-            <button
+            <Button
               type="button"
               onClick={() => setSelectedConversationId("")}
               className="rounded-lg px-2.5 py-1.5 text-[0.8125rem] font-medium text-[var(--os-text-muted)] hover:text-[var(--os-text)]"
             >
               {t("settings.usage.clearFilter")}
-            </button>
+            </Button>
           ) : null}
         </div>
 
@@ -628,7 +629,7 @@ export default function TokenUsageSettingsSection() {
                         className="border-t border-[color-mix(in_srgb,var(--os-border)_60%,transparent)] hover:bg-[color-mix(in_srgb,var(--os-bg-subtle)_70%,transparent)]"
                       >
                         <td className="max-w-[14rem] px-4 py-3 sm:px-5">
-                          <button
+                          <Button
                             type="button"
                             onClick={() => conversationId && setSelectedConversationId(conversationId)}
                             className={cn(
@@ -640,7 +641,7 @@ export default function TokenUsageSettingsSection() {
                             title={preview}
                           >
                             {preview}
-                          </button>
+                          </Button>
                         </td>
                         <td className="max-w-[8rem] truncate px-3 py-3 text-[var(--os-text-muted)]" title={model}>
                           {model}
@@ -656,7 +657,7 @@ export default function TokenUsageSettingsSection() {
                         </td>
                         <td className="px-3 py-3">
                           {breakdownAvailable ? (
-                            <button
+                            <Button
                               type="button"
                               onClick={() =>
                                 setExpandedRecordId(expanded ? "" : recordId)
@@ -665,7 +666,7 @@ export default function TokenUsageSettingsSection() {
                               aria-expanded={expanded}
                             >
                               {callHint || (expanded ? t("settings.usage.breakdownCollapse") : t("settings.usage.breakdownExpand"))}
-                            </button>
+                            </Button>
                           ) : (
                             <span className="text-[var(--os-text-faint)]">{t("settings.usage.breakdownNone")}</span>
                           )}

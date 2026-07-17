@@ -1,4 +1,5 @@
 import { useI18n } from "../context/I18nContext.jsx";
+import { Button } from "@open-studio/udesign";
 import { cn } from "./cn.js";
 
 function CloseGlyph({ className }) {
@@ -18,7 +19,7 @@ export default function ModalCloseButton({ onClick, "aria-label": ariaLabel, cla
   const { t } = useI18n();
   const label = ariaLabel ?? t("modalClose.close");
   return (
-    <button
+    <Button
       type="button"
       aria-label={label}
       onClick={onClick}
@@ -31,6 +32,6 @@ export default function ModalCloseButton({ onClick, "aria-label": ariaLabel, cla
       )}
     >
       <CloseGlyph />
-    </button>
+    </Button>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { Button } from "@open-studio/udesign";
 import { cn } from "./cn.js";
 import { useFluidBlobState } from "./useFluidBlobState.js";
 
@@ -96,7 +97,7 @@ export default function FluidTabBar({ items, value, onChange, className, tabList
               ref={(node) => setAnchor(item.id, node)}
               className="inline-flex shrink-0"
             >
-              <button
+              <Button
                 type="button"
                 role="tab"
                 aria-selected={selected}
@@ -111,7 +112,7 @@ export default function FluidTabBar({ items, value, onChange, className, tabList
                 onClick={() => onChange(item.id)}
               >
                 {item.label}
-              </button>
+              </Button>
             </div>
           );
         })}

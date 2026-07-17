@@ -1,4 +1,5 @@
 import { matchPath, NavLink, useLocation } from "react-router-dom";
+import { Button } from "@open-studio/udesign";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
@@ -260,7 +261,7 @@ export default function FluidNavMenu({
 
       return (
         <div key={item.id} ref={(node) => setFluidAnchor(item.id, node)} className="fluid-nav__measure">
-          <button
+          <Button
             type="button"
             className={shellClass}
             title={item.title}
@@ -268,7 +269,7 @@ export default function FluidNavMenu({
             onClick={() => onSelect?.(item.id)}
           >
             {content}
-          </button>
+          </Button>
         </div>
       );
     },

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useStudio } from "../context/StudioContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -367,13 +368,13 @@ export default function LobsterManagementPage() {
       </header>
 
       <div className="mb-4 flex min-h-0 shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <button
+        <Button
           type="button"
           className="w-fit rounded-[11px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-on-accent,#fff)] shadow-sm transition hover:opacity-95"
           onClick={openCreateModal}
         >
           {t("lobsterPage.actions.create")}
-        </button>
+        </Button>
         <label className="relative flex w-full min-w-[220px] max-w-md sm:w-72">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--os-text-muted)]">
             <SearchSparkleIcon className="opacity-75" />
@@ -447,21 +448,21 @@ export default function LobsterManagementPage() {
                         "group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
                       )}
                     >
-                      <button
+                      <Button
                         type="button"
                         className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] px-2 py-1 text-[0.7rem] font-medium text-[var(--os-text-muted)] transition hover:border-[var(--os-border)] hover:text-[var(--os-text)]"
                         onClick={() => openDetail(a.id)}
                       >
                         {t("lobsterPage.actions.edit")}
-                      </button>
+                      </Button>
                       {!a.isMain ? (
-                        <button
+                        <Button
                           type="button"
                           className="rounded-lg px-2 py-1 text-[0.7rem] font-medium text-[#c45a5a] transition hover:opacity-80"
                           onClick={() => setDeleteTargetId(a.id)}
                         >
                           {t("lobsterPage.actions.delete")}
-                        </button>
+                        </Button>
                       ) : null}
                     </div>
                   </div>
@@ -504,7 +505,7 @@ export default function LobsterManagementPage() {
                       className="text-center text-[0.9rem] font-semibold text-[var(--os-text)] bg-transparent border-0 border-b border-transparent focus-visible:border-b-[var(--os-accent)] focus-visible:outline-none hover:border-b-[var(--os-border)] transition-colors"
                       placeholder="输入名称"
                     />
-                    <button
+                    <Button
                       type="button"
                       className="absolute -right-6 rounded p-0.5 text-[var(--os-text-muted)] transition hover:text-[var(--os-accent)]"
                       title="编辑名称"
@@ -513,19 +514,19 @@ export default function LobsterManagementPage() {
                         <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
                         <path d="m15 5 4 4"/>
                       </svg>
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldIdentity")}</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setEditSidebarField("identity")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑身份
-                </button>
+                </Button>
               </div>
 
               {!detailAgent.isMain ? (
@@ -570,73 +571,73 @@ export default function LobsterManagementPage() {
 
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldDescription")}</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setEditSidebarField("description")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑简介
-                </button>
+                </Button>
               </div>
 
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldSoul")}</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setEditSidebarField("soul")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑性格
-                </button>
+                </Button>
               </div>
 
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">工作流</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setEditSidebarField("agents")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
 
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">用户</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setEditSidebarField("user")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
 
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">工具</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setEditSidebarField("tools")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
 
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">记忆</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setEditSidebarField("memory")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
 
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">导入</span>
-                <button
+                <Button
                   type="button"
                   onClick={async () => {
                     const bridge = window.studioBridge;
@@ -690,19 +691,19 @@ export default function LobsterManagementPage() {
                   className="rounded-md border border-[var(--os-accent)] px-2.5 py-1 text-[0.75rem] font-medium text-[var(--os-accent)] transition hover:bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   从文件夹导入
-                </button>
+                </Button>
               </div>
 
               {/* Skills selection button */}
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.skillsHeading")}</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setSkillDialogOpen(true)}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   {t("lobsterPage.selectSkills")}
-                </button>
+                </Button>
               </div>
             </div>
             </div>
@@ -712,13 +713,13 @@ export default function LobsterManagementPage() {
                   <span className="text-[0.85rem] font-medium text-[var(--os-text)]">
                     {editSidebarField === 'identity' ? t("lobsterPage.fieldIdentity") : editSidebarField === 'description' ? t("lobsterPage.fieldDescription") : editSidebarField === 'soul' ? t("lobsterPage.fieldSoul") : editSidebarField === 'agents' ? '工作流 (AGENTS.md)' : editSidebarField === 'user' ? '用户 (USER.md)' : editSidebarField === 'tools' ? '工具 (TOOLS.md)' : '记忆 (MEMORY.md)'}
                   </span>
-                  <button
+                  <Button
                     type="button"
                     onClick={() => setEditSidebarField(null)}
                     className="rounded p-1 text-[var(--os-text-muted)] transition hover:text-[var(--os-text)] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_50%,transparent)]"
                   >
                     ✕
-                  </button>
+                  </Button>
                 </div>
                 <textarea
                   className="flex-1 w-full resize-none border-none bg-transparent px-4 py-3 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] focus:outline-none placeholder:text-[var(--os-text-faint)]"
@@ -754,7 +755,7 @@ export default function LobsterManagementPage() {
           </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
               {!detailAgent.isMain ? (
-                <button
+                <Button
                   type="button"
                   className="mr-auto rounded-[10px] border border-[color-mix(in_srgb,var(--os-danger,#b91c1c)_35%,var(--os-border))] px-3 py-2 text-[0.8rem] font-medium text-[var(--os-danger,#b91c1c)] transition hover:bg-[color-mix(in_srgb,var(--os-danger,#b91c1c)_8%,transparent)]"
                   onClick={() => {
@@ -763,15 +764,15 @@ export default function LobsterManagementPage() {
                   }}
                 >
                   {t("lobsterPage.actions.delete")}
-                </button>
+                </Button>
               ) : null}
-              <button
+              <Button
                 type="button"
                 className="rounded-[10px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8rem] font-medium text-[var(--os-on-accent,#fff)]"
                 onClick={closeDetail}
               >
                 {t("skillsPage.close")}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>
@@ -817,7 +818,7 @@ export default function LobsterManagementPage() {
                       placeholder="输入名称"
                       autoFocus
                     />
-                    <button
+                    <Button
                       type="button"
                       className="absolute -right-6 rounded p-0.5 text-[var(--os-text-muted)] transition hover:text-[var(--os-accent)]"
                       title="编辑名称"
@@ -826,98 +827,98 @@ export default function LobsterManagementPage() {
                         <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
                         <path d="m15 5 4 4"/>
                       </svg>
-                    </button>
+                    </Button>
                   </div>
                 </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldIdentity")}</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setCreateSidebarField("identity")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldDescription")}</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setCreateSidebarField("description")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldSoul")}</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setCreateSidebarField("soul")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">工作流</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setCreateSidebarField("agents")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">用户</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setCreateSidebarField("user")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">工具</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setCreateSidebarField("tools")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">记忆</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setCreateSidebarField("memory")}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   编辑
-                </button>
+                </Button>
               </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">导入</span>
-                <button
+                <Button
                   type="button"
                   onClick={handleImportFromFolder}
                   className="rounded-md border border-[var(--os-accent)] px-2.5 py-1 text-[0.75rem] font-medium text-[var(--os-accent)] transition hover:bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   从文件夹导入
-                </button>
+                </Button>
               </div>
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.skillsHeading")}</span>
-                <button
+                <Button
                   type="button"
                   onClick={() => setCreateSkillDialogOpen(true)}
                   className="rounded-md border border-[var(--os-border)] px-2.5 py-1 text-[0.75rem] transition hover:border-[var(--os-accent)] hover:text-[var(--os-accent)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
                 >
                   {t("lobsterPage.selectSkills")}
-                </button>
+                </Button>
               </div>
               {createError ? (
                 <p className="text-[0.78rem] text-[var(--os-danger,#b91c1c)]" role="alert">
@@ -932,13 +933,13 @@ export default function LobsterManagementPage() {
                   <span className="text-[0.85rem] font-medium text-[var(--os-text)]">
                     {createSidebarField === 'identity' ? t("lobsterPage.fieldIdentity") : createSidebarField === 'description' ? t("lobsterPage.fieldDescription") : createSidebarField === 'soul' ? t("lobsterPage.fieldSoul") : createSidebarField === 'agents' ? '工作流 (AGENTS.md)' : createSidebarField === 'user' ? '用户 (USER.md)' : createSidebarField === 'tools' ? '工具 (TOOLS.md)' : '记忆 (MEMORY.md)'}
                   </span>
-                  <button
+                  <Button
                     type="button"
                     onClick={() => setCreateSidebarField(null)}
                     className="rounded p-1 text-[var(--os-text-muted)] transition hover:text-[var(--os-text)] hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_50%,transparent)]"
                   >
                     ✕
-                  </button>
+                  </Button>
                 </div>
                 <textarea
                   className="flex-1 w-full resize-none border-none bg-transparent px-4 py-3 font-mono text-[0.78rem] leading-relaxed text-[var(--os-text)] focus:outline-none placeholder:text-[var(--os-text-faint)]"
@@ -973,22 +974,22 @@ export default function LobsterManagementPage() {
             )}
           </div>
             <div className="flex shrink-0 justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <button
+              <Button
                 type="button"
                 className="rounded-[10px] px-3 py-2 text-[0.8rem] text-[var(--os-text-muted)]"
                 disabled={createBusy}
                 onClick={() => setCreateOpen(false)}
               >
                 {t("skillsPage.cancel")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="rounded-[10px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8rem] font-medium text-[var(--os-on-accent,#fff)] disabled:opacity-60"
                 disabled={createBusy}
                 onClick={() => void onConfirmCreate()}
               >
                 {createBusy ? t("lobsterPage.createModal.busy") : t("lobsterPage.createModal.confirm")}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>
@@ -1009,14 +1010,14 @@ export default function LobsterManagementPage() {
               })}
             </p>
             <div className="flex justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <button
+              <Button
                 type="button"
                 className="rounded-[10px] px-3 py-2 text-[0.8rem] text-[var(--os-text-muted)]"
                 onClick={() => setDeleteTargetId(null)}
               >
                 {t("skillsPage.cancel")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="rounded-[10px] bg-[var(--os-danger,#b91c1c)] px-3.5 py-2 text-[0.8rem] font-medium text-white"
                 onClick={() => {
@@ -1026,7 +1027,7 @@ export default function LobsterManagementPage() {
                 }}
               >
                 {t("lobsterPage.deleteModal.confirm")}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>

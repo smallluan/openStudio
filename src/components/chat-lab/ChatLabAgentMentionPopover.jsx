@@ -10,6 +10,7 @@ import {
   useRole,
 } from "@floating-ui/react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
+import { Button } from "@open-studio/udesign";
 import { agentAvatarGlyph, agentDisplayLabel } from "../../studio/agents.js";
 import Avatar from "../../ui/Avatar.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -143,7 +144,7 @@ export default function ChatLabAgentMentionPopover({
             ) : (
               <>
                 {everyoneVisible ? (
-                  <button
+                  <Button
                     ref={(node) => {
                       optionRefs.current[0] = node;
                     }}
@@ -163,12 +164,12 @@ export default function ChatLabAgentMentionPopover({
                     <span className="chat-lab__mention-item-name min-w-0 flex-1 truncate">
                       @{everyoneLabel}
                     </span>
-                  </button>
+                  </Button>
                 ) : null}
                 {filtered.map((a, index) => {
                   const optionIndex = index + (everyoneVisible ? 1 : 0);
                   return (
-                    <button
+                    <Button
                       key={a.id}
                       ref={(node) => {
                         optionRefs.current[optionIndex] = node;
@@ -195,7 +196,7 @@ export default function ChatLabAgentMentionPopover({
                       {a.isMain ? (
                         <span className="chat-lab__mention-item-badge shrink-0">{t("agents.mainBadge")}</span>
                       ) : null}
-                    </button>
+                    </Button>
                   );
                 })}
               </>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { cn } from "../../ui/cn.js";
 
 const POS_STORAGE_KEY = "openstudio_chat_preview_assistive_pos";
@@ -185,7 +186,7 @@ export default function ChatLabPreviewMobileAssistiveBall({
   if (!pixelPos) return null;
 
   return (
-    <button
+    <Button
       ref={ballRef}
       type="button"
       className={cn(
@@ -202,6 +203,6 @@ export default function ChatLabPreviewMobileAssistiveBall({
       onPointerCancel={finishPointer}
     >
       <AssistiveTouchGlyph />
-    </button>
+    </Button>
   );
 }

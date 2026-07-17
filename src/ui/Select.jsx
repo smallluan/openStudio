@@ -13,6 +13,7 @@ import {
   useRole,
 } from "@floating-ui/react";
 import { useEffect, useId, useMemo, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import FluidPopupAnimatedSurface from "./FluidPopupAnimatedSurface.jsx";
 import { cn } from "./cn.js";
 import { useFluidPopupBlob } from "./useFluidPopupBlob.js";
@@ -88,7 +89,7 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
 
   return (
     <div className={cn("relative min-w-[8.5rem]", className)}>
-      <button
+      <Button
         ref={refs.setReference}
         id={id}
         type="button"
@@ -105,7 +106,7 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
       >
         <span className="min-w-0 truncate">{selected?.label ?? "—"}</span>
         <Chevron open={present} />
-      </button>
+      </Button>
 
       {present ? (
         <FloatingPortal>
@@ -149,7 +150,7 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
                         className="fluid-select__measure w-full"
                         onPointerEnter={() => setHoverKey(String(opt.value))}
                       >
-                        <button
+                        <Button
                           ref={(node) => setItemRef(String(opt.value), node)}
                           type="button"
                           className={cn(
@@ -165,7 +166,7 @@ export default function Select({ id, value, onChange, options, ariaLabel, classN
                           }}
                         >
                           {opt.label}
-                        </button>
+                        </Button>
                       </div>
                     </li>
                   ))}

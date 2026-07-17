@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { cn } from "../../ui/cn.js";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
@@ -81,7 +82,7 @@ function ArtifactOpRow({ op, label, items, disabled, onOpen }) {
           aria-label={label}
         >
           {items.map((a) => (
-            <button
+            <Button
               key={a.path}
               type="button"
               role="listitem"
@@ -91,7 +92,7 @@ function ArtifactOpRow({ op, label, items, disabled, onOpen }) {
               title={a.path}
             >
               <span className="chat-lab-artifacts-bar__chip-name">{a.label}</span>
-            </button>
+            </Button>
           ))}
         </div>
       </div>

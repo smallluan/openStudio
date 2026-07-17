@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import Image from "../../ui/Image.jsx";
 import { cn } from "../../ui/cn.js";
 
@@ -68,7 +69,7 @@ export function ChatLabImageGrid({ images, className }) {
         {list.slice(0, GRID_PREVIEW).map((img, idx) => (
           <GridCell key={`${img.src}-${idx}`} img={img} idx={idx} previewGroup={previewGroup} />
         ))}
-        <button
+        <Button
           type="button"
           className="chat-lab__md-image-grid__cell chat-lab__md-image-grid__more"
           onClick={() => setExpanded(true)}
@@ -84,7 +85,7 @@ export function ChatLabImageGrid({ images, className }) {
             as="div"
           />
           <span className="chat-lab__md-image-grid__more-label">+{moreCount}</span>
-        </button>
+        </Button>
       </div>
     );
   }

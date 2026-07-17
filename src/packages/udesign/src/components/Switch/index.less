@@ -2,6 +2,8 @@
 
 // 轨道内边距：滑块 / 文案都不要紧贴边缘
 @switch-gap: 3px;
+// 开启态滑块与右边缘间距（略小于关闭态左侧，让 ON 更贴边）
+@switch-gap-checked: 1px;
 @switch-label-edge: 5px;
 // 位移：顺滑减速；尺寸：略带回弹但不猛
 @switch-move: cubic-bezier(0.22, 1, 0.36, 1);
@@ -46,13 +48,13 @@
     .udesign-switch__handle {
       width: 10px;
       height: 10px;
-      // travel = 28 - 3*2 - 12(on) = 10；关闭用较小滑块，位移按开启宽度对齐右端
-      --udesign-switch-travel: 10px;
+      // travel = 28 - gap - gapChecked - handle(on) = 12
+      --udesign-switch-travel: 12px;
     }
 
     &.udesign-switch--with-content .udesign-switch__handle {
-      // 34 - 6 - 12 = 16
-      --udesign-switch-travel: 16px;
+      // 34 - 3 - 1 - 12 = 18
+      --udesign-switch-travel: 18px;
     }
 
     &.udesign-switch--checked .udesign-switch__handle {
@@ -95,13 +97,13 @@
     .udesign-switch__handle {
       width: 14px;
       height: 14px;
-      // 36 - 6 - 16 = 14
-      --udesign-switch-travel: 14px;
+      // 36 - 3 - 1 - 16 = 16
+      --udesign-switch-travel: 16px;
     }
 
     &.udesign-switch--with-content .udesign-switch__handle {
-      // 44 - 6 - 16 = 22
-      --udesign-switch-travel: 22px;
+      // 44 - 3 - 1 - 16 = 24
+      --udesign-switch-travel: 24px;
     }
 
     &.udesign-switch--checked .udesign-switch__handle {
@@ -143,13 +145,13 @@
     .udesign-switch__handle {
       width: 18px;
       height: 18px;
-      // 44 - 6 - 20 = 18
-      --udesign-switch-travel: 18px;
+      // 44 - 3 - 1 - 20 = 20
+      --udesign-switch-travel: 20px;
     }
 
     &.udesign-switch--with-content .udesign-switch__handle {
-      // 52 - 6 - 20 = 26
-      --udesign-switch-travel: 26px;
+      // 52 - 3 - 1 - 20 = 28
+      --udesign-switch-travel: 28px;
     }
 
     &.udesign-switch--checked .udesign-switch__handle {

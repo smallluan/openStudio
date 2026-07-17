@@ -8,8 +8,8 @@ import {
   readLinkOpenModeLocal,
   writeLinkOpenModeLocal,
 } from "../../chat/chatLabLinkOpenPreference.js";
+import { Switch } from "@open-studio/udesign";
 import Select from "../../ui/Select.jsx";
-import Switch from "../../ui/Switch.jsx";
 import { cn } from "../../ui/cn.js";
 
 /**
@@ -241,41 +241,41 @@ export default function GeneralSettingsSection() {
 
         <GeneralSettingRow title={t("settings.rawTraceEnabled")}>
           <Switch
-            compact
             id="settings-raw-trace"
-            label={t("settings.rawTraceEnabledTitle")}
-            checked={rawTraceEnabled}
-            onCheckedChange={(v) => void persistRawTraceEnabled(v)}
+            size="small"
+            aria-label={t("settings.rawTraceEnabledTitle")}
+            value={rawTraceEnabled}
+            onChange={(v) => void persistRawTraceEnabled(Boolean(v))}
           />
         </GeneralSettingRow>
 
         <GeneralSettingRow title={t("settings.autoSummarize")}>
           <Switch
-            compact
             id="settings-auto-summarize"
-            label={t("settings.autoSummarizeTitle")}
-            checked={chatLabAutoTitle}
-            onCheckedChange={(v) => void persistChatLabAutoTitle(v)}
+            size="small"
+            aria-label={t("settings.autoSummarizeTitle")}
+            value={chatLabAutoTitle}
+            onChange={(v) => void persistChatLabAutoTitle(Boolean(v))}
           />
         </GeneralSettingRow>
 
         <GeneralSettingRow title={t("settings.groupContinuousConversation")}>
           <Switch
-            compact
             id="settings-group-continuous-conversation"
-            label={t("settings.groupContinuousConversationAria")}
-            checked={chatLabGroupContinuousConversation}
-            onCheckedChange={(v) => void persistChatLabGroupContinuousConversation(v)}
+            size="small"
+            aria-label={t("settings.groupContinuousConversationAria")}
+            value={chatLabGroupContinuousConversation}
+            onChange={(v) => void persistChatLabGroupContinuousConversation(Boolean(v))}
           />
         </GeneralSettingRow>
 
         <GeneralSettingRow title={t("settings.showAutomationDebugInput")} last>
           <Switch
-            compact
             id="settings-show-automation-debug-input"
-            label={t("settings.showAutomationDebugInputTitle")}
-            checked={showAutomationDebugInput}
-            onCheckedChange={(v) => void persistShowAutomationDebugInput(v)}
+            size="small"
+            aria-label={t("settings.showAutomationDebugInputTitle")}
+            value={showAutomationDebugInput}
+            onChange={(v) => void persistShowAutomationDebugInput(Boolean(v))}
           />
         </GeneralSettingRow>
       </div>

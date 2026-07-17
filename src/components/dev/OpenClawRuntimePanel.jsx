@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { useI18n } from "../../context/I18nContext.jsx";
 
 export default function OpenClawRuntimePanel({ defaultOpen = false }) {
@@ -24,13 +25,13 @@ export default function OpenClawRuntimePanel({ defaultOpen = false }) {
 
   return (
     <aside className="dev-panel">
-      <button
+      <Button
         type="button"
         className="dev-panel__toggle btn-ghost"
         onClick={() => setOpen((v) => !v)}
       >
         {t("openclaw.runtimeToggle")} {open ? "▾" : "▸"}
-      </button>
+      </Button>
       {open ? (
         <div className="oc-card dev-panel__body">
           <h2>{t("openclaw.panelTitle")}</h2>

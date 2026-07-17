@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { Camera, Plus, Trash2, User, X } from "lucide-react";
 import { cn } from "./cn.js";
 
@@ -180,7 +181,7 @@ function EditOverlay({ size, onUpload, uploading, visible }) {
       {uploading ?
         <div className="os-image__spinner" />
       : showActions ?
-        <button
+        <Button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
@@ -190,7 +191,7 @@ function EditOverlay({ size, onUpload, uploading, visible }) {
           aria-label="Upload avatar"
         >
           <Camera size={iconSize * 0.6} className="text-white" />
-        </button>
+        </Button>
       : (
         <Camera size={iconSize * 0.6} className="text-white" />
       )}
@@ -212,7 +213,7 @@ function DeleteButton({ size, onDelete }) {
   const offset = containerSize * 0.05;
 
   return (
-    <button
+    <Button
       type="button"
       onClick={(e) => {
         e.stopPropagation();
@@ -235,7 +236,7 @@ function DeleteButton({ size, onDelete }) {
       aria-label="Delete avatar"
     >
       <X size={buttonSize * 0.6} />
-    </button>
+    </Button>
   );
 }
 
@@ -772,7 +773,7 @@ export function AvatarUpload({
       )}
 
       <div className="flex gap-2">
-        <button
+        <Button
           type="button"
           onClick={handleUploadClick}
           disabled={uploading}
@@ -784,10 +785,10 @@ export function AvatarUpload({
           )}
         >
           {uploading ? "Uploading..." : "Upload Photo"}
-        </button>
+        </Button>
 
         {onDelete && displaySrc && (
-          <button
+          <Button
             type="button"
             onClick={handleDelete}
             disabled={uploading}
@@ -799,7 +800,7 @@ export function AvatarUpload({
             )}
           >
             Remove
-          </button>
+          </Button>
         )}
       </div>
 

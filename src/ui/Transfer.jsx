@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Search } from "lucide-react";
+import { Button } from "@open-studio/udesign";
 import { useCallback, useMemo, useState } from "react";
 import { useI18n } from "../context/I18nContext.jsx";
 import { getColorFromString, getInitials } from "./Avatar.jsx";
@@ -247,7 +248,7 @@ export default function Transfer({
               const checked = sourceSelected.has(item.key);
               return (
                 <li key={item.key}>
-                  <button
+                  <Button
                     type="button"
                     role="option"
                     aria-selected={checked}
@@ -277,7 +278,7 @@ export default function Transfer({
                         <span className="os-transfer__row-desc">{item.description}</span>
                       ) : null}
                     </span>
-                  </button>
+                  </Button>
                 </li>
               );
             })
@@ -288,7 +289,7 @@ export default function Transfer({
       </div>
 
       <div className="os-transfer__actions" aria-label={t("transfer.actionsAria")}>
-        <button
+        <Button
           type="button"
           className="os-transfer__action-btn"
           disabled={sourceSelected.size === 0}
@@ -297,8 +298,8 @@ export default function Transfer({
           onClick={() => moveToTarget([...sourceSelected])}
         >
           <ChevronRight size={16} strokeWidth={2.2} aria-hidden />
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           className="os-transfer__action-btn"
           disabled={selectableSourceKeys.length === 0}
@@ -307,8 +308,8 @@ export default function Transfer({
           onClick={() => moveToTarget(selectableSourceKeys)}
         >
           <ChevronsRight size={16} strokeWidth={2.2} aria-hidden />
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           className="os-transfer__action-btn"
           disabled={targetSelected.size === 0}
@@ -317,8 +318,8 @@ export default function Transfer({
           onClick={() => moveToSource([...targetSelected])}
         >
           <ChevronLeft size={16} strokeWidth={2.2} aria-hidden />
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           className="os-transfer__action-btn"
           disabled={removableTargetKeys.length === 0}
@@ -327,7 +328,7 @@ export default function Transfer({
           onClick={() => moveToSource(removableTargetKeys)}
         >
           <ChevronsLeft size={16} strokeWidth={2.2} aria-hidden />
-        </button>
+        </Button>
       </div>
 
       <div className="os-transfer__panel">
@@ -353,7 +354,7 @@ export default function Transfer({
               const locked = Boolean(item.locked);
               return (
                 <li key={item.key}>
-                  <button
+                  <Button
                     type="button"
                     role="option"
                     aria-selected={checked}
@@ -393,7 +394,7 @@ export default function Transfer({
                         <span className="os-transfer__row-desc">{item.description}</span>
                       ) : null}
                     </span>
-                  </button>
+                  </Button>
                 </li>
               );
             })

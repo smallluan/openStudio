@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { createPortal } from "react-dom";
 import { useI18n } from "../context/I18nContext.jsx";
 import { cn } from "./cn.js";
@@ -68,7 +69,7 @@ export default function Modal({ children, className, labelledBy, onClose }) {
       className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-8"
       role="presentation"
     >
-      <button
+      <Button
         type="button"
         className={cn(
           "os-modal-backdrop absolute inset-0 cursor-default border-0 p-0",

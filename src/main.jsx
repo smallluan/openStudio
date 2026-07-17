@@ -11,6 +11,7 @@ import { applyUiMotionMode } from "./motion/motionPreference.js";
 import { initChatSessionsStore } from "./chat/chatSessionsStore.js";
 import StartupBootstrapGate from "./shell/StartupBootstrapGate.jsx";
 import "./index.css";
+import "@open-studio/udesign/styles/css-variables.css";
 
 applyUiMotionMode();
 

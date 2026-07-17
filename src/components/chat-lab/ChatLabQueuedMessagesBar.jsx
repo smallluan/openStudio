@@ -11,6 +11,7 @@ import {
   useRole,
 } from "@floating-ui/react";
 import { ChevronDown, X } from "lucide-react";
+import { Button } from "@open-studio/udesign";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
@@ -89,7 +90,7 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
           <span className="chat-lab__context-trigger-label" title={single.text || singleSummary}>
             #1 {singleSummary}
           </span>
-          <button
+          <Button
             type="button"
             className="chat-lab__queued-trigger-cancel"
             onClick={(e) => handleCancel(single.id, e)}
@@ -97,11 +98,11 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
             aria-label={t("chatLab.cancelQueuedMessage")}
           >
             <X aria-hidden />
-          </button>
+          </Button>
         </div>
       ) : (
         <>
-          <button
+          <Button
             ref={triggerRef}
             type="button"
             className={cn("chat-lab__context-trigger chat-lab__queued-trigger", open && "chat-lab__context-trigger--open")}
@@ -112,7 +113,7 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
           >
             <span className="chat-lab__context-trigger-label">{multiLabel}</span>
             <ChevronDown className="chat-lab__context-trigger-chevron" aria-hidden />
-          </button>
+          </Button>
 
           {present ? (
             <FloatingPortal>
@@ -147,7 +148,7 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
                             <span className="chat-lab__queued-popover-summary" title={q.text || summary}>
                               {summary}
                             </span>
-                            <button
+                            <Button
                               type="button"
                               className="chat-lab__queued-popover-cancel"
                               onClick={(e) => handleCancel(q.id, e)}
@@ -155,7 +156,7 @@ export default function ChatLabQueuedMessagesBar({ messages, sendingId = null, o
                               aria-label={t("chatLab.cancelQueuedMessage")}
                             >
                               <X aria-hidden />
-                            </button>
+                            </Button>
                           </li>
                         );
                       })}

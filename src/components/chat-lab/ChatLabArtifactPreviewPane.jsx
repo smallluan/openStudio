@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Button } from "@open-studio/udesign";
 import ChatLabMarkdownBody from "./ChatLabMarkdownBody.jsx";
 import ChatLabArtifactCodeView from "./ChatLabArtifactCodeView.jsx";
 import ChatLabArtifactSourceView from "./ChatLabArtifactSourceView.jsx";
@@ -83,7 +84,7 @@ export default function ChatLabArtifactPreviewPane({
     <div className="chat-lab-artifact-preview flex min-h-0 min-w-0 flex-1 flex-col">
       {showToggle ? (
         <div className="chat-lab-artifact-preview__toolbar flex shrink-0 items-center gap-1 border-b px-2 py-1.5">
-          <button
+          <Button
             type="button"
             className={cn(
               "chat-lab-artifact-preview__mode-btn",
@@ -92,8 +93,8 @@ export default function ChatLabArtifactPreviewPane({
             onClick={() => onViewModeChange("render")}
           >
             {t("chatLab.previewViewRender")}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className={cn(
               "chat-lab-artifact-preview__mode-btn",
@@ -102,7 +103,7 @@ export default function ChatLabArtifactPreviewPane({
             onClick={() => onViewModeChange("source")}
           >
             {t("chatLab.previewViewSource")}
-          </button>
+          </Button>
         </div>
       ) : null}
 

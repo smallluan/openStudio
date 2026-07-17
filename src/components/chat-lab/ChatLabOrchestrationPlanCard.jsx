@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { agentDisplayLabel } from "../../studio/agents.js";
 import { orchestrationRoleLabel } from "../../studio/orchestrationRoles.js";
 import { cn } from "../../ui/cn.js";
@@ -67,30 +68,30 @@ export default function ChatLabOrchestrationPlanCard({
         <div className="orch-plan-card__actions">
           {!reviseOpen ? (
             <>
-              <button
+              <Button
                 type="button"
                 className="orch-plan-card__btn orch-plan-card__btn--primary"
                 disabled={disabled}
                 onClick={onApprove}
               >
                 {t("orchestration.planCard.approve")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="orch-plan-card__btn"
                 disabled={disabled}
                 onClick={() => setReviseOpen(true)}
               >
                 {t("orchestration.planCard.revise")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="orch-plan-card__btn orch-plan-card__btn--danger"
                 disabled={disabled}
                 onClick={onReject}
               >
                 {t("orchestration.planCard.reject")}
-              </button>
+              </Button>
             </>
           ) : (
             <div className="orch-plan-card__revise">
@@ -103,7 +104,7 @@ export default function ChatLabOrchestrationPlanCard({
                 disabled={disabled}
               />
               <div className="orch-plan-card__revise-actions">
-                <button
+                <Button
                   type="button"
                   className="orch-plan-card__btn orch-plan-card__btn--primary"
                   disabled={disabled || !reviseNotes.trim()}
@@ -114,8 +115,8 @@ export default function ChatLabOrchestrationPlanCard({
                   }}
                 >
                   {t("orchestration.planCard.reviseSubmit")}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   className="orch-plan-card__btn"
                   disabled={disabled}
@@ -125,7 +126,7 @@ export default function ChatLabOrchestrationPlanCard({
                   }}
                 >
                   {t("orchestration.planCard.reviseCancel")}
-                </button>
+                </Button>
               </div>
             </div>
           )}

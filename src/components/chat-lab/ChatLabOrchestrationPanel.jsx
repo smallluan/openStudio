@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Button } from "@open-studio/udesign";
 import { agentDisplayLabel } from "../../studio/agents.js";
 import { cn } from "../../ui/cn.js";
 
@@ -44,9 +45,9 @@ export default function ChatLabOrchestrationPanel({ run, agents, onResume, t }) 
           </span>
         ) : null}
         {run?.status === "paused" && onResume ? (
-          <button type="button" className="orch-panel__resume" onClick={onResume}>
+          <Button type="button" className="orch-panel__resume" onClick={onResume}>
             {t("orchestration.panel.resume")}
-          </button>
+          </Button>
         ) : null}
       </div>
       <div className="orch-panel__board">

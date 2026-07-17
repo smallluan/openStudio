@@ -12,6 +12,7 @@ import {
   useRole,
 } from "@floating-ui/react";
 import { PanelRight, Route } from "lucide-react";
+import { Button } from "@open-studio/udesign";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { buildUserTurnAnchors, scrollThreadToMessage } from "../../chat/chatLabThreadScroll.js";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
@@ -124,7 +125,7 @@ export default function ChatLabConvHeader({
               disabled={participantsDisabled}
             />
           ) : null}
-          <button
+          <Button
             ref={refs.setReference}
             type="button"
             className={cn("chat-lab__turn-nav-icon-btn", present && "chat-lab__turn-nav-icon-btn--open")}
@@ -136,8 +137,8 @@ export default function ChatLabConvHeader({
             {...getReferenceProps()}
           >
             <Route size={16} strokeWidth={2.1} aria-hidden />
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className="chat-lab__turn-nav-icon-btn"
             aria-label="打开侧边栏"
@@ -145,7 +146,7 @@ export default function ChatLabConvHeader({
             onClick={() => preview?.openIframe?.("https://www.baidu.com", "百度")}
           >
             <PanelRight size={16} strokeWidth={2.1} aria-hidden />
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -177,7 +178,7 @@ export default function ChatLabConvHeader({
                         const active = activeTurnId === turn.id;
                         return (
                           <li key={turn.id} className="chat-lab__turn-nav-item">
-                            <button
+                            <Button
                               type="button"
                               className={cn("chat-lab__turn-nav-row", active && "chat-lab__turn-nav-row--active")}
                               data-turn-id={turn.id}
@@ -194,7 +195,7 @@ export default function ChatLabConvHeader({
                                 />
                               </span>
                               <span className="chat-lab__turn-nav-text">{turn.preview}</span>
-                            </button>
+                            </Button>
                           </li>
                         );
                       })}

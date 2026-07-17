@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { Play } from "lucide-react";
 import { normalizeAutomationSteps } from "../../chat/chatLabPreviewAutomation.js";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -129,7 +130,7 @@ export default function ChatLabPreviewAutomationDebugInput({ onRun, disabled = f
         spellCheck={false}
         autoComplete="off"
       />
-      <button
+      <Button
         type="button"
         className={cn(
           "chat-lab-preview-dock__icon-btn chat-lab-preview-dock__automation-run",
@@ -141,7 +142,7 @@ export default function ChatLabPreviewAutomationDebugInput({ onRun, disabled = f
         aria-label={t("chatLab.previewAutomationDebugRun")}
       >
         <Play size={14} strokeWidth={2} aria-hidden />
-      </button>
+      </Button>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { Outlet } from "react-router-dom";
 import { Bot, MessageSquarePlus, Puzzle, Users } from "lucide-react";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
@@ -175,7 +176,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
           </div>
         </aside>
 
-        <button
+        <Button
           type="button"
           className={cn("rail-edge-toggle", railDragging && "rail-edge-toggle--dragging")}
           style={{
@@ -187,7 +188,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
           aria-label={isNarrow ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
         >
           <SidebarToggleIcon collapsed={isNarrow} className="pointer-events-none text-current" />
-        </button>
+        </Button>
 
         <div className="app-frame__content">
           <Outlet />

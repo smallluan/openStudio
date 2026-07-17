@@ -1,4 +1,5 @@
 import { MessageCircleQuestion } from "lucide-react";
+import { Button } from "@open-studio/udesign";
 import { followUpPreviewText } from "../../chat/chatLabFollowUp.js";
 import { cn } from "../../ui/cn.js";
 
@@ -25,7 +26,7 @@ export function ComposerFollowUpChip({
   const preview = followUpPreviewText(quoteText);
   return (
     <span className={cn("chat-lab__follow-up-chip", className)}>
-      <button
+      <Button
         type="button"
         className="chat-lab__follow-up-chip-main"
         disabled={disabled}
@@ -35,9 +36,9 @@ export function ComposerFollowUpChip({
         <MessageCircleQuestion className="chat-lab__follow-up-chip-ico" size={14} strokeWidth={2} aria-hidden />
         <span className="chat-lab__follow-up-chip-agent">{agentName}</span>
         <span className="chat-lab__follow-up-chip-preview">{preview}</span>
-      </button>
+      </Button>
       {onClear ?
-        <button
+        <Button
           type="button"
           className="chat-lab__follow-up-chip-x"
           disabled={disabled}
@@ -48,7 +49,7 @@ export function ComposerFollowUpChip({
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
-        </button>
+        </Button>
       : null}
     </span>
   );
@@ -64,7 +65,7 @@ export function ComposerFollowUpChip({
 export function MessageFollowUpTag({ followUpRef, onNavigate, className }) {
   const preview = followUpPreviewText(followUpRef.quoteText);
   return (
-    <button
+    <Button
       type="button"
       className={cn("chat-lab__msg-follow-up-pill", className)}
       onClick={onNavigate}
@@ -73,6 +74,6 @@ export function MessageFollowUpTag({ followUpRef, onNavigate, className }) {
       <MessageCircleQuestion className="chat-lab__msg-follow-up-ico" size={13} strokeWidth={2} aria-hidden />
       <span className="chat-lab__msg-follow-up-agent">{followUpRef.agentName}</span>
       <span className="chat-lab__msg-follow-up-preview">{preview}</span>
-    </button>
+    </Button>
   );
 }

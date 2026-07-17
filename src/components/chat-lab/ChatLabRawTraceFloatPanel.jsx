@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { cn } from "../../ui/cn.js";
 
 const POS_STORAGE_KEY = "openstudio_chat_raw_trace_float_pos_v1";
@@ -222,7 +223,7 @@ export default function ChatLabRawTraceFloatPanel({ rounds, onClear }) {
       style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
     >
       {!open ? (
-        <button
+        <Button
           type="button"
           className={cn("chat-lab-raw-trace-float__launcher", dragging && "chat-lab-raw-trace-float__launcher--dragging")}
           onPointerDown={startDrag}
@@ -235,13 +236,13 @@ export default function ChatLabRawTraceFloatPanel({ rounds, onClear }) {
         >
           Raw Trace
           <span className="chat-lab-raw-trace-float__launcher-count">{sortedRounds.length}</span>
-        </button>
+        </Button>
       ) : (
         <section className="chat-lab-raw-trace-float__panel" aria-label="Raw trace panel">
           <header className="chat-lab-raw-trace-float__head" onPointerDown={startDrag}>
             <strong className="chat-lab-raw-trace-float__title">Agent Raw Trace</strong>
             <div className="chat-lab-raw-trace-float__head-actions">
-              <button
+              <Button
                 type="button"
                 className="chat-lab-raw-trace-float__head-btn"
                 onClick={onClear}
@@ -249,15 +250,15 @@ export default function ChatLabRawTraceFloatPanel({ rounds, onClear }) {
                 title="Clear all captured rounds"
               >
                 Clear
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="chat-lab-raw-trace-float__head-btn"
                 onClick={() => setOpen(false)}
                 title="Minimize panel"
               >
                 _
-              </button>
+              </Button>
             </div>
           </header>
 
@@ -298,7 +299,7 @@ export default function ChatLabRawTraceFloatPanel({ rounds, onClear }) {
                 </div>
                 <div className="chat-lab-raw-trace-float__event-list">
                   {selectedRound.events.map((evt, idx) => (
-                    <button
+                    <Button
                       key={evt.id}
                       type="button"
                       className={cn(
@@ -311,7 +312,7 @@ export default function ChatLabRawTraceFloatPanel({ rounds, onClear }) {
                       <span className="chat-lab-raw-trace-float__event-seq">
                         {Number.isFinite(evt.seq) ? `#${evt.seq}` : ""}
                       </span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 <pre className="chat-lab-raw-trace-float__json">

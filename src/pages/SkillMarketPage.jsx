@@ -1,4 +1,5 @@
 import { useCallback, useId, useMemo, useState } from "react";
+import { Button } from "@open-studio/udesign";
 import { useNavigate } from "react-router-dom";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -189,27 +190,27 @@ export default function SkillMarketPage() {
 
       <div className="mb-4 flex min-h-0 shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">
-          <button
+          <Button
             type="button"
             className="rounded-[11px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-on-accent,#fff)] shadow-sm transition hover:opacity-95"
             onClick={() => setUploadOpen(true)}
           >
             {t("skillsPage.actions.upload")}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className="rounded-[11px] border border-[color-mix(in_srgb,var(--os-border)_85%,transparent)] bg-[var(--os-bg-elevated)] px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-text)] transition hover:bg-[color-mix(in_srgb,var(--os-bg-panel)_70%,var(--os-bg-elevated))]"
             onClick={() => navigate("/chat?composeSkill=skill-creator")}
           >
             {t("skillsPage.actions.createNl")}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             className="rounded-[11px] border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] bg-transparent px-3.5 py-2 text-[0.8125rem] font-medium text-[var(--os-text-muted)] transition hover:border-[var(--os-border)] hover:text-[var(--os-text)]"
             onClick={() => setCatOpen(true)}
           >
             {t("skillsPage.actions.manageCategories")}
-          </button>
+          </Button>
         </div>
 
         <label className="relative flex w-full min-w-[220px] max-w-md sm:w-72">
@@ -271,13 +272,13 @@ export default function SkillMarketPage() {
                     {t("skillsPage.badgeBuiltin")}
                   </span>
                   {canOpenFolder ? (
-                    <button
+                    <Button
                       type="button"
                       className="ml-auto rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] px-2 py-1 text-[0.7rem] font-medium text-[var(--os-text-muted)] transition hover:border-[var(--os-border)] hover:text-[var(--os-text)]"
                       onClick={() => openSkillFolder({ kind: "bundled", skillId: def.id })}
                     >
                       {t("skillsPage.openFolder")}
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </SkillCardShell>
@@ -322,21 +323,21 @@ export default function SkillMarketPage() {
                     {t("skillsPage.badgeUser")}
                   </span>
                   {canOpenUserFolder ? (
-                    <button
+                    <Button
                       type="button"
                       className="rounded-lg border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] px-2 py-1 text-[0.7rem] font-medium text-[var(--os-text-muted)] transition hover:border-[var(--os-border)] hover:text-[var(--os-text)]"
                       onClick={() => openSkillFolder({ kind: "user", localPath: s.localPath })}
                     >
                       {t("skillsPage.openFolder")}
-                    </button>
+                    </Button>
                   ) : null}
-                  <button
+                  <Button
                     type="button"
                     className="ml-auto rounded-lg px-2 py-1 text-[0.7rem] font-medium text-[#c45a5a] opacity-80 transition hover:opacity-100 group-hover:opacity-100"
                     onClick={() => removeUserSkill(s.id)}
                   >
                     {t("skillsPage.delete")}
-                  </button>
+                  </Button>
                 </div>
               </SkillCardShell>
             );})}
@@ -399,7 +400,7 @@ export default function SkillMarketPage() {
               </label>
             </div>
             <div className="flex justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <button
+              <Button
                 type="button"
                 className="rounded-[10px] px-3 py-2 text-[0.8rem] text-[var(--os-text-muted)]"
                 onClick={() => {
@@ -408,14 +409,14 @@ export default function SkillMarketPage() {
                 }}
               >
                 {t("skillsPage.cancel")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 className="rounded-[10px] bg-[var(--os-accent)] px-3.5 py-2 text-[0.8rem] font-medium text-[var(--os-on-accent,#fff)]"
                 onClick={onConfirmUpload}
               >
                 {t("skillsPage.upload.confirm")}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>
@@ -440,13 +441,13 @@ export default function SkillMarketPage() {
                   >
                     <span>{row.label}</span>
                     {row.removable ? (
-                      <button
+                      <Button
                         type="button"
                         className="text-[0.72rem] font-medium text-[#c45a5a]"
                         onClick={() => removeUserCategory(row.id)}
                       >
                         {t("skillsPage.delete")}
-                      </button>
+                      </Button>
                     ) : (
                       <span className="text-[0.68rem] text-[var(--os-text-faint)]">{t("skillsPage.catModal.builtin")}</span>
                     )}
@@ -462,18 +463,18 @@ export default function SkillMarketPage() {
                   onChange={(e) => setNewCatLabel(e.target.value)}
                   placeholder={t("skillsPage.catModal.newPlaceholder")}
                 />
-                <button
+                <Button
                   type="button"
                   className="shrink-0 rounded-[10px] bg-[var(--os-accent)] px-3 py-2 text-[0.8rem] font-medium text-[var(--os-on-accent,#fff)] disabled:opacity-45"
                   disabled={!newCatLabel.trim()}
                   onClick={onAddCategory}
                 >
                   {t("skillsPage.catModal.add")}
-                </button>
+                </Button>
               </div>
-              <button type="button" className="self-end text-[0.8rem] text-[var(--os-text-muted)]" onClick={() => setCatOpen(false)}>
+              <Button type="button" className="self-end text-[0.8rem] text-[var(--os-text-muted)]" onClick={() => setCatOpen(false)}>
                 {t("skillsPage.close")}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>
