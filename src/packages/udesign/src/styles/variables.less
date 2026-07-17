@@ -1,0 +1,136 @@
+// UDesign 色阶系统
+// 定义所有标准颜色变量，包含品牌色、功能色、中性色
+
+// ==================== 品牌色 Brand ====================
+@brand-1: #E6F4FF;  // 最浅背景
+@brand-2: #BAE0FF;  // 浅色背景
+@brand-3: #91CAFF;  // 浅边框
+@brand-4: #69B1FF;  // 边框
+@brand-5: #4096FF;  // 默认
+@brand-6: #1677FF;  // 主色（品牌蓝）
+@brand-7: #0958D9;  // 深色
+@brand-8: #003EB3;  // 更深
+@brand-9: #002C8C;  // 极深
+@brand-10: #001D66; // 最深
+
+// ==================== 功能色 Functional ====================
+// 成功色 Success (绿色系)
+@success-1: #F6FFED;
+@success-2: #D9F7BE;
+@success-3: #B7EB8F;
+@success-4: #95DE64;
+@success-5: #73D13D;
+@success-6: #52C41A;
+@success-7: #389E0D;
+@success-8: #237804;
+@success-9: #135200;
+@success-10: #092B00;
+
+// 警告色 Warning (黄色系)
+@warning-1: #FFFBE6;
+@warning-2: #FFF1B8;
+@warning-3: #FFE58F;
+@warning-4: #FFD666;
+@warning-5: #FFC53D;
+@warning-6: #FAAD14;
+@warning-7: #D48806;
+@warning-8: #AD6800;
+@warning-9: #874D00;
+@warning-10: #613400;
+
+// 错误色 Error (红色系)
+@error-1: #FFF2F0;
+@error-2: #FFCCC7;
+@error-3: #FFA39E;
+@error-4: #FF7875;
+@error-5: #FF4D4F;
+@error-6: #F5222D;
+@error-7: #CF1322;
+@error-8: #A8071A;
+@error-9: #820014;
+@error-10: #5C0011;
+
+// 信息色 Info (青色系)
+@info-1: #E6FFFB;
+@info-2: #B5F5EC;
+@info-3: #87E8DE;
+@info-4: #5CDBD3;
+@info-5: #36CFC9;
+@info-6: #13C2C2;
+@info-7: #08979C;
+@info-8: #006D75;
+@info-9: #00474F;
+@info-10: #002329;
+
+// ==================== 中性色 Neutral ====================
+@neutral-1: #FFFFFF;  // 纯白
+@neutral-2: #FAFAFA;  // 最浅灰
+@neutral-3: #F5F5F5;  // 浅背景
+@neutral-4: #F0F0F0;  // 分割线
+@neutral-5: #D9D9D9;  // 边框
+@neutral-6: #BFBFBF;  // 禁用
+@neutral-7: #8C8C8C;  // 次要文字
+@neutral-8: #595959;  // 常规文字
+@neutral-9: #434343;  // 标题文字
+@neutral-10: #262626; // 主要文字
+@neutral-11: #1F1F1F;
+@neutral-12: #000000;  // 纯黑
+
+// ==================== 语义色 Semantic ====================
+@text-primary: @neutral-10;
+@text-secondary: @neutral-8;
+@text-tertiary: @neutral-7;
+@text-disabled: @neutral-6;
+
+@bg-base: @neutral-1;
+@bg-container: @neutral-2;
+@bg-elevated: @neutral-1;
+@bg-layout: @neutral-3;
+
+@border-color: @neutral-5;
+@border-color-light: @neutral-4;
+@border-color-dark: @neutral-6;
+
+@divider-color: @neutral-4;
+
+// ==================== 尺寸 Spacing ====================
+@spacing-xs: 4px;
+@spacing-sm: 8px;
+@spacing-md: 12px;
+@spacing-lg: 16px;
+@spacing-xl: 24px;
+@spacing-xxl: 32px;
+
+// ==================== 圆角 Border Radius ====================
+@border-radius-sm: 2px;
+@border-radius-base: 4px;
+@border-radius-md: 6px;
+@border-radius-lg: 8px;
+@border-radius-xl: 12px;
+@border-radius-round: 999px;
+
+// ==================== 阴影 Shadow ====================
+@shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+@shadow-base: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+@shadow-lg: 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+
+// ==================== 字体 Typography ====================
+@font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+@font-size-xs: 12px;
+@font-size-sm: 13px;
+@font-size-base: 14px;
+@font-size-md: 16px;
+@font-size-lg: 18px;
+@font-size-xl: 20px;
+@font-size-xxl: 24px;
+
+@line-height-base: 1.5714;
+
+// ==================== 动效 Motion ====================
+@motion-duration-fast: 100ms;
+@motion-duration-base: 200ms;
+@motion-duration-slow: 300ms;
+
+@motion-ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+@motion-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+@motion-ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);

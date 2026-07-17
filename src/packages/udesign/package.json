@@ -1,0 +1,28 @@
+{
+  "name": "@open-studio/udesign",
+  "version": "0.1.0",
+  "description": "UDesign - 组件库",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "storybook": "storybook dev -p 6060",
+    "build-storybook": "storybook build"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@storybook/addon-essentials": "^8.4.0",
+    "@storybook/addon-interactions": "^8.4.0",
+    "@storybook/addon-links": "^8.4.0",
+    "@storybook/blocks": "^8.4.0",
+    "@storybook/react": "^8.4.0",
+    "@storybook/react-vite": "^8.4.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "less": "^4.2.0",
+    "storybook": "^8.4.0",
+    "typescript": "^5.7.0"
+  }
+}
