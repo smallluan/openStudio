@@ -19,7 +19,7 @@ export const RAIL_ORB_ICON_STROKE = 1.3;
 export default function NavIcon({ icon: Icon, className, size = NAV_ICON_SIZE, strokeWidth = NAV_ICON_STROKE }) {
   return (
     <Icon
-      className={cn("fluid-nav__glyph shrink-0", className)}
+      className={cn("app-nav-icon", className)}
       size={size}
       strokeWidth={strokeWidth}
       absoluteStrokeWidth

@@ -1,0 +1,300 @@
+@import '../../styles/variables.less';
+
+@menu-bg-light: @neutral-1;
+@menu-bg-dark: @neutral-11;
+@menu-border-light: @border-color-light;
+@menu-border-dark: @neutral-9;
+@menu-item-height: 40px;
+@menu-item-radius: @border-radius-base;
+@menu-indent: @spacing-lg;
+
+.udesign-menu {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid @menu-border-light;
+  background: @menu-bg-light;
+  color: @text-primary;
+  font-family: @font-family;
+  font-size: @font-size-base;
+  line-height: @line-height-base;
+  transition: width @motion-duration-base @motion-ease-in-out;
+
+  &--head {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    min-height: 56px;
+    padding: 0 @spacing-lg;
+    border-right: none;
+    border-bottom: 1px solid @menu-border-light;
+  }
+
+  &--collapsed {
+    .udesign-menu__group-title,
+    .udesign-menu__text {
+      display: none;
+    }
+
+    .udesign-menu__item,
+    .udesign-menu__submenu-trigger {
+      justify-content: center;
+      padding-inline: 0;
+    }
+  }
+
+  &--theme-dark {
+    border-color: @menu-border-dark;
+    background: @menu-bg-dark;
+    color: @neutral-2;
+
+    &.udesign-menu--head {
+      border-bottom-color: @menu-border-dark;
+    }
+
+    .udesign-menu__item,
+    .udesign-menu__submenu-trigger {
+      color: @neutral-3;
+
+      &:hover:not(:disabled):not(.udesign-menu__item--disabled) {
+        background: fade(@neutral-1, 8%);
+        color: @neutral-1;
+      }
+    }
+
+    .udesign-menu__item--active,
+    .udesign-menu__submenu-trigger--expanded {
+      background: @brand-1;
+      color: @brand-6;
+
+      &:hover:not(:disabled):not(.udesign-menu__item--disabled):not(.udesign-menu__submenu-trigger--disabled) {
+        background: @brand-1;
+        color: @brand-6;
+      }
+    }
+
+    .udesign-menu__group-title {
+      color: @neutral-6;
+    }
+  }
+
+  &__logo {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    min-height: 56px;
+    padding: @spacing-md @menu-indent;
+    font-weight: 600;
+    font-size: @font-size-md;
+  }
+
+  &--head &__logo {
+    min-height: auto;
+    margin-right: @spacing-xl;
+    padding: 0;
+  }
+
+  &__operations {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: @spacing-sm;
+    margin-top: auto;
+    padding: @spacing-md @menu-indent;
+  }
+
+  &--head &__operations {
+    margin-top: 0;
+    margin-left: auto;
+    padding: 0;
+  }
+
+  &__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+    padding: @spacing-sm @spacing-sm @spacing-md;
+    overflow: auto;
+
+    &--horizontal {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: @spacing-xs;
+      padding: 0;
+      overflow: visible;
+    }
+  }
+
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__group-title {
+    padding: @spacing-sm @menu-indent @spacing-xs;
+    color: @text-tertiary;
+    font-size: @font-size-xs;
+    line-height: 1.4;
+    user-select: none;
+  }
+
+  &__group-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__item,
+  &__submenu-trigger {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: @spacing-sm;
+    width: 100%;
+    min-height: @menu-item-height;
+    padding: 0 @menu-indent;
+    border: none;
+    border-radius: @menu-item-radius;
+    background: transparent;
+    color: @text-primary;
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background @motion-duration-base @motion-ease-in-out,
+      color @motion-duration-base @motion-ease-in-out;
+
+    &:hover:not(:disabled):not(.udesign-menu__item--disabled):not(.udesign-menu__item--active):not(.udesign-menu__submenu-trigger--expanded) {
+      background: @bg-container;
+      color: @brand-6;
+    }
+
+    &:focus-visible {
+      outline: 2px solid fade(@brand-6, 35%);
+      outline-offset: 1px;
+    }
+  }
+
+  &__item--horizontal,
+  &__submenu-trigger--horizontal {
+    width: auto;
+    min-height: 36px;
+    padding: 0 @spacing-md;
+    white-space: nowrap;
+  }
+
+  &__item--active {
+    background: @brand-1;
+    color: @brand-6;
+    font-weight: 500;
+
+    &:hover:not(:disabled):not(.udesign-menu__item--disabled) {
+      background: @brand-1;
+      color: @brand-6;
+    }
+
+    .udesign-menu__icon {
+      color: @brand-6;
+    }
+  }
+
+  &__submenu-trigger--expanded {
+    background: @brand-1;
+    color: @brand-6;
+    font-weight: 500;
+
+    &:hover:not(:disabled):not(.udesign-menu__submenu-trigger--disabled) {
+      background: @brand-1;
+      color: @brand-6;
+    }
+  }
+
+  &__item--disabled,
+  &__submenu-trigger--disabled {
+    color: @text-disabled;
+    cursor: not-allowed;
+  }
+
+  &__icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 1.25em;
+    height: 1.25em;
+    font-size: @font-size-md;
+    transition: color @motion-duration-base @motion-ease-in-out;
+  }
+
+  &__text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: opacity @motion-duration-base @motion-ease-in-out;
+  }
+
+  &__chevron {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: @text-tertiary;
+    transition: transform @motion-duration-base @motion-ease-in-out;
+
+    &--expanded {
+      transform: rotate(90deg);
+    }
+  }
+
+  &__submenu {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__submenu--expanded > &__submenu-panel:not(&__submenu-panel--popup) {
+    animation: udesign-menu-submenu-in @motion-duration-base @motion-ease-out;
+  }
+
+  &__submenu-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-left: @spacing-md;
+
+    &--horizontal {
+      padding-left: 0;
+    }
+
+    &--popup {
+      min-width: 160px;
+      padding: @spacing-xs;
+    }
+  }
+
+  &__submenu-popup {
+    .udesign-popup__content {
+      padding: @spacing-xs;
+    }
+  }
+
+  &__submenu-popup-inner {
+    padding: 0;
+  }
+}
+
+@keyframes udesign-menu-submenu-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}

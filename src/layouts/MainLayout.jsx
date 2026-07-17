@@ -7,7 +7,7 @@ import TitleBar from "../components/chrome/TitleBar.jsx";
 import ChatHistoryList from "../components/shell/ChatHistoryList.jsx";
 import { useWechatAutoReplyStream } from "../chat/useWechatAutoReplyStream.js";
 import { useWechatSessionSync } from "../chat/useWechatSessionSync.js";
-import FluidNavMenu from "../components/shell/FluidNavMenu.jsx";
+import PrimaryRailMenu from "../components/shell/PrimaryRailMenu.jsx";
 import RailSettingsLink from "../components/shell/RailSettingsLink.jsx";
 import NavIcon from "../ui/NavIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -163,16 +163,12 @@ export default function MainLayout({ railResizeEnabled = false }) {
             />
           ) : null}
 
-          <div className="primary-rail__top primary-rail__top--grow">
-            <FluidNavMenu
-              narrow={isNarrow}
-              router
-              primaryItems={primaryNavItems}
-              footerItems={[]}
-              footerAccessory={<RailSettingsLink narrow={isNarrow} />}
-              afterPrimary={<ChatHistoryList narrow={isNarrow} />}
-              className="min-h-0 flex-1 pb-1"
-            />
+          <div className="primary-rail__nav-column">
+            <PrimaryRailMenu collapsed={isNarrow} items={primaryNavItems} />
+            <ChatHistoryList narrow={isNarrow} />
+            <div className="primary-rail__footer">
+              <RailSettingsLink narrow={isNarrow} />
+            </div>
           </div>
         </aside>
 

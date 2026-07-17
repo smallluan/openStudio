@@ -49,3 +49,20 @@ export type {
 
 export type { AttachNode, ClassName, Styles } from './common/types';
 export { cx, resolveAttach, resolveDelay } from './common/types';
+
+export { default as Menu } from './components/Menu';
+export type {
+  MenuProps,
+  HeadMenuProps,
+  SubmenuProps,
+  MenuItemProps,
+  MenuGroupProps,
+  MenuValue,
+  MenuExpandType,
+  MenuTheme,
+  HeadMenuTheme,
+  MenuItemTarget,
+  MenuTooltipProps,
+  MenuClickContext,
+} from './components/Menu/type';
+export { HeadMenu, Submenu, MenuItem, MenuGroup } from './components/Menu';

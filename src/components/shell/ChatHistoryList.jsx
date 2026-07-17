@@ -16,7 +16,6 @@ import { Button } from "@open-studio/udesign";
 import {
   Fragment,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -44,7 +43,6 @@ import FluidConfirmDialog from "../../ui/FluidConfirmDialog.jsx";
 import FluidPopupAnimatedSurface from "../../ui/FluidPopupAnimatedSurface.jsx";
 import { useFluidPopupBlob } from "../../ui/useFluidPopupBlob.js";
 import { useFloatingPresence } from "../../ui/useFloatingPresence.js";
-import { FluidNavHighlightApi } from "./FluidNavHighlightApi.jsx";
 import { cn } from "../../ui/cn.js";
 import {
   CHAT_HISTORY_ROW_COLLAPSE_MS,
@@ -271,7 +269,6 @@ function ChatHistoryGroupHead({
  *   updatedAt: number;
  *   rowActive: boolean;
  *   to: string;
- *   measureRef: (node: HTMLElement | null) => void;
  *   rowRef: (node: HTMLElement | null) => void;
  *   rowMotion: 'idle' | 'enter-push' | 'enter-push-active' | 'enter-in' | 'leave-out' | 'leave-collapse';
  *   onRenamed: () => void;
@@ -289,7 +286,6 @@ function HistorySessionRow({
   updatedAt,
   rowActive,
   to,
-  measureRef,
   rowRef,
   rowMotion,
   onRenamed,
@@ -367,10 +363,9 @@ function HistorySessionRow({
     >
       <div className="chat-history-row__motion min-w-0">
       <div
-        ref={measureRef}
         className={cn(
-          "chat-history-row__measure flex min-w-0 items-stretch gap-0 py-0.5 pl-2 pr-0.5 transition-[color,filter] duration-[450ms] ease-[cubic-bezier(0.34,1.2,0.52,1)]",
-          rowActive ? "chat-history-row__measure--active text-[var(--os-text)]" : "text-[var(--os-text-muted)]",
+          "chat-history-row__body flex min-w-0 items-stretch gap-0 py-0.5 pl-2 pr-0.5 transition-[color,filter] duration-[450ms] ease-[cubic-bezier(0.34,1.2,0.52,1)]",
+          rowActive ? "chat-history-row__body--active text-[var(--os-text)]" : "text-[var(--os-text-muted)]",
           !rowActive && "hover:bg-[var(--os-bg-hover)] hover:text-[var(--os-text)]",
         )}
       >
@@ -530,7 +525,6 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   const { streamingSessionIds, wechatReplyingSessionId } = useChatLabStreaming();
   const location = useLocation();
   const navigate = useNavigate();
-  const highlight = useContext(FluidNavHighlightApi);
 
   const [listVersion, setListVersion] = useState(0);
   const reload = useCallback(() => setListVersion((v) => v + 1), []);
@@ -840,7 +834,6 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
         updatedAt={s.updatedAt}
         rowActive={rowActive}
         to={to}
-        measureRef={(node) => highlight?.registerSessionAnchor(s.id, node)}
         rowRef={(node) => registerRowRef(s.id, node)}
         rowMotion={getRowMotion(s.id)}
         onRenamed={reload}
@@ -853,13 +846,6 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
       />
     );
   };
-
-  useLayoutEffect(() => {
-    if (narrow || !highlight) return undefined;
-    const root = scrollRootRef.current;
-    if (!root) return undefined;
-    return highlight.attachNestedScrollRoot(root);
-  }, [highlight, narrow]);
 
   const updateRailScrollbar = useCallback(() => {
     const el = scrollRootRef.current;
