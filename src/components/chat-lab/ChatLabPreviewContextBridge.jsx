@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
+import ChatLabSidebarActionToolHost from "./ChatLabSidebarActionToolHost.jsx";
 
 /**
  * Exposes sidebar preview snapshot + automation to ChatLabPage (provider sits below early hooks).
@@ -14,12 +15,14 @@ import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
 export default function ChatLabPreviewContextBridge({ previewSnapshotRef, previewAutomationRef }) {
   const preview = useChatLabPreview();
 
+  // Keep refs in sync during render so send can read them before useEffect runs.
+  previewSnapshotRef.current = preview?.captureSidebarContextBlock ?? null;
+  if (previewAutomationRef) {
+    previewAutomationRef.current = preview?.runSidebarAutomation ?? null;
+  }
+
   useEffect(() => {
-    if (!preview?.captureSidebarContextBlock) {
-      previewSnapshotRef.current = null;
-      return undefined;
-    }
-    previewSnapshotRef.current = preview.captureSidebarContextBlock;
+    previewSnapshotRef.current = preview?.captureSidebarContextBlock ?? null;
     return () => {
       previewSnapshotRef.current = null;
     };
@@ -27,15 +30,11 @@ export default function ChatLabPreviewContextBridge({ previewSnapshotRef, previe
 
   useEffect(() => {
     if (!previewAutomationRef) return undefined;
-    if (!preview?.runSidebarAutomation) {
-      previewAutomationRef.current = null;
-      return undefined;
-    }
-    previewAutomationRef.current = preview.runSidebarAutomation;
+    previewAutomationRef.current = preview?.runSidebarAutomation ?? null;
     return () => {
       previewAutomationRef.current = null;
     };
   }, [preview, preview?.runSidebarAutomation, previewAutomationRef]);
 
-  return null;
+  return <ChatLabSidebarActionToolHost />;
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Code, ExternalLink, Globe, RefreshCw } from "lucide-react";
 import { Button, Input } from "@open-studio/udesign";
 import ChatLabPreviewWebFrame from "../components/chat-lab/ChatLabPreviewWebFrame.jsx";
+import WebExploreChatFloat from "../components/web-explore/WebExploreChatFloat.jsx";
 import { openChatLabExternalUrl } from "../chat/chatLabLinkOpenPreference.js";
 import { useI18n } from "../context/I18nContext.jsx";
 import { cn } from "../ui/cn.js";
@@ -252,6 +253,14 @@ export default function WebExplorePage() {
           webviewRefFromContext={webviewRef}
           onNavigate={handleNavigate}
           className="web-explore-page__frame"
+        />
+        <WebExploreChatFloat
+          activeUrl={activeUrl}
+          pageTitle={explorePageTitle(activeUrl)}
+          inElectron={inElectron}
+          webviewRef={webviewRef}
+          iframeRef={iframeRef}
+          onNavigate={handleNavigate}
         />
       </div>
     </div>

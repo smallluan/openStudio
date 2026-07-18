@@ -302,6 +302,7 @@ function sessionFromWebTab(tab) {
  *   activatePreviewTab: (tabId: string) => void;
  *   captureSidebarContextBlock: () => Promise<string>;
  *   runSidebarAutomation: (steps: import("../chat/chatLabPreviewAutomation.js").SidebarAutomationStep[] | unknown) => Promise<unknown>;
+ *   executeSidebarActionTool: (args: { steps?: unknown }) => Promise<unknown>;
  * }>} */
 export const ChatLabPreviewContext = createContext(null);
 
@@ -309,11 +310,38 @@ export function useChatLabPreview() {
   return useContext(ChatLabPreviewContext);
 }
 
-export function ChatLabPreviewProvider({ conversationId, children }) {
+/**
+ * @param {{
+ *   conversationId: string;
+ *   children: import("react").ReactNode;
+ *   externalPreviewRefs?: {
+ *     iframeRef: import("react").RefObject<HTMLIFrameElement | null>;
+ *     webviewRef: import("react").RefObject<HTMLElement | null>;
+ *   };
+ *   externalSession?: ChatLabPreviewSession | null;
+ *   externalNavigatePreviewTo?: (url: string) => void;
+ *   embedPreview?: boolean;
+ * }} props
+ */
+export function ChatLabPreviewProvider({
+  conversationId,
+  children,
+  externalPreviewRefs,
+  externalSession,
+  externalNavigatePreviewTo,
+  embedPreview = false,
+}) {
   const { t } = useI18n();
-  const restoredWebState = useMemo(() => readStoredPreviewWebState(conversationId), [conversationId]);
-  const iframeRef = useRef(/** @type {HTMLIFrameElement | null} */ (null));
-  const webviewRef = useRef(/** @type {HTMLElement | null} */ (null));
+  const restoredWebState = useMemo(
+    () => (embedPreview ? { tabs: [], activeTabId: "" } : readStoredPreviewWebState(conversationId)),
+    [conversationId, embedPreview],
+  );
+  const internalIframeRef = useRef(/** @type {HTMLIFrameElement | null} */ (null));
+  const internalWebviewRef = useRef(/** @type {HTMLElement | null} */ (null));
+  const iframeRef = externalPreviewRefs?.iframeRef ?? internalIframeRef;
+  const webviewRef = externalPreviewRefs?.webviewRef ?? internalWebviewRef;
+  const externalSessionRef = useRef(externalSession ?? null);
+  externalSessionRef.current = externalSession ?? null;
   const blobRevokeRef = useRef(/** @type {string | null} */ (null));
   /** @type {import("react").MutableRefObject<Set<string>>} */
   const artifactBlobUrlsRef = useRef(new Set());
@@ -323,21 +351,31 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
   const subscribedRef = useRef(new Set());
 
   const [session, setSession] = useState(
-    /** @type {ChatLabPreviewSession | null} */ (null),
+    /** @type {ChatLabPreviewSession | null} */ (
+      embedPreview && externalSession ? externalSession : null
+    ),
   );
   const [artifactsPanel, setArtifactsPanel] = useState(/** @type {ArtifactsPanelState | null} */ (null));
   const [previewTabs, setPreviewTabs] = useState(restoredWebState.tabs);
   const [activePreviewTabId, setActivePreviewTabId] = useState(restoredWebState.activeTabId);
   const previewTabsRef = useRef(previewTabs);
+  /** @type {import("react").MutableRefObject<import("../chat/chatLabPreviewSnapshot.js").SidebarPreviewInteractiveElement[]>} */
+  const lastInventoryRef = useRef([]);
   previewTabsRef.current = previewTabs;
   const [deviceMode, setDeviceModeState] = useState(readPreviewDeviceMode);
   const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
 
   useEffect(() => {
+    if (embedPreview) return;
     const next = readStoredPreviewWebState(conversationId);
     setPreviewTabs(next.tabs);
     setActivePreviewTabId(next.activeTabId);
-  }, [conversationId]);
+  }, [conversationId, embedPreview]);
+
+  useEffect(() => {
+    if (!embedPreview || !externalSession) return;
+    setSession(externalSession);
+  }, [embedPreview, externalSession]);
 
   useEffect(() => {
     let cancelled = false;
@@ -521,6 +559,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
   }, [revokeBlob]);
 
   useEffect(() => {
+    if (embedPreview) return;
     const cid = String(conversationId ?? "").trim();
     if (!cid) return;
     const rec = getSession(cid);
@@ -530,7 +569,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
     const nextRaw = nextPreviewState ? JSON.stringify(nextPreviewState) : "";
     if (prevRaw === nextRaw) return;
     upsertSession(cid, rec.title || "…", rec.messages, { previewState: nextPreviewState ?? null });
-  }, [activePreviewTabId, conversationId, previewTabs]);
+  }, [activePreviewTabId, conversationId, embedPreview, previewTabs]);
 
   const close = useCallback(() => {
     revokeBlob();
@@ -864,7 +903,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
     [revokeArtifactBlobs, revokeBlob],
   );
 
-  const navigatePreviewTo = useCallback(
+  const navigatePreviewToInternal = useCallback(
     /**
      * @param {string} url
      * @param {string} [title]
@@ -908,6 +947,22 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       showWebPreviewAtUrl(nextUrl, label, { useWebview: true });
     },
     [activePreviewTabId, previewTabs, revokeArtifactBlobs, revokeBlob, showWebPreviewAtUrl],
+  );
+
+  const navigatePreviewTo = useCallback(
+    /**
+     * @param {string} url
+     * @param {string} [title]
+     */
+    (url, title) => {
+      if (embedPreview && externalNavigatePreviewTo) {
+        const nextUrl = String(url ?? "").trim();
+        if (nextUrl) externalNavigatePreviewTo(nextUrl);
+        return;
+      }
+      navigatePreviewToInternal(url, title);
+    },
+    [embedPreview, externalNavigatePreviewTo, navigatePreviewToInternal],
   );
 
   const openFromHref = useCallback(
@@ -1113,23 +1168,43 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
   }, []);
 
   const captureSidebarContextBlock = useCallback(async () => {
-    if (linkOpenMode === "external") return "";
+    if (!embedPreview && linkOpenMode === "external") return "";
+    const captureSession = embedPreview ? externalSessionRef.current ?? session : session;
+    if (!captureSession) return "";
     try {
       const snap = await captureSidebarPreviewSnapshot({
-        session,
+        session: captureSession,
         webviewRef,
         iframeRef,
         previewTabs,
         activePreviewTabId,
         artifactsPanel,
+        forceSidebar: embedPreview,
       });
-      return composeChatLabPreviewContextBlock(t, snap);
+      if (!snap && embedPreview && captureSession?.src) {
+        lastInventoryRef.current = [];
+        return composeChatLabPreviewContextBlock(
+          t,
+          {
+            ok: true,
+            url: String(captureSession.src ?? "").trim(),
+            title: String(captureSession.title ?? captureSession.src ?? "").trim(),
+            text: "",
+            tabCount: 1,
+            partial: true,
+          },
+          { webExploreMode: true },
+        );
+      }
+      lastInventoryRef.current = Array.isArray(snap?.elements) ? snap.elements : [];
+      return composeChatLabPreviewContextBlock(t, snap, { webExploreMode: embedPreview });
     } catch {
       return "";
     }
   }, [
     activePreviewTabId,
     artifactsPanel,
+    embedPreview,
     iframeRef,
     linkOpenMode,
     previewTabs,
@@ -1140,10 +1215,32 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
 
   const runSidebarAutomation = useCallback(
     async (steps, opts = {}) => {
-      if (linkOpenMode === "external") return { ok: false, error: "external_mode", steps: [] };
+      if (!embedPreview && linkOpenMode === "external") {
+        return { ok: false, error: "external_mode", steps: [] };
+      }
+      const captureSession = embedPreview ? externalSessionRef.current ?? session : session;
+      /** Prefer a fresh inventory so refs match the page about to be acted on. */
+      let elements = lastInventoryRef.current;
+      try {
+        const snap = await captureSidebarPreviewSnapshot({
+          session: captureSession,
+          webviewRef,
+          iframeRef,
+          previewTabs,
+          activePreviewTabId,
+          artifactsPanel,
+          forceSidebar: embedPreview,
+        });
+        if (Array.isArray(snap?.elements) && snap.elements.length) {
+          elements = snap.elements;
+          lastInventoryRef.current = snap.elements;
+        }
+      } catch {
+        /* keep last inventory */
+      }
       return runSidebarPreviewAutomation({
         steps,
-        session,
+        session: captureSession,
         webviewRef,
         iframeRef,
         previewTabs,
@@ -1151,6 +1248,8 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
         artifactsPanel,
         navigatePreviewTo,
         t,
+        forceSidebar: embedPreview,
+        elements,
         onStepComplete: opts.onStepComplete,
         stopOnFailure: opts.stopOnFailure,
       });
@@ -1158,12 +1257,75 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
     [
       activePreviewTabId,
       artifactsPanel,
+      embedPreview,
       iframeRef,
       linkOpenMode,
       navigatePreviewTo,
       previewTabs,
       session,
       t,
+      webviewRef,
+    ],
+  );
+
+  /**
+   * Native OpenClaw `sidebar_action` tool entry: run steps, then return fresh observation.
+   * @param {{ steps?: unknown }} args
+   */
+  const executeSidebarActionTool = useCallback(
+    async (args = {}) => {
+      const steps = args?.steps;
+      const runResult = await runSidebarAutomation(steps, { stopOnFailure: true });
+      let observation = null;
+      try {
+        const captureSession = embedPreview ? externalSessionRef.current ?? session : session;
+        const snap = await captureSidebarPreviewSnapshot({
+          session: captureSession,
+          webviewRef,
+          iframeRef,
+          previewTabs,
+          activePreviewTabId,
+          artifactsPanel,
+          forceSidebar: embedPreview,
+        });
+        if (snap) {
+          if (Array.isArray(snap.elements)) lastInventoryRef.current = snap.elements;
+          observation = {
+            ok: snap.ok !== false,
+            url: snap.url ?? "",
+            title: snap.title ?? "",
+            text: String(snap.text ?? "").slice(0, 4000),
+            elements: Array.isArray(snap.elements) ? snap.elements : [],
+            partial: Boolean(snap.partial),
+            loginHint: Boolean(snap.loginHint),
+            canvasHint: Boolean(snap.canvasHint),
+          };
+        }
+      } catch (e) {
+        observation = {
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+          elements: [],
+        };
+      }
+      return {
+        ok: Boolean(runResult?.ok),
+        error: runResult?.error,
+        stopReason: runResult?.stopReason,
+        stoppedAt: runResult?.stoppedAt,
+        steps: Array.isArray(runResult?.steps) ? runResult.steps : [],
+        observation,
+        hint: "Use observation.elements[].ref (or selector) for the next sidebar_action call. Call again for the next short batch (max 5 steps). When done, answer the user in natural language.",
+      };
+    },
+    [
+      activePreviewTabId,
+      artifactsPanel,
+      embedPreview,
+      iframeRef,
+      previewTabs,
+      runSidebarAutomation,
+      session,
       webviewRef,
     ],
   );
@@ -1221,8 +1383,10 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       activatePreviewTab,
       closePreviewTab,
       linkOpenMode,
+      embedPreview,
       captureSidebarContextBlock,
       runSidebarAutomation,
+      executeSidebarActionTool,
     }),
     [
       session,
@@ -1243,6 +1407,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       setArtifactViewMode,
       postToPreview,
       subscribeFrameMessages,
+      embedPreview,
       openWebviewDevTools,
       linkOpenMode,
       previewTabs,
@@ -1251,6 +1416,7 @@ export function ChatLabPreviewProvider({ conversationId, children }) {
       closePreviewTab,
       captureSidebarContextBlock,
       runSidebarAutomation,
+      executeSidebarActionTool,
     ],
   );
 

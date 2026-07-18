@@ -22,7 +22,11 @@ const env = {
   OPENCLAW_PATCH_ROOT: bundleRoot,
 };
 
-for (const script of ["patch-openclaw-chat-image-inline.mjs", "patch-openclaw-studio-lean-chat.mjs"]) {
+for (const script of [
+  "patch-openclaw-chat-image-inline.mjs",
+  "patch-openclaw-studio-lean-chat.mjs",
+  "patch-openclaw-sidebar-action.mjs",
+]) {
   const scriptPath = path.join(__dirname, script);
   const result = spawnSync(process.execPath, [scriptPath], { cwd: root, env, stdio: "inherit" });
   if (result.status !== 0) {

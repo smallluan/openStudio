@@ -30,8 +30,15 @@ function waitUntil(isReady, timeoutMs) {
 }
 
 /**
- * Watches completed assistant messages for ```sidebar-action fences, runs them in the
- * preview webview, then reports execution result back to the same assistant message.
+ * @param {import("../../chat/chatLabPreviewAutomation.js").SidebarAutomationStep[]} steps
+ */
+function stepsRunKey(messageId, steps) {
+  return `${messageId}:${JSON.stringify(steps)}`;
+}
+
+/**
+ * Run sidebar-action as soon as a complete fence is available — including while the
+ * assistant is still streaming — so it appears as an in-turn tool, not after lifecycle:end.
  */
 export default function ChatLabSidebarActionRunner({
   conversationId,
@@ -39,48 +46,55 @@ export default function ChatLabSidebarActionRunner({
   onAutomationApplied,
 }) {
   const preview = useChatLabPreview();
-  const handledMessageIdsRef = useRef(new Set());
+  const ranKeysRef = useRef(new Set());
   const runningRef = useRef(false);
   const conversationIdRef = useRef(conversationId);
 
   useEffect(() => {
     if (conversationIdRef.current === conversationId) return;
     conversationIdRef.current = conversationId;
-    const handled = new Set();
-    for (const m of messages) {
-      if (m.role !== "assistant" || m.streaming || m.error) continue;
-      if (extractSidebarActionStepsFromAssistantMessage(m).length > 0) {
-        handled.add(m.id);
-      }
-    }
-    handledMessageIdsRef.current = handled;
-  }, [conversationId, messages]);
+    ranKeysRef.current = new Set();
+  }, [conversationId]);
+
+  const automationEnabled =
+    Boolean(preview?.embedPreview) || readLinkOpenModeLocal() !== "external";
 
   useEffect(() => {
     const runAutomation = preview?.runSidebarAutomation;
     const openFromHref = preview?.openFromHref;
     if (!runAutomation || !onAutomationApplied) return;
-    if (readLinkOpenModeLocal() === "external") return;
+    if (!automationEnabled) return;
     if (runningRef.current) return;
-    if (messages.some((m) => m.role === "assistant" && m.streaming)) return;
 
-    const lastAssistant = [...messages]
+    // Prefer the newest assistant that already has executable steps (streaming OK).
+    const candidate = [...messages]
       .reverse()
-      .find((m) => m.role === "assistant" && !m.streaming && !m.error);
-    if (!lastAssistant?.id) return;
-    if (handledMessageIdsRef.current.has(lastAssistant.id)) return;
+      .find((m) => {
+        if (m.role !== "assistant" || m.error) return false;
+        return extractSidebarActionStepsFromAssistantMessage(m).length > 0;
+      });
+    if (!candidate?.id) return;
 
-    const steps = extractSidebarActionStepsFromAssistantMessage(lastAssistant);
-    if (!steps.length) return;
+    const resolvedSteps = extractSidebarActionStepsFromAssistantMessage(candidate);
+    if (!resolvedSteps.length) return;
 
-    handledMessageIdsRef.current.add(lastAssistant.id);
+    const runKey = stepsRunKey(candidate.id, resolvedSteps);
+    if (ranKeysRef.current.has(runKey)) return;
+
+    ranKeysRef.current.add(runKey);
     runningRef.current = true;
 
     void (async () => {
       try {
-        const messageText = String(lastAssistant.content ?? "");
+        await onAutomationApplied({
+          phase: "start",
+          assistantMessageId: candidate.id,
+          requestedSteps: resolvedSteps,
+        });
+
+        const messageText = String(candidate.content ?? "");
         const linkedUrl = extractFirstWebMarkdownLink(messageText);
-        const needsNavigate = steps.some((step) => step.action === "navigate");
+        const needsNavigate = resolvedSteps.some((step) => step.action === "navigate");
         if (linkedUrl && openFromHref && !needsNavigate) {
           openFromHref(linkedUrl, linkedUrl);
           await waitUntil(
@@ -89,18 +103,13 @@ export default function ChatLabSidebarActionRunner({
           );
         }
 
-        await onAutomationApplied({
-          phase: "start",
-          assistantMessageId: lastAssistant.id,
-          requestedSteps: steps,
-        });
-        const result = await runAutomation(steps, {
+        const result = await runAutomation(resolvedSteps, {
           stopOnFailure: true,
           onStepComplete: async ({ index, results }) => {
             await onAutomationApplied({
               phase: "progress",
-              assistantMessageId: lastAssistant.id,
-              requestedSteps: steps,
+              assistantMessageId: candidate.id,
+              requestedSteps: resolvedSteps,
               runningIndex: index + 1,
               result: { ok: results.every((r) => r.ok !== false), steps: results },
             });
@@ -108,15 +117,15 @@ export default function ChatLabSidebarActionRunner({
         });
         await onAutomationApplied({
           phase: "complete",
-          assistantMessageId: lastAssistant.id,
-          requestedSteps: steps,
+          assistantMessageId: candidate.id,
+          requestedSteps: resolvedSteps,
           result,
         });
       } catch (err) {
         await onAutomationApplied({
           phase: "complete",
-          assistantMessageId: lastAssistant.id,
-          requestedSteps: steps,
+          assistantMessageId: candidate.id,
+          requestedSteps: resolvedSteps,
           result: {
             ok: false,
             error: err instanceof Error ? err.message : String(err),
@@ -127,7 +136,15 @@ export default function ChatLabSidebarActionRunner({
         runningRef.current = false;
       }
     })();
-  }, [messages, onAutomationApplied, preview?.openFromHref, preview?.runSidebarAutomation, preview?.session?.kind, preview?.webviewRef]);
+  }, [
+    automationEnabled,
+    messages,
+    onAutomationApplied,
+    preview?.openFromHref,
+    preview?.runSidebarAutomation,
+    preview?.session?.kind,
+    preview?.webviewRef,
+  ]);
 
   return null;
 }

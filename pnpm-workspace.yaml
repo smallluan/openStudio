@@ -9,3 +9,6 @@ allowBuilds:
   openclaw: true
   protobufjs: true
   tree-sitter-bash: true
+
+patchedDependencies:
+  openclaw@2026.6.1: patches/openclaw@2026.6.1.patch

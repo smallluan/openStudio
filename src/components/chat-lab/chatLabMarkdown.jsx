@@ -891,6 +891,10 @@ export function createChatLabMarkdownComponents(t, opts = {}) {
         .join("\n");
       const m = /\blanguage-([^\s]+)/i.exec(className ?? "");
       const fenceLang = (m?.[1] ?? "").trim().toLowerCase();
+      // Protocol payload — executed client-side and shown in the tool/step bar, not as a code card.
+      if (fenceLang === "sidebar-action") {
+        return null;
+      }
       const soft = !fenceLang || SOFT_FENCE_LANGS.has(fenceLang);
       const singleLine = !/\r?\n/.test(code);
       if (soft && singleLine && code.length <= SOFT_FENCE_INLINE_MAX_CHARS) {

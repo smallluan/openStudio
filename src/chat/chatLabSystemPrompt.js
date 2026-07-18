@@ -11,7 +11,10 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
     String(t("chatLab.imageDisplayPrompt") ?? "").trim(),
     String(t("chatLab.chartDisplayPrompt") ?? "").trim(),
   ];
-  if (linkOpenMode !== "external") {
+  if (opts.webExploreMode) {
+    parts.push(String(t("webExploreChat.linkOpenPrompt") ?? "").trim());
+    parts.push(String(t("webExploreChat.pageAutomationPrompt") ?? "").trim());
+  } else if (linkOpenMode !== "external") {
     parts.push(String(t("chatLab.linkOpenSidebarPrompt") ?? "").trim());
     parts.push(String(t("chatLab.sidebarAutomationPrompt") ?? "").trim());
   }
@@ -26,7 +29,7 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
 export function composeChatLabSystemPrompt(t, opts = {}) {
   const parts = [
     String(t("chatLab.systemPrompt") ?? "").trim(),
-    String(opts.workspaceContext ?? "").trim(),
+    ...(opts.webExploreMode ? [] : [String(opts.workspaceContext ?? "").trim()]),
     String(opts.previewContext ?? "").trim(),
     composeChatLabStudioSuffix(t, opts),
   ].filter(Boolean);

@@ -230,6 +230,38 @@
     "urlPlaceholder": "输入网址，例如 https://example.com",
     "backToStart": "返回起始页"
   },
+  "webExploreChat": {
+    "launcher": "助手",
+    "title": "页面助手",
+    "placeholder": "询问当前页面…",
+    "send": "发送",
+    "stop": "停止",
+    "agent": "智能体",
+    "emptyTitle": "边浏览边对话",
+    "empty": "可以询问当前页面内容、让助手点击链接或执行页面操作。",
+    "streaming": "思考中…",
+    "automationRunning": "正在执行页面操作…",
+    "minimize": "收起",
+    "enterHint": "Enter 发送 · Shift+Enter 换行",
+    "dragHandle": "拖动面板",
+    "resizeHandle": "调整大小",
+    "gatewayUnavailable": "当前环境无法使用对话。",
+    "streamError": "回复流传输出错。",
+    "linkOpenPrompt": "## 网页漫游（当前主页面）\n用户正在 **网页漫游** 中浏览，主视口就是当前页面（不是 Chat Lab 右侧边栏）。\n- **读取页面**：每次用户发消息时，系统注入「当前主页面快照」+ **可交互元素清单**（见 previewContext）；必须优先使用\n- **控制页面**：调用原生 OpenClaw 工具 `sidebar_action`（observe→act）。传入短 `steps`（最多 5 步）；同一轮工具结果会返回带 `elements[].ref` 的 `observation`，再决定下一步或直接回答\n- 快照显示登录/权限页时，让用户先在主页面完成登录",
+    "pageAutomationPrompt": "## 网页漫游自动化（原生工具 `sidebar_action`）\n需要操作页面时，**调用工具** `sidebar_action`，参数为 JSON `steps` 数组（最多 5 步）。**不要**再输出 ```sidebar-action``` 代码块。\n\n**工作方式**：\n- 每次只传**当前要执行**的短步骤（如 focus+type+press，或单个 click）\n- 工具会在本轮内暂停执行并返回 `{ ok, steps, observation }`（含 `observation.elements[].ref`）\n- 根据观测再次调用 `sidebar_action`，或用自然语言结束；**禁止**一次写完整长剧本\n- 定位必须用清单/观测中的 `ref`（推荐）或 `selector`/`label`/`placeholder`/`title`；**禁止**臆造自然语言 target\n- 步骤在网页漫游主视口执行",
+    "previewContext": {
+      "header": "## 网页漫游当前页面快照（用户正在浏览的页面）",
+      "methodNote": "以下内容由客户端从网页漫游主视口读取：可见文字 + 可交互元素清单（非右侧边栏）。",
+      "url": "URL: {{url}}",
+      "title": "标题: {{title}}",
+      "body": "正文摘录:\n{{excerpt}}",
+      "partial": "正文未能完整读取（可能仍在加载或跨域限制），但 URL/标题可用。",
+      "canvasHint": "页面可能含 Canvas/表格等复杂 UI，正文摘录可能不完整。",
+      "loginHint": "快照显示当前可能是登录/权限页。请让用户在主页面先完成登录。",
+      "instruction": "回答与页面相关的问题时，必须优先使用以上快照与元素清单。需要操作时调用 sidebar_action，且只能引用清单/观测中的 ref/selector。",
+      "elements": "可交互元素清单（用 ref 或 selector 定位，禁止臆造 target）：\n{{inventory}}"
+    }
+  },
   "lobsterPage": {
     "title": "智能体管理",
     "desc": "",
@@ -391,8 +423,8 @@
     "systemPrompt": "你是一位专业、友好的助手。先理清思路再给清晰回答。使用与用户一致的语言作答。在 Windows 环境下执行命令时，优先使用 Git 自带的 Unix 工具（grep、sort、awk、sed、tr、wc、find 等），这些工具更高效且跨平台一致。只有当 Unix 工具无法满足需求时，再 fallback 到 PowerShell 原生命令。",
     "imageDisplayPrompt": "## 图片展示\nOpen Studio 聊天界面只能渲染 Markdown 正文里的图片，不能单独「发送」图片附件。当用户要看图、或你要分享网络/工作区图片时：\n- 必须在回复正文中写出 Markdown 图片语法：`![简短描述](https://…图片直链…)`\n- URL 必须是可直接加载的图片直链（如以 .jpg/.png/.webp/.gif 结尾，或返回 image/* 的 CDN 链接），不要用网页落地页链接\n- 每张图单独一行；不要只说「找到了/发给你」却不写 `![](url)`\n- 若只有网页链接而无直链，说明无法在聊天里内联展示，并给出可点击的普通链接 `[描述](url)`\n- 禁止空口承诺「发图/贴图」却不附带任何 Markdown 图片或链接\n\n### 图片组格式（必须遵守）\n界面会把**连续的图片行**合并为朋友圈式网格展示；格式不对会退化为逐张竖排。\n- **严禁**在图片之间穿插介绍、标题、编号或逐张说明（例如：「银河下的山脉」→ 图 →「山巅云海」→ 图）；这是错误格式\n- 每张图的说明只能写在 `![alt](url)` 的 alt 里，**不要**在图片上方或下方另起一行文字标题\n- 正确顺序：先写**一段**总体说明（可选），然后**连续**输出所有 `![](url)` 行，组内中间不要空插 prose\n- 多张图示例：\n```\n以下 10 张山水风景图（Unsplash CDN 直链）：\n\n![银河下的山脉](url1)\n![山巅云海](url2)\n![层峦叠嶂](url3)\n```\n- 需要多组图片时：用**独立说明段**分隔各组；每组仍是「说明 + 连续图片行」，组内不得穿插文字\n- 图片行之间不要插入空行以外的任何文字行",
     "chartDisplayPrompt": "## 图表展示（高优先级）\nOpen Studio **只能**通过 Markdown 正文里的 ` ```chart ` / ` ```echarts ` 代码块渲染交互式图表（ECharts）。\n\n### 何时必须输出 chart 代码块\n用户提到以下任一意图时，**必须**在回复里写 ` ```chart ` 代码块（可另附 Markdown 表格，但**不能**用表格或文字图代替）：\n- 柱状图 / 折线图 / 饼图 / 散点图 / 中国地图 / 图表 / 可视化 / 趋势图 / 对比图 / 占比图\n- chart / bar chart / line chart / pie chart / plot / graph\n\n### 严禁的替代方式（无效，界面不会渲染成图）\n- **禁止** ASCII 文本条形图、█ 字符块、`|====|` 手绘坐标轴\n- **禁止** 只说「见下图 / 如下所示 / 已绘制」却不写 ` ```chart ` 代码块\n- **禁止** 仅输出 Markdown 表格或 bullet 列表来代替图表\n- **禁止** 在用户只要表格/清单时额外附带 chart 代码块；不要「表格 + 默认柱状图」成套输出\n\n### 表格与图表\n- 仅展示数据、对比、枚举时：**只输出 Markdown 表格**，不要强行再画柱状图\n- 只有当用户明确要求图表/可视化/趋势/占比，或你主动写 ` ```chart ` / ` ```echarts ` 时，才输出 chart\n- 界面不会对每张表自动补图；表格本身不等于需要图表\n\n### chart 简化语法（推荐，优先使用）\n柱状/折线（可多系列）：\n```chart\ntype: bar\ntitle: 季度销售额（万元）\nx: [Q1, Q2, Q3, Q4]\nseries:\n  - name: 2024\n    data: [120, 200, 150, 180]\n  - name: 2025\n    data: [140, 230, 170, 210]\n```\n饼图：\n```chart\ntype: pie\ntitle: 市场份额\nlabels: [Chrome, Firefox, Safari]\nvalues: [65, 15, 20]\n```\n- 支持的 type：`bar` `line` `pie` `scatter`（必须写成 `type: bar` 一行，不要把 type 和 bar 拆成两行）\n- series 下每个系列以 `- name: …` 开头，下一行缩进写 `data: […]`\n- **中国地图**：仅 ` ```echarts ` JSON；`series.type: map` 且 `map: china` 或 `map: 中国`（省级边界，按需加载）；data 的 name 用完整省名（如 广东省、北京市）；建议加 visualMap；世界/其他国家地图暂不支持\n\n### 高级：原生 ECharts JSON\n仅当 chart 语法不够用时，使用 ` ```echarts ` + **完整闭合**的 JSON 对象；不要写注释、不要 trailing comma、不要嵌入 JavaScript 函数；JSON 未写完前界面会显示加载中",
-    "linkOpenSidebarPrompt": "## 打开网页（右侧边栏预览）\n用户当前设置：**链接在 Open Studio 右侧边栏打开**，不是系统浏览器。\n- 打开网页：在回复正文给出 Markdown 链接（如 `[标题](https://…)`），界面会在右侧边栏加载\n- **读取网页**：每次用户发消息时，系统会把「右侧边栏当前页面快照」注入到你的上下文（见 `sidebarPreviewContext`）；有快照时必须优先用它，不要用 web fetch 重复抓同一 URL\n- **控制网页**：当用户要求在右侧页面输入、点击、搜索、滚动时，使用 `sidebar-action` 协议（见 `sidebarAutomationPrompt`）；客户端会在**同一条 assistant 回复**里按顺序执行全部步骤，并在**步骤条（tool trace）**中逐步展示每一步\n- 操作流程：打开/定位页面 -> 确认快照 -> 一次输出全部操作步骤 -> 客户端顺序执行\n- 快照显示登录/权限页时，让用户在右侧边栏先登录，再继续\n- 除非用户明确要求，否则不要启动外部 Chrome/系统浏览器",
-    "sidebarAutomationPrompt": "## 右侧边栏自动化\n当用户要求在右侧页面**输入、点击、搜索、滚动、导航**时，你必须在**助手回复正文**中输出 ` ```sidebar-action ` JSON **步骤数组**。仅有文字描述**不会执行**。\n\nOpen Studio **按顺序执行每一步**；某步失败会暂停，不会自动重试。\n\n**重要**：\n- **一次输出全部步骤**（JSON 数组，最多 100 步）；正文 1 句总述 + sidebar-action 代码块\n- **禁止**把 sidebar-action 塞进 `sessions_yield` 等网关工具参数；**必须写在回复正文**\n- 顺序执行，间隔约 500ms\n\n### 可用 action\n基础：`focus` `type` `type_chars` `click` `blur` `press` `wait` `scroll` `snapshot` `navigate`\n鼠标：`mousedown` `mouseup` `pointerdown` `pointerup` `mousemove` `pointermove` `hover` `dblclick` `rightclick` `contextmenu` `drag`\n\n### 鼠标参数（可选）\n- `button`：0 左键（默认）、1 中键、2 右键\n- `buttons`：按下态位掩码（`mousemove` 拖拽时常用 1）\n- `x`/`y`：视口绝对坐标；未指定时用元素中心 + `offsetX`/`offsetY`\n- `click` 加 `mode:\"synthetic\"`：派发完整 mousedown→mouseup→click 链（默认 `el.click()`）\n- `drag`：`toSelector` 或 `toX`+`toY` 指定终点；`dragSteps` 插值步数（默认 12）\n\n### 示例\n```sidebar-action\n[\n  {\"action\":\"click\",\"selector\":\"div.svgWrap--Jl4L1[data-uba-title='menu']\"},\n  {\"action\":\"wait\",\"ms\":500},\n  {\"action\":\"click\",\"selector\":\".doamin-cloud-info\"},\n  {\"action\":\"wait\",\"ms\":500},\n  {\"action\":\"focus\",\"selector\":\"input.search-input\"},\n  {\"action\":\"type\",\"selector\":\"input.search-input\",\"text\":\"发起流程\"},\n  {\"action\":\"blur\",\"selector\":\"input.search-input\"},\n  {\"action\":\"wait\",\"ms\":500},\n  {\"action\":\"click\",\"parentSelector\":\"div.scrollarea-content\",\"label\":\"发起流程\"},\n  {\"action\":\"wait\",\"ms\":500},\n  {\"action\":\"focus\",\"title\":\"请输入搜索内容\"},\n  {\"action\":\"type\",\"title\":\"请输入搜索内容\",\"text\":\"BIP上线申请单\"},\n  {\"action\":\"press\",\"title\":\"请输入搜索内容\",\"key\":\"Enter\"}\n]\n```\n\n收到 `[sidebar-automation-retry]` 时：根据快照修正 selector，**从第 1 步重新输出完整数组**。",
+    "linkOpenSidebarPrompt": "## 打开网页（右侧边栏预览）\n用户当前设置：**链接在 Open Studio 右侧边栏打开**，不是系统浏览器。\n- 打开网页：在回复正文给出 Markdown 链接\n- **读取网页**：系统注入侧栏快照 + **可交互元素清单**（sidebarPreviewContext）；有快照时优先用它\n- **控制网页**：调用原生工具 `sidebar_action`（见 sidebarAutomationPrompt）；调用会出现在同轮 tool_trace 中\n- 快照显示登录/权限页时，让用户在右侧边栏先登录\n- 除非用户明确要求，否则不要启动外部浏览器",
+    "sidebarAutomationPrompt": "## 右侧边栏自动化（原生工具 `sidebar_action`）\n需要在右侧页面输入、点击、搜索、滚动、导航时，**调用 OpenClaw 工具** `sidebar_action`，参数 `{ \"steps\": [ ... ] }`（最多 5 步）。仅有文字描述不会执行。**不要**输出 ```sidebar-action``` 代码块。\n\n### 工作方式（重要）\n1. 先阅读快照中的**可交互元素清单**（每项有 ref / selector / name）\n2. 调用 `sidebar_action`，只传**当前短步骤**（最多 5 步），例如一次 click，或 focus→type→press\n3. 工具结果含最新 `observation.elements[].ref`；再决定下一步或结束\n4. 任务完成时用自然语言回答用户，**不要**再调用 `sidebar_action`\n5. **禁止**一次输出超长步骤剧本\n\n### 定位规则（必须遵守）\n- 优先：`{\"action\":\"click\",\"ref\":\"e3\"}`（ref 来自清单/观测）\n- 或使用清单中的 `selector` / `label` / `placeholder` / `title`\n- **禁止**臆造自然语言字段如 `target\":\"包含某某的视频卡片\"`\n\n### 工具参数示例\n```json\n{\"steps\":[{\"action\":\"click\",\"ref\":\"e12\"}]}\n```\n```json\n{\"steps\":[{\"action\":\"focus\",\"ref\":\"e4\"},{\"action\":\"type\",\"ref\":\"e4\",\"text\":\"关键词\"},{\"action\":\"press\",\"ref\":\"e4\",\"key\":\"Enter\"}]}\n```",
     "sidebarAutomationRunning": "正在操作右侧页面…",
     "previewTabsAria": "侧栏预览页签",
     "previewTabUntitled": "未命名页签",
@@ -400,7 +432,7 @@
     "previewUrlBar": "地址栏",
     "sidebarPreviewContext": {
       "header": "## 右侧边栏当前页面快照（用户已打开的网页）",
-      "methodNote": "快照说明：这是读取页面**可见文字**（DOM 文本），不是截图/OCR。普通网页正文可读；在线表格/Canvas 渲染的单元格常常读不到。",
+      "methodNote": "快照说明：包含页面可见文字 + 可交互元素清单（ref/selector）。不是截图/OCR。在线表格/Canvas 单元格常常读不到。",
       "url": "当前 URL：{{url}}",
       "title": "页面标题：{{title}}",
       "tabCount": "本会话还打开了 {{count}} 个侧栏页签",
@@ -408,7 +440,8 @@
       "partial": "未能读取完整正文（可能仍在加载），但 URL/标题可用。",
       "loginHint": "快照显示当前可能是登录/权限页（如二维码登录）。请让用户在右侧边栏完成登录后再继续。",
       "canvasHint": "检测到在线表格/Canvas 类页面：单元格内容可能无法通过文字快照获取。若摘录里没有表格数据，请让用户导出 CSV/复制区域，或描述需要分析的范围；不要坚持说「租户未登录」除非摘录里明确出现该错误。",
-      "instruction": "当用户问「右侧页面」「这个网页」时，必须优先根据上述快照回答。不要用 web fetch 重复抓同一 URL。若标题已是文档名但摘录无表格数据，说明可能是 Canvas 表格限制，而不是用户未打开页面。"
+      "instruction": "当用户问「右侧页面」「这个网页」时，必须优先根据上述快照与元素清单回答。需要操作时调用 sidebar_action，且只能引用清单/观测中的 ref/selector。不要用 web fetch 重复抓同一 URL。",
+      "elements": "可交互元素清单（用 ref 或 selector 定位，禁止臆造 target）：\n{{inventory}}"
     },
     "wechatSystemPrompt": "当前对话来自微信通道，token 成本敏感。用户要文件/截图/PDF 时：只用 cp/mv（或 Copy-Item）把文件放进工作区，禁止 read_file/cat/Get-Content 读取整份文件，禁止在回复里粘贴文件正文。禁止用 ![图片](链接) 或裸图片 URL——Open Studio 会把每张照片逐张发到微信。你最多用两句话说明「已发送」即可。",
     "emptyHint": "在下方输入消息开始本轮对话。",

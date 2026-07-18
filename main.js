@@ -94,6 +94,11 @@ const {
   getSkillEnvironmentCached,
 } = require("./lib/skill-runtime.cjs");
 const { injectGitUnixToolsPath } = require("./lib/git-unix-tools.cjs");
+const {
+  startSidebarActionToolBridge,
+  stopSidebarActionToolBridge,
+  handleSidebarActionToolRespond,
+} = require("./lib/sidebar-action-tool-bridge.cjs");
 
 /** Sidebar cannot embed Office; open these locally in the OS default viewer instead. */
 const OPEN_EXTERNALLY_SIDE_PREVIEW_EXT = new Set([".pptx", ".ppt", ".xlsx", ".xls"]);
@@ -892,6 +897,15 @@ app.whenReady().then(async () => {
   createWindow();
   createTray();
 
+  try {
+    startSidebarActionToolBridge({
+      getMainWindow: () => mainWindow,
+      log: getStudioLog(),
+    });
+  } catch (e) {
+    getStudioLog().error("[startup] sidebar-action bridge failed:", /** @type {any} */ (e)?.message ?? e);
+  }
+
   // Register global shortcut Ctrl+Shift+I to open webview DevTools
   try {
     const ret = globalShortcut.register("CommandOrControl+Shift+I", () => {
@@ -909,6 +923,7 @@ app.whenReady().then(async () => {
   // Clean up shortcuts on app quit
   app.on("will-quit", () => {
     globalShortcut.unregisterAll();
+    stopSidebarActionToolBridge();
   });
 
   // Keep first paint fast: heavyweight startup sync runs in background.
@@ -1150,6 +1165,10 @@ app.whenReady().then(async () => {
       return { ok: false, path: logsDir, message: String(errMsg) };
     }
     return { ok: true, path: logsDir };
+  });
+
+  ipcMain.handle("studio:sidebarActionToolRespond", (_event, payload) => {
+    return handleSidebarActionToolRespond(payload && typeof payload === "object" ? payload : {});
   });
 
   ipcMain.handle("studio:showSystemNotification", async (_event, payload) => {

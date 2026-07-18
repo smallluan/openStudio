@@ -4,6 +4,9 @@ import { normalizeAutomationSteps, SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN } from 
 
 export { SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN };
 
+/** Max observe→act continue turns after sidebar-action executions. */
+export const SIDEBAR_AUTOMATION_MAX_CONTINUES = 12;
+
 function createFenceRe() {
   return /```\s*sidebar-action[^\n]*\r?\n([\s\S]*?)```/gi;
 }
@@ -16,7 +19,11 @@ const SIDEBAR_ACTION_HINT_RE = /"action"\s*:\s*"(click|focus|blur|type|type_char
 function isClientSidebarAutomationToolRow(row) {
   const id = String(row && typeof row === "object" ? row.id : "");
   const toolName = String(row && typeof row === "object" ? row.toolName : "");
-  return id.startsWith("sidebar-auto:") || toolName === "sidebar-action";
+  return (
+    id.startsWith("sidebar-auto:") ||
+    toolName === "sidebar-action" ||
+    toolName === "sidebar_action"
+  );
 }
 
 /**
@@ -105,19 +112,29 @@ export function extractSidebarActionSteps(content, opts = {}) {
 /**
  * Extract sidebar-action steps from assistant body **and** gateway tool args/results
  * (e.g. when the model wrongly nests steps inside `sessions_yield.message`).
+ * Prefers `sidebarAutomationSteps` when the UI already parsed & stashed them
+ * (content fences may have been stripped for display).
  * @param {{
  *   content?: string;
+ *   sidebarAutomationSteps?: SidebarAutomationStep[];
  *   toolTrace?: Array<{ id?: string; toolName?: string; args?: unknown; result?: string; partialResult?: string; summary?: string }>;
  *   activityLog?: Array<{ text?: string }>;
+ *   assistantTimeline?: Array<{ kind?: string; body?: string }>;
  * }} message
  * @param {{ maxPerTurn?: number }} [opts]
  * @returns {SidebarAutomationStep[]}
  */
 export function extractSidebarActionStepsFromAssistantMessage(message, opts = {}) {
   const maxPerTurn = Math.max(1, opts.maxPerTurn ?? SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN);
+  const stashed = normalizeAutomationSteps(message?.sidebarAutomationSteps, { maxSteps: maxPerTurn });
+  if (stashed.length) return stashed;
+
   /** @type {string[]} */
   const sources = [];
   sources.push(String(message?.content ?? ""));
+  for (const seg of message?.assistantTimeline ?? []) {
+    if (seg?.kind === "text") sources.push(String(seg.body ?? ""));
+  }
   for (const row of message?.toolTrace ?? []) {
     if (isClientSidebarAutomationToolRow(row)) continue;
     sources.push(String(row?.result ?? ""));
@@ -161,8 +178,19 @@ export function isSidebarAutomationRetryUserMessage(content) {
 /**
  * @param {string} content
  */
+export function isSidebarAutomationContinueUserMessage(content) {
+  return String(content ?? "").startsWith("[sidebar-automation-continue]");
+}
+
+/**
+ * @param {string} content
+ */
 export function isSidebarAutomationInternalUserMessage(content) {
-  return isSidebarAutomationHandoffUserMessage(content) || isSidebarAutomationRetryUserMessage(content);
+  return (
+    isSidebarAutomationHandoffUserMessage(content) ||
+    isSidebarAutomationRetryUserMessage(content) ||
+    isSidebarAutomationContinueUserMessage(content)
+  );
 }
 
 /**
@@ -208,10 +236,93 @@ export function shouldHideSidebarActionAssistantMessage(content) {
 }
 
 /**
+ * @param {Array<{ id?: string; role?: string; content?: string }>} messages
+ * @param {string} assistantId
+ */
+export function findUserRequestBeforeAssistant(messages, assistantId) {
+  const idx = messages.findIndex((m) => m.id === assistantId);
+  if (idx < 0) return "";
+  for (let i = idx - 1; i >= 0; i--) {
+    const row = messages[i];
+    if (row?.role !== "user") continue;
+    const text = String(row.content ?? "");
+    if (isSidebarAutomationInternalUserMessage(text)) continue;
+    return text;
+  }
+  return "";
+}
+
+/**
+ * @param {unknown} result
+ */
+export function automationHadFailure(result) {
+  if (!result || result.ok === false) return true;
+  const steps = Array.isArray(result?.steps) ? result.steps : [];
+  return steps.some((s) => s && s.ok === false);
+}
+
+/**
  * @param {unknown} result
  */
 export function formatSidebarAutomationResultMessage(result) {
   return `[sidebar-automation-result]\n请根据以下执行结果直接用自然语言回答用户；不要输出 sidebar-action 代码块，不要重复操作步骤。\n${JSON.stringify(result, null, 2)}`;
+}
+
+/**
+ * Observe→act handoff after each sidebar-action batch.
+ * @param {{
+ *   originalRequest?: string;
+ *   requestedSteps?: SidebarAutomationStep[];
+ *   result?: { ok?: boolean; error?: string; steps?: Array<Record<string, unknown>>; stoppedAt?: number };
+ *   observationBlock?: string;
+ *   turn?: number;
+ *   maxTurns?: number;
+ * }} input
+ */
+export function formatSidebarAutomationContinueMessage(input) {
+  const turn = Math.max(1, Number(input.turn) || 1);
+  const maxTurns = Math.max(turn, Number(input.maxTurns) || SIDEBAR_AUTOMATION_MAX_CONTINUES);
+  const requested = Array.isArray(input.requestedSteps) ? input.requestedSteps : [];
+  const executed = Array.isArray(input.result?.steps) ? input.result.steps : [];
+  const failed = automationHadFailure(input.result);
+  const observationRaw = String(input.observationBlock ?? "").trim();
+  const observation =
+    observationRaw.length > 6000
+      ? `${observationRaw.slice(0, 6000)}\n…(observation truncated; full snapshot also in system previewContext)`
+      : observationRaw;
+
+  return `[sidebar-automation-continue]
+页面操作工具已执行完本轮步骤（第 ${turn}/${maxTurns} 轮观察）。请根据**执行结果**与下方**最新页面观测**决定下一步。
+
+**原始用户请求：**
+${String(input.originalRequest ?? "").trim() || "（未找到）"}
+
+**本轮请求步骤：**
+\`\`\`json
+${JSON.stringify(requested, null, 2)}
+\`\`\`
+
+**执行结果：**
+\`\`\`json
+${JSON.stringify(
+  {
+    ok: input.result?.ok !== false && !failed,
+    error: input.result?.error ?? null,
+    stoppedAt:
+      typeof input.result?.stoppedAt === "number" ? input.result.stoppedAt + 1 : null,
+    steps: executed,
+  },
+  null,
+  2,
+)}
+\`\`\`
+
+${observation ? `**最新页面观测（已注入系统上下文，此处为摘要）：**\n${observation}\n` : ""}
+**要求：**
+- 若任务未完成：再输出下一批 \`\`\`sidebar-action\`\`\`（最多 ${SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN} 步）；优先用观测清单里的 \`ref\`（如 \`"ref":"e3"\`）或 \`selector\`
+- 禁止臆造自然语言 \`target\`；禁止一次规划超长剧本
+- 若任务已完成或无法继续：用自然语言直接回答用户，**不要**再输出 sidebar-action
+- 不要向用户解释内部协议标签`;
 }
 
 /**
@@ -222,4 +333,25 @@ export function stripSidebarActionFences(content) {
     .replace(createFenceRe(), "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * Strip sidebar-action fences from assistant timeline text segments (display + merge).
+ * @param {Array<{ kind?: string; body?: string; refId?: string }> | undefined | null} timeline
+ */
+export function stripSidebarActionFencesFromTimeline(timeline) {
+  if (!Array.isArray(timeline) || !timeline.length) return timeline ?? undefined;
+  /** @type {typeof timeline} */
+  const out = [];
+  for (const seg of timeline) {
+    if (!seg || typeof seg !== "object") continue;
+    if (seg.kind === "text") {
+      const body = stripSidebarActionFences(String(seg.body ?? ""));
+      if (!body) continue;
+      out.push({ ...seg, body });
+      continue;
+    }
+    out.push(seg);
+  }
+  return out.length ? out : undefined;
 }

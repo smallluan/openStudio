@@ -82,8 +82,14 @@ import {
   isSidebarAutomationCarrierContent,
   isSidebarAutomationCarrierMessage,
   isSidebarAutomationInternalUserMessage,
+  stripSidebarActionFences,
+  stripSidebarActionFencesFromTimeline,
 } from "../chat/chatLabSidebarActionProtocol.js";
 import { composeChatLabSystemPrompt, composeChatLabStudioSuffix, fetchChatLabWorkspaceContextBlock } from "../chat/chatLabSystemPrompt.js";
+import {
+  captureSidebarPreviewSnapshot,
+  composeChatLabPreviewContextBlock,
+} from "../chat/chatLabPreviewSnapshot.js";
 import {
   agentAvatarGlyph,
   agentDisplayLabel,
@@ -349,8 +355,27 @@ function formatMessageTimestamp(ts, locale) {
  * @param {import("../studio/agents.js").LobsterAgent} agent
  * @param {(key: string) => string} t
  * @param {import("../studio/agents.js").LobsterAgent[]} groupAgents
- * @param {{ orchestrationTeamRoster?: string; mentionDelegateReply?: boolean; workspaceContext?: string; previewContext?: string }} [extra]
+ * @param {{ orchestrationTeamRoster?: string; mentionDelegateReply?: boolean; workspaceContext?: string; previewContext?: string; webExploreMode?: boolean }} [extra]
  */
+/**
+ * Ensure page snapshot reaches the model even if system prompt is truncated by the gateway.
+ * @param {Array<{ role: string; content: string; attachments?: unknown[] }>} outgoing
+ * @param {string} previewContext
+ */
+function withWebExplorePreviewOnUserTurn(outgoing, previewContext) {
+  const block = String(previewContext ?? "").trim();
+  if (!block || !Array.isArray(outgoing)) return outgoing;
+  const rows = outgoing.map((row) => ({ ...row }));
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i]?.role !== "user") continue;
+    const body = String(rows[i].content ?? "");
+    if (body.includes(block.slice(0, 48))) break;
+    rows[i] = { ...rows[i], content: `${block}\n\n---\n\n${body}` };
+    break;
+  }
+  return rows;
+}
+
 function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
   const others = groupAgents.filter((a) => a.id !== agent.id);
   const groupDelegateHint =
@@ -360,10 +385,15 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
         : t("chatLab.groupDelegateHint")
       : "";
   const contextBlocks = [
-    String(extra.workspaceContext ?? "").trim(),
+    ...(extra.webExploreMode ? [] : [String(extra.workspaceContext ?? "").trim()]),
     String(extra.previewContext ?? "").trim(),
   ].filter(Boolean);
-  const studioSuffix = [...contextBlocks, composeChatLabStudioSuffix(t)].filter(Boolean).join("\n\n");
+  const studioSuffix = [
+    ...contextBlocks,
+    composeChatLabStudioSuffix(t, { webExploreMode: extra.webExploreMode }),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   return systemMessageForAgent(agent, t("chatLab.systemPrompt"), {
     groupAgents,
     groupDelegateHint,
@@ -696,6 +726,7 @@ function mergeTerminalAssistantPayload(m, extra) {
   if (typeof extra?.content === "string") {
     const prev = String(m.content ?? "");
     const incoming = extra.content;
+    // Keep raw fences in stored content until the runner stashes steps — display strips separately.
     if (isSidebarAutomationCarrierContent(prev, false) && !isSidebarAutomationCarrierContent(incoming, false)) {
       next.content = incoming;
     } else {
@@ -715,15 +746,17 @@ function mergeTerminalAssistantPayload(m, extra) {
     if (extra.activityLog.length > 0) next.activityLog = /** @type {typeof m.activityLog} */ (extra.activityLog);
     else delete next.activityLog;
   }
-  if (Array.isArray(extra?.assistantTimeline)) {
-    if (extra.assistantTimeline.length > 0) {
-      const tl = /** @type {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[]} */ (
-        extra.assistantTimeline
-      );
-      const canon = typeof next.content === "string" ? next.content : "";
-      next.assistantTimeline =
-        canon.trim().length > 0 ? reconcileTimelineWithCanonicalText(tl, canon) : tl;
-    } else delete next.assistantTimeline;
+  if (Array.isArray(extra?.assistantTimeline) || Array.isArray(m.assistantTimeline)) {
+    const mergedTl = mergePreservingSidebarAutomationTimeline(
+      m.assistantTimeline,
+      extra?.assistantTimeline,
+      typeof next.content === "string" ? next.content : String(m.content ?? ""),
+    );
+    if (mergedTl?.length) next.assistantTimeline = mergedTl;
+    else delete next.assistantTimeline;
+  }
+  if (Array.isArray(m.sidebarAutomationSteps) && m.sidebarAutomationSteps.length) {
+    next.sidebarAutomationSteps = m.sidebarAutomationSteps;
   }
   if (Array.isArray(extra?.mentions)) {
     if (extra.mentions.length > 0) next.mentions = extra.mentions;
@@ -738,7 +771,11 @@ function mergeTerminalAssistantPayload(m, extra) {
 function isSidebarAutomationToolRow(row) {
   const id = String(row?.id ?? "");
   const toolName = String(row?.toolName ?? "");
-  return id.startsWith("sidebar-auto:") || toolName === "sidebar-action";
+  return (
+    id.startsWith("sidebar-auto:") ||
+    toolName === "sidebar-action" ||
+    toolName === "sidebar_action"
+  );
 }
 
 /**
@@ -755,6 +792,37 @@ function mergePreservingSidebarAutomationToolTrace(prev, incoming) {
 }
 
 /**
+ * Gateway timeline updates must not wipe client sidebar-auto tool segments, and must
+ * not reintroduce ```sidebar-action fences into text segments.
+ * @param {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[] | undefined} prev
+ * @param {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[] | undefined} incoming
+ * @param {string} [canonContent]
+ */
+function mergePreservingSidebarAutomationTimeline(prev, incoming, canonContent = "") {
+  const prevList = Array.isArray(prev) ? prev : [];
+  const incomingList = Array.isArray(incoming) ? incoming : [];
+  const sidebarSegs = prevList.filter(
+    (s) => s?.kind === "tool" && String(s.refId ?? "").startsWith("sidebar-auto:"),
+  );
+  /** @type {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[]} */
+  let tl = incomingList.length ? [...incomingList] : [...prevList];
+  const seen = new Set(tl.filter((s) => s.kind === "tool").map((s) => s.refId));
+  for (const seg of sidebarSegs) {
+    if (!seen.has(seg.refId)) {
+      tl.push(seg);
+      seen.add(seg.refId);
+    }
+  }
+  // Do not strip fences from stored timeline text — runner may still need them.
+  // Display paths call stripSidebarActionFences / markdown hides the fence card.
+  const canon = String(canonContent ?? "");
+  if (canon.trim().length > 0 && tl.length > 0) {
+    tl = reconcileTimelineWithCanonicalText(tl, canon);
+  }
+  return tl.length ? tl : undefined;
+}
+
+/**
  * @param {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[] | undefined} timeline
  * @param {import("../chat/toolTraceMerge.js").ToolTraceRow[]} sidebarRows
  * @param {string} cleanContent
@@ -762,8 +830,11 @@ function mergePreservingSidebarAutomationToolTrace(prev, incoming) {
 function mergeSidebarAutomationTimeline(timeline, sidebarRows, cleanContent) {
   /** @type {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[]} */
   let tl = Array.isArray(timeline) ? [...timeline] : [];
-  if (cleanContent.trim().length > 0 && tl.length > 0) {
-    tl = reconcileTimelineWithCanonicalText(tl, cleanContent);
+  tl = /** @type {typeof tl} */ (stripSidebarActionFencesFromTimeline(tl) ?? []);
+  const cleaned = stripSidebarActionFences(cleanContent);
+  if (cleaned.trim().length > 0 && tl.length > 0) {
+    tl = reconcileTimelineWithCanonicalText(tl, cleaned);
+    tl = /** @type {typeof tl} */ (stripSidebarActionFencesFromTimeline(tl) ?? []);
   }
   const seen = new Set(tl.filter((s) => s.kind === "tool").map((s) => s.refId));
   for (const row of sidebarRows) {
@@ -777,11 +848,11 @@ function mergeSidebarAutomationTimeline(timeline, sidebarRows, cleanContent) {
 
 function sidebarAutomationStepLabel(req) {
   const action = String(req?.action ?? "step").trim() || "step";
+  const ref = typeof req?.ref === "string" ? req.ref.trim() : "";
   const selector = typeof req?.selector === "string" ? req.selector.trim() : "";
   const placeholder = typeof req?.placeholder === "string" ? req.placeholder.trim() : "";
   const label = typeof req?.label === "string" ? req.label.trim() : "";
-  const verifyHint = typeof req?.verifyHint === "string" ? req.verifyHint.trim() : "";
-  const hint = selector || placeholder || label || verifyHint;
+  const hint = ref || selector || placeholder || label;
   return hint ? `${action} · ${hint}` : action;
 }
 
@@ -839,10 +910,6 @@ function sidebarAutomationPendingToolTraceRow(requested, index) {
     args: req && typeof req === "object" ? req : undefined,
     done: false,
   };
-}
-
-function filterSidebarAutomationToolRows(rows) {
-  return Array.isArray(rows) ? rows.filter((r) => !isSidebarAutomationToolRow(r)) : [];
 }
 
 function sidebarAutomationPendingToolTraceRows(requestedSteps) {
@@ -951,34 +1018,116 @@ export default function ChatLabPage() {
  * @param {{
  *   conversationId: string;
  *   onWorkspaceEmptySessionChange: (isEmpty: boolean) => void;
+ *   embedMode?: {
+ *     persistSession?: boolean;
+ *     hidePreviewDock?: boolean;
+ *     forceThread?: boolean;
+ *     webExploreMode?: boolean;
+ *     activeUrl?: string;
+ *     pageTitle?: string;
+ *     webviewRef?: import("react").RefObject<HTMLElement | null>;
+ *     iframeRef?: import("react").RefObject<HTMLIFrameElement | null>;
+ *     className?: string;
+ *   };
  * }} props
  */
-function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
+export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange, embedMode }) {
+  const ephemeralSession = embedMode?.persistSession === false;
+  const webExploreEmbed = Boolean(embedMode?.webExploreMode);
   const { theme } = useTheme();
   const { t, locale } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const paramC = searchParams.get("c");
+  // Outer provider (WebExplore) — available here; normal ChatLab wires via bridge below.
+  const previewApi = useChatLabPreview();
 
   const activeRootRef = useRef(/** @type {string | null} */ (null));
   const previewSnapshotRef = useRef(/** @type {(() => Promise<string>) | null} */ (null));
+  const sidebarAutomationContinueCountRef = useRef(0);
+  /** @type {import("react").MutableRefObject<string>} */
+  const sidebarAutomationContinueAnchorRef = useRef("");
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
   const isElectron = Boolean(bridge?.startChatStream);
 
   const resolveWorkspaceContextBlock = useCallback(
-    () => fetchChatLabWorkspaceContextBlock(bridge, activeRootRef.current, t),
-    [bridge, t],
+    () =>
+      webExploreEmbed
+        ? Promise.resolve("")
+        : fetchChatLabWorkspaceContextBlock(bridge, activeRootRef.current, t),
+    [bridge, t, webExploreEmbed],
   );
   const resolvePreviewContextBlock = useCallback(async () => {
-    const capture = previewSnapshotRef.current;
+    if (webExploreEmbed) {
+      const activeUrl = String(embedMode?.activeUrl ?? "").trim();
+      const pageTitle = String(embedMode?.pageTitle ?? "").trim();
+      const webviewRef = embedMode?.webviewRef;
+      const iframeRef = embedMode?.iframeRef;
+
+      /** @param {string} url @param {string} title @param {string} [text] @param {boolean} [partial] */
+      const composeFallback = (url, title, text = "", partial = true) => {
+        if (!url) return "";
+        return composeChatLabPreviewContextBlock(
+          t,
+          {
+            ok: true,
+            url,
+            title: title || url,
+            text,
+            tabCount: 1,
+            ...(partial ? { partial: true } : {}),
+          },
+          { webExploreMode: true },
+        );
+      };
+
+      try {
+        if (previewApi?.captureSidebarContextBlock) {
+          const fromCtx = String((await previewApi.captureSidebarContextBlock()) ?? "").trim();
+          if (fromCtx) return fromCtx;
+        }
+      } catch {
+        /* fall through */
+      }
+
+      try {
+        const snap = await captureSidebarPreviewSnapshot({
+          session: {
+            kind: "iframe",
+            src: activeUrl,
+            title: pageTitle || activeUrl,
+            useWebview: Boolean(webviewRef?.current),
+          },
+          webviewRef,
+          iframeRef,
+          forceSidebar: true,
+        });
+        const composed = composeChatLabPreviewContextBlock(t, snap, { webExploreMode: true });
+        if (composed) return composed;
+      } catch {
+        /* fall through */
+      }
+
+      return composeFallback(activeUrl, pageTitle);
+    }
+
+    const capture = previewSnapshotRef.current ?? previewApi?.captureSidebarContextBlock ?? null;
     if (!capture) return "";
     try {
       return await capture();
     } catch {
       return "";
     }
-  }, []);
+  }, [
+    embedMode?.activeUrl,
+    embedMode?.iframeRef,
+    embedMode?.pageTitle,
+    embedMode?.webviewRef,
+    previewApi,
+    t,
+    webExploreEmbed,
+  ]);
   const resolveAgentContextBlocks = useCallback(
     () =>
       Promise.all([resolveWorkspaceContextBlock(), resolvePreviewContextBlock()]).then(
@@ -1426,7 +1575,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
 
       const sid = paramC || conversationId;
       const rec = sid ? getSession(sid) : null;
-      if (rec) {
+      if (rec && !ephemeralSession) {
         updateSessionParticipants(sid, next, memberEvents);
         if (memberEvents.length > 0) {
           resetThreadGatewaySync(sid);
@@ -1444,7 +1593,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         }
       }
     },
-    [agentById, autoScrollRef, bridge, conversationId, isElectron, mainAgent, paramC, participantIds, t],
+    [agentById, autoScrollRef, bridge, conversationId, ephemeralSession, isElectron, mainAgent, paramC, participantIds, t],
   );
 
   /** WeChat inbound / store updates: keep the open thread aligned with sidebar persistence (avoids race with auto-reply). */
@@ -1531,6 +1680,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
   }, [paramC, searchParams, setSearchParams, skillPickList]);
 
   useEffect(() => {
+    if (ephemeralSession) return;
     if (!conversationId) return;
     if (messages.length === 0) return;
     if (!sessionHasUserTurn(messages)) return;
@@ -1551,7 +1701,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
     }, 380);
 
     return () => window.clearTimeout(h);
-  }, [messages, conversationId, gatewayStreaming, t]);
+  }, [messages, conversationId, gatewayStreaming, t, ephemeralSession]);
 
   const reloadConfig = useCallback(async () => {
     if (!bridge?.getUserConfig) {
@@ -1758,14 +1908,35 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         next = next.map((m) => {
           if (m.id !== rowId) return m;
           changed = true;
-          const row = { ...m, content, thinking, streaming: active };
+          // Keep raw content (incl. sidebar-action fences) so the runner can extract steps.
+          // Continue-session folds a new model turn into the same bubble — append prose.
+          const incomingContent = String(content ?? "");
+          const mergedContent = m.sidebarAutomationContinueSession
+            ? (() => {
+                const prev = String(m.content ?? "").trim();
+                const nextText = incomingContent.trim();
+                if (!nextText) return prev;
+                if (!prev) return nextText;
+                if (nextText.startsWith(prev) || prev.startsWith(nextText)) {
+                  return preferLongerAssistantText(prev, nextText);
+                }
+                if (prev.includes(nextText)) return prev;
+                return `${prev}\n\n${nextText}`;
+              })()
+            : incomingContent;
+          const row = { ...m, content: mergedContent, thinking, streaming: active };
           if (toolTrace && toolTrace.length > 0) {
             const merged = mergePreservingSidebarAutomationToolTrace(m.toolTrace, toolTrace);
             if (merged) row.toolTrace = merged;
           }
           if (activityLog && activityLog.length > 0) row.activityLog = activityLog;
-          if (Array.isArray(assistantTimeline)) {
-            if (assistantTimeline.length > 0) row.assistantTimeline = assistantTimeline;
+          if (Array.isArray(assistantTimeline) || Array.isArray(m.assistantTimeline)) {
+            const mergedTl = mergePreservingSidebarAutomationTimeline(
+              m.assistantTimeline,
+              assistantTimeline,
+              mergedContent,
+            );
+            if (mergedTl?.length) row.assistantTimeline = mergedTl;
             else delete row.assistantTimeline;
           }
           return row;
@@ -2013,18 +2184,20 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
       const toSave = normalized
         .filter((m) => m.role === "user" || m.role === "assistant")
         .map((m) => toPersistedChatMessage(m));
-      upsertSession(conversationId, rec.title || "…", toSave, {
-        participantIds: rec.participantIds,
-        orchestration: rec.orchestration,
-        orchestrationMode: rec.orchestrationMode,
-      });
+      if (!ephemeralSession) {
+        upsertSession(conversationId, rec.title || "…", toSave, {
+          participantIds: rec.participantIds,
+          orchestration: rec.orchestration,
+          orchestrationMode: rec.orchestrationMode,
+        });
+      }
       setMessages(normalized);
     }
-    if (inferred) {
+    if (inferred && !ephemeralSession) {
       updateSessionOrchestration(conversationId, inferred);
     }
     orchMigrateDoneRef.current.add(conversationId);
-  }, [conversationId, mainAgent?.id, sessionTitleBump]);
+  }, [conversationId, ephemeralSession, mainAgent?.id, sessionTitleBump]);
 
   const prevConversationIdRef = useRef(conversationId);
   useEffect(() => {
@@ -2456,7 +2629,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         : { priorRows: buildGatewayPayloadRows(base.slice(0, -1), { agentById }), contextEmbedMode: "full", syncThroughMessageId: null };
       const priorRows = editCtx.priorRows;
 
-      if (!paramC) {
+      if (!paramC && !ephemeralSession) {
         setSearchParams({ c: conversationId }, { replace: true });
       }
 
@@ -2497,7 +2670,9 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         })),
         { imageFallback: t("chatLab.chatUntitledImage") },
       );
-      upsertSession(conversationId, provisionalTitle || "…", persistableNext);
+      if (!ephemeralSession) {
+        upsertSession(conversationId, provisionalTitle || "…", persistableNext);
+      }
 
       const streamId = newId();
       beginGatewayStream({
@@ -2518,18 +2693,33 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
       const editGroupAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
       const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
       const sysRow = mainAgent
-        ? systemRowForGroupAgent(mainAgent, t, editGroupAgents, { workspaceContext, previewContext })
-        : { role: "system", content: composeChatLabSystemPrompt(t, { workspaceContext, previewContext }) };
-      const outgoing = [
+        ? systemRowForGroupAgent(mainAgent, t, editGroupAgents, {
+            workspaceContext,
+            previewContext,
+            webExploreMode: webExploreEmbed,
+          })
+        : {
+            role: "system",
+            content: composeChatLabSystemPrompt(t, {
+              workspaceContext,
+              previewContext,
+              webExploreMode: webExploreEmbed,
+            }),
+          };
+      const baseOutgoing = [
         ...(sysRow ? [sysRow] : []),
         ...priorRows,
         ...tailUserRows,
       ];
+      const outgoing = webExploreEmbed
+        ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext)
+        : baseOutgoing;
       const composerSkill = skillPickRowToPayload(composerSkillRow);
       setComposerSkillRow(null);
 
       const isFirstTurn = priorRows.length === 0;
       if (
+        !ephemeralSession &&
         isFirstTurn &&
         config?.chatLabAutoTitle &&
         bridge?.generateChatTitle &&
@@ -2619,11 +2809,20 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
      *   skillPickRow: import("../skills/skillRegistry.js").SkillPickRow | null;
      *   followUpRef?: import("../chat/chatSessionsStore.js").MessageFollowUpRef | null;
      *   onCommitted?: () => void;
+     *   foldIntoAssistantId?: string;
      * }} args
      */
-    async ({ trimmed, imageAttachments, fileRefs, skillPickRow, followUpRef, onCommitted }) => {
+    async ({
+      trimmed,
+      imageAttachments,
+      fileRefs,
+      skillPickRow,
+      followUpRef,
+      onCommitted,
+      foldIntoAssistantId,
+    }) => {
       if (orchestrationMode) return;
-      if (!paramC) {
+      if (!paramC && !ephemeralSession) {
         setSearchParams({ c: conversationId }, { replace: true });
       }
 
@@ -2637,6 +2836,9 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
       const effectiveMentionIds =
         mentionIds.length === 0 && continuousMentionTargetId ? [continuousMentionTargetId] : mentionIds;
       const effectiveText = cleanText || trimmed;
+      if (!isSidebarAutomationInternalUserMessage(effectiveText)) {
+        sidebarAutomationContinueCountRef.current = 0;
+      }
       const replyTargets = resolveReplyTargets({
         mentionIds: effectiveMentionIds,
         participantIds,
@@ -2681,6 +2883,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
 
       const isFirstTurn = priorHistory.length === 0;
       if (
+        !ephemeralSession &&
         isFirstTurn &&
         config?.chatLabAutoTitle &&
         bridge?.generateChatTitle &&
@@ -2705,23 +2908,54 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         agentById,
       });
 
+      const foldId = String(foldIntoAssistantId ?? "").trim();
+      const foldTarget =
+        foldId && isSidebarAutomationInternalUserMessage(effectiveText)
+          ? messagesRef.current.find((m) => m.id === foldId && m.role === "assistant")
+          : null;
+
       /** @type {Array<{
        *   target: import("../studio/agents.js").LobsterAgent;
-       *   assistantMsg: { id: string; role: "assistant"; content: string; thinking: string; streaming: boolean; createdAt: number; agentId: string };
+       *   assistantMsg: { id: string; role: "assistant"; content: string; thinking: string; streaming: boolean; createdAt: number; agentId: string; sidebarAutomationContinueSession?: boolean };
        *   streamId: string;
        *   outgoing: Array<{ role: string; content: string; attachments?: unknown[] }>;
+       *   foldReuse?: boolean;
        * }>} */
       const launchJobs = replyTargets.map((target, i) => {
-        const assistantMsg = {
-          id: newId(),
-          role: /** @type {const} */ ("assistant"),
-          content: "",
-          thinking: "",
-          streaming: true,
-          createdAt: now + i + 1,
-          agentId: target.id,
-        };
-        const sysRow = systemRowForGroupAgent(target, t, groupAgents, { workspaceContext, previewContext });
+        const reuse = Boolean(foldTarget && i === 0);
+        const assistantMsg = reuse
+          ? {
+              id: foldTarget.id,
+              role: /** @type {const} */ ("assistant"),
+              content: String(foldTarget.content ?? ""),
+              thinking: String(foldTarget.thinking ?? ""),
+              streaming: true,
+              createdAt: Date.now(),
+              agentId: target.id,
+              sidebarAutomationContinueSession: true,
+              ...(Array.isArray(foldTarget.toolTrace) ? { toolTrace: foldTarget.toolTrace } : {}),
+              ...(Array.isArray(foldTarget.assistantTimeline)
+                ? { assistantTimeline: foldTarget.assistantTimeline }
+                : {}),
+              ...(Array.isArray(foldTarget.activityLog) ? { activityLog: foldTarget.activityLog } : {}),
+              ...(Array.isArray(foldTarget.sidebarAutomationSteps)
+                ? { sidebarAutomationSteps: foldTarget.sidebarAutomationSteps }
+                : {}),
+            }
+          : {
+              id: newId(),
+              role: /** @type {const} */ ("assistant"),
+              content: "",
+              thinking: "",
+              streaming: true,
+              createdAt: now + i + 1,
+              agentId: target.id,
+            };
+        const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
+          workspaceContext,
+          previewContext,
+          webExploreMode: webExploreEmbed,
+        });
         const ctx = resolveAgentGatewayContext({
           conversationId,
           agentId: target.id,
@@ -2730,7 +2964,10 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
           agentById,
           mainAgentStudioId: mainAgent?.id,
         });
-        const outgoing = [...(sysRow ? [sysRow] : []), ...ctx.priorRows, ...tailUserRows];
+        const baseOutgoing = [...(sysRow ? [sysRow] : []), ...ctx.priorRows, ...tailUserRows];
+        const outgoing = webExploreEmbed
+          ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext)
+          : baseOutgoing;
         return {
           target,
           assistantMsg,
@@ -2739,11 +2976,12 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
           contextEmbedMode: ctx.contextEmbedMode,
           threadSummaryPrefix: ctx.threadSummaryPrefix,
           syncThroughMessageId: ctx.syncThroughMessageId,
+          foldReuse: reuse,
         };
       });
 
       const persistableNext = [
-        ...persistablePrior,
+        ...persistablePrior.filter((m) => !launchJobs.some((j) => j.foldReuse && j.assistantMsg.id === m.id)),
         {
           id: userMsg.id,
           role: /** @type {const} */ ("user"),
@@ -2758,8 +2996,8 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         ...launchJobs.map(({ assistantMsg }) => ({
           id: assistantMsg.id,
           role: /** @type {const} */ ("assistant"),
-          content: "",
-          thinking: "",
+          content: assistantMsg.content,
+          thinking: assistantMsg.thinking,
           createdAt: assistantMsg.createdAt,
           agentId: assistantMsg.agentId,
         })),
@@ -2776,11 +3014,23 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         })),
         { imageFallback: t("chatLab.chatUntitledImage") },
       );
-      upsertSession(conversationId, provisionalTitle || "…", persistableNext, {
-        participantIds: sessionParticipantIds,
-      });
+      if (!ephemeralSession) {
+        upsertSession(conversationId, provisionalTitle || "…", persistableNext, {
+          participantIds: sessionParticipantIds,
+        });
+      }
 
-      setMessages((prev) => [...prev, ...launchJobs.map((j) => j.assistantMsg)]);
+      setMessages((prev) => {
+        let next = prev;
+        for (const job of launchJobs) {
+          if (job.foldReuse) {
+            next = next.map((m) => (m.id === job.assistantMsg.id ? { ...m, ...job.assistantMsg } : m));
+          } else {
+            next = [...next, job.assistantMsg];
+          }
+        }
+        return next;
+      });
 
       for (const job of launchJobs) {
         beginGatewayStream({
@@ -2981,6 +3231,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         mentionDelegateReply: true,
         workspaceContext,
         previewContext,
+        webExploreMode: webExploreEmbed,
       });
       const ctx = resolveAgentGatewayContext({
         conversationId,
@@ -3019,9 +3270,11 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
         })),
         { imageFallback: t("chatLab.chatUntitledImage") },
       );
-      upsertSession(conversationId, rec?.title || provisionalTitle || "…", persistableNext, {
-        participantIds: sessionParticipantIds,
-      });
+      if (!ephemeralSession) {
+        upsertSession(conversationId, rec?.title || provisionalTitle || "…", persistableNext, {
+          participantIds: sessionParticipantIds,
+        });
+      }
 
       setMessages((prev) => (prev.some((m) => m.id === assistantMsg.id) ? prev : [...prev, assistantMsg]));
       autoScrollRef.current = true;
@@ -3277,7 +3530,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
           ...effectiveMentionIds,
         ]),
       ];
-      if (!paramC) setSearchParams({ c: conversationId }, { replace: true });
+      if (!paramC && !ephemeralSession) setSearchParams({ c: conversationId }, { replace: true });
       const rec = getSession(conversationId);
       const persistable = [
         ...(rec?.messages ?? []),
@@ -3289,11 +3542,13 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
           ...(effectiveMentionIds.length ? { mentions: effectiveMentionIds } : {}),
         },
       ];
-      upsertSession(conversationId, deriveTitleFromMessages(persistable) || "…", persistable, {
-        participantIds: sessionParticipantIds,
-        orchestrationMode: true,
-        orchestration: rec?.orchestration,
-      });
+      if (!ephemeralSession) {
+        upsertSession(conversationId, deriveTitleFromMessages(persistable) || "…", persistable, {
+          participantIds: sessionParticipantIds,
+          orchestrationMode: true,
+          orchestration: rec?.orchestration,
+        });
+      }
       void orchestrationRunner.startOrchestration(conversationId, effectiveText, effectiveMentionIds);
       return;
     }
@@ -3392,29 +3647,55 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
       const sourceId = String(assistantMessageId ?? "").trim();
       if (!sourceId) return;
       const requested = Array.isArray(requestedSteps) ? requestedSteps : [];
+
+      /** @type {import("../chat/toolTraceMerge.js").ToolTraceRow[]} */
+      let sidebarRows = [];
+      if (phase === "start") {
+        sidebarRows = sidebarAutomationPendingToolTraceRows(requested);
+      } else if (phase === "progress") {
+        sidebarRows = sidebarAutomationProgressToolTraceRows(requested, result, runningIndex);
+      } else {
+        sidebarRows = sidebarAutomationToolTraceRows(requested, result);
+      }
+
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== sourceId) return m;
-          const messageContent = String(m.content ?? "");
           const keepRows = Array.isArray(m.toolTrace)
             ? m.toolTrace.filter((r) => !isSidebarAutomationToolRow(r))
             : [];
-          const nextTimeline = Array.isArray(m.assistantTimeline)
-            ? m.assistantTimeline.filter(
-                (seg) => seg.kind !== "tool" || !String(seg.refId ?? "").startsWith("sidebar-auto:"),
-              )
-            : undefined;
+          const toolTrace = [...keepRows, ...sidebarRows];
+          const rawContent = String(m.content ?? "");
+          const cleanContent = stripSidebarActionFences(rawContent);
+          const nextTimeline = mergeSidebarAutomationTimeline(
+            m.assistantTimeline,
+            sidebarRows,
+            cleanContent,
+          );
+          const gatewayStreamId = assistantStreamIdsRef.current.get(sourceId);
+          const gatewayStillActive = Boolean(
+            gatewayStreamId && activeStreamIdsRef.current.has(gatewayStreamId),
+          );
           return {
             ...m,
-            content: messageContent,
-            streaming: phase === "complete" ? false : true,
-            toolTrace: keepRows.length ? keepRows : undefined,
-            assistantTimeline: nextTimeline?.length ? nextTimeline : undefined,
+            content: cleanContent,
+            // Stash steps before fences are stripped so the runner can still execute.
+            sidebarAutomationSteps: requested.length
+              ? requested
+              : Array.isArray(m.sidebarAutomationSteps)
+                ? m.sidebarAutomationSteps
+                : undefined,
+            // Don't clear streaming if the original gateway turn is still open.
+            streaming: phase === "complete" ? gatewayStillActive : true,
+            toolTrace: toolTrace.length ? toolTrace : undefined,
+            assistantTimeline: nextTimeline,
             createdAt: Date.now(),
           };
         }),
       );
 
+      // Fence path is legacy/debug only. Observe→act continues via native OpenClaw
+      // tool `sidebar_action` (mid-turn tool_trace); do not inject continue user turns.
       if (phase !== "complete") return;
     },
     [setMessages],
@@ -3629,10 +3910,11 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
     ],
   );
 
-  const isLanding = !messages.some((m) => m.messageKind !== "group_member_event");
+  const isLandingRaw = !messages.some((m) => m.messageKind !== "group_member_event");
+  const isLanding = embedMode?.forceThread ? false : isLandingRaw;
   useEffect(() => {
-    onWorkspaceEmptySessionChange(isLanding);
-  }, [isLanding, onWorkspaceEmptySessionChange]);
+    onWorkspaceEmptySessionChange(isLandingRaw);
+  }, [isLandingRaw, onWorkspaceEmptySessionChange]);
   const {
     landingRevealReady,
     playHeroTitleEntrance,
@@ -3647,7 +3929,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
   const landingHeroRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   useBootstrapHeroRelease(portalHeroRef, landingHeroRef, shellPhase);
 
-  const gatePending = shellPhase !== "ready";
+  const gatePending = embedMode?.forceThread ? false : shellPhase !== "ready";
   const showPortalChrome = gatePending && (shellPhase === "loading" || shellPhase === "exiting");
   const hideLandingHero = isLanding && gatePending && (shellPhase === "loading" || shellPhase === "exiting");
   const gatePortalTarget =
@@ -4239,13 +4521,16 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
     </div>
   );
 
-  return (
-    <ChatLabPreviewProvider key={conversationId} conversationId={conversationId}>
-      <ImageViewProvider>
+  const chatLabShell = (
+    <ImageViewProvider>
       <ChatLabWorkspaceActiveRootBridge activeRootRef={activeRootRef} />
       <ChatLabPreviewContextBridge previewSnapshotRef={previewSnapshotRef} />
-      <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
-      <ChatLabAutoLinkPreview conversationId={conversationId} messages={messages} />
+      {!embedMode?.forceThread ? (
+        <>
+          <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
+          <ChatLabAutoLinkPreview conversationId={conversationId} messages={messages} />
+        </>
+      ) : null}
       <ChatLabSidebarActionRunner
         conversationId={conversationId}
         messages={messages}
@@ -4257,6 +4542,8 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
           <div
             className={cn(
               "chat-lab",
+              embedMode?.forceThread && "chat-lab--embed",
+              embedMode?.className,
               isLanding && "chat-lab--landing",
               gatePending && "chat-lab--gate-pending",
               isLanding && landingRevealReady && "chat-lab--gate-revealed",
@@ -4389,6 +4676,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
             />
           </div>
         </div>
+        {!embedMode?.hidePreviewDock ? (
         <ChatLabPreviewDock
           extension={
             orchestrationMode &&
@@ -4433,11 +4721,21 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
               : null
           }
         />
+        ) : null}
         {config?.chatLabRawTraceEnabled ? (
           <ChatLabRawTraceFloatPanel rounds={rawTraceRounds} onClear={clearRawTraceRounds} />
         ) : null}
       </div>
-      </ImageViewProvider>
+    </ImageViewProvider>
+  );
+
+  if (webExploreEmbed) {
+    return chatLabShell;
+  }
+
+  return (
+    <ChatLabPreviewProvider key={conversationId} conversationId={conversationId}>
+      {chatLabShell}
     </ChatLabPreviewProvider>
   );
 }
@@ -4837,15 +5135,7 @@ function GapToolActivityPanel({
   nested = false,
   collapseWhenIdle = true,
 }) {
-  const visibleSegments = useMemo(
-    () =>
-      segments.filter((s) => {
-        if (s.kind !== "tool") return true;
-        const row = toolMap.get(s.refId);
-        return !isSidebarAutomationToolRow(row);
-      }),
-    [segments, toolMap],
-  );
+  const visibleSegments = useMemo(() => segments, [segments]);
   const [open, setOpen] = useState(() => !keepCollapsed && Boolean(streaming));
   const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
@@ -5049,7 +5339,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
     <div className="chat-lab__assistant-timeline">
       {visibleParts.map((p, ri) => {
         if (p.kind === "text") {
-          const body = String(p.body ?? "");
+          const body = stripSidebarActionFences(String(p.body ?? ""));
           if (!body.trim()) return null;
           if (plainText) {
             return (
@@ -5483,7 +5773,7 @@ function ToolRow({ row, t, enterRegistryRef, disableEnterAnim = false }) {
  * }} props
  */
 function ToolChainPanel({ rows, t, streaming, keepCollapsed = false }) {
-  const visibleRows = useMemo(() => filterSidebarAutomationToolRows(rows), [rows]);
+  const visibleRows = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
   const [open, setOpen] = useState(() => !keepCollapsed && Boolean(streaming));
   const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
@@ -6373,7 +6663,9 @@ const MessageBubble = memo(function MessageBubble({
   if (isUser && isSidebarAutomationInternalUserMessage(String(message.content ?? ""))) return null;
 
   const sidebarAutomationPending =
-    !isUser && isSidebarAutomationCarrierMessage(message, Boolean(message.streaming));
+    !isUser &&
+    isSidebarAutomationCarrierMessage(message, Boolean(message.streaming)) &&
+    !(Array.isArray(message.toolTrace) && message.toolTrace.some((r) => isSidebarAutomationToolRow(r)));
 
   const orchTimelineActive = Boolean(orchestrationRun?.status);
   if (
@@ -6435,9 +6727,7 @@ const MessageBubble = memo(function MessageBubble({
     if (message.streaming) setThinkOpen(true);
   }, [message.streaming]);
 
-  const toolRows = filterSidebarAutomationToolRows(
-    Array.isArray(message.toolTrace) ? message.toolTrace : [],
-  );
+  const toolRows = Array.isArray(message.toolTrace) ? message.toolTrace : [];
   const activityRows = Array.isArray(message.activityLog) ? message.activityLog : [];
 
   const streamingBusyLabel = useMemo(
@@ -6783,9 +7073,9 @@ const MessageBubble = memo(function MessageBubble({
           </div>
         ) : (
           <div className="chat-lab__md">
-            {message.content ? (
+            {stripSidebarActionFences(String(message.content ?? "")) ? (
               <ChatLabMarkdownContent
-                source={String(message.content ?? "")}
+                source={stripSidebarActionFences(String(message.content ?? ""))}
                 components={mdComponents}
               />
             ) : showTyping ? (

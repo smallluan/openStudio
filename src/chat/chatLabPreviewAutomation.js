@@ -2,6 +2,7 @@ import { captureSidebarPreviewSnapshot, composeChatLabPreviewContextBlock } from
 
 /** @typedef {{
  *   action: string;
+ *   ref?: string;
  *   selector?: string;
  *   text?: string;
  *   mode?: string;
@@ -29,8 +30,11 @@ import { captureSidebarPreviewSnapshot, composeChatLabPreviewContextBlock } from
  *   dragSteps?: number;
  * }} SidebarAutomationStep */
 
+/** @typedef {import("./chatLabPreviewSnapshot.js").SidebarPreviewInteractiveElement} SidebarPreviewInteractiveElement */
+
 export const SIDEBAR_AUTOMATION_STEP_INTERVAL_MS = 500;
-export const SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN = 100;
+/** Short batches only — observe→act loop continues via client handoff turns. */
+export const SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN = 5;
 
 const RETRYABLE_STEP_ERRORS = new Set(["element_not_found"]);
 const STEP_RETRY_DELAYS_MS = [800, 1200, 1800];
@@ -104,6 +108,7 @@ export function normalizeAutomationSteps(raw, opts = {}) {
     if (!action || action === "verify") continue;
     /** @type {SidebarAutomationStep} */
     const step = { action };
+    if (typeof row.ref === "string" && row.ref.trim()) step.ref = row.ref.trim();
     if (typeof row.selector === "string" && row.selector.trim()) step.selector = row.selector.trim();
     const text = normalizeAutomationStepText(row.text);
     if (text !== undefined) step.text = text;
@@ -113,6 +118,20 @@ export function normalizeAutomationSteps(raw, opts = {}) {
     }
     if (typeof row.placeholder === "string" && row.placeholder.trim()) step.placeholder = row.placeholder.trim();
     if (typeof row.label === "string" && row.label.trim()) step.label = row.label.trim();
+    // Models often misuse `target`: ref id (e12) or natural-language guess.
+    if (typeof row.target === "string" && row.target.trim()) {
+      const target = row.target.trim();
+      if (!step.ref && /^e\d+$/i.test(target)) {
+        step.ref = target.toLowerCase();
+      } else if (!step.label) {
+        step.label = target;
+      }
+    }
+    // Same for label mistakenly set to a ref id.
+    if (!step.ref && step.label && /^e\d+$/i.test(step.label)) {
+      step.ref = step.label.toLowerCase();
+      delete step.label;
+    }
     if (typeof row.title === "string" && row.title.trim()) step.title = row.title.trim();
     if (typeof row.parentSelector === "string" && row.parentSelector.trim()) {
       step.parentSelector = row.parentSelector.trim();
@@ -122,7 +141,12 @@ export function normalizeAutomationSteps(raw, opts = {}) {
     if (typeof row.ms === "number" && Number.isFinite(row.ms)) step.ms = Math.max(0, Math.min(15000, row.ms));
     if (typeof row.amount === "number" && Number.isFinite(row.amount)) step.amount = row.amount;
     if (typeof row.scroll === "boolean") step.scroll = row.scroll;
-    if (typeof row.toSelector === "string" && row.toSelector.trim()) step.toSelector = row.toSelector.trim();
+    if (typeof row.toSelector === "string" && row.toSelector.trim()) {
+      step.toSelector = row.toSelector.trim();
+    } else if (typeof row.toRef === "string" && row.toRef.trim()) {
+      // resolved later via resolveAutomationStepRefs
+      step.toSelector = `__ref__:${row.toRef.trim()}`;
+    }
     if (typeof row.button === "number" && Number.isFinite(row.button)) {
       step.button = Math.max(0, Math.min(2, Math.floor(row.button)));
     }
@@ -148,6 +172,41 @@ export function normalizeAutomationSteps(raw, opts = {}) {
     if (out.length >= maxSteps) break;
   }
   return out;
+}
+
+/**
+ * Resolve inventory `ref` / `toRef` into concrete selectors from the latest snapshot.
+ * @param {SidebarAutomationStep[]} steps
+ * @param {SidebarPreviewInteractiveElement[] | undefined | null} elements
+ * @returns {SidebarAutomationStep[]}
+ */
+export function resolveAutomationStepRefs(steps, elements) {
+  const list = Array.isArray(steps) ? steps : [];
+  const inventory = Array.isArray(elements) ? elements : [];
+  /** @type {Map<string, SidebarPreviewInteractiveElement>} */
+  const byRef = new Map();
+  for (const el of inventory) {
+    if (el?.ref) byRef.set(el.ref, el);
+  }
+  return list.map((step) => {
+    /** @type {SidebarAutomationStep} */
+    const next = { ...step };
+    if (next.ref) {
+      const hit = byRef.get(next.ref);
+      if (hit?.selector) {
+        if (!next.selector) next.selector = hit.selector;
+        if (!next.label && hit.name) next.label = hit.name;
+        if (!next.placeholder && hit.placeholder) next.placeholder = hit.placeholder;
+      }
+    }
+    if (typeof next.toSelector === "string" && next.toSelector.startsWith("__ref__:")) {
+      const toRef = next.toSelector.slice("__ref__:".length);
+      const hit = byRef.get(toRef);
+      if (hit?.selector) next.toSelector = hit.selector;
+      else delete next.toSelector;
+    }
+    return next;
+  });
 }
 
 /**
@@ -1079,10 +1138,15 @@ async function runStepOnWebviewWithRetry(wv, step) {
  *     results: Array<Record<string, unknown>>;
  *   }) => void | Promise<void>;
  *   stopOnFailure?: boolean;
+ *   forceSidebar?: boolean;
+ *   elements?: SidebarPreviewInteractiveElement[];
  * }} input
  */
 export async function runSidebarPreviewAutomation(input) {
-  const steps = normalizeAutomationSteps(input.steps);
+  const steps = resolveAutomationStepRefs(
+    normalizeAutomationSteps(input.steps),
+    /** @type {SidebarPreviewInteractiveElement[] | undefined} */ (input.elements),
+  );
   if (!steps.length) return { ok: false, error: "no_steps", steps: [] };
   const stopOnFailure = input.stopOnFailure !== false;
 
@@ -1117,6 +1181,7 @@ export async function runSidebarPreviewAutomation(input) {
         previewTabs: input.previewTabs,
         activePreviewTabId: input.activePreviewTabId,
         artifactsPanel: input.artifactsPanel,
+        forceSidebar: input.forceSidebar,
       });
       const block = input.t ? composeChatLabPreviewContextBlock(input.t, snap) : "";
       results.push({

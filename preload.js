@@ -117,6 +117,13 @@ contextBridge.exposeInMainWorld("studioBridge", {
     return () => ipcRenderer.removeListener(WEBVIEW_DEVTOOLS_CHAN, wrapped);
   },
   showSystemNotification: (payload) => ipcRenderer.invoke("studio:showSystemNotification", payload),
+  onSidebarActionToolRequest: (listener) => {
+    const wrapped = (_e, data) => listener(data);
+    ipcRenderer.on("studio:sidebarActionToolRequest", wrapped);
+    return () => ipcRenderer.removeListener("studio:sidebarActionToolRequest", wrapped);
+  },
+  respondSidebarActionTool: (payload) =>
+    ipcRenderer.invoke("studio:sidebarActionToolRespond", payload && typeof payload === "object" ? payload : {}),
 });
 
 ipcRenderer.on("openstudio-notification-click", (_e, data) => {

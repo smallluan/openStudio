@@ -150,9 +150,14 @@ function priorTextBeforeIndex(list, textIdx) {
 
 /**
  * Text that belongs in the last timeline prose block after earlier text segments.
+ * Returns `null` when the tail cannot be derived safely — callers must keep the
+ * existing segment body (never fall back to the full cumulative canonical string,
+ * which causes mid-stream "prior + tool + prior+new" flicker).
+ *
  * @param {AssistantTimelineSegment[]} list
  * @param {number} textIdx
  * @param {string} canonical
+ * @returns {string | null}
  */
 function canonicalTailForLastTextSegment(list, textIdx, canonical) {
   const c = typeof canonical === "string" ? canonical : "";
@@ -161,20 +166,40 @@ function canonicalTailForLastTextSegment(list, textIdx, canonical) {
   const p = priorTextBeforeIndex(list, textIdx).trimEnd();
   if (!p) return c;
   if (c.startsWith(p)) {
-    const tail = c.slice(p.length).trimStart();
-    return tail;
+    return c.slice(p.length).trimStart();
+  }
+
+  // Tolerant match: whitespace drift between streamed segments and content_sync.
+  const normC = normalizeCompareText(c);
+  const normP = normalizeCompareText(p);
+  if (normP && normC.startsWith(normP)) {
+    // Map normalized prefix length back onto raw canonical as best-effort tail.
+    let rawIdx = 0;
+    let normIdx = 0;
+    while (rawIdx < c.length && normIdx < normP.length) {
+      const ch = c[rawIdx];
+      if (/\s/.test(ch)) {
+        rawIdx += 1;
+        continue;
+      }
+      normIdx += 1;
+      rawIdx += 1;
+    }
+    while (rawIdx < c.length && /\s/.test(c[rawIdx])) rawIdx += 1;
+    return c.slice(rawIdx).trimStart();
   }
 
   const pin = p.slice(0, Math.min(220, p.length)).trim();
   if (pin.length >= 40) {
     const idx = c.indexOf(pin);
     if (idx >= 0) {
-      const tail = c.slice(idx + p.length).trimStart();
+      const tail = c.slice(idx + pin.length).trimStart();
+      // Prefer pin-length slice; full `p.length` can overshoot when whitespace differs.
       if (tail) return tail;
     }
   }
 
-  return c;
+  return null;
 }
 
 /**
@@ -256,31 +281,38 @@ export function reconcileTimelineWithCanonicalText(list, canonical) {
       out.push(seg);
       continue;
     }
-    {
-      const prior = priorTextBeforeIndex(list, i);
-      const normPrior = normalizeCompareText(prior);
-      const normBody = normalizeCompareText(body);
-      const normCanon = normalizeCompareText(c);
-      const compactPrior = normalizeCompactText(prior);
-      const compactCanon = normalizeCompactText(c);
-      const hasInterleavingBefore = list.slice(0, i).some((s) => s?.kind !== "text");
-      // Interleaved timeline already covers canonical prose; drop terminal full-body echo.
-      if (
-        hasInterleavingBefore &&
-        normPrior &&
-        normBody &&
-        normCanon &&
-        normBody === normCanon &&
-        (normCanon.includes(normPrior) || (compactPrior && compactCanon.includes(compactPrior)))
-      ) {
-        continue;
-      }
-    }
+    const priorForGuard = priorTextBeforeIndex(list, i);
+    const hasInterleavingBefore = list.slice(0, i).some((s) => s?.kind !== "text");
     const tail = canonicalTailForLastTextSegment(list, i, c);
+    if (tail == null) {
+      // Unresolvable tail (common mid-stream while tools interleave). Keep the
+      // post-tool segment as streamed — do not expand it to full canonical.
+      out.push(seg);
+      continue;
+    }
     if (typeof tail === "string" && !tail.trim()) {
       // Earlier text segments already cover canonical prose; avoid emitting
       // one final full-body text block that duplicates the whole narrative.
       continue;
+    }
+    if (hasInterleavingBefore && priorForGuard.trim()) {
+      const normTail = normalizeCompareText(tail);
+      const normPrior = normalizeCompareText(priorForGuard);
+      const normCanon = normalizeCompareText(c);
+      const normBody = normalizeCompareText(body);
+      // Guard: never write cumulative body into the post-tool text slot.
+      if (normTail === normCanon || (normPrior.length >= 12 && normTail.includes(normPrior))) {
+        out.push(seg);
+        continue;
+      }
+      // Last slot was polluted with full cumulative prose — replace with true tail.
+      if (
+        normBody === normCanon ||
+        (normPrior.length >= 12 && normBody.includes(normPrior) && body.length > tail.length)
+      ) {
+        out.push({ kind: "text", body: tail });
+        continue;
+      }
     }
     out.push({
       kind: "text",
