@@ -1,10 +1,11 @@
-import { BarChart3, Cpu, Radio, Settings } from "lucide-react";
+import { BarChart3, Cpu, KeyRound, Radio, Settings } from "lucide-react";
 import { Menu } from "@open-studio/udesign";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import ChannelSettingsSection from "../components/settings/ChannelSettingsSection.jsx";
 import GeneralSettingsSection from "../components/settings/GeneralSettingsSection.jsx";
 import TokenUsageSettingsSection from "../components/settings/TokenUsageSettingsSection.jsx";
+import WebAccountSettingsSection from "../components/settings/WebAccountSettingsSection.jsx";
 import ModelProfilesPanel from "../components/shell/ModelProfilesPanel.jsx";
 import { SETTINGS_SECTION_IDS } from "../components/settings/settingsSectionIds.js";
 import { ModelSettingsProvider } from "../context/ModelSettingsContext.jsx";
@@ -16,6 +17,7 @@ import { cn } from "../ui/cn.js";
 
 const SETTINGS_SECTION_ICONS = {
   general: Settings,
+  accounts: KeyRound,
   channels: Radio,
   usage: BarChart3,
   model: Cpu,
@@ -88,6 +90,12 @@ export default function SettingsPage() {
             {section === "channels" ? (
               <div className="settings-sheet__section settings-sheet__section--narrow">
                 <ChannelSettingsSection />
+              </div>
+            ) : null}
+
+            {section === "accounts" ? (
+              <div className="settings-sheet__section settings-sheet__section--wide">
+                <WebAccountSettingsSection />
               </div>
             ) : null}
 

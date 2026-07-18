@@ -1,5 +1,5 @@
 import { Button } from "@open-studio/udesign";
-import { Tooltip } from "tdesign-react";
+import { Tag, Tooltip } from "tdesign-react";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import { useCallback } from "react";
 import { cn } from "../../ui/cn.js";
@@ -26,6 +26,7 @@ function isRailItemActive(location, item) {
  *     to?: string;
  *     end?: boolean;
  *     state?: unknown;
+ *     badge?: string;
  *     isActive?: (loc: import("react-router-dom").Location) => boolean;
  *   }>;
  * }} props
@@ -70,6 +71,11 @@ export default function PrimaryRailMenu({ collapsed = false, items }) {
               <span className="app-rail-nav-item__inner">
                 {item.icon}
                 <span className="app-rail-nav-item__label">{item.label}</span>
+                {item.badge ? (
+                  <Tag size="small" theme="success" variant="light" className="app-rail-nav-item__badge">
+                    {item.badge}
+                  </Tag>
+                ) : null}
               </span>
             )}
           </Button>

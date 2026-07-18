@@ -13,6 +13,7 @@ import {
   tableChartSpecToDsl,
 } from "../../chat/chatLabMarkdownTableChart.js";
 import { useI18n } from "../../context/I18nContext.jsx";
+import { cn } from "../../ui/cn.js";
 import { ChatLabImageGrid } from "./ChatLabImageGrid.jsx";
 import ChatLabChartBlock from "./ChatLabChartBlock.jsx";
 import ChatLabDirectoryTree from "./ChatLabDirectoryTree.jsx";
@@ -49,7 +50,7 @@ export default function ChatLabMarkdownContent({ source, className, components }
   if (!blocks.length) return null;
 
   return (
-    <div className={className}>
+    <div className={cn("chat-lab__md-content", className)}>
       {blocks.map((block, idx) => {
         if (block.kind === "gallery") {
           return <ChatLabImageGrid key={`gallery-${idx}`} images={block.images} />;

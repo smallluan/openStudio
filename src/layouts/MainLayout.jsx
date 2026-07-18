@@ -101,6 +101,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
         to: "/explore",
         label: t("nav.webExplore"),
         icon: <NavIcon icon={Compass} />,
+        badge: "Lab",
       },
     ],
     [t],

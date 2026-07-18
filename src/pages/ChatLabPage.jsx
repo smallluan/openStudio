@@ -1062,6 +1062,9 @@ export default function ChatLabPage() {
  *     pageTitle?: string;
  *     webviewRef?: import("react").RefObject<HTMLElement | null>;
  *     iframeRef?: import("react").RefObject<HTMLIFrameElement | null>;
+ *     chatFloatOpen?: boolean;
+ *     onToggleFloatOpen?: () => void;
+ *     onStartFloatDrag?: (e: import("react").PointerEvent<HTMLElement>) => void;
  *     className?: string;
  *   };
  * }} props
@@ -3947,6 +3950,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
   const isLandingRaw = !messages.some((m) => m.messageKind !== "group_member_event");
   const isLanding = embedMode?.forceThread ? false : isLandingRaw;
+  const showWebExploreFloatToggle =
+    Boolean(embedMode?.webExploreMode) && typeof embedMode?.onToggleFloatOpen === "function";
   useEffect(() => {
     onWorkspaceEmptySessionChange(isLandingRaw);
   }, [isLandingRaw, onWorkspaceEmptySessionChange]);
@@ -4601,6 +4606,10 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                   ]}
                   onParticipantsChange={handleParticipantsChange}
                   participantsDisabled={gatewayStreaming || orchestrationRunnerActive}
+                  showFloatToggle={showWebExploreFloatToggle}
+                  floatOpen={embedMode?.chatFloatOpen !== false}
+                  onToggleFloatOpen={embedMode?.onToggleFloatOpen}
+                  onStartFloatDrag={embedMode?.onStartFloatDrag}
                 />
                 <div className="chat-lab__landing-mid">
                   <ChatLabHero
@@ -4626,6 +4635,10 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                   ]}
                   onParticipantsChange={handleParticipantsChange}
                   participantsDisabled={gatewayStreaming || orchestrationRunnerActive}
+                  showFloatToggle={showWebExploreFloatToggle}
+                  floatOpen={embedMode?.chatFloatOpen !== false}
+                  onToggleFloatOpen={embedMode?.onToggleFloatOpen}
+                  onStartFloatDrag={embedMode?.onStartFloatDrag}
                 >
                   <ChatLabMessageList
                     key={conversationId}
@@ -5440,6 +5453,27 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
     return last;
   }, [visibleParts]);
 
+  const gapHasVisibleTextAfter = useMemo(() => {
+    /** @type {Map<number, boolean>} */
+    const out = new Map();
+    for (let i = 0; i < visibleParts.length; i++) {
+      const part = visibleParts[i];
+      if (part.kind !== "toolActivityGap") continue;
+      let hasTextAfter = false;
+      for (let j = i + 1; j < visibleParts.length; j++) {
+        const next = visibleParts[j];
+        if (next.kind !== "text") continue;
+        const nextBody = stripSidebarActionFences(String(next.body ?? ""));
+        if (nextBody.trim()) {
+          hasTextAfter = true;
+          break;
+        }
+      }
+      out.set(i, hasTextAfter);
+    }
+    return out;
+  }, [visibleParts]);
+
   return (
     <div className="chat-lab__assistant-timeline">
       {visibleParts.map((p, ri) => {
@@ -5486,7 +5520,10 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
             </div>
           );
         }
-        const panelStreaming = Boolean(streaming) && ri === lastGapPartIdx;
+        const panelStreaming =
+          Boolean(streaming) &&
+          ri === lastGapPartIdx &&
+          !gapHasVisibleTextAfter.get(ri);
         return (
           <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--gap-chain">
             <GapToolActivityPanel

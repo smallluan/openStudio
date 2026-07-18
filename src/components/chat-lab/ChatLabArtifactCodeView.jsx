@@ -25,7 +25,8 @@ function ChatLabArtifactCodeViewInner({ text, language = "", className }) {
   const lang = String(language ?? "").trim();
 
   const analysis = useMemo(() => analyzeArtifactSource(deferredText), [deferredText]);
-  const useHighlight = Boolean(lang) && !analysis.isLarge;
+  const forcePlainByLang = lang === "markdown" || lang === "md" || lang === "mdx";
+  const useHighlight = Boolean(lang) && !analysis.isLarge && !forcePlainByLang;
 
   if (!lang || !useHighlight) {
     return (
@@ -46,7 +47,7 @@ function ChatLabArtifactCodeViewInner({ text, language = "", className }) {
         language={lang}
         style={syntaxStyle}
         showLineNumbers
-        wrapLongLines
+        lineProps={{ style: { background: "transparent" } }}
         customStyle={{
           margin: 0,
           padding: "0.75rem",
@@ -60,9 +61,9 @@ function ChatLabArtifactCodeViewInner({ text, language = "", className }) {
         codeTagProps={{
           className: "chat-lab-artifact-code__code",
           style: {
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-            overflowWrap: "anywhere",
+            whiteSpace: "pre",
+            wordBreak: "normal",
+            overflowWrap: "normal",
           },
         }}
         lineNumberStyle={{
@@ -70,6 +71,7 @@ function ChatLabArtifactCodeViewInner({ text, language = "", className }) {
           paddingRight: "0.65rem",
           userSelect: "none",
           opacity: 0.55,
+          background: "transparent",
         }}
       >
         {deferredText}

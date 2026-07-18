@@ -22,6 +22,10 @@ import ChatLabConvHeader from "./ChatLabConvHeader.jsx";
  *   participantIds?: string[];
  *   onParticipantsChange?: (ids: string[]) => void;
  *   participantsDisabled?: boolean;
+ *   showFloatToggle?: boolean;
+ *   floatOpen?: boolean;
+ *   onToggleFloatOpen?: () => void;
+ *   onStartFloatDrag?: (e: import("react").PointerEvent<HTMLElement>) => void;
  *   children: import("react").ReactNode;
  * }} props
  */
@@ -36,6 +40,10 @@ export default function ChatLabThreadNav({
   participantIds = [],
   onParticipantsChange,
   participantsDisabled = false,
+  showFloatToggle = false,
+  floatOpen = true,
+  onToggleFloatOpen,
+  onStartFloatDrag,
   children,
 }) {
   const { t } = useI18n();
@@ -116,6 +124,10 @@ export default function ChatLabThreadNav({
     participantIds,
     onParticipantsChange,
     participantsDisabled,
+    showFloatToggle,
+    floatOpen,
+    onToggleFloatOpen,
+    onStartFloatDrag,
   };
 
   return (

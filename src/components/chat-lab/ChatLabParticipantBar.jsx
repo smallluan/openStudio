@@ -107,7 +107,7 @@ export default function ChatLabParticipantBar({
       )}
     >
       <div id={panelId} className="chat-lab__members-popover-inner p-4">
-        <div className="chat-lab__members-grid flex flex-wrap gap-4">
+        <div className="chat-lab__members-grid grid grid-cols-3 gap-x-4 gap-y-3 justify-items-center">
           {participants.map((a) => (
             <div key={a.id} className="chat-lab__members-grid-item relative group flex flex-col items-center w-16">
               <div className="relative">
@@ -140,23 +140,33 @@ export default function ChatLabParticipantBar({
               </span>
             </div>
           ))}
-          <Button
-            variant="text"
-            block
+          <button
             type="button"
-            className="chat-lab__members-grid-add relative flex flex-col items-center w-16 group cursor-pointer"
+            className={cn(
+              "chat-lab__members-grid-add relative flex w-16 flex-col items-center",
+              "group cursor-pointer focus-visible:outline-none",
+            )}
             disabled={disabled}
             aria-haspopup="dialog"
             aria-expanded={transferOpen}
+            aria-label={t("chatLab.participantsAdd")}
+            title={t("chatLab.participantsAdd")}
             onClick={() => setTransferOpen(true)}
           >
-            <div className="w-10 h-10 rounded-lg border border-dashed border-[var(--os-border)] flex items-center justify-center bg-[var(--os-bg-elevated)] group-hover:border-[var(--os-accent)] group-hover:bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)] transition-colors">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden className="text-[var(--os-text-muted)] group-hover:text-[var(--os-accent)]">
+            <div className="h-10 w-10 rounded-lg border border-dashed border-[var(--os-border)] bg-[var(--os-bg-elevated)] flex items-center justify-center transition-colors group-hover:border-[var(--os-accent)] group-hover:bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)] group-focus-visible:border-[var(--os-accent)] group-focus-visible:bg-[color-mix(in_srgb,var(--os-accent)_10%,transparent)]">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden
+                className="text-[var(--os-text-muted)] transition-colors group-hover:text-[var(--os-accent)] group-focus-visible:text-[var(--os-accent)]"
+              >
                 <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </div>
-            <span className="mt-1.5 text-xs text-center text-[var(--os-text-muted)]">添加</span>
-          </Button>
+            <span className="mt-1.5 text-xs text-center text-[var(--os-text-muted)]">{t("chatLab.participantsAdd")}</span>
+          </button>
         </div>
       </div>
     </div>

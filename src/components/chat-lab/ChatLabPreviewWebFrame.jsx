@@ -90,11 +90,17 @@ export default function ChatLabPreviewWebFrame({
   const webviewRef = useRef(/** @type {HTMLElement | null} */ (null));
   const shellRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const onNavigateRef = useRef(onNavigate);
+  const lastRequestedHttpUrlRef = useRef("");
+  const failRecoverRef = useRef(
+    /** @type {{ url: string; count: number; remounted: boolean }} */ ({ url: "", count: 0, remounted: false }),
+  );
   onNavigateRef.current = onNavigate;
-  const mountKeyRef = useRef(mountKey);
+  const [recoverNonce, setRecoverNonce] = useState(0);
+  const effectiveMountKey = `${mountKey}:${recoverNonce}`;
+  const mountKeyRef = useRef(effectiveMountKey);
   const mountSrcRef = useRef(src);
-  if (mountKeyRef.current !== mountKey) {
-    mountKeyRef.current = mountKey;
+  if (mountKeyRef.current !== effectiveMountKey) {
+    mountKeyRef.current = effectiveMountKey;
     mountSrcRef.current = src;
   }
   const [webviewNode, setWebviewNode] = useState(/** @type {HTMLElement | null} */ (null));
@@ -102,6 +108,11 @@ export default function ChatLabPreviewWebFrame({
   const [failed, setFailed] = useState(false);
   const [failDetail, setFailDetail] = useState("");
   const [canGoBack, setCanGoBack] = useState(false);
+
+  useEffect(() => {
+    const next = String(src ?? "").trim();
+    if (/^https?:\/\//i.test(next)) lastRequestedHttpUrlRef.current = next;
+  }, [src]);
 
   const focusWebview = useCallback(() => {
     const node = webviewRef.current;
@@ -156,7 +167,7 @@ export default function ChatLabPreviewWebFrame({
     setFailed(false);
     setFailDetail("");
     setCanGoBack(false);
-  }, [mountKey]);
+  }, [effectiveMountKey]);
 
   useEffect(() => {
     if (!electronWebview || !webviewNode) return;
@@ -178,13 +189,46 @@ export default function ChatLabPreviewWebFrame({
       }
     };
 
-    /** @param {Event & { isMainFrame?: boolean; errorDescription?: string; errorCode?: number }} e */
+    /** @param {Event & { isMainFrame?: boolean; errorDescription?: string; errorCode?: number; validatedURL?: string }} e */
     const onFailLoad = (e) => {
-      if (disposed || e.isMainFrame === false) return;
+      if (disposed) return;
       const code = Number(e.errorCode);
       if (isBenignWebviewLoadError(code)) return;
+      const failedUrl = String(e.validatedURL ?? "").trim();
+      const fromChromeError = failedUrl.startsWith("chrome-error://");
+      const shouldTreatAsMain =
+        e.isMainFrame !== false ||
+        fromChromeError ||
+        /^https?:\/\//i.test(failedUrl);
+      if (!shouldTreatAsMain) return;
+
+      if (fromChromeError) {
+        const target = String(lastRequestedHttpUrlRef.current ?? "").trim();
+        if (target) {
+          if (failRecoverRef.current.url !== target) {
+            failRecoverRef.current = { url: target, count: 0, remounted: false };
+          }
+          if (failRecoverRef.current.count < 1) {
+            failRecoverRef.current.count += 1;
+            // Chromium sometimes stays in chrome-error:// and blocks in-page redirects.
+            // Retry one explicit top-level load to recover from transient failures.
+            window.setTimeout(() => {
+              if (disposed) return;
+              try {
+                wv.loadURL(target);
+              } catch {
+                /* ignore */
+              }
+            }, 120);
+          } else if (!failRecoverRef.current.remounted) {
+            failRecoverRef.current.remounted = true;
+            // If a direct reload still lands on chrome-error://, recreate the guest once.
+            setRecoverNonce((v) => v + 1);
+          }
+        }
+      }
       setFailed(true);
-      setFailDetail(String(e.errorDescription || e.errorCode || ""));
+      setFailDetail(String(e.errorDescription || e.errorCode || failedUrl || ""));
     };
 
     /** @param {Event} _e */
@@ -201,6 +245,10 @@ export default function ChatLabPreviewWebFrame({
       if (disposed) return;
       syncWebviewBackState();
       const url = String(e.url ?? "").trim();
+      if (/^https?:\/\//i.test(url)) {
+        lastRequestedHttpUrlRef.current = url;
+        failRecoverRef.current = { url, count: 0, remounted: false };
+      }
       if (url) onNavigateRef.current?.(url);
     };
 
@@ -227,7 +275,7 @@ export default function ChatLabPreviewWebFrame({
       wv.removeEventListener("did-navigate-in-page", onDidNavigate);
       unsubscribeDevTools?.();
     };
-  }, [electronWebview, mountKey, syncWebviewBackState, webviewNode]);
+  }, [electronWebview, effectiveMountKey, syncWebviewBackState, webviewNode]);
 
   /**
    * Parent `src` updates (address bar / window.open IPC) must not rewrite the `src` attribute
@@ -263,7 +311,7 @@ export default function ChatLabPreviewWebFrame({
     } catch {
       /* ignore */
     }
-  }, [electronWebview, webviewNode, src, mountKey]);
+  }, [electronWebview, webviewNode, src, effectiveMountKey]);
 
   useEffect(() => {
     return () => {
@@ -272,7 +320,7 @@ export default function ChatLabPreviewWebFrame({
         webviewRefFromContext.current = null;
       }
     };
-  }, [mountKey, webviewRefFromContext]);
+  }, [effectiveMountKey, webviewRefFromContext]);
 
   /** Electron `<webview>` ignores flex/% height — pin pixel size to the shell box. */
   useEffect(() => {
@@ -316,7 +364,7 @@ export default function ChatLabPreviewWebFrame({
       wv.removeEventListener("dom-ready", syncSize);
       wv.removeEventListener("did-finish-load", syncSize);
     };
-  }, [electronWebview, webviewNode, mountKey]);
+  }, [electronWebview, webviewNode, effectiveMountKey]);
 
   const frameClass = cn("chat-lab-preview-dock__frame border-0", className);
   const mobileShell = deviceMode === "mobile";
@@ -369,7 +417,7 @@ export default function ChatLabPreviewWebFrame({
                 webviewRefFromContext.current = node;
               }
             }}
-            key={mountKey}
+            key={effectiveMountKey}
             src={mountSrcRef.current}
             partition="persist:openstudio-preview"
             allowpopups="true"
@@ -397,7 +445,7 @@ export default function ChatLabPreviewWebFrame({
           className={frameClass}
           style={IFRAME_FRAME_STYLE}
           title={title}
-          key={mountKey}
+          key={effectiveMountKey}
           src={src}
           sandbox={sandbox ?? WEBVIEW_SANDBOX}
           onError={() => {

@@ -14,6 +14,9 @@ import { ChatLabPageMain } from "../../pages/ChatLabPage.jsx";
  *   webviewRef: import("react").RefObject<HTMLElement | null>;
  *   iframeRef: import("react").RefObject<HTMLIFrameElement | null>;
  *   onNavigate: (url: string) => void;
+ *   floatOpen?: boolean;
+ *   onToggleFloatOpen?: () => void;
+ *   onStartFloatDrag?: (e: import("react").PointerEvent<HTMLElement>) => void;
  *   className?: string;
  * }} props
  */
@@ -24,6 +27,9 @@ export default function ChatLabEmbedConversation({
   webviewRef,
   iframeRef,
   onNavigate,
+  floatOpen = true,
+  onToggleFloatOpen,
+  onStartFloatDrag,
   className,
 }) {
   const conversationIdRef = useRef(newGatewayConversationId());
@@ -63,6 +69,9 @@ export default function ChatLabEmbedConversation({
             pageTitle,
             webviewRef,
             iframeRef,
+            chatFloatOpen: floatOpen,
+            onToggleFloatOpen,
+            onStartFloatDrag,
             className,
           }}
         />

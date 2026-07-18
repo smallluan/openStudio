@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Tooltip } from "tdesign-react";
+import { Tabs, Tooltip } from "tdesign-react";
 import { Button, Input } from "@open-studio/udesign";
 import { Code, ExternalLink, FolderOpen, Monitor, RefreshCw, Smartphone, X } from "lucide-react";
 import ResizableEdge from "../../ui/ResizableEdge.jsx";
@@ -263,20 +263,43 @@ export default function ChatLabPreviewDock({ extension = null }) {
       previewTabItems.length > 0,
   );
 
+  const previewTabsList = useMemo(
+    () =>
+      previewTabItems.map((tab) => ({
+        value: tab.id,
+        panel: null,
+        label: (
+          <span className="chat-lab-preview-dock__tab-text-ellipsis" title={tab.src || tab.label}>
+            {tab.label}
+          </span>
+        ),
+        removable: true,
+      })),
+    [previewTabItems],
+  );
+
+  const handleAddPreviewTab = useCallback(() => {
+    const ts = Date.now();
+    const url = `about:blank#tab-${ts}`;
+    api?.openIframe?.(url, t("chatLab.previewTabUntitled"), {
+      externalUrl: null,
+      useWebview: false,
+    });
+  }, [api, t]);
+
+  const handleRemovePreviewTab = useCallback(
+    (options) => {
+      const id = String(options?.value ?? "").trim();
+      if (!id) return;
+      api?.closePreviewTab?.(id);
+    },
+    [api],
+  );
+
   const selectedArtifact = useMemo(() => {
     if (!viewArtifacts?.selectedPath) return null;
     return viewArtifacts.files.find((f) => f.path === viewArtifacts.selectedPath) ?? null;
   }, [viewArtifacts]);
-
-  const artifactOps = useMemo(() => {
-    /** @type {Map<string, import("../../chat/chatLabSessionArtifacts.js").ArtifactOp>} */
-    const map = new Map();
-    for (const f of viewArtifacts?.files ?? []) {
-      const key = String(f.path ?? "").replace(/\\/g, "/").toLowerCase();
-      if (key) map.set(key, f.op);
-    }
-    return map;
-  }, [viewArtifacts?.files]);
 
   const previewTitle = useMemo(() => {
     if (viewExtension?.title) return viewExtension.title;
@@ -566,52 +589,18 @@ export default function ChatLabPreviewDock({ extension = null }) {
         ) : null}
       </header>
       {showPreviewTabs ? (
-        <div
-          className="chat-lab-preview-dock__tabs flex shrink-0 items-end gap-0.5 overflow-x-auto border-b px-1.5 pt-1.5 pb-0"
-          role="tablist"
-          aria-label={t("chatLab.previewTabsAria")}
-        >
-          {previewTabItems.map((tab) => {
-            const active = tab.id === api?.activePreviewTabId;
-            return (
-              <div
-                key={tab.id}
-                className={cn(
-                  "chat-lab-preview-dock__tab-card flex items-center gap-1",
-                  active && "chat-lab-preview-dock__tab-card--active",
-                )}
-              >
-                <Button
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  aria-label={tab.label}
-                  variant="text"
-                  className="chat-lab-preview-dock__tab-label flex-1 min-w-0 truncate text-left"
-                  onClick={() => api?.activatePreviewTab?.(tab.id)}
-                  title={tab.src || tab.label}
-                >
-                  {tab.label}
-                </Button>
-                <Button
-                  type="button"
-                  role="tab"
-                  variant="text"
-                  shape="square"
-                  size="small"
-                  className="chat-lab-preview-dock__tab-close shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    api?.closePreviewTab?.(tab.id);
-                  }}
-                  title={t("chatLab.previewTabClose")}
-                  aria-label={t("chatLab.previewTabClose")}
-                >
-                  <X size={12} strokeWidth={2} aria-hidden />
-                </Button>
-              </div>
-            );
-          })}
+        <div className="chat-lab-preview-dock__tabs shrink-0 border-b px-1.5 pt-1.5 pb-0">
+          <Tabs
+            theme="card"
+            size="medium"
+            addable
+            value={api?.activePreviewTabId}
+            list={previewTabsList}
+            onChange={(value) => api?.activatePreviewTab?.(String(value))}
+            onAdd={handleAddPreviewTab}
+            onRemove={handleRemovePreviewTab}
+            className="chat-lab-preview-dock__tabs-card"
+          />
         </div>
       ) : null}
 
@@ -639,7 +628,6 @@ export default function ChatLabPreviewDock({ extension = null }) {
                 <ChatLabPreviewFileTree
                   nodes={viewArtifacts.tree}
                   selectedPath={viewArtifacts.selectedPath}
-                  artifactOps={artifactOps}
                   onSelectFile={(path) => api.selectArtifact?.(path)}
                 />
               ) : (

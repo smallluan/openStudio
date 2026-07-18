@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { GripVertical, MessageSquare, Minimize2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { MessageSquare } from "lucide-react";
 import { Button } from "@open-studio/udesign";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
@@ -17,6 +17,7 @@ const MIN_H = 420;
 const MAX_W = 760;
 const MIN_X = 12;
 const MIN_Y = 12;
+const VIEWPORT_GAP = 12;
 const DRAG_THRESHOLD_PX = 6;
 
 /** @param {number} value @param {number} min @param {number} max */
@@ -96,6 +97,7 @@ function writeStoredOpen(open) {
  *   activeUrl: string;
  *   pageTitle: string;
  *   inElectron: boolean;
+ *   boundaryRef?: import("react").RefObject<HTMLElement | null>;
  *   webviewRef: import("react").RefObject<HTMLElement | null>;
  *   iframeRef: import("react").RefObject<HTMLIFrameElement | null>;
  *   onNavigate: (url: string) => void;
@@ -105,6 +107,7 @@ export default function WebExploreChatFloat({
   activeUrl,
   pageTitle,
   inElectron,
+  boundaryRef,
   webviewRef,
   iframeRef,
   onNavigate,
@@ -112,25 +115,38 @@ export default function WebExploreChatFloat({
   const { t } = useI18n();
   const [open, setOpen] = useState(() => readStoredOpen());
   const [panelSize, setPanelSize] = useState(() => readStoredSize() ?? { w: DEFAULT_W, h: DEFAULT_H });
+  const [boundsRect, setBoundsRect] = useState(() => ({
+    left: 0,
+    top: 0,
+    width: Math.max(window.innerWidth, MIN_W + VIEWPORT_GAP * 2),
+    height: Math.max(window.innerHeight, MIN_H + VIEWPORT_GAP * 2),
+  }));
   const [pos, setPos] = useState(() => {
     const stored = readStoredPos();
+    const vw = Math.max(window.innerWidth, MIN_W + VIEWPORT_GAP * 2);
+    const vh = Math.max(window.innerHeight, MIN_H + VIEWPORT_GAP * 2);
     const size = readStoredSize() ?? { w: DEFAULT_W, h: DEFAULT_H };
     if (stored) return stored;
     return {
-      x: Math.max(MIN_X, window.innerWidth - size.w - 28),
-      y: Math.max(MIN_Y, window.innerHeight - size.h - 88),
+      x: Math.max(MIN_X, vw - size.w - 28),
+      y: Math.max(MIN_Y, vh - size.h - 88),
     };
   });
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState(false);
+  const [resizeDirection, setResizeDirection] = useState(
+    /** @type {"n" | "e" | "s" | "w" | "ne" | "nw" | "se" | "sw"} */ ("se"),
+  );
+  const suppressLauncherClickUntilRef = useRef(0);
   const posRef = useRef(pos);
   posRef.current = pos;
   const panelSizeRef = useRef(panelSize);
   panelSizeRef.current = panelSize;
   const dragRef = useRef(
-    /** @type {{ active: boolean; moved: boolean; startX: number; startY: number; baseX: number; baseY: number }} */ ({
+    /** @type {{ active: boolean; moved: boolean; pointerId: number; startX: number; startY: number; baseX: number; baseY: number }} */ ({
       active: false,
       moved: false,
+      pointerId: -1,
       startX: 0,
       startY: 0,
       baseX: 0,
@@ -138,14 +154,42 @@ export default function WebExploreChatFloat({
     }),
   );
   const resizeRef = useRef(
-    /** @type {{ active: boolean; startX: number; startY: number; baseW: number; baseH: number }} */ ({
+    /** @type {{ active: boolean; direction: "n" | "e" | "s" | "w" | "ne" | "nw" | "se" | "sw"; pointerId: number; startX: number; startY: number; baseX: number; baseY: number; baseW: number; baseH: number }} */ ({
       active: false,
+      direction: "se",
+      pointerId: -1,
       startX: 0,
       startY: 0,
+      baseX: 0,
+      baseY: 0,
       baseW: DEFAULT_W,
       baseH: DEFAULT_H,
     }),
   );
+
+  useEffect(() => {
+    const target = boundaryRef?.current;
+    if (!target) return undefined;
+    const syncBounds = () => {
+      const rect = target.getBoundingClientRect();
+      setBoundsRect({
+        left: rect.left,
+        top: rect.top,
+        width: Math.max(rect.width, MIN_W + VIEWPORT_GAP * 2),
+        height: Math.max(rect.height, MIN_H + VIEWPORT_GAP * 2),
+      });
+    };
+    syncBounds();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncBounds) : null;
+    ro?.observe(target);
+    window.addEventListener("resize", syncBounds);
+    window.addEventListener("scroll", syncBounds, true);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", syncBounds);
+      window.removeEventListener("scroll", syncBounds, true);
+    };
+  }, [boundaryRef]);
 
   useEffect(() => {
     writeStoredOpen(open);
@@ -153,10 +197,16 @@ export default function WebExploreChatFloat({
 
   useEffect(() => {
     const clampIntoViewport = () => {
+      const viewW = boundsRect.width;
+      const viewH = boundsRect.height;
       const width = open ? panelSizeRef.current.w : LAUNCHER_W;
       const height = open ? panelSizeRef.current.h : LAUNCHER_H;
-      const maxX = Math.max(MIN_X, window.innerWidth - width - 12);
-      const maxY = Math.max(MIN_Y, window.innerHeight - height - 12);
+      const maxWAvail = Math.max(120, viewW - VIEWPORT_GAP * 2);
+      const maxHAvail = Math.max(120, viewH - VIEWPORT_GAP * 2);
+      const boundedWidth = Math.min(width, maxWAvail);
+      const boundedHeight = Math.min(height, maxHAvail);
+      const maxX = Math.max(MIN_X, viewW - boundedWidth - VIEWPORT_GAP);
+      const maxY = Math.max(MIN_Y, viewH - boundedHeight - VIEWPORT_GAP);
       setPos((prev) => {
         const next = {
           x: clamp(prev.x, MIN_X, maxX),
@@ -166,29 +216,31 @@ export default function WebExploreChatFloat({
         return next;
       });
       setPanelSize((prev) => {
-        const maxH = Math.max(MIN_H, window.innerHeight - 48);
+        const maxW = Math.max(120, viewW - VIEWPORT_GAP * 2);
+        const maxH = Math.max(120, viewH - VIEWPORT_GAP * 2);
+        const minW = Math.min(MIN_W, maxW);
+        const minH = Math.min(MIN_H, maxH);
         const next = {
-          w: clamp(prev.w, MIN_W, Math.min(MAX_W, window.innerWidth - 24)),
-          h: clamp(prev.h, MIN_H, maxH),
+          w: clamp(prev.w, minW, Math.min(MAX_W, maxW)),
+          h: clamp(prev.h, minH, maxH),
         };
         writeStoredSize(next);
         return next;
       });
     };
     clampIntoViewport();
-    window.addEventListener("resize", clampIntoViewport);
-    return () => window.removeEventListener("resize", clampIntoViewport);
-  }, [open]);
+  }, [boundsRect.height, boundsRect.width, open]);
 
   useEffect(() => {
     if (!dragging) return undefined;
     const onMove = (e) => {
       const d = dragRef.current;
       if (!d.active) return;
+      if (d.pointerId >= 0 && e.pointerId !== d.pointerId) return;
       const width = open ? panelSizeRef.current.w : LAUNCHER_W;
       const height = open ? panelSizeRef.current.h : LAUNCHER_H;
-      const maxX = Math.max(MIN_X, window.innerWidth - width - 12);
-      const maxY = Math.max(MIN_Y, window.innerHeight - height - 12);
+      const maxX = Math.max(MIN_X, boundsRect.width - width - VIEWPORT_GAP);
+      const maxY = Math.max(MIN_Y, boundsRect.height - height - VIEWPORT_GAP);
       const nx = clamp(d.baseX + (e.clientX - d.startX), MIN_X, maxX);
       const ny = clamp(d.baseY + (e.clientY - d.startY), MIN_Y, maxY);
       if (!d.moved && Math.hypot(nx - d.baseX, ny - d.baseY) >= DRAG_THRESHOLD_PX) {
@@ -196,8 +248,11 @@ export default function WebExploreChatFloat({
       }
       setPos({ x: nx, y: ny });
     };
-    const onUp = () => {
+    const onUp = (e) => {
+      const d = dragRef.current;
+      if (d.pointerId >= 0 && e.pointerId !== d.pointerId) return;
       dragRef.current.active = false;
+      dragRef.current.pointerId = -1;
       setDragging(false);
       writeStoredPos(posRef.current);
     };
@@ -209,24 +264,63 @@ export default function WebExploreChatFloat({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [dragging, open]);
+  }, [boundsRect.height, boundsRect.width, dragging, open]);
 
   useEffect(() => {
     if (!resizing) return undefined;
     const onMove = (e) => {
       const r = resizeRef.current;
       if (!r.active) return;
-      const maxW = Math.min(MAX_W, window.innerWidth - posRef.current.x - 12);
-      const maxH = Math.max(MIN_H, window.innerHeight - posRef.current.y - 12);
-      const next = {
-        w: clamp(r.baseW + (e.clientX - r.startX), MIN_W, maxW),
-        h: clamp(r.baseH + (e.clientY - r.startY), MIN_H, maxH),
-      };
-      setPanelSize(next);
+      if (r.pointerId >= 0 && e.pointerId !== r.pointerId) return;
+      const dx = e.clientX - r.startX;
+      const dy = e.clientY - r.startY;
+      const maxRight = boundsRect.width - VIEWPORT_GAP;
+      const maxBottom = boundsRect.height - VIEWPORT_GAP;
+      const baseRight = r.baseX + r.baseW;
+      const baseBottom = r.baseY + r.baseH;
+
+      let nextX = r.baseX;
+      let nextY = r.baseY;
+      let nextW = r.baseW;
+      let nextH = r.baseH;
+      const usesEast = r.direction === "e" || r.direction === "ne" || r.direction === "se";
+      const usesWest = r.direction === "w" || r.direction === "nw" || r.direction === "sw";
+      const usesSouth = r.direction === "s" || r.direction === "se" || r.direction === "sw";
+      const usesNorth = r.direction === "n" || r.direction === "ne" || r.direction === "nw";
+      const maxWAvail = Math.max(120, maxRight - r.baseX);
+      const maxHAvail = Math.max(120, maxBottom - r.baseY);
+      const minWLocal = Math.min(MIN_W, maxWAvail);
+      const minHLocal = Math.min(MIN_H, maxHAvail);
+
+      if (usesEast) {
+        nextW = clamp(r.baseW + dx, minWLocal, Math.min(MAX_W, maxWAvail));
+      }
+      if (usesWest) {
+        const maxWFromAnchor = Math.max(120, Math.min(MAX_W, baseRight - MIN_X));
+        const minWFromAnchor = Math.min(MIN_W, maxWFromAnchor);
+        nextW = clamp(r.baseW - dx, minWFromAnchor, maxWFromAnchor);
+        nextX = baseRight - nextW;
+      }
+      if (usesSouth) {
+        nextH = clamp(r.baseH + dy, minHLocal, maxHAvail);
+      }
+      if (usesNorth) {
+        const maxHFromAnchor = Math.max(120, baseBottom - MIN_Y);
+        const minHFromAnchor = Math.min(MIN_H, maxHFromAnchor);
+        nextH = clamp(r.baseH - dy, minHFromAnchor, maxHFromAnchor);
+        nextY = baseBottom - nextH;
+      }
+
+      setPos({ x: nextX, y: nextY });
+      setPanelSize({ w: nextW, h: nextH });
     };
-    const onUp = () => {
+    const onUp = (e) => {
+      const r = resizeRef.current;
+      if (r.pointerId >= 0 && e.pointerId !== r.pointerId) return;
       resizeRef.current.active = false;
+      resizeRef.current.pointerId = -1;
       setResizing(false);
+      writeStoredPos(posRef.current);
       writeStoredSize(panelSizeRef.current);
     };
     window.addEventListener("pointermove", onMove);
@@ -237,14 +331,21 @@ export default function WebExploreChatFloat({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [resizing]);
+  }, [boundsRect.height, boundsRect.width, resizing]);
 
   /** @param {React.PointerEvent<HTMLElement>} e */
   const startDrag = (e) => {
     if (e.button !== 0) return;
+    e.preventDefault();
+    try {
+      e.currentTarget?.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* ignore */
+    }
     dragRef.current = {
       active: true,
       moved: false,
+      pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
       baseX: pos.x,
@@ -253,20 +354,41 @@ export default function WebExploreChatFloat({
     setDragging(true);
   };
 
-  /** @param {React.PointerEvent<HTMLElement>} e */
-  const startResize = (e) => {
+  /**
+   * @param {"n" | "e" | "s" | "w" | "ne" | "nw" | "se" | "sw"} direction
+   * @param {React.PointerEvent<HTMLElement>} e
+   */
+  const startResize = (direction, e) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    try {
+      e.currentTarget?.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* ignore */
+    }
     resizeRef.current = {
       active: true,
+      direction,
+      pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
+      baseX: pos.x,
+      baseY: pos.y,
       baseW: panelSize.w,
       baseH: panelSize.h,
     };
+    setResizeDirection(direction);
     setResizing(true);
   };
+
+  const toggleFloatOpen = useCallback(() => {
+    setOpen((prev) => {
+      const next = !prev;
+      if (!next) suppressLauncherClickUntilRef.current = Date.now() + 260;
+      return next;
+    });
+  }, []);
 
   const openWidth = open ? panelSize.w : LAUNCHER_W;
 
@@ -275,6 +397,7 @@ export default function WebExploreChatFloat({
       className={cn(
         "web-explore-chat-float",
         open && "web-explore-chat-float--open",
+        dragging && "web-explore-chat-float--dragging",
         resizing && "web-explore-chat-float--resizing",
       )}
       style={{ left: `${pos.x}px`, top: `${pos.y}px`, width: `${openWidth}px` }}
@@ -291,6 +414,7 @@ export default function WebExploreChatFloat({
           onPointerDown={startDrag}
           onClick={() => {
             if (dragRef.current.moved) return;
+            if (Date.now() < suppressLauncherClickUntilRef.current) return;
             setOpen(true);
           }}
           title={t("webExploreChat.launcher")}
@@ -299,59 +423,102 @@ export default function WebExploreChatFloat({
           <MessageSquare size={17} strokeWidth={2} aria-hidden />
           <span>{t("webExploreChat.launcher")}</span>
         </Button>
-      ) : (
-        <section
-          className="web-explore-chat-float__panel"
-          style={{ width: `${panelSize.w}px`, height: `${panelSize.h}px` }}
-          aria-label={t("webExploreChat.title")}
-        >
-          <header className="web-explore-chat-float__head">
-            <button
-              type="button"
-              className="web-explore-chat-float__drag-handle"
-              onPointerDown={startDrag}
-              aria-label={t("webExploreChat.dragHandle")}
-            >
-              <GripVertical size={16} strokeWidth={2} aria-hidden />
-            </button>
-            <div className="web-explore-chat-float__head-main">
-              <strong className="web-explore-chat-float__title">{t("webExploreChat.title")}</strong>
-              <span className="web-explore-chat-float__subtitle">{pageTitle}</span>
-            </div>
-            <Button
-              type="button"
-              variant="text"
-              shape="square"
-              size="small"
-              className="web-explore-chat-float__head-btn"
-              onClick={() => setOpen(false)}
-              title={t("webExploreChat.minimize")}
-              aria-label={t("webExploreChat.minimize")}
-            >
-              <Minimize2 size={15} strokeWidth={2} aria-hidden />
-            </Button>
-          </header>
+      ) : null}
 
-          <div className="web-explore-chat-float__embed">
-            <ChatLabEmbedConversation
-              activeUrl={activeUrl}
-              pageTitle={pageTitle}
-              inElectron={inElectron}
-              webviewRef={webviewRef}
-              iframeRef={iframeRef}
-              onNavigate={onNavigate}
-              className="chat-lab--web-explore-embed"
-            />
-          </div>
-
-          <button
-            type="button"
-            className="web-explore-chat-float__resize-handle"
-            onPointerDown={startResize}
-            aria-label={t("webExploreChat.resizeHandle")}
+      <section
+        className={cn("web-explore-chat-float__panel", !open && "web-explore-chat-float__panel--hidden")}
+        style={{ width: `${panelSize.w}px`, height: `${panelSize.h}px` }}
+        aria-label={t("webExploreChat.title")}
+        aria-hidden={!open}
+      >
+        <div className="web-explore-chat-float__embed">
+          <ChatLabEmbedConversation
+            activeUrl={activeUrl}
+            pageTitle={pageTitle}
+            inElectron={inElectron}
+            webviewRef={webviewRef}
+            iframeRef={iframeRef}
+            onNavigate={onNavigate}
+            floatOpen={open}
+            onToggleFloatOpen={toggleFloatOpen}
+            onStartFloatDrag={startDrag}
+            className="chat-lab--web-explore-embed"
           />
-        </section>
-      )}
+        </div>
+
+        <button
+          type="button"
+          className="web-explore-chat-float__resize-handle web-explore-chat-float__resize-handle--n"
+          onPointerDown={(e) => startResize("n", e)}
+          aria-label={t("webExploreChat.resizeHandle")}
+          tabIndex={open ? 0 : -1}
+        />
+        <button
+          type="button"
+          className="web-explore-chat-float__resize-handle web-explore-chat-float__resize-handle--e"
+          onPointerDown={(e) => startResize("e", e)}
+          aria-label={t("webExploreChat.resizeHandle")}
+          tabIndex={open ? 0 : -1}
+        />
+        <button
+          type="button"
+          className="web-explore-chat-float__resize-handle web-explore-chat-float__resize-handle--s"
+          onPointerDown={(e) => startResize("s", e)}
+          aria-label={t("webExploreChat.resizeHandle")}
+          tabIndex={open ? 0 : -1}
+        />
+        <button
+          type="button"
+          className="web-explore-chat-float__resize-handle web-explore-chat-float__resize-handle--w"
+          onPointerDown={(e) => startResize("w", e)}
+          aria-label={t("webExploreChat.resizeHandle")}
+          tabIndex={open ? 0 : -1}
+        />
+        <button
+          type="button"
+          className="web-explore-chat-float__resize-handle web-explore-chat-float__resize-handle--nw"
+          onPointerDown={(e) => startResize("nw", e)}
+          aria-label={t("webExploreChat.resizeHandle")}
+          tabIndex={open ? 0 : -1}
+        />
+        <button
+          type="button"
+          className="web-explore-chat-float__resize-handle web-explore-chat-float__resize-handle--ne"
+          onPointerDown={(e) => startResize("ne", e)}
+          aria-label={t("webExploreChat.resizeHandle")}
+          tabIndex={open ? 0 : -1}
+        />
+        <button
+          type="button"
+          className="web-explore-chat-float__resize-handle web-explore-chat-float__resize-handle--sw"
+          onPointerDown={(e) => startResize("sw", e)}
+          aria-label={t("webExploreChat.resizeHandle")}
+          tabIndex={open ? 0 : -1}
+        />
+        <button
+          type="button"
+          className="web-explore-chat-float__resize-handle web-explore-chat-float__resize-handle--se"
+          onPointerDown={(e) => startResize("se", e)}
+          aria-label={t("webExploreChat.resizeHandle")}
+          tabIndex={open ? 0 : -1}
+        />
+      </section>
+      {dragging || resizing ? (
+        <div
+          className={cn(
+            "web-explore-chat-float__drag-overlay",
+            resizing && "web-explore-chat-float__drag-overlay--resizing",
+            resizing && `web-explore-chat-float__drag-overlay--resize-${resizeDirection}`,
+          )}
+          style={{
+            left: `${boundsRect.left}px`,
+            top: `${boundsRect.top}px`,
+            width: `${boundsRect.width}px`,
+            height: `${boundsRect.height}px`,
+          }}
+          aria-hidden
+        />
+      ) : null}
     </div>
   );
 }

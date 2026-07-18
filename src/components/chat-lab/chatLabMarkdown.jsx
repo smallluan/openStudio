@@ -833,6 +833,17 @@ export function createChatLabMarkdownComponents(t, opts = {}) {
       />
     ),
     /**
+     * Wide GFM tables must scroll inside their own viewport — never stretch the thread.
+     * @param {import("react").ComponentPropsWithoutRef<"table"> & { node?: unknown }} props
+     */
+    table: ({ children, className, node: _node, ...props }) => (
+      <div className="chat-lab__md-table-scroll">
+        <table className={className} {...props}>
+          {children}
+        </table>
+      </div>
+    ),
+    /**
      * @param {import("react").ComponentPropsWithoutRef<"td"> & { children?: import("react").ReactNode }} props
      */
     td: ({ children, ...props }) => {

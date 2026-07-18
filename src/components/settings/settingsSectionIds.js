@@ -1,6 +1,7 @@
 /** Shared settings section ids (rail radial + full settings modal). */
 export const SETTINGS_SECTION_IDS = /** @type {const} */ ([
   "general",
+  "accounts",
   "channels",
   "usage",
   "model",

@@ -109,6 +109,7 @@ function ContextPopover({
             clearable
             size="small"
             type="search"
+            className="chat-lab__context-popover-input"
             prefixIcon={<SearchSparkleIcon className="chat-lab__context-popover-search-icon" aria-hidden />}
             placeholder={
               kind === "branch"
@@ -442,8 +443,8 @@ function ChatLabContextBarInner({ workspace }) {
   return (
     <div className="chat-lab__context-bar" role="toolbar" aria-label={t("chatLab.contextBar.toolbarAria")}>
       <Button
-                variant="outline"
-                size="small"
+        variant="outline"
+        size="small"
         ref={workspaceBtnRef}
         type="button"
         className={cn(
@@ -453,15 +454,15 @@ function ChatLabContextBarInner({ workspace }) {
         onClick={() => openPanel("workspace")}
         aria-expanded={panel === "workspace"}
         aria-haspopup="dialog"
+        suffix={<ChevronDown className="chat-lab__context-trigger-chevron" aria-hidden />}
       >
         <span className="chat-lab__context-trigger-label">{displayLabel}</span>
-        <ChevronDown className="chat-lab__context-trigger-chevron" aria-hidden />
       </Button>
 
       {gitRepo && hasSelection ? (
         <Button
-                variant="outline"
-                size="small"
+          variant="outline"
+          size="small"
           ref={branchBtnRef}
           type="button"
           className={cn("chat-lab__context-trigger", panel === "branch" && "chat-lab__context-trigger--open")}
@@ -469,10 +470,10 @@ function ChatLabContextBarInner({ workspace }) {
           aria-expanded={panel === "branch"}
           aria-haspopup="dialog"
           disabled={branchBusy}
+          icon={<GitBranch className="chat-lab__context-trigger-branch-icon" aria-hidden />}
+          suffix={<ChevronDown className="chat-lab__context-trigger-chevron" aria-hidden />}
         >
-          <GitBranch className="chat-lab__context-trigger-branch-icon" aria-hidden />
           <span className="chat-lab__context-trigger-label">{currentBranch || "—"}</span>
-          <ChevronDown className="chat-lab__context-trigger-chevron" aria-hidden />
         </Button>
       ) : null}
 

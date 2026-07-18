@@ -1,4 +1,4 @@
-import { PanelRight, Route } from "lucide-react";
+import { Maximize2, Minimize2, PanelRight, Route } from "lucide-react";
 import { Button, Popup } from "tdesign-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { buildUserTurnAnchors, scrollThreadToMessage } from "../../chat/chatLabThreadScroll.js";
@@ -24,6 +24,10 @@ import ChatLabParticipantBar from "./ChatLabParticipantBar.jsx";
  *   participantIds?: string[];
  *   onParticipantsChange?: (ids: string[]) => void;
  *   participantsDisabled?: boolean;
+ *   showFloatToggle?: boolean;
+ *   floatOpen?: boolean;
+ *   onToggleFloatOpen?: () => void;
+ *   onStartFloatDrag?: (e: import("react").PointerEvent<HTMLElement>) => void;
  * }} props
  */
 export default function ChatLabConvHeader({
@@ -39,6 +43,10 @@ export default function ChatLabConvHeader({
   participantIds = [],
   onParticipantsChange,
   participantsDisabled = false,
+  showFloatToggle = false,
+  floatOpen = true,
+  onToggleFloatOpen,
+  onStartFloatDrag,
 }) {
   const { t } = useI18n();
   const preview = useChatLabPreview();
@@ -76,6 +84,22 @@ export default function ChatLabConvHeader({
       setNavOpen(false);
     },
     [autoScrollRef, messagesScrollRef, onActiveTurnIdChange, threadScrollApiRef],
+  );
+
+  const handleHeaderPointerDown = useCallback(
+    /** @param {import("react").PointerEvent<HTMLElement>} e */
+    (e) => {
+      if (!showFloatToggle || typeof onStartFloatDrag !== "function") return;
+      if (e.button !== 0) return;
+      const target = /** @type {HTMLElement | null} */ (e.target instanceof HTMLElement ? e.target : null);
+      if (!target) return;
+      const interactiveHit = target.closest(
+        ".chat-lab__header-actions, button, a, input, textarea, select, [role='button'], [role='link']",
+      );
+      if (interactiveHit) return;
+      onStartFloatDrag(e);
+    },
+    [onStartFloatDrag, showFloatToggle],
   );
 
   const popupContent = (
@@ -125,13 +149,13 @@ export default function ChatLabConvHeader({
   );
 
   return (
-    <header className="chat-lab__conv-header">
+    <header className="chat-lab__conv-header" onPointerDown={handleHeaderPointerDown}>
       {headerTitle ? (
         <h2 className="chat-lab__conv-title">{headerTitle}</h2>
       ) : (
         <div className="chat-lab__conv-title chat-lab__conv-title--empty" aria-hidden />
       )}
-      <div className="chat-lab__header-actions">
+      <div className="chat-lab__header-actions" onPointerDown={(e) => e.stopPropagation()}>
         {showParticipants ? (
           <ChatLabParticipantBar
             variant="icon"
@@ -175,18 +199,37 @@ export default function ChatLabConvHeader({
             <Route size={16} strokeWidth={2.1} aria-hidden />
           </Button>
         </Popup>
-        <Button
-          variant="text"
-          shape="square"
-          size="small"
-          type="button"
-          className="chat-lab__turn-nav-icon-btn"
-          aria-label="打开侧边栏"
-          title="打开侧边栏"
-          onClick={() => preview?.openIframe?.("https://www.baidu.com", "百度")}
-        >
-          <PanelRight size={16} strokeWidth={2.1} aria-hidden />
-        </Button>
+        {showFloatToggle ? (
+          <Button
+            variant="text"
+            shape="square"
+            size="small"
+            type="button"
+            className="chat-lab__turn-nav-icon-btn"
+            aria-label={floatOpen ? t("webExploreChat.minimize") : t("webExploreChat.launcher")}
+            title={floatOpen ? t("webExploreChat.minimize") : t("webExploreChat.launcher")}
+            onClick={() => onToggleFloatOpen?.()}
+          >
+            {floatOpen ? (
+              <Minimize2 size={16} strokeWidth={2.1} aria-hidden />
+            ) : (
+              <Maximize2 size={16} strokeWidth={2.1} aria-hidden />
+            )}
+          </Button>
+        ) : (
+          <Button
+            variant="text"
+            shape="square"
+            size="small"
+            type="button"
+            className="chat-lab__turn-nav-icon-btn"
+            aria-label="打开侧边栏"
+            title="打开侧边栏"
+            onClick={() => preview?.openIframe?.("https://www.baidu.com", "百度")}
+          >
+            <PanelRight size={16} strokeWidth={2.1} aria-hidden />
+          </Button>
+        )}
       </div>
     </header>
   );

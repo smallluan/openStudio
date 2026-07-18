@@ -5,6 +5,7 @@
   Menu,
   Tray,
   nativeImage,
+  session,
   shell,
   dialog,
   Notification,
@@ -131,6 +132,12 @@ const CHAT_STREAM_CHAN = "studio:chatStream";
 const BOOTSTRAP_PROGRESS_CHAN = "studio:bootstrapProgress";
 const WECHAT_STATUS_CHAN = "studio:wechatStatus";
 const PREVIEW_URL_CHAN = "studio:openPreviewUrl";
+const PREVIEW_WEBVIEW_PARTITION = "persist:openstudio-preview";
+
+/** @param {string} raw */
+function normalizeCookieDomain(raw) {
+  return String(raw ?? "").trim().replace(/^\./, "").toLowerCase();
+}
 
 /**
  * Electron does not show a default page context menu — attach a standard one for guest webviews.
@@ -1059,6 +1066,118 @@ app.whenReady().then(async () => {
       return { ok: true, opened: "external" };
     } catch (e) {
       return { ok: false, error: String(/** @type {any} */ (e)?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:listPersistedWebAccounts", async () => {
+    try {
+      const previewSession = session.fromPartition(PREVIEW_WEBVIEW_PARTITION);
+      const cookies = await previewSession.cookies.get({});
+      /** @type {Map<string, { domain: string; cookieCount: number; persistentCookieCount: number; sessionCookieCount: number; secureCookieCount: number; httpOnlyCookieCount: number; sampleNames: string[] }>} */
+      const grouped = new Map();
+      for (const cookie of cookies) {
+        const domain = normalizeCookieDomain(cookie?.domain);
+        if (!domain) continue;
+        const row =
+          grouped.get(domain) ?? {
+            domain,
+            cookieCount: 0,
+            persistentCookieCount: 0,
+            sessionCookieCount: 0,
+            secureCookieCount: 0,
+            httpOnlyCookieCount: 0,
+            sampleNames: [],
+          };
+        row.cookieCount += 1;
+        if (cookie?.session) row.sessionCookieCount += 1;
+        else row.persistentCookieCount += 1;
+        if (cookie?.secure) row.secureCookieCount += 1;
+        if (cookie?.httpOnly) row.httpOnlyCookieCount += 1;
+        const name = String(cookie?.name ?? "").trim();
+        if (name && row.sampleNames.length < 4 && !row.sampleNames.includes(name)) {
+          row.sampleNames.push(name);
+        }
+        grouped.set(domain, row);
+      }
+      const accounts = Array.from(grouped.values()).sort((a, b) => {
+        if (b.cookieCount !== a.cookieCount) return b.cookieCount - a.cookieCount;
+        return a.domain.localeCompare(b.domain);
+      });
+      return { ok: true, partition: PREVIEW_WEBVIEW_PARTITION, accounts };
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e), accounts: [] };
+    }
+  });
+
+  ipcMain.handle("studio:clearPersistedWebAccount", async (_event, payload) => {
+    try {
+      const domain = normalizeCookieDomain(payload?.domain);
+      if (!domain) return { ok: false, error: "empty_domain" };
+      const previewSession = session.fromPartition(PREVIEW_WEBVIEW_PARTITION);
+      const cookies = await previewSession.cookies.get({});
+      const targets = cookies.filter((cookie) => normalizeCookieDomain(cookie?.domain) === domain);
+      await Promise.all(
+        targets.map(async (cookie) => {
+          const host = normalizeCookieDomain(cookie?.domain) || domain;
+          const scheme = cookie?.secure ? "https" : "http";
+          const pathName = String(cookie?.path ?? "/").startsWith("/") ? String(cookie?.path) : "/";
+          const url = `${scheme}://${host}${pathName}`;
+          try {
+            await previewSession.cookies.remove(url, String(cookie?.name ?? ""));
+          } catch {
+            /* ignore individual cookie errors */
+          }
+        }),
+      );
+
+      const storages = ["cookies", "localstorage", "indexdb", "serviceworkers", "cachestorage"];
+      const originCandidates = [`https://${domain}`, `http://${domain}`, `https://www.${domain}`, `http://www.${domain}`];
+      for (const origin of originCandidates) {
+        try {
+          await previewSession.clearStorageData({ origin, storages });
+        } catch {
+          /* ignore per-origin clear failure */
+        }
+      }
+      try {
+        await previewSession.clearAuthCache?.();
+      } catch {
+        /* ignore */
+      }
+      return { ok: true, domain, removedCookies: targets.length };
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:clearAllPersistedWebAccounts", async () => {
+    try {
+      const previewSession = session.fromPartition(PREVIEW_WEBVIEW_PARTITION);
+      const cookies = await previewSession.cookies.get({});
+      const storages = ["cookies", "localstorage", "indexdb", "serviceworkers", "cachestorage"];
+      await previewSession.clearStorageData({ storages });
+      await Promise.all(
+        cookies.map(async (cookie) => {
+          const host = normalizeCookieDomain(cookie?.domain);
+          if (!host) return;
+          const scheme = cookie?.secure ? "https" : "http";
+          const pathName = String(cookie?.path ?? "/").startsWith("/") ? String(cookie?.path) : "/";
+          const url = `${scheme}://${host}${pathName}`;
+          try {
+            await previewSession.cookies.remove(url, String(cookie?.name ?? ""));
+          } catch {
+            /* ignore */
+          }
+        }),
+      );
+      try {
+        await previewSession.clearAuthCache?.();
+      } catch {
+        /* ignore */
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
     }
   });
 

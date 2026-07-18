@@ -32,6 +32,7 @@ function explorePageTitle(url) {
 export default function WebExplorePage() {
   const { t } = useI18n();
   const inputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
+  const viewportRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const iframeRef = useRef(/** @type {HTMLIFrameElement | null} */ (null));
   const webviewRef = useRef(/** @type {HTMLElement | null} */ (null));
   const [draft, setDraft] = useState("");
@@ -242,7 +243,7 @@ export default function WebExplorePage() {
           ) : null}
         </div>
       </header>
-      <div className={cn("web-explore-page__viewport", "chat-lab-preview-dock__body")}>
+      <div ref={viewportRef} className={cn("web-explore-page__viewport", "chat-lab-preview-dock__body")}>
         <ChatLabPreviewWebFrame
           src={activeUrl}
           title={explorePageTitle(activeUrl)}
@@ -258,6 +259,7 @@ export default function WebExplorePage() {
           activeUrl={activeUrl}
           pageTitle={explorePageTitle(activeUrl)}
           inElectron={inElectron}
+          boundaryRef={viewportRef}
           webviewRef={webviewRef}
           iframeRef={iframeRef}
           onNavigate={handleNavigate}
