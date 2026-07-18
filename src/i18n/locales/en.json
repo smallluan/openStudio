@@ -226,7 +226,9 @@
     "placeholder": "Scheduled tasks and automation — coming soon."
   },
   "webExplorePage": {
-    "placeholder": "Web explore — coming soon."
+    "hint": "Enter a URL and press Enter to browse in this page.",
+    "urlPlaceholder": "Enter URL, e.g. https://example.com",
+    "backToStart": "Back to start"
   },
   "lobsterPage": {
     "title": "Agent management",

@@ -1,6 +1,6 @@
 import { useCallback, useId, useMemo, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
-import { Space, Tabs } from "tdesign-react";
+import { Empty, Space, Tabs } from "tdesign-react";
 import { AddIcon, FolderIcon } from "tdesign-icons-react";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -32,7 +32,7 @@ function SkillCardShell({ className, children }) {
   return (
     <article
       className={cn(
-        "flex min-h-[148px] flex-col rounded-[14px] border border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-panel)_88%,var(--os-bg-elevated))] p-3.5 transition-[box-shadow,transform] duration-150",
+        "relative flex min-h-[168px] flex-col overflow-hidden rounded-[14px] border border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-panel)_88%,var(--os-bg-elevated))] p-3.5 transition-[box-shadow,transform] duration-150",
         "hover:shadow-[0_10px_28px_-12px_color-mix(in_srgb,var(--os-shadow-color,#000)_28%,transparent)]",
         className,
       )}
@@ -65,6 +65,7 @@ export default function SkillMarketPage() {
   const openclawSkillById = useMemo(() => new Map(OPENCLAW_BUNDLED_SKILLS.map((s) => [s.id, s])), []);
 
   const usableBuiltinDefs = useMemo(() => {
+    if (skillEnv.loading) return [];
     const usableIds = new Set(
       filterUsableBundledSkills(OPENCLAW_BUNDLED_SKILLS, skillEnv).map((s) => s.id),
     );
@@ -139,6 +140,10 @@ export default function SkillMarketPage() {
       return matchesQuery(title, s.description);
     });
   }, [customCategoryMap, filterId, lib.userSkills, matchesQuery]);
+
+  const shouldShowBuiltinLoading = skillEnv.loading && (filterId === ALL_FILTER || filterId === BUILTIN_FILTER);
+  const visibleCount = filteredBuiltin.length + filteredUser.length;
+  const shouldShowEmpty = !shouldShowBuiltinLoading && visibleCount === 0;
 
   const resetUploadForm = useCallback(() => {
     setUploadTitle("");
@@ -223,126 +228,139 @@ export default function SkillMarketPage() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto pb-10">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          {filteredBuiltin.map((def) => {
-            const meta = openclawSkillById.get(def.id);
-            const title = meta ? formatSkillTitle(meta.name) : def.id;
-            const manifestDesc = meta?.description ?? "";
-            const desc = openclawCardDescription(def.id, manifestDesc, t);
-            return (
-              <SkillCardShell key={def.id} className="group">
-                <div className="flex items-start gap-2.5">
-                  <span className="text-xl leading-none" aria-hidden>
-                    {def.icon}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-[0.9rem] font-semibold text-[var(--os-text)]">
-                      {title}
-                    </h3>
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-auto pb-10",
+          (shouldShowBuiltinLoading || shouldShowEmpty) && "flex items-center justify-center pb-0",
+        )}
+      >
+        {shouldShowBuiltinLoading ? (
+          <Empty description="正在加载技能..." />
+        ) : shouldShowEmpty ? (
+          <Empty description={t("skillsPage.emptyBuiltin")} />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            {filteredBuiltin.map((def) => {
+              const meta = openclawSkillById.get(def.id);
+              const title = meta ? formatSkillTitle(meta.name) : def.id;
+              const manifestDesc = meta?.description ?? "";
+              const desc = openclawCardDescription(def.id, manifestDesc, t);
+              return (
+                <SkillCardShell key={def.id} className="group">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-xl leading-none" aria-hidden>
+                      {def.icon}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-[0.9rem] font-semibold text-[var(--os-text)]">
+                        {title}
+                      </h3>
+                    </div>
+                    <span className="shrink-0 rounded-md bg-[color-mix(in_srgb,var(--os-accent)_12%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-accent)]">
+                      {t("skillsPage.badgeBuiltin")}
+                    </span>
                   </div>
-                </div>
-                <p
-                  className="mt-2 line-clamp-2 min-h-[2.5rem] cursor-default text-[0.78rem] leading-snug text-[var(--os-text-muted)]"
-                  title={manifestDesc || undefined}
-                >
-                  {desc}
-                </p>
-                <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] pt-2.5">
-                  <span className="rounded-md bg-[color-mix(in_srgb,var(--os-accent)_12%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-accent)]">
-                    {t("skillsPage.badgeBuiltin")}
-                  </span>
+                  <p
+                    className="mt-2 flex-1 cursor-default whitespace-pre-wrap text-[0.78rem] leading-snug text-[var(--os-text-muted)]"
+                    title={manifestDesc || undefined}
+                  >
+                    {desc}
+                  </p>
                   {canOpenFolder ? (
                     <div
                       className={cn(
-                        "ml-auto flex shrink-0 items-center",
-                        "opacity-0 transition-opacity duration-200 ease-in-out",
-                        "pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
-                        "group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
+                        "pointer-events-none absolute inset-x-0 bottom-0 z-[1] opacity-0 transition-opacity duration-200 ease-in-out",
+                        "group-hover:opacity-100 group-focus-within:opacity-100",
                       )}
+                      aria-hidden
                     >
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="small"
-                        icon={<FolderIcon />}
-                        onClick={() => openSkillFolder({ kind: "bundled", skillId: def.id })}
-                      >
-                        {t("skillsPage.openFolder")}
-                      </Button>
+                      <div className="h-14 bg-gradient-to-b from-transparent to-white" />
+                      <div className="-mt-1 flex items-center justify-end px-3.5 pb-3.5">
+                        <div className="pointer-events-auto">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="small"
+                            icon={<FolderIcon />}
+                            onClick={() => openSkillFolder({ kind: "bundled", skillId: def.id })}
+                          >
+                            {t("skillsPage.openFolder")}
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   ) : null}
-                </div>
-              </SkillCardShell>
-            );
-          })}
-          {filteredUser.map((s) => {
-            const displayTitle = userSkillDisplayTitle(s);
-            const canOpenUserFolder = canOpenFolder && Boolean(s.localPath?.trim());
-            const badgeLabel = customCategoryMap.get(s.categoryId) || "其他";
-            return (
-              <SkillCardShell key={s.id} className="group relative">
-                <div className="flex items-start gap-2.5">
-                  <span className="text-xl leading-none" aria-hidden>
-                    {s.fromNl ? "✨" : "📁"}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-[0.9rem] font-semibold text-[var(--os-text)]">{displayTitle}</h3>
+                </SkillCardShell>
+              );
+            })}
+            {filteredUser.map((s) => {
+              const displayTitle = userSkillDisplayTitle(s);
+              const canOpenUserFolder = canOpenFolder && Boolean(s.localPath?.trim());
+              const badgeLabel = customCategoryMap.get(s.categoryId) || "其他";
+              return (
+                <SkillCardShell key={s.id} className="group relative">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-xl leading-none" aria-hidden>
+                      {s.fromNl ? "✨" : "📁"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-[0.9rem] font-semibold text-[var(--os-text)]">{displayTitle}</h3>
+                    </div>
+                    <span className="shrink-0 rounded-md bg-[color-mix(in_srgb,var(--os-text-muted)_10%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-text-muted)]">
+                      {badgeLabel}
+                    </span>
                   </div>
-                </div>
-                <p
-                  className="mt-2 line-clamp-2 min-h-[2.5rem] cursor-default text-[0.78rem] leading-snug text-[var(--os-text-muted)]"
-                  title={s.description ? s.description : undefined}
-                >
-                  {s.description || t("skillsPage.noDescription")}
-                </p>
-                {s.localPath ? (
-                  <p className="mt-1 truncate font-mono text-[0.68rem] text-[var(--os-text-faint)]" title={s.localPath}>
-                    {s.localPath}
+                  <p
+                    className="mt-2 flex-1 cursor-default whitespace-pre-wrap text-[0.78rem] leading-snug text-[var(--os-text-muted)]"
+                    title={s.description ? s.description : undefined}
+                  >
+                    {s.description || t("skillsPage.noDescription")}
                   </p>
-                ) : null}
-                <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] pt-2.5">
-                  <span className="rounded-md bg-[color-mix(in_srgb,var(--os-text-muted)_10%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-text-muted)]">
-                    {badgeLabel}
-                  </span>
-                  {canOpenUserFolder ? (
-                    <div
-                      className={cn(
-                        "opacity-0 transition-opacity duration-200 ease-in-out",
-                        "pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
-                        "group-focus-within:opacity-100 group-focus-within:pointer-events-auto",
-                      )}
-                    >
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="small"
-                        icon={<FolderIcon />}
-                        onClick={() => openSkillFolder({ kind: "user", localPath: s.localPath })}
-                      >
-                        {t("skillsPage.openFolder")}
-                      </Button>
-                    </div>
+                  {s.localPath ? (
+                    <p className="mt-1 truncate font-mono text-[0.68rem] text-[var(--os-text-faint)]" title={s.localPath}>
+                      {s.localPath}
+                    </p>
                   ) : null}
-                  <div className="ml-auto">
-                    <Button
-                      type="button"
-                      theme="danger"
-                      variant="text"
-                      size="small"
-                      onClick={() => removeUserSkill(s.id)}
-                    >
-                      {t("skillsPage.delete")}
-                    </Button>
+                  <div
+                    className={cn(
+                      "pointer-events-none absolute inset-x-0 bottom-0 z-[1] opacity-0 transition-opacity duration-200 ease-in-out",
+                      "group-hover:opacity-100 group-focus-within:opacity-100",
+                    )}
+                    aria-hidden
+                  >
+                    <div className="h-14 bg-gradient-to-b from-transparent to-white" />
+                    <div className="-mt-1 flex items-center justify-end gap-2 px-3.5 pb-3.5">
+                      {canOpenUserFolder ? (
+                        <div className="pointer-events-auto">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="small"
+                            icon={<FolderIcon />}
+                            onClick={() => openSkillFolder({ kind: "user", localPath: s.localPath })}
+                          >
+                            {t("skillsPage.openFolder")}
+                          </Button>
+                        </div>
+                      ) : null}
+                      <div className="pointer-events-auto">
+                        <Button
+                          type="button"
+                          theme="danger"
+                          variant="text"
+                          size="small"
+                          onClick={() => removeUserSkill(s.id)}
+                        >
+                          {t("skillsPage.delete")}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </SkillCardShell>
-            );
-          })}
-        </div>
-        {filteredBuiltin.length + filteredUser.length === 0 ? (
-          <p className="mt-3 text-[0.82rem] text-[var(--os-text-muted)]">{t("skillsPage.emptyBuiltin")}</p>
-        ) : null}
+                </SkillCardShell>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {uploadOpen ? (

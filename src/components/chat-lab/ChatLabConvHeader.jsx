@@ -1,6 +1,5 @@
 import { PanelRight, Route } from "lucide-react";
-import { Popup } from "tdesign-react";
-import { Button } from "@open-studio/udesign";
+import { Button, Popup } from "tdesign-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { buildUserTurnAnchors, scrollThreadToMessage } from "../../chat/chatLabThreadScroll.js";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
@@ -136,6 +135,7 @@ export default function ChatLabConvHeader({
         {showParticipants ? (
           <ChatLabParticipantBar
             variant="icon"
+            conversationId={conversationId}
             agents={agents}
             participantIds={participantIds}
             onChange={onParticipantsChange}
@@ -143,8 +143,9 @@ export default function ChatLabConvHeader({
           />
         ) : null}
         <Popup
+          key={conversationId ?? "turn-nav"}
           visible={navOpen}
-          trigger="click"
+          trigger="context-menu"
           placement="bottom-end"
           attach="body"
           zIndex={400}
@@ -157,7 +158,7 @@ export default function ChatLabConvHeader({
         >
           <Button
             variant="text"
-            shape="round"
+            shape="square"
             size="small"
             type="button"
             className={cn("chat-lab__turn-nav-icon-btn", navOpen && "chat-lab__turn-nav-icon-btn--open")}
@@ -166,13 +167,17 @@ export default function ChatLabConvHeader({
             aria-haspopup="dialog"
             aria-expanded={navOpen}
             aria-controls={navOpen ? panelId : undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              setNavOpen((v) => !v);
+            }}
           >
             <Route size={16} strokeWidth={2.1} aria-hidden />
           </Button>
         </Popup>
         <Button
           variant="text"
-          shape="round"
+          shape="square"
           size="small"
           type="button"
           className="chat-lab__turn-nav-icon-btn"

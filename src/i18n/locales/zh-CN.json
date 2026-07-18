@@ -226,7 +226,9 @@
     "placeholder": "定时任务与自动化能力，即将推出。"
   },
   "webExplorePage": {
-    "placeholder": "网页漫游，即将推出。"
+    "hint": "输入网址后按 Enter，在本页内浏览。",
+    "urlPlaceholder": "输入网址，例如 https://example.com",
+    "backToStart": "返回起始页"
   },
   "lobsterPage": {
     "title": "智能体管理",

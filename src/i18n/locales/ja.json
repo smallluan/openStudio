@@ -224,7 +224,9 @@
     "placeholder": "スケジュールタスクと自動化 — 近日公開。"
   },
   "webExplorePage": {
-    "placeholder": "ウェブ探索 — 近日公開。"
+    "hint": "URL を入力して Enter で、このページ内で閲覧します。",
+    "urlPlaceholder": "URL を入力（例: https://example.com）",
+    "backToStart": "最初に戻る"
   },
   "lobsterPage": {
     "title": "エージェント管理",

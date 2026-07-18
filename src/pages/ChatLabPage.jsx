@@ -1,10 +1,10 @@
 import { memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
-import { Select as TSelect } from "tdesign-react";
+import { Radio, RadioGroup, Select as TSelect } from "tdesign-react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Send } from "lucide-react";
+import { Send, Cpu } from "lucide-react";
 import "katex/dist/katex.min.css";
 import {
   CONTEXT_WINDOW_APPROX_TOKENS,
@@ -130,7 +130,7 @@ import { collectSessionArtifacts } from "../chat/chatLabSessionArtifacts.js";
 import ChatLabArtifactsBar from "../components/chat-lab/ChatLabArtifactsBar.jsx";
 import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
 import {
-  ComposerSkillChip,
+  ComposerSkillToolbarPicker,
   ComposerSkillSlashPopover,
   isSlashOnlyComposerDraft,
   stripSlashPickerPrefix,
@@ -160,7 +160,6 @@ import {
   scrollThreadToMessage,
 } from "../chat/chatLabThreadScroll.js";
 import { cn } from "../ui/cn.js";
-import Checkbox from "../ui/Checkbox.jsx";
 
 /** Below this count, skip virtual scroll — avoids row-height drift on some Electron/GPU setups. */
 const CHAT_LAB_PLAIN_MESSAGE_MAX = 48;
@@ -1392,8 +1391,11 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
       setMessages(mapSessionRecordToUiMessages(rec, liveSlices.length ? liveSlices : null));
       const stored = Array.isArray(rec.participantIds) ? rec.participantIds : [];
       setParticipantIds(stored.filter((id) => id && id !== mainAgent?.id));
-      setOrchestrationMode(Boolean(rec.orchestrationMode));
-      setOrchestrationFastMode(Boolean(rec.orchestrationFastMode));
+      // Temporarily disable multi-agent scheduling until the feature is stabilized.
+      setOrchestrationMode(false);
+      setOrchestrationFastMode(false);
+      if (rec.orchestrationMode) setSessionOrchestrationMode(paramC, false);
+      if (rec.orchestrationFastMode) setSessionOrchestrationFastMode(paramC, false);
       setChatApiBlocked(false);
       return;
     }
@@ -3995,15 +3997,11 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
             if (e.dataTransfer?.files?.length) void addComposerDroppedFiles(e.dataTransfer.files);
           }}
         >
-          {composerFollowUpRef ||
-          composerSkillRow ||
-          composerSkillRowLeaving ||
-          composerFileRefs.length > 0 ||
-          composerFileRefsLeaving ? (
+          {composerFollowUpRef || composerFileRefs.length > 0 || composerFileRefsLeaving ? (
             <div
               className={cn(
                 "chat-lab__shell-skill-row",
-                (composerSkillRowLeaving || composerFileRefsLeaving) && "chat-lab__shell-skill-row--leaving",
+                composerFileRefsLeaving && "chat-lab__shell-skill-row--leaving",
               )}
               aria-label={t("chatLab.composerRefsRowLabel")}
             >
@@ -4017,14 +4015,6 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
                   clearLabel={t("chatLab.followUpChipClose")}
                 />
               : null}
-              {composerSkillRow ? (
-                <ComposerSkillChip
-                  row={composerSkillRow}
-                  disabled={composerSkillUiLocked}
-                  onClear={clearComposerSkillRow}
-                  t={t}
-                />
-              ) : null}
               {composerFileRefs.map((row) => (
                 <ComposerFileRefChip
                   key={row.id}
@@ -4075,7 +4065,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
             ref={textareaRef}
             className={cn(
               "chat-lab__shell-textarea",
-              (composerFollowUpRef || composerSkillRow || composerFileRefs.length > 0) &&
+              (composerFollowUpRef || composerFileRefs.length > 0) &&
                 "chat-lab__shell-textarea--with-chip",
               composerAttachments.length > 0 && "chat-lab__shell-textarea--with-attachments",
             )}
@@ -4120,7 +4110,6 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
           filterQuery={slashFilterQuery}
           skills={skillPickList}
           highlightIndex={slashHighlightIndex}
-          onHighlightIndexChange={setSlashHighlightIndex}
           onPick={pickSlashSkill}
           onClose={() => {}}
           t={t}
@@ -4143,8 +4132,8 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
             <TSelect
               id="chat-toolbar-model"
               borderless
-              // size="small"
-              autoWidth={false}
+              autoWidth
+              prefixIcon={<Cpu size={14} strokeWidth={2} aria-hidden />}
               value={enabledModelOptions.length > 0 ? toolbarModelId : "__model_not_configured__"}
               onChange={(v) => {
                 if (enabledModelOptions.length === 0) return;
@@ -4163,34 +4152,21 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
                 (gatewayStreaming && queuedMessages.length === 0)
               }
             />
-            <Checkbox
-              id="chat-toolbar-orch-toggle"
-              className="chat-lab__orch-check"
-              tone="toolbar"
-              checked={orchestrationMode}
-              disabled={composerInputLocked || orchestrationInProgress}
-              label={t("orchestration.modeToggle")}
-              title={t("orchestration.modeToggleHint")}
-              onCheckedChange={(on) => {
-                setOrchestrationMode(on);
-                if (paramC) setSessionOrchestrationMode(paramC, on);
+            <ComposerSkillToolbarPicker
+              skills={skillPickList}
+              selected={composerSkillRow}
+              onSelect={(row) => {
+                setComposerSkillRowLeaving(false);
+                setComposerSkillRow(row);
               }}
+              disabled={
+                composerSkillUiLocked ||
+                composerInputLocked ||
+                orchestrationInProgress ||
+                (gatewayStreaming && queuedMessages.length === 0)
+              }
+              t={t}
             />
-            {orchestrationMode ? (
-              <Checkbox
-                id="chat-toolbar-orch-fast-toggle"
-                className="chat-lab__orch-check"
-                tone="toolbar"
-                checked={orchestrationFastMode}
-                disabled={composerInputLocked || orchestrationInProgress}
-                label={t("orchestration.fastModeToggle")}
-                title={t("orchestration.fastModeToggleHint")}
-                onCheckedChange={(on) => {
-                  setOrchestrationFastMode(on);
-                  if (paramC) setSessionOrchestrationFastMode(paramC, on);
-                }}
-              />
-            ) : null}
             {showOrchestrationPlanPopover && orchestrationRun ? (
               <ChatLabOrchestrationPlanPopover
                 plan={orchestrationRun.plan}
@@ -4302,7 +4278,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
                     ...participantIds.filter((id) => id !== mainAgent?.id),
                   ]}
                   onParticipantsChange={handleParticipantsChange}
-                  participantsDisabled={composerInputLocked || gatewayStreaming}
+                  participantsDisabled={gatewayStreaming || orchestrationRunnerActive}
                 />
                 <div className="chat-lab__landing-mid">
                   <ChatLabHero
@@ -4327,7 +4303,7 @@ function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange }) {
                     ...participantIds.filter((id) => id !== mainAgent?.id),
                   ]}
                   onParticipantsChange={handleParticipantsChange}
-                  participantsDisabled={composerInputLocked || gatewayStreaming}
+                  participantsDisabled={gatewayStreaming || orchestrationRunnerActive}
                 >
                   <ChatLabMessageList
                     key={conversationId}
@@ -6095,8 +6071,8 @@ const AssistantQuestionnaireCard = memo(function AssistantQuestionnaireCard({
         role="group"
         aria-label={t("chatLab.questionnaireGroup")}
       >
-      <div className="chat-lab__quick-replies__header" aria-hidden>
-        <span className="chat-lab__quick-replies__pin" aria-hidden />
+      <div className="chat-lab__quick-replies__toolbar">
+        <span className="chat-lab__quick-replies__title">{t("chatLab.questionnaireGroup")}</span>
       </div>
       <form className="chat-lab__questionnaire__form" onSubmit={handleSubmit}>
         {/* Scroll on a plain div — Chromium/Electron often ignores ::-webkit-scrollbar on <form>. */}
@@ -6168,8 +6144,6 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
   const [answers, setAnswers] = useState(/** @type {Array<string | null>} */ ([]));
   /** @type {[number, import("react").Dispatch<import("react").SetStateAction<number>>]} */
   const [viewIndex, setViewIndex] = useState(0);
-  /** @type {[boolean, import("react").Dispatch<import("react").SetStateAction<boolean>>]} */
-  const [tierExiting, setTierExiting] = useState(false);
   /** @type {import("react").MutableRefObject<boolean>} */
   const sequenceSubmittedRef = useRef(false);
 
@@ -6179,7 +6153,6 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
     sequenceSubmittedRef.current = false;
     setAnswers(tiers.map(() => null));
     setViewIndex(0);
-    setTierExiting(false);
   }, [tiersSig, tiers]);
 
   const unansweredIdx = answers.findIndex((a) => !String(a ?? "").trim());
@@ -6196,16 +6169,16 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
     return s.includes("\n\n") ? s.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean) : [s];
   }, [sentText]);
 
-  const snippetForTier = useMemo(() => {
+  const selectedValue = useMemo(() => {
     const fromAnswer = String(answers[safeTierIdx] ?? "").trim();
     if (fromAnswer) return fromAnswer;
-    if (sentText == null) return null;
-    if (tiers.length <= 1) return sentText.trim() || null;
-    if (sentPieces.length >= tiers.length) return sentPieces[safeTierIdx] ?? null;
-    return null;
+    if (sentText == null) return undefined;
+    if (tiers.length <= 1) return sentText.trim() || undefined;
+    if (sentPieces.length >= tiers.length) return sentPieces[safeTierIdx] ?? undefined;
+    return undefined;
   }, [answers, safeTierIdx, sentPieces.length, sentText, tiers.length]);
 
-  const frozen = disabled || tierExiting || Boolean(sentText);
+  const frozen = disabled || Boolean(sentText);
   const canInteractRadios =
     tiers.length > 1 &&
     !frozen &&
@@ -6221,25 +6194,20 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
       if (u < 0 || u >= tiers.length) return;
       if (safeTierIdx !== u) return;
 
-      setTierExiting(true);
+      setAnswers((prev) => {
+        const base = tiers.map((_t, idx) =>
+          idx === u ? trimmed : String(prev[idx] ?? "").trim() || null,
+        );
+        const allDone =
+          tiers.length >= 2 && base.length === tiers.length && base.every((x) => String(x ?? "").trim());
+        if (allDone && !sequenceSubmittedRef.current) {
+          sequenceSubmittedRef.current = true;
+          void onSelect(formatChoiceSequenceReply(base.map((x) => String(x ?? "").trim())));
+        }
+        return base;
+      });
 
-      window.setTimeout(() => {
-        setAnswers((prev) => {
-          const base = tiers.map((_t, idx) =>
-            idx === u ? trimmed : String(prev[idx] ?? "").trim() || null,
-          );
-          const allDone =
-            tiers.length >= 2 && base.length === tiers.length && base.every((x) => String(x ?? "").trim());
-          if (allDone && !sequenceSubmittedRef.current) {
-            sequenceSubmittedRef.current = true;
-            void onSelect(formatChoiceSequenceReply(base.map((x) => String(x ?? "").trim())));
-          }
-          return base;
-        });
-
-        setViewIndex(() => Math.min(u + 1, tiers.length - 1));
-        setTierExiting(false);
-      }, 380);
+      setViewIndex(() => Math.min(u + 1, tiers.length - 1));
     },
     [frozen, unansweredIdx, onSelect, safeTierIdx, tiers, tiers.length],
   );
@@ -6247,120 +6215,70 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
   if (!tiers?.length) return null;
 
   const pager = tiers.length > 1;
+  const radioDisabled = frozen || (tiers.length > 1 && !canInteractRadios);
 
   return (
     <div className="chat-lab__quick-replies-shell">
       <div className="chat-lab__quick-replies">
-      <div
-        className={cn(
-          "chat-lab__quick-replies__header",
-          pager && "chat-lab__quick-replies__header--pager",
-        )}
-      >
-        {pager ? (
-          <div className="chat-lab__quick-replies__header-nav">
-            <Button
+        <div className="chat-lab__quick-replies__toolbar">
+          {pager ? (
+            <>
+              <Button
                 variant="text"
                 size="small"
-              type="button"
-              className="chat-lab__quick-replies__pager-btn"
-              disabled={frozen || viewIndex <= 0}
-              aria-label={t("chatLab.quickReplyPrevAria")}
-              onClick={() => setViewIndex((vi) => Math.max(0, vi - 1))}
-            >
-              {t("chatLab.quickReplyPrev")}
-            </Button>
-            <span className="chat-lab__quick-replies__pager-count">
-              {t("chatLab.quickReplyStepCount", { current: viewIndex + 1, total: tiers.length })}
-            </span>
-            <Button
+                type="button"
+                className="chat-lab__quick-replies__pager-btn"
+                disabled={frozen || viewIndex <= 0}
+                aria-label={t("chatLab.quickReplyPrevAria")}
+                onClick={() => setViewIndex((vi) => Math.max(0, vi - 1))}
+              >
+                {t("chatLab.quickReplyPrev")}
+              </Button>
+              <span className="chat-lab__quick-replies__step">
+                {t("chatLab.quickReplyGroupStep", { current: safeTierIdx + 1, total: tiers.length })}
+              </span>
+              <Button
                 variant="text"
                 size="small"
-              type="button"
-              className="chat-lab__quick-replies__pager-btn"
-              disabled={frozen || viewIndex >= tiers.length - 1}
-              aria-label={t("chatLab.quickReplyNextAria")}
-              onClick={() => setViewIndex((vi) => Math.min(tiers.length - 1, vi + 1))}
-            >
-              {t("chatLab.quickReplyNext")}
-            </Button>
-          </div>
-        ) : (
-          <span className="chat-lab__quick-replies__header-spacer" aria-hidden />
-        )}
-        <span className="chat-lab__quick-replies__pin" aria-hidden />
-      </div>
-      <div className={cn("chat-lab__quick-replies__stack", pager && "chat-lab__quick-replies__stack--layered")}>
-        {pager
-          ? tiers
-              .slice(safeTierIdx + 1, Math.min(safeTierIdx + 4, tiers.length))
-              .map((peekTier, peekIdx) => {
-                const peekLabel =
-                  peekTier?.options?.[0]?.sendText ??
-                  peekTier?.options?.[0]?.label ??
-                  t("chatLab.quickReplyStackMore");
-                return (
-                  <div
-                    key={peekTier.id}
-                    aria-hidden
-                    className={cn(
-                      "chat-lab__quick-replies__stack-sheet",
-                      `chat-lab__quick-replies__stack-sheet--n${peekIdx + 2}`,
-                    )}
-                  >
-                    <span className="chat-lab__quick-replies__stack-sheet-title">{peekLabel}</span>
-                  </div>
-                );
-              })
-          : null}
-        <div className={cn("chat-lab__quick-replies__tier-front", tierExiting && "chat-lab__quick-replies__tier-front--exit")}>
-          <div
-            role="radiogroup"
-            aria-label={
-              tiers.length > 1
-                ? t("chatLab.quickReplyGroupStep", { current: safeTierIdx + 1, total: tiers.length })
-                : t("chatLab.quickReplyGroup")
-            }
-          >
-            {options.map((o) => {
-              const line = snippetForTier ?? "";
-              const isSent = line !== "" && o.sendText === line;
-
-              return (
-                <div key={o.id} className="chat-lab__quick-reply-row">
-                  <Button
-                variant="text"
-                block
-                    type="button"
-                    role="radio"
-                    aria-checked={Boolean(isSent)}
-                    className={cn(
-                      "chat-lab__quick-reply-card",
-                      isSent && "chat-lab__quick-reply-card--sent",
-                    )}
-                    disabled={
-                      frozen ||
-                      (tiers.length > 1
-                        ? !canInteractRadios
-                        : false) ||
-                      (sentText != null ? !isSent : false)
-                    }
-                    onClick={() => (tiers.length <= 1 ? onSelect(o.sendText) : handleMultiPick(o.sendText))}
-                  >
-                    <span className="chat-lab__quick-reply-card__radio" aria-hidden>
-                      <span className="chat-lab__quick-reply-card__radio-dot" />
-                    </span>
-                    <span className="chat-lab__quick-reply-card__body">
-                      <span className="chat-lab__quick-reply-card__kicker">{o.badge}</span>
-                      <span className="chat-lab__quick-reply-card__label">{o.label}</span>
-                    </span>
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
+                type="button"
+                className="chat-lab__quick-replies__pager-btn"
+                disabled={frozen || viewIndex >= tiers.length - 1}
+                aria-label={t("chatLab.quickReplyNextAria")}
+                onClick={() => setViewIndex((vi) => Math.min(tiers.length - 1, vi + 1))}
+              >
+                {t("chatLab.quickReplyNext")}
+              </Button>
+            </>
+          ) : (
+            <span className="chat-lab__quick-replies__title">{t("chatLab.quickReplyGroup")}</span>
+          )}
         </div>
-      </div>
+        <RadioGroup
+          className="chat-lab__quick-replies__radios"
+          layout="vertical"
+          value={selectedValue}
+          disabled={radioDisabled}
+          aria-label={
+            tiers.length > 1
+              ? t("chatLab.quickReplyGroupStep", { current: safeTierIdx + 1, total: tiers.length })
+              : t("chatLab.quickReplyGroup")
+          }
+          onChange={(val) => {
+            const picked = String(val ?? "").trim();
+            if (!picked || radioDisabled) return;
+            if (tiers.length <= 1) onSelect(picked);
+            else handleMultiPick(picked);
+          }}
+        >
+          {options.map((o) => (
+            <Radio key={o.id} value={o.sendText} className="chat-lab__quick-reply-radio">
+              <span className="chat-lab__quick-reply-radio__text">
+                <span className="chat-lab__quick-reply-radio__badge">{o.badge}.</span>
+                {o.label}
+              </span>
+            </Radio>
+          ))}
+        </RadioGroup>
       </div>
     </div>
   );

@@ -71,12 +71,14 @@ function ContextPopover({
   const { t } = useI18n();
   const inputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
   const popupRef = useRef(/** @type {import("tdesign-react").PopupInstanceFunctions | null} */ (null));
+  const openedAtRef = useRef(0);
 
   const getRect = useCallback(() => anchorRef.current?.getBoundingClientRect() ?? null, [anchorRef]);
   const { anchorRef: virtualAnchorRef } = useVirtualPopupAnchor({ open, getRect, popupRef });
 
   useEffect(() => {
     if (open) {
+      openedAtRef.current = Date.now();
       const id = requestAnimationFrame(() => inputRef.current?.focus());
       return () => cancelAnimationFrame(id);
     }
@@ -95,7 +97,8 @@ function ContextPopover({
         "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
         "shadow-[var(--os-shadow-soft)]",
       )}
-      onMouseDown={(e) => e.preventDefault()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="chat-lab__context-popover-search">
         <div className="min-w-0 flex-1">
@@ -140,24 +143,17 @@ function ContextPopover({
                       isSelected && "chat-lab__context-popover-row--selected",
                     )}
                   >
-                    <Button
-                      variant="text"
-                      block
+                    <button
                       type="button"
-                      className={cn(
-                        "chat-lab__context-popover-item",
-                        isSelected && "chat-lab__context-popover-item--active",
-                      )}
+                      className="chat-lab__context-popover-item"
                       onClick={() => onPickWorkspace(p)}
                     >
                       <Folder className="chat-lab__context-popover-item-icon" aria-hidden />
                       <span className="chat-lab__context-popover-item-label">{p}</span>
-                    </Button>
+                    </button>
                     {isSelected ? (
                       <div className="chat-lab__context-item-suffix">
-                        <Button
-                          variant="text"
-                          size="small"
+                        <button
                           type="button"
                           className="chat-lab__context-clear-btn"
                           aria-label={t("chatLab.contextBar.clearSelection")}
@@ -167,7 +163,7 @@ function ContextPopover({
                           }}
                         >
                           <X aria-hidden />
-                        </Button>
+                        </button>
                         <span className="chat-lab__context-popover-check" aria-hidden>
                           ✓
                         </span>
@@ -192,16 +188,14 @@ function ContextPopover({
               <ul className="chat-lab__context-popover-list">
                 {fileEntries.map((ent) => (
                   <li key={ent.path}>
-                    <Button
-                      variant="text"
-                      block
+                    <button
                       type="button"
                       className="chat-lab__context-popover-item"
                       onClick={() => onPickFile(ent.path)}
                     >
                       <Search className="chat-lab__context-popover-item-icon" aria-hidden />
                       <span className="chat-lab__context-popover-item-label">{ent.rel}</span>
-                    </Button>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -217,9 +211,7 @@ function ContextPopover({
               <ul className="chat-lab__context-popover-list">
                 {branches.map((b) => (
                   <li key={b}>
-                    <Button
-                      variant="text"
-                      block
+                    <button
                       type="button"
                       className={cn(
                         "chat-lab__context-popover-item",
@@ -234,7 +226,7 @@ function ContextPopover({
                           ✓
                         </span>
                       ) : null}
-                    </Button>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -249,10 +241,10 @@ function ContextPopover({
 
       {kind === "workspace" ? (
         <div className="chat-lab__context-popover-footer">
-          <Button type="button" variant="outline" size="small" block className="chat-lab__context-popover-footer-btn" onClick={onOpenFolder}>
-            <FolderOpen className="chat-lab__context-popover-item-icon" aria-hidden />
-            {t("chatLab.contextBar.openFolder")}
-          </Button>
+          <button type="button" className="chat-lab__context-popover-footer-btn" onClick={onOpenFolder}>
+            <FolderOpen className="chat-lab__context-popover-footer-icon" aria-hidden />
+            <span className="chat-lab__context-popover-footer-label">{t("chatLab.contextBar.openFolder")}</span>
+          </button>
         </div>
       ) : null}
     </div>
@@ -271,8 +263,21 @@ function ContextPopover({
       overlayInnerClassName={OS_POPUP_INNER_CLASS}
       popperOptions={osPopupPopperOptions(8, 8)}
       content={popupContent}
-      onVisibleChange={(visible) => {
-        if (!visible) onClose();
+      onVisibleChange={(visible, context) => {
+        if (visible) return;
+        if (
+          context?.trigger === "document" &&
+          Date.now() - openedAtRef.current < 180
+        ) {
+          return;
+        }
+        if (context?.trigger === "document") {
+          const target = context.e?.target;
+          if (target instanceof Node && anchorRef.current?.contains(target)) {
+            return;
+          }
+        }
+        onClose();
       }}
     >
       <span ref={virtualAnchorRef} className={OS_POPUP_ANCHOR_CLASS} aria-hidden />
@@ -438,7 +443,6 @@ function ChatLabContextBarInner({ workspace }) {
     <div className="chat-lab__context-bar" role="toolbar" aria-label={t("chatLab.contextBar.toolbarAria")}>
       <Button
                 variant="outline"
-                shape="round"
                 size="small"
         ref={workspaceBtnRef}
         type="button"
@@ -457,7 +461,6 @@ function ChatLabContextBarInner({ workspace }) {
       {gitRepo && hasSelection ? (
         <Button
                 variant="outline"
-                shape="round"
                 size="small"
           ref={branchBtnRef}
           type="button"

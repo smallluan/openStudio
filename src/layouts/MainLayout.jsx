@@ -107,8 +107,10 @@ export default function MainLayout({ railResizeEnabled = false }) {
   );
 
   const lastExpandedRef = useRef(readLastExpanded());
+  const railTransitionTimerRef = useRef(/** @type {number | null} */ (null));
   const [railPx, setRailPx] = useState(readRailPx);
   const [railDragging, setRailDragging] = useState(false);
+  const [railTransitioning, setRailTransitioning] = useState(false);
 
   const isNarrow = railPx < RAIL_MIN;
   useWechatSessionSync();
@@ -131,7 +133,33 @@ export default function MainLayout({ railResizeEnabled = false }) {
     return () => document.documentElement.style.removeProperty("--os-primary-rail-px");
   }, [railPx]);
 
+  useEffect(() => {
+    if (railDragging) setRailTransitioning(false);
+  }, [railDragging]);
+
+  useEffect(
+    () => () => {
+      if (railTransitionTimerRef.current != null) {
+        window.clearTimeout(railTransitionTimerRef.current);
+        railTransitionTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
+  const startRailTransition = useCallback(() => {
+    setRailTransitioning(true);
+    if (railTransitionTimerRef.current != null) {
+      window.clearTimeout(railTransitionTimerRef.current);
+    }
+    railTransitionTimerRef.current = window.setTimeout(() => {
+      railTransitionTimerRef.current = null;
+      setRailTransitioning(false);
+    }, 360);
+  }, []);
+
   const toggle = useCallback(() => {
+    startRailTransition();
     setRailPx((w) => {
       if (w < RAIL_MIN) {
         return Math.max(RAIL_MIN, lastExpandedRef.current || RAIL_DEFAULT);
@@ -144,10 +172,20 @@ export default function MainLayout({ railResizeEnabled = false }) {
       }
       return RAIL_COLLAPSED;
     });
-  }, []);
+  }, [startRailTransition]);
 
   const onRailCommit = useCallback((w) => {
+    if (!railDragging) startRailTransition();
     setRailPx(finalizeRailWidth(w));
+  }, [railDragging, startRailTransition]);
+
+  const handleRailTransitionEnd = useCallback((e) => {
+    if (e.propertyName !== "width") return;
+    if (railTransitionTimerRef.current != null) {
+      window.clearTimeout(railTransitionTimerRef.current);
+      railTransitionTimerRef.current = null;
+    }
+    setRailTransitioning(false);
   }, []);
 
   return (
@@ -159,9 +197,11 @@ export default function MainLayout({ railResizeEnabled = false }) {
             "primary-rail",
             isNarrow && "primary-rail--narrow",
             railDragging && "primary-rail--dragging",
+            railTransitioning && "primary-rail--transitioning",
           )}
           style={{ width: railPx }}
           aria-label={t("nav.primaryAria")}
+          onTransitionEnd={handleRailTransitionEnd}
         >
           {railResizeEnabled ? (
             <ResizableEdge
@@ -177,7 +217,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
 
           <div className="primary-rail__nav-column">
             <PrimaryRailMenu collapsed={isNarrow} items={primaryNavItems} />
-            <ChatHistoryList narrow={isNarrow} />
+            <ChatHistoryList narrow={isNarrow || railTransitioning} />
             <div className="primary-rail__footer">
               <RailSettingsLink narrow={isNarrow} />
             </div>

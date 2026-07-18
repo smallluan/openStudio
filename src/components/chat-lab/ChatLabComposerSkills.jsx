@@ -1,6 +1,6 @@
-import { Search } from "lucide-react";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Popup } from "tdesign-react";
+import { Puzzle, Search } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Popup, Select as TSelect } from "tdesign-react";
 import { Button, Input } from "@open-studio/udesign";
 import { filterSkillPickList } from "../../skills/skillRegistry.js";
 import {
@@ -11,21 +11,6 @@ import {
 } from "../../ui/osPopupShared.js";
 import { useVirtualPopupAnchor } from "../../ui/useVirtualPopupAnchor.js";
 import { cn } from "../../ui/cn.js";
-
-function Chevron({ open }) {
-  return (
-    <svg
-      className={cn("chat-lab__pill-chevron shrink-0 transition-transform duration-200", open && "rotate-180")}
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      aria-hidden
-    >
-      <path d="M3 4.5 6 7.5l3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 /** @param {{ row: import("../../skills/skillRegistry.js").SkillPickRow; onClear: () => void; disabled?: boolean; t: (k: string) => string }} props */
 export function ComposerSkillChip({ row, onClear, disabled, t }) {
@@ -54,6 +39,34 @@ export function ComposerSkillChip({ row, onClear, disabled, t }) {
   );
 }
 
+/** @param {{ row: import("../../skills/skillRegistry.js").SkillPickRow; index: number; highlightIndex: number; onPick: (row: import("../../skills/skillRegistry.js").SkillPickRow) => void; optionRef?: (node: HTMLButtonElement | null) => void; }} props */
+function SkillPopoverOption({ row, index, highlightIndex, onPick, optionRef }) {
+  return (
+    <button
+      ref={optionRef}
+      type="button"
+      role="option"
+      aria-selected={index === highlightIndex}
+      className={cn(
+        "chat-lab__skill-popover-option",
+        index === highlightIndex && "chat-lab__skill-popover-option--active",
+      )}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => onPick(row)}
+    >
+      <span className="chat-lab__skill-popover-option-emoji" aria-hidden>
+        {row.emoji}
+      </span>
+      <span className="chat-lab__skill-popover-option-body">
+        <span className="chat-lab__skill-popover-option-label">{row.label}</span>
+        {row.description ? (
+          <span className="chat-lab__skill-popover-option-desc">{row.description}</span>
+        ) : null}
+      </span>
+    </button>
+  );
+}
+
 /**
  * @param {{
  *   skills: import("../../skills/skillRegistry.js").SkillPickRow[];
@@ -71,10 +84,16 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
   const [q, setQ] = useState("");
   const [highlightIndex, setHighlightIndex] = useState(0);
   const optionRefs = useRef(/** @type {Array<HTMLButtonElement | null>} */ ([]));
+  const scrollHighlightIntoViewRef = useRef(false);
 
   const filtered = useMemo(() => filterSkillPickList(skills, q), [skills, q]);
+  const skillOptions = useMemo(
+    () => skills.map((row) => ({ value: row.id, label: row.label })),
+    [skills],
+  );
 
   useEffect(() => {
+    scrollHighlightIntoViewRef.current = true;
     setHighlightIndex(0);
   }, [q, open]);
 
@@ -86,7 +105,9 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
   }, [filtered.length]);
 
   useEffect(() => {
+    if (!scrollHighlightIntoViewRef.current) return;
     optionRefs.current[highlightIndex]?.scrollIntoView({ block: "nearest" });
+    scrollHighlightIntoViewRef.current = false;
   }, [highlightIndex, filtered.length]);
 
   useEffect(() => {
@@ -111,11 +132,13 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
       if (!open || filtered.length === 0 || e.nativeEvent.isComposing) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
+        scrollHighlightIntoViewRef.current = true;
         setHighlightIndex((i) => (i + 1) % filtered.length);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
+        scrollHighlightIntoViewRef.current = true;
         setHighlightIndex((i) => (i - 1 + filtered.length) % filtered.length);
         return;
       }
@@ -129,80 +152,58 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
 
   const popupContent = (
     <div
-      className={cn(
-        "chat-lab__skill-popover flex w-full flex-col overflow-hidden rounded-[14px] border",
-        "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)] bg-[var(--os-bg-modal)]",
-        "shadow-[var(--os-shadow-soft)]",
-      )}
+      className="chat-lab__skill-popover"
       onKeyDown={onPopoverKeyDown}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-2.5 py-2">
-        <div className="text-[0.68rem] font-semibold uppercase tracking-wide text-[var(--os-text-faint)]">
-          {t("chatLab.skillPickerTitle")}
-        </div>
-        <div className="mt-1.5">
-          <Input
-            ref={inputRef}
-            block
-            clearable
-            size="small"
-            type="search"
-            prefixIcon={<Search size={14} aria-hidden />}
-            value={q}
-            onChange={(value) => setQ(value)}
-            placeholder={t("chatLab.skillPickerSearch")}
-            aria-label={t("chatLab.skillPickerSearch")}
-          />
-        </div>
-      </div>
-      <div id={listId} role="listbox" className="max-h-[min(52vh,280px)] overflow-y-auto py-1">
-        <Button
-          type="button"
-          role="option"
-          variant="text"
+      <div className="chat-lab__skill-popover-search">
+        <Input
+          ref={inputRef}
           block
-          className="chat-lab__skill-popover-option w-full"
-          onClick={() => {
-            onSelect(null);
-            setOpen(false);
-          }}
-        >
-          {t("chatLab.skillPickerClear")}
-        </Button>
+          borderless
+          clearable
+          size="small"
+          type="search"
+          prefixIcon={<Search size={14} aria-hidden />}
+          value={q}
+          onChange={(value) => setQ(value)}
+          placeholder={t("chatLab.skillPickerSearch")}
+          aria-label={t("chatLab.skillPickerSearch")}
+        />
+      </div>
+      <div id={listId} role="listbox" className="chat-lab__skill-popover-list">
+        {selected ? (
+          <button
+            type="button"
+            role="option"
+            className="chat-lab__skill-popover-option chat-lab__skill-popover-option--clear"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onSelect(null);
+              setOpen(false);
+            }}
+          >
+            {t("chatLab.skillPickerClear")}
+          </button>
+        ) : null}
         {filtered.length === 0 ? (
-          <div className="px-3 py-4 text-center text-[0.78rem] text-[var(--os-text-faint)]">
-            {t("chatLab.skillPickerEmpty")}
-          </div>
+          <div className="chat-lab__skill-popover-empty">{t("chatLab.skillPickerEmpty")}</div>
         ) : (
           filtered.map((row, index) => (
-            <Button
+            <SkillPopoverOption
               key={row.id}
-              ref={(node) => {
-                optionRefs.current[index] = node;
-              }}
-              type="button"
-              role="option"
-              variant="text"
-              block
-              aria-selected={index === highlightIndex}
-              className={cn(
-                "chat-lab__skill-popover-option w-full",
-                index === highlightIndex && "chat-lab__skill-popover-option--active",
-              )}
-              onMouseEnter={() => setHighlightIndex(index)}
-              onClick={() => {
-                onSelect(row);
+              row={row}
+              index={index}
+              highlightIndex={highlightIndex}
+              onPick={(picked) => {
+                onSelect(picked);
                 setOpen(false);
               }}
-            >
-              <span className="text-lg leading-none" aria-hidden>
-                {row.emoji}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[0.82rem] font-medium text-[var(--os-text)]">{row.label}</span>
-                <span className="mt-0.5 line-clamp-2 text-[0.72rem] text-[var(--os-text-muted)]">{row.description}</span>
-              </span>
-            </Button>
+              optionRef={(node) => {
+                optionRefs.current[index] = node;
+              }}
+            />
           ))
         )}
       </div>
@@ -210,42 +211,46 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
   );
 
   return (
-    <Popup
-      visible={open}
-      trigger="click"
-      placement="top-start"
-      attach="body"
-      zIndex={400}
+    <TSelect
+      id="chat-toolbar-skill"
+      borderless
+      clearable={Boolean(selected)}
+      autoWidth
+      prefixIcon={<Puzzle size={14} strokeWidth={2} aria-hidden />}
+      className={cn("chat-lab__pill-skill", open && "chat-lab__pill-skill--open")}
       disabled={disabled}
-      destroyOnClose={false}
-      overlayClassName={OS_POPUP_OVERLAY_CLASS}
-      overlayInnerClassName={cn(OS_POPUP_INNER_CLASS, "w-[min(100vw-2rem,320px)]")}
-      popperOptions={osPopupPopperOptions(8, 8)}
-      content={popupContent}
-      onVisibleChange={(visible) => {
+      title={t("chatLab.toolbarSkillHint")}
+      placeholder={t("chatLab.toolbarSkill")}
+      value={selected?.id ?? ""}
+      options={skillOptions}
+      empty={null}
+      panelTopContent={popupContent}
+      popupVisible={open}
+      onPopupVisibleChange={(visible) => {
         setOpen(visible);
         if (!visible) setQ("");
       }}
-    >
-      <Button
-        type="button"
-        variant="outline"
-        shape="round"
-        size="small"
-        className={cn("chat-lab__pill-btn", selected && "chat-lab__pill-btn--liquid")}
-        disabled={disabled}
-        title={t("chatLab.toolbarSkillHint")}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
-      >
-        <span className="chat-lab__pill-ico" aria-hidden>
-          {selected ? selected.emoji : "✦"}
-        </span>
-        {selected ? selected.label : t("chatLab.toolbarSkill")}
-        <Chevron open={open} />
-      </Button>
-    </Popup>
+      onChange={(value) => {
+        if (!value) onSelect(null);
+      }}
+      onClear={() => onSelect(null)}
+      valueDisplay={() => (selected ? `${selected.emoji} ${selected.label}` : t("chatLab.toolbarSkill"))}
+      selectInputProps={{
+        "aria-haspopup": "listbox",
+        "aria-expanded": open,
+        "aria-controls": open ? listId : undefined,
+      }}
+      popupProps={{
+        attach: () => document.body,
+        placement: "top-start",
+        zIndex: 400,
+        destroyOnClose: false,
+        overlayClassName: OS_POPUP_OVERLAY_CLASS,
+        overlayInnerClassName: cn(OS_POPUP_INNER_CLASS, "chat-lab__pill-skill-popup"),
+        overlayInnerStyle: { overflow: "visible", maxHeight: "none" },
+        popperOptions: osPopupPopperOptions(8, 8),
+      }}
+    />
   );
 }
 
@@ -254,37 +259,12 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
  *   row: import("../../skills/skillRegistry.js").SkillPickRow;
  *   index: number;
  *   highlightIndex: number;
- *   onHighlightIndexChange?: (index: number) => void;
  *   onPick: (row: import("../../skills/skillRegistry.js").SkillPickRow) => void;
  *   optionRef?: (node: HTMLButtonElement | null) => void;
  * }} props
  */
-function SkillSlashPopoverOption({ row, index, highlightIndex, onHighlightIndexChange, onPick, optionRef }) {
-  return (
-    <button
-      ref={optionRef}
-      type="button"
-      role="option"
-      aria-selected={index === highlightIndex}
-      className={cn(
-        "chat-lab__skill-popover-option",
-        index === highlightIndex && "chat-lab__skill-popover-option--active",
-      )}
-      onMouseEnter={() => onHighlightIndexChange?.(index)}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => onPick(row)}
-    >
-      <span className="chat-lab__skill-popover-option-emoji" aria-hidden>
-        {row.emoji}
-      </span>
-      <span className="chat-lab__skill-popover-option-body">
-        <span className="chat-lab__skill-popover-option-label">{row.label}</span>
-        {row.description ? (
-          <span className="chat-lab__skill-popover-option-desc">{row.description}</span>
-        ) : null}
-      </span>
-    </button>
-  );
+function SkillSlashPopoverOption(props) {
+  return <SkillPopoverOption {...props} />;
 }
 
 /**
@@ -295,7 +275,6 @@ function SkillSlashPopoverOption({ row, index, highlightIndex, onHighlightIndexC
  *   filterQuery: string;
  *   skills: import("../../skills/skillRegistry.js").SkillPickRow[];
  *   highlightIndex?: number;
- *   onHighlightIndexChange?: (index: number) => void;
  *   onPick: (row: import("../../skills/skillRegistry.js").SkillPickRow) => void;
  *   onClose: () => void;
  *   t: (k: string) => string;
@@ -307,7 +286,6 @@ export function ComposerSkillSlashPopover({
   filterQuery,
   skills,
   highlightIndex = 0,
-  onHighlightIndexChange,
   onPick,
   onClose,
   t,
@@ -322,8 +300,9 @@ export function ComposerSkillSlashPopover({
   const { anchorRef } = useVirtualPopupAnchor({ open, getRect, popupRef });
 
   useEffect(() => {
+    if (!open) return;
     optionRefs.current[highlightIndex]?.scrollIntoView({ block: "nearest" });
-  }, [highlightIndex, filtered.length, open]);
+  }, [highlightIndex, open]);
 
   const popupContent = (
     <div
@@ -331,7 +310,6 @@ export function ComposerSkillSlashPopover({
       onMouseDown={(e) => e.preventDefault()}
       onPointerDown={(e) => e.preventDefault()}
     >
-      <div className="chat-lab__skill-popover-header">{t("chatLab.skillPickerTitle")}</div>
       <div id={listId} role="listbox" className="chat-lab__skill-popover-list">
         {filtered.length === 0 ? (
           <div className="chat-lab__skill-popover-empty">{t("chatLab.skillPickerEmpty")}</div>
@@ -342,7 +320,6 @@ export function ComposerSkillSlashPopover({
               row={row}
               index={index}
               highlightIndex={highlightIndex}
-              onHighlightIndexChange={onHighlightIndexChange}
               onPick={onPick}
               optionRef={(node) => {
                 optionRefs.current[index] = node;

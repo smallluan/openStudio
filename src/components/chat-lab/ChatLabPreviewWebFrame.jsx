@@ -7,7 +7,20 @@ import ChatLabPreviewMobileAssistiveBall from "./ChatLabPreviewMobileAssistiveBa
 const WEBVIEW_SANDBOX =
   "allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals";
 
-const FRAME_STYLE = {
+/** iframe sizing — block is fine. */
+const IFRAME_FRAME_STYLE = {
+  display: "block",
+  width: "100%",
+  height: "100%",
+  minHeight: 0,
+  flex: "1 1 auto",
+};
+
+/**
+ * Electron `<webview>` must stay `display:flex` (or inline-flex).
+ * Overriding to `block` breaks the internal guest iframe fill — content clips to a strip.
+ */
+const WEBVIEW_FRAME_STYLE = {
   display: "flex",
   width: "100%",
   height: "100%",
@@ -21,6 +34,28 @@ const NET_ERROR_ABORTED = -3;
 /** @param {number} code */
 function isBenignWebviewLoadError(code) {
   return code === NET_ERROR_ABORTED;
+}
+
+/**
+ * @param {string} a
+ * @param {string} b
+ */
+function previewUrlsMatch(a, b) {
+  const left = String(a ?? "").trim();
+  const right = String(b ?? "").trim();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  try {
+    const u1 = new URL(left);
+    const u2 = new URL(right);
+    const norm = (u) => {
+      const path = u.pathname.replace(/\/+$/, "") || "/";
+      return `${u.protocol}//${u.host}${path}${u.search}${u.hash}`;
+    };
+    return norm(u1) === norm(u2);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -50,14 +85,35 @@ export default function ChatLabPreviewWebFrame({
   className,
 }) {
   const { t } = useI18n();
-  const mountKey = `${frameKey}:${deviceMode}:${src}`;
+  // Do NOT include `src` — address-bar sync after in-page clicks would remount mid-navigation.
+  const mountKey = `${frameKey}:${deviceMode}`;
   const webviewRef = useRef(/** @type {HTMLElement | null} */ (null));
   const shellRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
+  const mountKeyRef = useRef(mountKey);
+  const mountSrcRef = useRef(src);
+  if (mountKeyRef.current !== mountKey) {
+    mountKeyRef.current = mountKey;
+    mountSrcRef.current = src;
+  }
   const [webviewNode, setWebviewNode] = useState(/** @type {HTMLElement | null} */ (null));
   const electronWebview = useWebview && typeof window !== "undefined" && Boolean(window.studioBridge);
   const [failed, setFailed] = useState(false);
   const [failDetail, setFailDetail] = useState("");
   const [canGoBack, setCanGoBack] = useState(false);
+
+  const focusWebview = useCallback(() => {
+    const node = webviewRef.current;
+    if (!node) return;
+    try {
+      /** @type {import("electron").WebviewTag} */
+      const wv = /** @type {import("electron").WebviewTag} */ (/** @type {unknown} */ (node));
+      wv.focus?.();
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const syncWebviewBackState = useCallback(() => {
     const node = webviewRef.current;
@@ -100,30 +156,26 @@ export default function ChatLabPreviewWebFrame({
     setFailed(false);
     setFailDetail("");
     setCanGoBack(false);
-  }, [src, frameKey, deviceMode]);
+  }, [mountKey]);
 
   useEffect(() => {
-    if (!electronWebview || !src || !webviewNode) return;
+    if (!electronWebview || !webviewNode) return;
 
     /** @type {import("electron").WebviewTag} */
     const wv = /** @type {import("electron").WebviewTag} */ (/** @type {unknown} */ (webviewNode));
     let disposed = false;
 
-    /** @param {Event & { x?: number; y?: number }} e */
-    const onContextMenu = (e) => {
-      e.preventDefault();
-      try {
-        wv.openDevTools?.();
-      } catch {
-        /* ignore */
-      }
-    };
-
     /** @param {Event & { url?: string; preventDefault?: () => void }} e */
     const onNewWindow = (e) => {
       e.preventDefault?.();
       const url = String(e.url ?? "").trim();
-      if (url) onNavigate?.(url);
+      if (!url) return;
+      try {
+        if (typeof wv.loadURL === "function") wv.loadURL(url);
+        else onNavigateRef.current?.(url);
+      } catch {
+        onNavigateRef.current?.(url);
+      }
     };
 
     /** @param {Event & { isMainFrame?: boolean; errorDescription?: string; errorCode?: number }} e */
@@ -144,9 +196,12 @@ export default function ChatLabPreviewWebFrame({
       }
     };
 
-    /** @param {Event} _e */
-    const onDidNavigate = () => {
-      if (!disposed) syncWebviewBackState();
+    /** @param {Event & { url?: string }} e */
+    const onDidNavigate = (e) => {
+      if (disposed) return;
+      syncWebviewBackState();
+      const url = String(e.url ?? "").trim();
+      if (url) onNavigateRef.current?.(url);
     };
 
     wv.addEventListener("new-window", onNewWindow);
@@ -154,9 +209,7 @@ export default function ChatLabPreviewWebFrame({
     wv.addEventListener("did-finish-load", onFinishLoad);
     wv.addEventListener("did-navigate", onDidNavigate);
     wv.addEventListener("did-navigate-in-page", onDidNavigate);
-    wv.addEventListener("contextmenu", onContextMenu);
 
-    // Listen for IPC message from main process to open DevTools
     const unsubscribeDevTools = window.studioBridge?.onOpenWebviewDevTools?.(() => {
       try {
         wv.openDevTools?.();
@@ -172,17 +225,98 @@ export default function ChatLabPreviewWebFrame({
       wv.removeEventListener("did-finish-load", onFinishLoad);
       wv.removeEventListener("did-navigate", onDidNavigate);
       wv.removeEventListener("did-navigate-in-page", onDidNavigate);
-      wv.removeEventListener("contextmenu", onContextMenu);
       unsubscribeDevTools?.();
     };
-  }, [electronWebview, src, frameKey, deviceMode, onNavigate, syncWebviewBackState, webviewNode]);
+  }, [electronWebview, mountKey, syncWebviewBackState, webviewNode]);
+
+  /**
+   * Parent `src` updates (address bar / window.open IPC) must not rewrite the `src` attribute
+   * (that remounts navigation). Drive intentional navigations through loadURL when the guest
+   * is not already at that URL (e.g. after did-navigate address sync).
+   */
+  useEffect(() => {
+    if (!electronWebview || !webviewNode || !src) return;
+
+    /** @type {import("electron").WebviewTag} */
+    const wv = /** @type {import("electron").WebviewTag} */ (/** @type {unknown} */ (webviewNode));
+
+    let current = "";
+    try {
+      current = String(wv.getURL?.() ?? "").trim();
+    } catch {
+      return;
+    }
+    // Still loading initial `src` attribute — only intervene if parent already asked for another URL.
+    if (!current || current === "about:blank") {
+      if (src && !previewUrlsMatch(src, mountSrcRef.current)) {
+        try {
+          wv.loadURL(src);
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
+    if (previewUrlsMatch(current, src)) return;
+    try {
+      wv.loadURL(src);
+    } catch {
+      /* ignore */
+    }
+  }, [electronWebview, webviewNode, src, mountKey]);
 
   useEffect(() => {
-    setWebviewNode(null);
-    if (webviewRefFromContext) {
-      webviewRefFromContext.current = null;
+    return () => {
+      setWebviewNode(null);
+      if (webviewRefFromContext) {
+        webviewRefFromContext.current = null;
+      }
+    };
+  }, [mountKey, webviewRefFromContext]);
+
+  /** Electron `<webview>` ignores flex/% height — pin pixel size to the shell box. */
+  useEffect(() => {
+    if (!electronWebview || !webviewNode) return;
+    const shell = shellRef.current;
+    if (!shell) return;
+
+    /** @type {import("electron").WebviewTag} */
+    const wv = /** @type {import("electron").WebviewTag} */ (/** @type {unknown} */ (webviewNode));
+
+    const syncSize = () => {
+      const { width, height } = shell.getBoundingClientRect();
+      const w = Math.max(0, Math.round(width));
+      const h = Math.max(0, Math.round(height));
+      if (w <= 0 || h <= 0) return;
+      // Keep flex display while pinning guest surface to shell pixels.
+      wv.style.display = "flex";
+      wv.style.width = `${w}px`;
+      wv.style.height = `${h}px`;
+    };
+
+    syncSize();
+    const rafId = window.requestAnimationFrame(syncSize);
+
+    /** @type {ResizeObserver | null} */
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(syncSize);
+      ro.observe(shell);
+      const viewport = shell.parentElement;
+      if (viewport) ro.observe(viewport);
     }
-  }, [mountKey]);
+    window.addEventListener("resize", syncSize);
+    wv.addEventListener("dom-ready", syncSize);
+    wv.addEventListener("did-finish-load", syncSize);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      ro?.disconnect();
+      window.removeEventListener("resize", syncSize);
+      wv.removeEventListener("dom-ready", syncSize);
+      wv.removeEventListener("did-finish-load", syncSize);
+    };
+  }, [electronWebview, webviewNode, mountKey]);
 
   const frameClass = cn("chat-lab-preview-dock__frame border-0", className);
   const mobileShell = deviceMode === "mobile";
@@ -203,6 +337,7 @@ export default function ChatLabPreviewWebFrame({
         "chat-lab-preview-dock__frame-shell",
         mobileShell && "chat-lab-preview-dock__frame-shell--mobile",
       )}
+      onMouseDown={electronWebview ? focusWebview : undefined}
     >
       {errorOverlay}
       {showMobileAssistive ? (
@@ -235,13 +370,13 @@ export default function ChatLabPreviewWebFrame({
               }
             }}
             key={mountKey}
-            src={src}
+            src={mountSrcRef.current}
             partition="persist:openstudio-preview"
             allowpopups="true"
             {...(deviceMode === "mobile" ? { useragent: PREVIEW_MOBILE_USER_AGENT } : {})}
             webpreferences="contextIsolation=yes,javascript=yes"
             className={frameClass}
-            style={FRAME_STYLE}
+            style={WEBVIEW_FRAME_STYLE}
             title={title}
           />,
         )}
@@ -260,7 +395,7 @@ export default function ChatLabPreviewWebFrame({
         <iframe
           ref={iframeRef}
           className={frameClass}
-          style={FRAME_STYLE}
+          style={IFRAME_FRAME_STYLE}
           title={title}
           key={mountKey}
           src={src}

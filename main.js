@@ -1,4 +1,16 @@
-﻿const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, shell, dialog, Notification, globalShortcut } = require("electron");
+﻿const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  Tray,
+  nativeImage,
+  shell,
+  dialog,
+  Notification,
+  globalShortcut,
+  clipboard,
+} = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { fileURLToPath } = require("url");
@@ -114,6 +126,90 @@ const CHAT_STREAM_CHAN = "studio:chatStream";
 const BOOTSTRAP_PROGRESS_CHAN = "studio:bootstrapProgress";
 const WECHAT_STATUS_CHAN = "studio:wechatStatus";
 const PREVIEW_URL_CHAN = "studio:openPreviewUrl";
+
+/**
+ * Electron does not show a default page context menu — attach a standard one for guest webviews.
+ * @param {Electron.WebContents} guestContents
+ */
+function attachGuestWebviewContextMenu(guestContents) {
+  guestContents.on("context-menu", (_event, params) => {
+    /** @type {Electron.MenuItemConstructorOptions[]} */
+    const template = [];
+
+    if (params.linkURL) {
+      template.push(
+        {
+          label: "Open link",
+          click: () => {
+            const url = String(params.linkURL ?? "").trim();
+            if (/^https?:\/\//i.test(url) && mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send(PREVIEW_URL_CHAN, { url });
+            }
+          },
+        },
+        {
+          label: "Copy link address",
+          click: () => clipboard.writeText(String(params.linkURL ?? "")),
+        },
+        { type: "separator" },
+      );
+    }
+
+    if (params.isEditable) {
+      template.push(
+        { label: "Cut", role: "cut", enabled: params.editFlags?.canCut !== false },
+        { label: "Copy", role: "copy", enabled: params.editFlags?.canCopy !== false },
+        { label: "Paste", role: "paste", enabled: params.editFlags?.canPaste !== false },
+        { label: "Select all", role: "selectAll" },
+        { type: "separator" },
+      );
+    } else if (params.selectionText) {
+      template.push({ label: "Copy", role: "copy" }, { type: "separator" });
+    }
+
+    const canGoBack =
+      typeof guestContents.navigationHistory?.canGoBack === "function"
+        ? guestContents.navigationHistory.canGoBack()
+        : typeof guestContents.canGoBack === "function"
+          ? guestContents.canGoBack()
+          : false;
+    const canGoForward =
+      typeof guestContents.navigationHistory?.canGoForward === "function"
+        ? guestContents.navigationHistory.canGoForward()
+        : typeof guestContents.canGoForward === "function"
+          ? guestContents.canGoForward()
+          : false;
+
+    template.push(
+      {
+        label: "Back",
+        enabled: canGoBack,
+        click: () => guestContents.goBack(),
+      },
+      {
+        label: "Forward",
+        enabled: canGoForward,
+        click: () => guestContents.goForward(),
+      },
+      { label: "Reload", click: () => guestContents.reload() },
+      { type: "separator" },
+      {
+        label: "Inspect element",
+        click: () => {
+          guestContents.inspectElement(params.x, params.y);
+          if (!guestContents.isDevToolsOpened()) {
+            guestContents.openDevTools({ mode: "detach" });
+          }
+        },
+      },
+    );
+
+    const menu = Menu.buildFromTemplate(template);
+    const owner = BrowserWindow.fromWebContents(guestContents) || mainWindow;
+    if (owner && !owner.isDestroyed()) menu.popup({ window: owner });
+  });
+}
+
 /** Overall budget for first-run gateway hydration (`tools.effective` can match first-chat prep cost). */
 const BOOTSTRAP_BUDGET_MS = 900_000;
 /** Background `#studio:` session prewarm (sequential RPCs; can be long with many threads). */
@@ -652,6 +748,7 @@ function createWindow() {
 
   win.webContents.on("did-attach-webview", (_event, guestContents) => {
     attachWebContentsDiagnostics(guestContents);
+    attachGuestWebviewContextMenu(guestContents);
     guestContents.setWindowOpenHandler(({ url }) => {
       const target = String(url ?? "").trim();
       if (/^https?:\/\//i.test(target) && mainWindow && !mainWindow.isDestroyed()) {

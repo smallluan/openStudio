@@ -1,7 +1,6 @@
 import { Users } from "lucide-react";
-import { Popup } from "tdesign-react";
-import { Button } from "@open-studio/udesign";
-import { useId, useMemo, useState } from "react";
+import { Button, Popup } from "tdesign-react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { agentAvatarGlyph, agentDisplayLabel } from "../../studio/agents.js";
 import { useI18n } from "../../context/I18nContext.jsx";
 import Avatar from "../../ui/Avatar.jsx";
@@ -31,9 +30,17 @@ function MembersChevron({ open }) {
  *   onChange: (ids: string[]) => void;
  *   disabled?: boolean;
  *   variant?: "pill" | "icon";
+ *   conversationId?: string | null;
  * }} props
  */
-export default function ChatLabParticipantBar({ agents, participantIds, onChange, disabled, variant = "pill" }) {
+export default function ChatLabParticipantBar({
+  agents,
+  participantIds,
+  onChange,
+  disabled,
+  variant = "pill",
+  conversationId = null,
+}) {
   const { t } = useI18n();
   const autoId = useId();
   const panelId = `${autoId}-members`;
@@ -85,6 +92,11 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
 
   const iconVariant = variant === "icon";
   const placement = iconVariant ? "bottom-end" : "top-end";
+
+  useEffect(() => {
+    setOpen(false);
+    setTransferOpen(false);
+  }, [conversationId]);
 
   const popupContent = (
     <div
@@ -153,34 +165,48 @@ export default function ChatLabParticipantBar({ agents, participantIds, onChange
   return (
     <>
       <Popup
+        key={conversationId ?? "participants"}
         visible={open}
-        trigger="click"
+        trigger="context-menu"
         placement={placement}
         attach="body"
         zIndex={400}
+        disabled={disabled}
         destroyOnClose={false}
         overlayClassName={OS_POPUP_OVERLAY_CLASS}
         overlayInnerClassName={cn(OS_POPUP_INNER_CLASS, "w-[min(100vw-2rem,280px)]")}
         popperOptions={osPopupPopperOptions(8, 8)}
         content={popupContent}
-        onVisibleChange={setOpen}
+        onVisibleChange={(next) => {
+          if (disabled && next) return;
+          setOpen(next);
+        }}
       >
         <Button
           variant="text"
-          shape="round"
+          shape={iconVariant ? "square" : "round"}
           size="small"
           type="button"
           className={cn(
             iconVariant
-              ? cn("chat-lab__turn-nav-icon-btn", open && "chat-lab__turn-nav-icon-btn--open")
+              ? cn(
+                  "chat-lab__turn-nav-icon-btn",
+                  open && "chat-lab__turn-nav-icon-btn--open",
+                  disabled && "chat-lab__turn-nav-icon-btn--locked",
+                )
               : cn("chat-lab__pill-btn chat-lab__members-pill", open && "chat-lab__members-pill--open"),
           )}
-          disabled={disabled}
           title={t("chatLab.participantsLabel")}
           aria-label={t("chatLab.participantsAria")}
+          aria-disabled={disabled || undefined}
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-controls={open ? panelId : undefined}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (disabled) return;
+            setOpen((v) => !v);
+          }}
         >
           {iconVariant ? (
             <Users size={16} strokeWidth={2.1} aria-hidden />
