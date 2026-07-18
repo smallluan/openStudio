@@ -48,18 +48,32 @@ export default function ChatLabSidebarActionRunner({
   const preview = useChatLabPreview();
   const ranKeysRef = useRef(new Set());
   const runningRef = useRef(false);
-  const conversationIdRef = useRef(conversationId);
+  const conversationIdRef = useRef(/** @type {string | null} */ (null));
+  const seededRef = useRef(false);
 
+  // On mount / conversation switch: treat existing sidebar-action fences as already run
+  // so switching into a thread does not reopen the webview / re-execute automation.
   useEffect(() => {
-    if (conversationIdRef.current === conversationId) return;
-    conversationIdRef.current = conversationId;
+    if (conversationIdRef.current !== conversationId) {
+      conversationIdRef.current = conversationId;
+      seededRef.current = false;
+    }
+    if (seededRef.current) return;
     ranKeysRef.current = new Set();
-  }, [conversationId]);
+    for (const m of messages) {
+      if (m.role !== "assistant" || m.error) continue;
+      const steps = extractSidebarActionStepsFromAssistantMessage(m);
+      if (!steps.length || !m.id) continue;
+      ranKeysRef.current.add(stepsRunKey(m.id, steps));
+    }
+    seededRef.current = true;
+  }, [conversationId, messages]);
 
   const automationEnabled =
     Boolean(preview?.embedPreview) || readLinkOpenModeLocal() !== "external";
 
   useEffect(() => {
+    if (!seededRef.current) return;
     const runAutomation = preview?.runSidebarAutomation;
     const openFromHref = preview?.openFromHref;
     if (!runAutomation || !onAutomationApplied) return;

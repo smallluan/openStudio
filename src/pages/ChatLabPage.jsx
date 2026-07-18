@@ -770,11 +770,46 @@ function mergeTerminalAssistantPayload(m, extra) {
 
 function isSidebarAutomationToolRow(row) {
   const id = String(row?.id ?? "");
-  const toolName = String(row?.toolName ?? "");
+  const toolName = String(row?.toolName ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   return (
     id.startsWith("sidebar-auto:") ||
-    toolName === "sidebar-action" ||
-    toolName === "sidebar_action"
+    toolName === "sidebar_action" ||
+    toolName.endsWith(".sidebar_action") ||
+    toolName.endsWith("/sidebar_action")
+  );
+}
+
+/**
+ * @param {import("../chat/toolTraceMerge.js").ToolTraceRow[] | undefined} toolRows
+ * @param {import("../chat/toolTraceMerge.js").ActivityRow[] | undefined} activityRows
+ */
+function collectToolRowsDeep(toolRows, activityRows) {
+  /** @type {import("../chat/toolTraceMerge.js").ToolTraceRow[]} */
+  const out = [];
+  if (Array.isArray(toolRows)) out.push(...toolRows);
+  /** @param {import("../chat/toolTraceMerge.js").ActivityRow[] | undefined} rows */
+  const walk = (rows) => {
+    if (!Array.isArray(rows)) return;
+    for (const row of rows) {
+      if (Array.isArray(row.toolTrace)) out.push(...row.toolTrace);
+      walk(row.nestedActivity);
+    }
+  };
+  walk(activityRows);
+  return out;
+}
+
+/**
+ * True only while a sidebar/webview automation tool row is actually in-flight.
+ * @param {import("../chat/toolTraceMerge.js").ToolTraceRow[] | undefined} toolRows
+ * @param {import("../chat/toolTraceMerge.js").ActivityRow[] | undefined} activityRows
+ */
+function hasRunningSidebarAutomationTool(toolRows, activityRows) {
+  return collectToolRowsDeep(toolRows, activityRows).some(
+    (row) => isSidebarAutomationToolRow(row) && isRunningToolRow(row),
   );
 }
 
@@ -4741,6 +4776,57 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 }
 
 /**
+ * Mark existing assistant replies as already handled when switching conversations so
+ * hydrate / remount does not auto-open the preview dock.
+ *
+ * Parent loads messages in useLayoutEffect after children, so the first commit after a
+ * conversation change may still carry the previous thread. Absorb that pass, then absorb
+ * the following messages swap for the new conversation.
+ *
+ * @param {string} conversationId
+ * @param {Array<{ id: string; role: string; streaming?: boolean; error?: string }>} messages
+ * @param {import("react").MutableRefObject<string | null>} conversationIdRef
+ * @param {import("react").MutableRefObject<boolean>} pendingHydrateRef
+ * @param {import("react").MutableRefObject<unknown>} messagesAtSwitchRef
+ * @param {import("react").MutableRefObject<string | null>} handledTailIdRef
+ * @returns {boolean} true when this pass should skip auto-open
+ */
+function seedPreviewAutoOpenOnConversationSwitch(
+  conversationId,
+  messages,
+  conversationIdRef,
+  pendingHydrateRef,
+  messagesAtSwitchRef,
+  handledTailIdRef,
+) {
+  const lastFinishedAssistantId = () => {
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && !m.streaming && !m.error);
+    return lastAssistant?.id ?? null;
+  };
+
+  if (conversationIdRef.current !== conversationId) {
+    conversationIdRef.current = conversationId;
+    pendingHydrateRef.current = true;
+    messagesAtSwitchRef.current = messages;
+    handledTailIdRef.current = lastFinishedAssistantId();
+    return true;
+  }
+
+  if (pendingHydrateRef.current) {
+    if (messagesAtSwitchRef.current !== messages) {
+      handledTailIdRef.current = lastFinishedAssistantId();
+      messagesAtSwitchRef.current = messages;
+      pendingHydrateRef.current = false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * When the latest assistant reply finishes streaming and includes a ```html … ``` fence,
  * open the preview dock (disk-only artifacts with no fenced body still need manual/open via link).
  * @param {{ conversationId: string; messages: Array<{ id: string; role: string; content?: string; streaming?: boolean; error?: string }> }} props
@@ -4749,14 +4835,23 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
   const { t } = useI18n();
   const preview = useChatLabPreview();
   const handledTailIdRef = useRef(/** @type {string | null} */ (null));
+  const conversationIdRef = useRef(/** @type {string | null} */ (null));
+  const pendingHydrateRef = useRef(false);
+  const messagesAtSwitchRef = useRef(/** @type {unknown} */ (null));
 
-  useEffect(() => {
-    // Reset to the last message id on conversation change to prevent auto-opening preview
-    const last = messages[messages.length - 1];
-    handledTailIdRef.current = last?.id ?? null;
-  }, [conversationId, messages]);
-
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (
+      seedPreviewAutoOpenOnConversationSwitch(
+        conversationId,
+        messages,
+        conversationIdRef,
+        pendingHydrateRef,
+        messagesAtSwitchRef,
+        handledTailIdRef,
+      )
+    ) {
+      return;
+    }
     if (!preview) return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant" || last.streaming || last.error) return;
@@ -4765,7 +4860,7 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
     handledTailIdRef.current = last.id;
     if (!doc) return;
     preview.openSrcDoc(doc, t("chatLab.previewTitleHtml"));
-  }, [messages, preview, t]);
+  }, [conversationId, messages, preview, t]);
 
   return null;
 }
@@ -4777,19 +4872,23 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
 function ChatLabAutoLinkPreview({ conversationId, messages }) {
   const preview = useChatLabPreview();
   const handledTailIdRef = useRef(/** @type {string | null} */ (null));
-  const conversationIdRef = useRef(conversationId);
-
-  useEffect(() => {
-    if (conversationIdRef.current === conversationId) return;
-    conversationIdRef.current = conversationId;
-    // Skip auto-open for the tail assistant already present when switching conversations.
-    const lastAssistant = [...messages]
-      .reverse()
-      .find((m) => m.role === "assistant" && !m.streaming && !m.error);
-    handledTailIdRef.current = lastAssistant?.id ?? null;
-  }, [conversationId, messages]);
+  const conversationIdRef = useRef(/** @type {string | null} */ (null));
+  const pendingHydrateRef = useRef(false);
+  const messagesAtSwitchRef = useRef(/** @type {unknown} */ (null));
 
   useLayoutEffect(() => {
+    if (
+      seedPreviewAutoOpenOnConversationSwitch(
+        conversationId,
+        messages,
+        conversationIdRef,
+        pendingHydrateRef,
+        messagesAtSwitchRef,
+        handledTailIdRef,
+      )
+    ) {
+      return;
+    }
     if (!preview?.openFromHref) return;
     if (readLinkOpenModeLocal() === "external") return;
     const lastAssistant = [...messages]
@@ -4802,7 +4901,7 @@ function ChatLabAutoLinkPreview({ conversationId, messages }) {
     const url = extractFirstWebMarkdownLink(String(lastAssistant.content ?? ""));
     if (!url) return;
     preview.openFromHref(url, url);
-  }, [messages, preview]);
+  }, [conversationId, messages, preview]);
 
   return null;
 }
@@ -4943,6 +5042,9 @@ function isFileReadTool(toolName) {
 function getStreamingBusyLabelFromTool(row, t) {
   const tool = String(row.toolName || "").trim();
   const nameLower = tool.toLowerCase();
+  if (isSidebarAutomationToolRow(row)) {
+    return t("chatLab.sidebarAutomationRunning");
+  }
   const cmdHint = pickToolCommandHint(row);
   if (isShellExecToolName(tool, cmdHint)) {
     return t("chatLab.streamingRunningCommand");
@@ -5068,40 +5170,43 @@ function resolveStreamingBusyLabel(opts) {
   const activityRows = Array.isArray(opts.activityRows) ? opts.activityRows : [];
   const timeline = Array.isArray(opts.timeline) ? opts.timeline : [];
   const toolMap = new Map(toolRows.map((r) => [r.id, r]));
-  const activityMap = new Map(activityRows.map((r) => [r.id, r]));
+  const deepTools = collectToolRowsDeep(toolRows, activityRows);
 
-  for (let i = timeline.length - 1; i >= 0; i--) {
-    const seg = timeline[i];
-    if (!seg) continue;
-    if (seg.kind === "text") {
-      if (String(seg.body ?? "").trim()) return opts.t("chatLab.streamingWriting");
-      continue;
-    }
-    if (seg.kind === "thinking") {
-      if (String(seg.body ?? "").trim()) return opts.t("chatLab.streamingThinking");
-      continue;
-    }
-    if (seg.kind === "tool") {
-      const row = toolMap.get(seg.refId);
-      if (isRunningToolRow(row)) return getStreamingBusyLabelFromTool(row, opts.t);
-      continue;
-    }
-    if (seg.kind === "activity") {
-      const row = activityMap.get(seg.refId);
-      if (isRunningActivityRow(row)) return getStreamingBusyLabelFromActivity(row, opts.t);
-    }
+  // 1) In-flight webview automation only — never sticky after the tool finishes.
+  if (hasRunningSidebarAutomationTool(toolRows, activityRows)) {
+    return opts.t("chatLab.sidebarAutomationRunning");
   }
 
-  for (let i = toolRows.length - 1; i >= 0; i--) {
-    const row = toolRows[i];
+  // 2) Any other in-flight tool.
+  for (let i = deepTools.length - 1; i >= 0; i--) {
+    const row = deepTools[i];
     if (isRunningToolRow(row)) return getStreamingBusyLabelFromTool(row, opts.t);
   }
 
+  // 3) Visible assistant prose / thinking beats lifecycle "正在准备…".
+  const hasTimelineText = timeline.some(
+    (seg) => seg?.kind === "text" && String(seg.body ?? "").trim(),
+  );
+  const hasTimelineThinking = timeline.some(
+    (seg) => seg?.kind === "thinking" && String(seg.body ?? "").trim(),
+  );
+  if (hasTimelineText || String(opts.content ?? "").trim()) {
+    return opts.t("chatLab.streamingWriting");
+  }
+  if (hasTimelineThinking || String(opts.thinking ?? "").trim()) {
+    return opts.t("chatLab.streamingThinking");
+  }
+
+  // 4) Activity / lifecycle only when there is still no user-visible reply body.
   const activityLabel = findRunningActivityBusyLabel(activityRows, opts.t);
   if (activityLabel) return activityLabel;
 
-  if (String(opts.thinking ?? "").trim()) return opts.t("chatLab.streamingThinking");
-  if (String(opts.content ?? "").trim()) return opts.t("chatLab.streamingWriting");
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    const seg = timeline[i];
+    if (seg?.kind !== "tool") continue;
+    const row = toolMap.get(seg.refId);
+    if (isRunningToolRow(row)) return getStreamingBusyLabelFromTool(row, opts.t);
+  }
 
   return fallback;
 }
@@ -5494,6 +5599,15 @@ function getToolTracePresentation(row, t) {
 
   if (lab && lab.toLowerCase() !== nameLower && lab.length > 2 && !/^phase\s*[:\uff1a]/i.test(lab)) {
     const line = truncateOneLine(lab, 96);
+    return { kind: "generic", brief: line, aria: line };
+  }
+
+  // Native `sidebar_action` rows often have no friendly summary — avoid showing the raw tool id.
+  if (isSidebarAutomationToolRow(row)) {
+    const running = isRunningToolRow(row);
+    const line = running
+      ? t("chatLab.sidebarAutomationRunning")
+      : t("chatLab.sidebarAutomationToolLabel");
     return { kind: "generic", brief: line, aria: line };
   }
 

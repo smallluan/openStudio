@@ -149,6 +149,77 @@ function priorTextBeforeIndex(list, textIdx) {
 }
 
 /**
+ * When a post-tool text delta is a cumulative snapshot, keep only the new tail.
+ * @param {string} prior accumulated prose from earlier timeline text segments
+ * @param {string} chunk incoming delta or segment body
+ */
+function incrementalTextAfterPrior(prior, chunk) {
+  const p = typeof prior === "string" ? prior : "";
+  let b = typeof chunk === "string" ? chunk : "";
+  if (!b.trim()) return b;
+  if (!p.trim()) return b;
+
+  if (b.startsWith(p)) return b.slice(p.length).trimStart();
+  if (p.startsWith(b) || b === p) return "";
+
+  const normP = normalizeCompareText(p);
+  const normB = normalizeCompareText(b);
+  if (normP && normB === normP) return "";
+  if (normP && normB.startsWith(normP)) {
+    let rawIdx = 0;
+    let normIdx = 0;
+    while (rawIdx < b.length && normIdx < normP.length) {
+      const ch = b[rawIdx];
+      if (/\s/.test(ch)) {
+        rawIdx += 1;
+        continue;
+      }
+      normIdx += 1;
+      rawIdx += 1;
+    }
+    while (rawIdx < b.length && /\s/.test(b[rawIdx])) rawIdx += 1;
+    return b.slice(rawIdx).trimStart();
+  }
+
+  const pin = p.slice(0, Math.min(220, p.length)).trim();
+  if (pin.length >= 24) {
+    const idx = b.indexOf(pin);
+    if (idx >= 0) {
+      const tail = b.slice(idx + pin.length).trimStart();
+      if (tail && normalizeCompareText(tail) !== normP) return tail;
+    }
+  }
+
+  if (normP.length >= 24 && normB.includes(normP)) {
+    return "";
+  }
+
+  return b;
+}
+
+/**
+ * Strip cumulative rewrites across interleaved text segments (text → tool → text …).
+ * @param {AssistantTimelineSegment[]} list
+ */
+function dedupeInterleavedCumulativeText(list) {
+  if (!Array.isArray(list) || !list.length) return list;
+  /** @type {AssistantTimelineSegment[]} */
+  const out = [];
+  let priorKept = "";
+  for (const seg of list) {
+    if (seg.kind !== "text") {
+      out.push(seg);
+      continue;
+    }
+    const body = incrementalTextAfterPrior(priorKept, String(seg.body ?? ""));
+    if (!body.trim()) continue;
+    out.push({ kind: "text", body });
+    priorKept = mergeAssistantTextChunk(priorKept, body);
+  }
+  return out;
+}
+
+/**
  * Text that belongs in the last timeline prose block after earlier text segments.
  * Returns `null` when the tail cannot be derived safely — callers must keep the
  * existing segment body (never fall back to the full cumulative canonical string,
@@ -319,7 +390,7 @@ export function reconcileTimelineWithCanonicalText(list, canonical) {
       body: preferLongerAssistantText(String(seg.body ?? ""), tail),
     });
   }
-  return trimTimeline(dedupeEarlierTextCoveredByLast(out));
+  return trimTimeline(dedupeInterleavedCumulativeText(dedupeEarlierTextCoveredByLast(out)));
 }
 
 /**
@@ -371,10 +442,18 @@ export function mergeTimelineTextDelta(prev, delta) {
   }
   const prevAtInsert = list[insertIdx - 1];
   if (prevAtInsert?.kind === "text") {
-    list[insertIdx - 1] = { kind: "text", body: mergeAssistantTextChunk(prevAtInsert.body, delta) };
+    const segIdx = insertIdx - 1;
+    const priorBefore = priorTextBeforeIndex(list, segIdx);
+    const combined = mergeAssistantTextChunk(prevAtInsert.body, delta);
+    const body = incrementalTextAfterPrior(priorBefore, combined);
+    if (!body.trim()) return trimTimeline(list);
+    list[segIdx] = { kind: "text", body };
     return trimTimeline(list);
   }
-  list.splice(insertIdx, 0, { kind: "text", body: delta });
+  const priorText = priorTextBeforeIndex(list, insertIdx);
+  const body = incrementalTextAfterPrior(priorText, delta);
+  if (!body.trim()) return trimTimeline(list);
+  list.splice(insertIdx, 0, { kind: "text", body });
   return trimTimeline(list);
 }
 
