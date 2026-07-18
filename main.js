@@ -105,6 +105,7 @@ const {
   attachPreviewGuest,
   setActivePreviewGuest,
 } = require("./lib/preview-guest-capture.cjs");
+const { handleSidebarDebugger } = require("./lib/preview-guest-debugger.cjs");
 
 /** Sidebar cannot embed Office; open these locally in the OS default viewer instead. */
 const OPEN_EXTERNALLY_SIDE_PREVIEW_EXT = new Set([".pptx", ".ppt", ".xlsx", ".xls"]);
@@ -1300,6 +1301,18 @@ app.whenReady().then(async () => {
   ipcMain.handle("studio:setActivePreviewGuest", (_event, payload) => {
     const id = payload && typeof payload === "object" ? payload.webContentsId : payload;
     return setActivePreviewGuest(id);
+  });
+
+  ipcMain.handle("studio:debuggerResume", async () => {
+    try {
+      return await handleSidebarDebugger({ op: "resume" });
+    } catch (e) {
+      return {
+        ok: false,
+        error: "resume_failed",
+        message: e instanceof Error ? e.message : String(e),
+      };
+    }
   });
 
   ipcMain.handle("studio:showSystemNotification", async (_event, payload) => {

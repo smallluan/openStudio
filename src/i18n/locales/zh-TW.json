@@ -268,7 +268,7 @@
     "gatewayUnavailable": "目前環境無法使用對話。",
     "streamError": "回覆流傳輸出錯。",
     "linkOpenPrompt": "## 網頁漫遊（目前主頁面）\n使用者正在 **網頁漫遊** 中瀏覽，主視口就是目前頁面（不是 Chat Lab 右側邊欄）。\n- **讀取頁面**：系統注入「目前主頁面快照」+ **可互動元素清單**；必須優先使用\n- **控制頁面**：呼叫原生工具 `sidebar_action`（observe→act）：短 steps → 同輪回傳 observation → 再決策\n- 登入頁請使用者先完成登入",
-    "pageAutomationPrompt": "## 網頁漫遊自動化（原生工具 `sidebar_action`）\n需要操作頁面時，**呼叫工具** `sidebar_action`（最多 5 步）。不要輸出 ```sidebar-action``` 代碼塊。每次只傳當前短步驟；工具結果含最新 DOM/`elements[].ref`。定位必須用清單中的 ref/selector；禁止臆造自然语言 target。\n\n## 觀測增強（獨立工具）\n- `sidebar_debug`：`start` → 操作復現 → `catalog` → `fetch`（按需）\n- `sidebar_screenshot`：DOM 不足時截視口",
+    "pageAutomationPrompt": "## 網頁漫遊自動化（原生工具 `sidebar_action`）\n需要操作頁面時，**呼叫工具** `sidebar_action`（最多 5 步）。不要輸出 ```sidebar-action``` 代碼塊。每次只傳當前短步驟；工具結果含最新 DOM/`elements[].ref`。定位必須用清單中的 ref/selector；禁止臆造自然语言 target。\n\n## 觀測增強（獨立工具）\n- `sidebar_debug`：`start` → 操作復現 → `catalog` → `fetch`（按需）\n- `sidebar_screenshot`：DOM 不足時截視口\n- `sidebar_debugger`：`enable` → `break_on_text` / `break_on_location` → 操作復現 → `wait_paused` → `inspect` / `evaluate` → `resume`",
     "previewContext": {
       "header": "## 網頁漫遊目前頁面快照（使用者正在瀏覽的頁面）",
       "methodNote": "以下內容由用戶端從網頁漫遊主視口讀取：可見文字 + 可互動元素清單（非右側邊欄）。",
@@ -441,7 +441,7 @@
     "sidebarDebugRunning": "正在採集頁面除錯資料…",
     "sidebarScreenshotToolLabel": "頁面截圖",
     "sidebarScreenshotRunning": "正在截取頁面…",
-    "sidebarPreviewToolsPrompt": "## 預覽除錯與截圖（獨立工具）\n- `sidebar_debug`：`start`（首屏用 `reload:true`）→ 操作復現 → `catalog` → `fetch`；也可 `op=reload` 或 `sidebar_action` 的 `action:\"reload\"`。勿預設拉全量。\n- `sidebar_screenshot`：視口截圖；DOM 不足時使用。",
+    "sidebarPreviewToolsPrompt": "## 預覽除錯與截圖（獨立工具）\n- `sidebar_debug`：`start`（首屏用 `reload:true`）→ 操作復現 → `catalog` → `fetch`；也可 `op=reload` 或 `sidebar_action` 的 `action:\"reload\"`。勿預設拉全量。\n- `sidebar_screenshot`：視口截圖；DOM 不足時使用。\n- `sidebar_debugger`：`enable` → `break_on_text` → 用 `sidebar_action` 復現。若回傳 `debuggerPaused:true`（黃色暫停條），表示斷點已命中：`op=inspect` 後**必須** `op=resume` 放行。想再試一次 / 繼續操作前先 resume，否則頁面會一直卡住。不要把卡住/超時當成沒斷到。",
     "previewTabsAria": "側欄預覽分頁",
     "previewTabUntitled": "未命名分頁",
     "sidebarPreviewContext": {
@@ -533,6 +533,8 @@
     "previewDeviceModeAria": "預覽裝置模式",
     "previewWebLoading": "正在載入頁面…",
     "previewWebLoadFailed": "頁面載入失敗。可點 ↗ 在系統瀏覽器開啟。",
+    "previewDebuggerPaused": "已在斷點處暫停",
+    "previewDebuggerResume": "繼續執行",
     "previewMobileBack": "返回上一頁",
     "previewMobileAssistive": "懸浮球：拖曳移動，點擊返回",
     "previewClose": "關閉預覽",

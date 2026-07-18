@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PlayIcon } from "tdesign-icons-react";
 import { cn } from "../../ui/cn.js";
 import { PREVIEW_MOBILE_USER_AGENT } from "../../chat/chatLabDocumentPreview.js";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -96,8 +97,35 @@ export default function ChatLabPreviewWebFrame({
   );
   onNavigateRef.current = onNavigate;
   const [recoverNonce, setRecoverNonce] = useState(0);
+  const [debuggerPaused, setDebuggerPaused] = useState(false);
+  const [debuggerResuming, setDebuggerResuming] = useState(false);
   const effectiveMountKey = `${mountKey}:${recoverNonce}`;
   const mountKeyRef = useRef(effectiveMountKey);
+
+  useEffect(() => {
+    const bridge = /** @type {{
+      onDebuggerPause?: (fn: (data: unknown) => void) => () => void;
+    }} */ (window).studioBridge;
+    if (typeof bridge?.onDebuggerPause !== "function") return undefined;
+    return bridge.onDebuggerPause((data) => {
+      const evt = data && typeof data === "object" ? /** @type {Record<string, unknown>} */ (data) : {};
+      const paused = evt.paused === true || evt.debuggerPaused === true || evt.hit === true;
+      setDebuggerPaused(paused);
+      if (!paused) setDebuggerResuming(false);
+    });
+  }, []);
+
+  const handleDebuggerResume = useCallback(async () => {
+    if (debuggerResuming) return;
+    const bridge = /** @type {{ resumeDebugger?: () => Promise<unknown> }} */ (window).studioBridge;
+    if (typeof bridge?.resumeDebugger !== "function") return;
+    setDebuggerResuming(true);
+    try {
+      await bridge.resumeDebugger();
+    } catch {
+      setDebuggerResuming(false);
+    }
+  }, [debuggerResuming]);
   const mountSrcRef = useRef(src);
   if (mountKeyRef.current !== effectiveMountKey) {
     mountKeyRef.current = effectiveMountKey;
@@ -389,6 +417,28 @@ export default function ChatLabPreviewWebFrame({
     </div>
   ) : null;
 
+  const debuggerOverlay = debuggerPaused ? (
+    <div className="chat-lab-preview-dock__debugger-mask" role="status" aria-live="polite">
+      <div className="chat-lab-preview-dock__debugger-bar">
+        <button
+          type="button"
+          className="chat-lab-preview-dock__debugger-resume"
+          aria-label={t("chatLab.previewDebuggerResume")}
+          title={t("chatLab.previewDebuggerResume")}
+          disabled={debuggerResuming}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void handleDebuggerResume();
+          }}
+        >
+          <PlayIcon className="chat-lab-preview-dock__debugger-resume-icon" />
+        </button>
+        <span className="chat-lab-preview-dock__debugger-bar-text">{t("chatLab.previewDebuggerPaused")}</span>
+      </div>
+    </div>
+  ) : null;
+
   const showMobileAssistive = mobileShell && /^https?:\/\//i.test(src);
 
   const frameShell = (frameNode) => (
@@ -401,6 +451,7 @@ export default function ChatLabPreviewWebFrame({
       onMouseDown={electronWebview ? focusWebview : undefined}
     >
       {errorOverlay}
+      {debuggerOverlay}
       {showMobileAssistive ? (
         <ChatLabPreviewMobileAssistiveBall
           shellRef={shellRef}

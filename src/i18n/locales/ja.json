@@ -268,7 +268,7 @@
     "gatewayUnavailable": "この環境ではチャットを利用できません。",
     "streamError": "応答のストリーミング中にエラーが発生しました。",
     "linkOpenPrompt": "## Web Explore（現在のメインページ）\nユーザーは **Web Explore** で閲覧中です。メインビューポートが現在のページです。\n- **読み取り**: スナップショット + **操作可能要素一覧** が previewContext に注入されます\n- **操作**: ネイティブツール `sidebar_action` を observe→act として使用（短い steps→同ターンで observation→次を判断）\n- ログイン画面の場合は先にログインを依頼",
-    "pageAutomationPrompt": "## Web Explore 自動化（ネイティブツール `sidebar_action`）\nページ操作が必要な場合、ツール `sidebar_action` を呼び出す（最大 5 ステップ）。```sidebar-action``` フェンスは使わない。短い手順だけを渡し、結果の observation / elements[].ref を見て続行。自然言語の target は禁止。\n\n## 観測の強化（独立ツール）\n- `sidebar_debug`：`start` → 操作で再現 → `catalog` → `fetch`（必要なものだけ）\n- `sidebar_screenshot`：DOM が足りないときのビューポート撮影",
+    "pageAutomationPrompt": "## Web Explore 自動化（ネイティブツール `sidebar_action`）\nページ操作が必要な場合、ツール `sidebar_action` を呼び出す（最大 5 ステップ）。```sidebar-action``` フェンスは使わない。短い手順だけを渡し、結果の observation / elements[].ref を見て続行。自然言語の target は禁止。\n\n## 観測の強化（独立ツール）\n- `sidebar_debug`：`start` → 操作で再現 → `catalog` → `fetch`（必要なものだけ）\n- `sidebar_screenshot`：DOM が足りないときのビューポート撮影\n- `sidebar_debugger`：`enable` → `break_on_text` / `break_on_location` → 操作で再現 → `wait_paused` → `inspect` / `evaluate` → `resume`",
     "previewContext": {
       "header": "## Web Explore ページスナップショット（ユーザーが閲覧中のページ）",
       "methodNote": "Web Explore のメインビューポートから取得：可視テキスト + 操作可能要素一覧。",
@@ -441,7 +441,7 @@
     "sidebarDebugRunning": "ページのデバッグデータを収集中…",
     "sidebarScreenshotToolLabel": "ページスクリーンショット",
     "sidebarScreenshotRunning": "スクリーンショットを撮影中…",
-    "sidebarPreviewToolsPrompt": "## プレビューのデバッグとスクリーンショット（独立ツール）\n- `sidebar_debug`：`start`（初回ロードは `reload:true`）→ 操作で再現 → `catalog` → `fetch`；`op=reload` または `sidebar_action` の `action:\"reload\"` も可。全量を既定で入れない。\n- `sidebar_screenshot`：ビューポート撮影。DOM が足りないときに使う。",
+    "sidebarPreviewToolsPrompt": "## プレビューのデバッグとスクリーンショット（独立ツール）\n- `sidebar_debug`：`start`（初回ロードは `reload:true`）→ 操作で再現 → `catalog` → `fetch`；`op=reload` または `sidebar_action` の `action:\"reload\"` も可。全量を既定で入れない。\n- `sidebar_screenshot`：ビューポート撮影。DOM が足りないときに使う。\n- `sidebar_debugger`：`enable` → `break_on_text` → `sidebar_action` で再現。`debuggerPaused:true`（黄色バー）ならヒット済み — `op=inspect` のあと**必ず** `op=resume`。再試行や追加操作の前に resume しないとページが固まったまま。フリーズ/タイムアウトを見逃しとみなさない。",
     "previewTabUntitled": "無題タブ",
     "sidebarPreviewContext": {
       "header": "## 右サイドバー現在ページのスナップショット",
@@ -532,6 +532,8 @@
     "previewDeviceModeAria": "プレビューのデバイスモード",
     "previewWebLoading": "ページを読み込み中…",
     "previewWebLoadFailed": "ページを読み込めませんでした。↗ でブラウザを開いてください。",
+    "previewDebuggerPaused": "ブレークポイントで一時停止",
+    "previewDebuggerResume": "再開",
     "previewMobileBack": "前のページへ",
     "previewMobileAssistive": "フローティングボール：ドラッグで移動、タップで戻る",
     "previewClose": "プレビューを閉じる",

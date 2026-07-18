@@ -7,6 +7,7 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
 相关独立工具（不混入 steps）：
 
 - [`sidebar_debug`](./sidebar-preview-tools.md) — console / 网络录制与按需拉取  
+- [`sidebar_debugger`](./sidebar-debugger.md) — JS 断点、暂停检查变量  
 - [`sidebar_screenshot`](./sidebar-preview-tools.md) — 视口截图
 
 ---

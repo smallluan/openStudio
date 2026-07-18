@@ -129,6 +129,12 @@ contextBridge.exposeInMainWorld("studioBridge", {
     ipcRenderer.invoke("studio:sidebarActionToolRespond", payload && typeof payload === "object" ? payload : {}),
   setActivePreviewGuest: (webContentsId) =>
     ipcRenderer.invoke("studio:setActivePreviewGuest", { webContentsId }),
+  onDebuggerPause: (listener) => {
+    const wrapped = (_e, data) => listener(data);
+    ipcRenderer.on("studio:debuggerPause", wrapped);
+    return () => ipcRenderer.removeListener("studio:debuggerPause", wrapped);
+  },
+  resumeDebugger: () => ipcRenderer.invoke("studio:debuggerResume"),
 });
 
 ipcRenderer.on("openstudio-notification-click", (_e, data) => {

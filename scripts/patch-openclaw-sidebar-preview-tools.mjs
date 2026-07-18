@@ -236,7 +236,23 @@ function main() {
   src = src.replace(FN_NEEDLE, `${TOOL_FN}\n${FN_NEEDLE}`);
 
   // Inject create calls after sidebar_action prep stage when present; else after web-fetch.
-  if (src.includes(`options?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");`)) {
+  if (src.includes("const sidebarDebugTool = createSidebarDebugTool();")) {
+    // already applied
+  } else if (src.includes("const sidebarDebuggerTool = createSidebarDebuggerTool();")) {
+    src = src.replace(
+      `const sidebarActionTool = createSidebarActionTool();
+	const sidebarDebuggerTool = createSidebarDebuggerTool();
+	options?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");
+	options?.recordToolPrepStage?.("openclaw-tools:sidebar-debugger-tool");`,
+      `const sidebarActionTool = createSidebarActionTool();
+	const sidebarDebugTool = createSidebarDebugTool();
+	const sidebarScreenshotTool = createSidebarScreenshotTool();
+	const sidebarDebuggerTool = createSidebarDebuggerTool();
+	options?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");
+	options?.recordToolPrepStage?.("openclaw-tools:sidebar-preview-tools");
+	options?.recordToolPrepStage?.("openclaw-tools:sidebar-debugger-tool");`,
+    );
+  } else if (src.includes(`options?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");`)) {
     src = src.replace(
       `\toptions?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");
 	const messageTool = options?.disableMessageTool ? null : createMessageTool({`,
@@ -263,7 +279,25 @@ function main() {
   }
 
   // Tool list: prefer inserting after sidebarActionTool if present.
-  if (src.includes(`pdfTool,
+  if (src.includes("sidebarDebugTool") && src.includes("sidebarScreenshotTool")) {
+    // already applied
+  } else if (src.includes(`pdfTool,
+			sidebarActionTool,
+			sidebarDebuggerTool
+		])`)) {
+    src = src.replace(
+      `pdfTool,
+			sidebarActionTool,
+			sidebarDebuggerTool
+		])`,
+      `pdfTool,
+			sidebarActionTool,
+			sidebarDebugTool,
+			sidebarScreenshotTool,
+			sidebarDebuggerTool
+		])`,
+    );
+  } else if (src.includes(`pdfTool,
 			sidebarActionTool
 		])`)) {
     src = src.replace(
