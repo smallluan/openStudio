@@ -4,6 +4,11 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
 
 控制路径为 **OpenClaw 原生工具** `sidebar_action`：模型在同一轮 `chat.send` 内发起 tool call → gateway 暂停 → Electron loopback 执行 DOM 操作 → 回传 observation → 模型继续。
 
+相关独立工具（不混入 steps）：
+
+- [`sidebar_debug`](./sidebar-preview-tools.md) — console / 网络录制与按需拉取  
+- [`sidebar_screenshot`](./sidebar-preview-tools.md) — 视口截图
+
 ---
 
 ## 1. 通信方式总览
@@ -92,7 +97,9 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
 
 ## 3. 可用 action
 
-基础：`focus` `type` `type_chars` `click` `blur` `press` `wait` `scroll` `snapshot` `navigate`  
+基础：`focus` `type` `type_chars` `click` `blur` `press` `wait` `scroll` `snapshot` `navigate` `reload`（`refresh` 同义；可选 `ms` 等待加载）  
 鼠标：`mousedown` `mouseup` `pointerdown` `pointerup` `mousemove` `pointermove` `hover` `dblclick` `rightclick` `contextmenu` `drag`
+
+首屏网络/日志录制请优先用 [`sidebar_debug`](./sidebar-preview-tools.md) 的 `start` + `reload: true`，不要只靠 `sidebar_action` reload。
 
 实现：`src/chat/chatLabPreviewAutomation.js`。

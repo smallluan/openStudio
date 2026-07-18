@@ -100,6 +100,11 @@ const {
   stopSidebarActionToolBridge,
   handleSidebarActionToolRespond,
 } = require("./lib/sidebar-action-tool-bridge.cjs");
+const {
+  initPreviewGuestCapture,
+  attachPreviewGuest,
+  setActivePreviewGuest,
+} = require("./lib/preview-guest-capture.cjs");
 
 /** Sidebar cannot embed Office; open these locally in the OS default viewer instead. */
 const OPEN_EXTERNALLY_SIDE_PREVIEW_EXT = new Set([".pptx", ".ppt", ".xlsx", ".xls"]);
@@ -761,6 +766,7 @@ function createWindow() {
   win.webContents.on("did-attach-webview", (_event, guestContents) => {
     attachWebContentsDiagnostics(guestContents);
     attachGuestWebviewContextMenu(guestContents);
+    attachPreviewGuest(guestContents);
     guestContents.setWindowOpenHandler(({ url }) => {
       const target = String(url ?? "").trim();
       if (/^https?:\/\//i.test(target) && mainWindow && !mainWindow.isDestroyed()) {
@@ -905,6 +911,7 @@ app.whenReady().then(async () => {
   createTray();
 
   try {
+    initPreviewGuestCapture(getStudioLog());
     startSidebarActionToolBridge({
       getMainWindow: () => mainWindow,
       log: getStudioLog(),
@@ -1288,6 +1295,11 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("studio:sidebarActionToolRespond", (_event, payload) => {
     return handleSidebarActionToolRespond(payload && typeof payload === "object" ? payload : {});
+  });
+
+  ipcMain.handle("studio:setActivePreviewGuest", (_event, payload) => {
+    const id = payload && typeof payload === "object" ? payload.webContentsId : payload;
+    return setActivePreviewGuest(id);
   });
 
   ipcMain.handle("studio:showSystemNotification", async (_event, payload) => {

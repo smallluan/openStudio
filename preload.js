@@ -127,6 +127,8 @@ contextBridge.exposeInMainWorld("studioBridge", {
   },
   respondSidebarActionTool: (payload) =>
     ipcRenderer.invoke("studio:sidebarActionToolRespond", payload && typeof payload === "object" ? payload : {}),
+  setActivePreviewGuest: (webContentsId) =>
+    ipcRenderer.invoke("studio:setActivePreviewGuest", { webContentsId }),
 });
 
 ipcRenderer.on("openstudio-notification-click", (_e, data) => {

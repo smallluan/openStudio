@@ -1092,6 +1092,29 @@ async function runStepOnWebview(wv, step) {
     wv.loadURL(url);
     return { ok: true, action: "navigate", url };
   }
+  if (step.action === "reload" || step.action === "refresh") {
+    try {
+      wv.reload();
+    } catch (e) {
+      return {
+        ok: false,
+        action: "reload",
+        error: "reload_failed",
+        message: e instanceof Error ? e.message : String(e),
+      };
+    }
+    const waitMs = Math.max(0, Math.min(15_000, Number(step.ms) || 800));
+    if (waitMs > 0) {
+      await new Promise((r) => window.setTimeout(r, waitMs));
+    }
+    let url = "";
+    try {
+      url = String(wv.getURL?.() ?? "");
+    } catch {
+      /* ignore */
+    }
+    return { ok: true, action: "reload", waitMs, url };
+  }
   if (WEBVIEW_INTERACTION_ACTIONS.has(step.action)) {
     focusWebviewHost(wv);
   }
@@ -1104,7 +1127,7 @@ async function runStepOnWebview(wv, step) {
  * @param {SidebarAutomationStep} step
  */
 async function runStepOnWebviewWithRetry(wv, step) {
-  const retryable = !["wait", "snapshot", "navigate", "scroll"].includes(step.action);
+  const retryable = !["wait", "snapshot", "navigate", "reload", "refresh", "scroll"].includes(step.action);
   const maxAttempts = retryable ? 1 + STEP_RETRY_DELAYS_MS.length : 1;
   /** @type {Record<string, unknown>} */
   let last = { ok: false, action: step.action, error: "unknown" };
@@ -1245,6 +1268,8 @@ export async function runSidebarPreviewAutomation(input) {
       step.action === "blur" ||
       step.action === "press" ||
       step.action === "navigate" ||
+      step.action === "reload" ||
+      step.action === "refresh" ||
       step.action === "wait" ||
       step.action === "scroll" ||
       step.action === "mousedown" ||

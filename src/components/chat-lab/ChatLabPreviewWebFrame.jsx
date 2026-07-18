@@ -252,11 +252,23 @@ export default function ChatLabPreviewWebFrame({
       if (url) onNavigateRef.current?.(url);
     };
 
+    /** Notify main which guest is active for sidebar_debug / sidebar_screenshot. */
+    const publishActiveGuest = () => {
+      try {
+        const id = typeof wv.getWebContentsId === "function" ? wv.getWebContentsId() : 0;
+        if (id) window.studioBridge?.setActivePreviewGuest?.(id);
+      } catch {
+        /* ignore */
+      }
+    };
+    publishActiveGuest();
+
     wv.addEventListener("new-window", onNewWindow);
     wv.addEventListener("did-fail-load", onFailLoad);
     wv.addEventListener("did-finish-load", onFinishLoad);
     wv.addEventListener("did-navigate", onDidNavigate);
     wv.addEventListener("did-navigate-in-page", onDidNavigate);
+    wv.addEventListener("dom-ready", publishActiveGuest);
 
     const unsubscribeDevTools = window.studioBridge?.onOpenWebviewDevTools?.(() => {
       try {
@@ -273,6 +285,7 @@ export default function ChatLabPreviewWebFrame({
       wv.removeEventListener("did-finish-load", onFinishLoad);
       wv.removeEventListener("did-navigate", onDidNavigate);
       wv.removeEventListener("did-navigate-in-page", onDidNavigate);
+      wv.removeEventListener("dom-ready", publishActiveGuest);
       unsubscribeDevTools?.();
     };
   }, [electronWebview, effectiveMountKey, syncWebviewBackState, webviewNode]);

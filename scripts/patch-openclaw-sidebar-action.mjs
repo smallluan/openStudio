@@ -28,7 +28,7 @@ function createSidebarActionTool() {
 	if (!baseUrl) return null;
 	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
 	const stepSchema = Type.Object({
-		action: Type.String({ description: "UI action: click, focus, type, press, wait, scroll, snapshot, navigate, ..." }),
+		action: Type.String({ description: "UI action: click, focus, type, press, wait, scroll, snapshot, navigate, reload, ..." }),
 		ref: Type.Optional(Type.String({ description: "Element ref from observation.elements, e.g. e3" })),
 		selector: Type.Optional(Type.String()),
 		text: Type.Optional(Type.String()),

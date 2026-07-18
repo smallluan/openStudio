@@ -5648,6 +5648,30 @@ function getToolTracePresentation(row, t) {
     return { kind: "generic", brief: line, aria: line };
   }
 
+  if (
+    nameLower === "sidebar_debug" ||
+    nameLower.endsWith(".sidebar_debug") ||
+    nameLower.endsWith("/sidebar_debug")
+  ) {
+    const running = isRunningToolRow(row);
+    const line = running
+      ? t("chatLab.sidebarDebugRunning")
+      : t("chatLab.sidebarDebugToolLabel");
+    return { kind: "generic", brief: line, aria: line };
+  }
+
+  if (
+    nameLower === "sidebar_screenshot" ||
+    nameLower.endsWith(".sidebar_screenshot") ||
+    nameLower.endsWith("/sidebar_screenshot")
+  ) {
+    const running = isRunningToolRow(row);
+    const line = running
+      ? t("chatLab.sidebarScreenshotRunning")
+      : t("chatLab.sidebarScreenshotToolLabel");
+    return { kind: "generic", brief: line, aria: line };
+  }
+
   const pathSnippet = pickArgString(args, [
     "path",
     "file_path",

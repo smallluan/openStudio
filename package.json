@@ -24,12 +24,13 @@
     "preview": "vite preview",
     "test:orchestration": "node --test lib/orchestration/core.test.cjs",
     "test:chat-sessions": "node --test lib/chat-sessions-store.test.cjs",
+    "test:preview-guest-capture": "node --test lib/preview-guest-capture.test.cjs",
     "storybook:udesign": "pnpm --filter @open-studio/udesign storybook",
     "storybook:udesign:reset": "pnpm --filter @open-studio/udesign storybook:reset",
     "typecheck:udesign": "pnpm --filter @open-studio/udesign typecheck",
     "openclaw": "openclaw",
     "windows:defender-exclude-openclaw-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-defender-exclude-openclaw-dev.ps1",
-    "postinstall": "node scripts/apply-openclaw-memo.mjs && node scripts/patch-openclaw-chat-image-inline.mjs && node scripts/patch-openclaw-studio-lean-chat.mjs && node scripts/patch-openclaw-sidebar-action.mjs && node scripts/generate-openclaw-bundled-skills.mjs && node scripts/ensure-openclaw-weixin-plugin.mjs"
+    "postinstall": "node scripts/apply-openclaw-memo.mjs && node scripts/patch-openclaw-chat-image-inline.mjs && node scripts/patch-openclaw-studio-lean-chat.mjs && node scripts/patch-openclaw-sidebar-action.mjs && node scripts/patch-openclaw-sidebar-preview-tools.mjs && node scripts/generate-openclaw-bundled-skills.mjs && node scripts/ensure-openclaw-weixin-plugin.mjs"
   },
   "engines": {
     "node": ">=22.14.0"

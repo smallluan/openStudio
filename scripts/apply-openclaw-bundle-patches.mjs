@@ -26,6 +26,7 @@ for (const script of [
   "patch-openclaw-chat-image-inline.mjs",
   "patch-openclaw-studio-lean-chat.mjs",
   "patch-openclaw-sidebar-action.mjs",
+  "patch-openclaw-sidebar-preview-tools.mjs",
 ]) {
   const scriptPath = path.join(__dirname, script);
   const result = spawnSync(process.execPath, [scriptPath], { cwd: root, env, stdio: "inherit" });
