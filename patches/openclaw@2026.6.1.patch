@@ -23,10 +23,19 @@ index e722bbe00300d29551b33cd1ff8ab2cfc4fcab2f..db6da01bc445fab523d63bcc21b140b6
  	const missingRequestedProviders = activeProviders.length > 0 ? nonEmptyRequestedProviders(collectRequestedCapabilityProviderIds({
  		key: params.key,
 diff --git a/dist/openclaw-tools-ChLzmhJi.js b/dist/openclaw-tools-ChLzmhJi.js
-index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..1ac1f49d3d3bc8e826ad0a042f62491e58933905 100644
+index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304e0438ead 100644
 --- a/dist/openclaw-tools-ChLzmhJi.js
 +++ b/dist/openclaw-tools-ChLzmhJi.js
-@@ -2698,6 +2698,165 @@ function resolveGoalSessionScope(options) {
+@@ -1271,7 +1271,7 @@ function resolveOptionalMediaToolFactoryPlan(params) {
+ 			key: "musicGenerationProviders",
+ 			config: params.config
+ 		})),
+-		pdf: allowPdf && (explicitPdf || hasSnapshotCapabilityAvailability({
++		pdf: process.env.OPEN_STUDIO_LEAN_CHAT_TOOLS !== "0" && allowPdf && (explicitPdf || hasSnapshotCapabilityAvailability({
+ 			snapshot,
+ 			authStore: params.authStore,
+ 			key: "mediaUnderstandingProviders",
+@@ -2698,6 +2698,311 @@ function resolveGoalSessionScope(options) {
  		storePath: resolveStorePath(options.config?.session?.store, { agentId })
  	};
  }
@@ -189,21 +198,565 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..1ac1f49d3d3bc8e826ad0a042f62491e
 +	};
 +}
 +
++
++function createSidebarDebugTool() {
++	/* OPEN_STUDIO_SIDEBAR_PREVIEW_TOOLS */
++	/* OPEN_STUDIO_SIDEBAR_DEBUG_RELOAD */
++	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\/$/, "");
++	if (!baseUrl) return null;
++	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
++	return {
++		label: "Sidebar Debug",
++		name: "sidebar_debug",
++		displaySummary: "Preview console/network debug",
++		description: "Record and inspect console logs + network requests for the Open Studio sidebar preview or Web Explore page. For first-load traffic: op=start with reload=true (starts recording then reloads the webview). Or op=reload while already recording. Then op=catalog → op=fetch. Also: start|stop|clear|status|catalog|fetch|reload. Large payloads are NOT auto-injected.",
++		parameters: Type.Object({
++			op: Type.String({
++				description: "start | stop | clear | status | catalog | fetch | reload"
++			}),
++			clear: Type.Optional(Type.Boolean({ description: "For start: clear prior buffers (default true)" })),
++			reload: Type.Optional(Type.Boolean({ description: "For start: reload the webview after recording starts (capture first-load network/console). Also use op=reload." })),
++			waitMs: Type.Optional(Type.Number({ description: "After reload, wait this many ms before returning (default 1200)" })),
++			ignoreCache: Type.Optional(Type.Boolean({ description: "Reload ignoring HTTP cache" })),
++			reload: Type.Optional(Type.Boolean({ description: "For start: reload webview after recording starts (capture first-load requests). Or use op=reload." })),
++			waitMs: Type.Optional(Type.Number({ description: "After reload, wait before returning (default 1200)" })),
++			ignoreCache: Type.Optional(Type.Boolean({ description: "Reload ignoring HTTP cache" })),
++			max: Type.Optional(Type.Number({ description: "Max catalog/fetch rows" })),
++			networkIds: Type.Optional(Type.Array(Type.String(), { description: "Fetch these network entry ids (req_N)" })),
++			logIds: Type.Optional(Type.Array(Type.String(), { description: "Fetch these console entry ids (log_N)" })),
++			logLevels: Type.Optional(Type.Array(Type.String(), { description: "Filter: error|warn|info|log" })),
++			contains: Type.Optional(Type.String({ description: "Substring filter for console messages" })),
++			urlContains: Type.Optional(Type.String({ description: "Substring filter for request URLs" })),
++			onlyErrors: Type.Optional(Type.Boolean({ description: "Prefer failed/4xx/5xx + warn/error logs" })),
++			includeResponseBody: Type.Optional(Type.Boolean({ description: "For fetch: include response body (default true)" })),
++			maxChars: Type.Optional(Type.Number({ description: "Truncate body/message chars" })),
++			fetchLogs: Type.Optional(Type.Boolean()),
++			fetchNetwork: Type.Optional(Type.Boolean()),
++			statusMin: Type.Optional(Type.Number()),
++			statusMax: Type.Optional(Type.Number())
++		}, { additionalProperties: true }),
++		execute: async (_toolCallId, args) => {
++			const params = asToolParamsRecord(args);
++			const op = String(params.op || "").trim();
++			if (!op) throw new ToolInputError("op is required");
++			const url = `${baseUrl}/v1/sidebar_debug`;
++			const headers = {
++				"content-type": "application/json",
++				accept: "application/json"
++			};
++			if (token) headers.authorization = `Bearer ${token}`;
++			let response;
++			try {
++				response = await fetch(url, {
++					method: "POST",
++					headers,
++					body: JSON.stringify(params),
++					signal: AbortSignal.timeout(12e4)
++				});
++			} catch (error) {
++				return jsonResult({
++					ok: false,
++					error: "bridge_unreachable",
++					message: formatErrorMessage(error),
++					hint: "Ensure Open Studio is running (sidebar tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
++				});
++			}
++			const text = await response.text();
++			let payload;
++			try {
++				payload = text ? JSON.parse(text) : {};
++			} catch {
++				payload = {
++					ok: false,
++					error: "invalid_bridge_json",
++					raw: text.slice(0, 500)
++				};
++			}
++			if (!response.ok) return jsonResult({
++				ok: false,
++				error: "bridge_http_error",
++				status: response.status,
++				...payload && typeof payload === "object" ? payload : { raw: payload }
++			});
++			return jsonResult(payload);
++		}
++	};
++}
++
++function createSidebarScreenshotTool() {
++	/* OPEN_STUDIO_SIDEBAR_PREVIEW_TOOLS_SHOT */
++	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\/$/, "");
++	if (!baseUrl) return null;
++	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
++	return {
++		label: "Sidebar Screenshot",
++		name: "sidebar_screenshot",
++		displaySummary: "Capture preview screenshot",
++		description: "Capture a viewport screenshot of the Open Studio sidebar preview or Web Explore page. Use when the DOM inventory is insufficient (icon-only controls, canvas, visual layout). Returns a PNG path (and optional base64). Does not replace sidebar_action for clicking — use observation refs after visual inspection when possible.",
++		parameters: Type.Object({
++			includeBase64: Type.Optional(Type.Boolean({
++				description: "Include base64 PNG in the tool result when small enough (default false)"
++			}))
++		}, { additionalProperties: true }),
++		execute: async (_toolCallId, args) => {
++			const params = asToolParamsRecord(args);
++			const url = `${baseUrl}/v1/sidebar_screenshot`;
++			const headers = {
++				"content-type": "application/json",
++				accept: "application/json"
++			};
++			if (token) headers.authorization = `Bearer ${token}`;
++			let response;
++			try {
++				response = await fetch(url, {
++					method: "POST",
++					headers,
++					body: JSON.stringify(params || {}),
++					signal: AbortSignal.timeout(12e4)
++				});
++			} catch (error) {
++				return jsonResult({
++					ok: false,
++					error: "bridge_unreachable",
++					message: formatErrorMessage(error),
++					hint: "Ensure Open Studio is running (sidebar tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
++				});
++			}
++			const text = await response.text();
++			let payload;
++			try {
++				payload = text ? JSON.parse(text) : {};
++			} catch {
++				payload = {
++					ok: false,
++					error: "invalid_bridge_json",
++					raw: text.slice(0, 500)
++				};
++			}
++			if (!response.ok) return jsonResult({
++				ok: false,
++				error: "bridge_http_error",
++				status: response.status,
++				...payload && typeof payload === "object" ? payload : { raw: payload }
++			});
++			return jsonResult(payload);
++		}
++	};
++}
++
  function createGetGoalTool(options) {
  	return {
  		label: "Get Goal",
-@@ -13921,6 +14080,10 @@ function createOpenClawTools(options) {
+@@ -11499,7 +11804,12 @@ function resolveSessionsSpawnThreadAvailability(opts) {
+ function createSessionsSpawnToolSchema(params) {
+ 	const spawnModes = params.threadAvailable ? SUBAGENT_SPAWN_MODES : ["run"];
+ 	const schema = {
+-		task: Type.String(),
++		task: Type.Optional(Type.String({ description: "Single-child task. For parallel hard-block, prefer tasks[]." })),
++		tasks: Type.Optional(Type.Array(Type.Object({
++			task: Type.String(),
++			label: Type.Optional(Type.String()),
++			taskName: Type.Optional(Type.String())
++		}), { description: "Open Studio: spawn these children in parallel and block until ALL finish. Preferred for frontend+backend style work." })),
+ 		taskName: Type.Optional(Type.String({ description: "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter." })),
+ 		label: Type.Optional(Type.String()),
+ 		runtime: optionalStringEnum(params.acpAvailable ? SESSIONS_SPAWN_RUNTIMES : ["subagent"]),
+@@ -11520,6 +11830,11 @@ function createSessionsSpawnToolSchema(params) {
+ 			mimeType: Type.Optional(Type.String())
+ 		}), { maxItems: 50 })),
+ 		attachAs: Type.Optional(Type.Object({ mountPath: Type.Optional(Type.String()) })),
++		awaitResult: Type.Optional(Type.Boolean({ description: "Open Studio: wait for THIS child before returning (default true). Use tasks[] for parallel hard-block; set false only with sessions_yield." })),
++		timeoutSeconds: Type.Optional(Type.Integer({
++			minimum: 0,
++			description: "Open Studio: max seconds to wait (per child for awaitResult/yield; default 600). 0 = do not wait."
++		})),
+ 		...params.acpAvailable ? {
+ 			resumeSessionId: Type.Optional(Type.String({ description: "ACP-only resume target; ignored for runtime=\"subagent\". Use id already recorded for this requester." })),
+ 			streamTo: optionalStringEnum(SESSIONS_SPAWN_ACP_STREAM_TARGETS, { description: "ACP-only stream target; ignored for runtime=\"subagent\". Use \"parent\" to stream turn to requester." })
+@@ -11532,6 +11847,182 @@ function resolveAcpUnavailableMessage(opts) {
+ 	if (opts?.config?.acp?.enabled === false) return "runtime=\"acp\" is unavailable because ACP is disabled by policy (`acp.enabled=false`). Use runtime=\"subagent\".";
+ 	return "runtime=\"acp\" is unavailable in this session because no ACP runtime backend is loaded. Enable the acpx plugin or use runtime=\"subagent\".";
+ }
++
++function isOpenStudioSubagentMode() {
++	/* OPEN_STUDIO_SESSIONS_SPAWN_AWAIT */
++	/* OPEN_STUDIO_SESSIONS_SPAWN_PARALLEL_BARRIER */
++	const env = String(process.env.OPEN_STUDIO_SUBAGENT_AWAIT || "").trim().toLowerCase();
++	return env === "1" || env === "true" || env === "on";
++}
++/** @deprecated use isOpenStudioSubagentMode / shouldAwaitOpenStudioSpawnResult */
++function isOpenStudioSubagentAwaitEnabled(params) {
++	/* OPEN_STUDIO_SESSIONS_SPAWN_AWAIT */
++	return shouldAwaitOpenStudioSpawnResult(params);
++}
++function shouldAwaitOpenStudioSpawnResult(params) {
++	/* OPEN_STUDIO_SESSIONS_SPAWN_AWAIT */
++	/* OPEN_STUDIO_SESSIONS_SPAWN_HARD_BARRIER */
++	if (!isOpenStudioSubagentMode()) return false;
++	// Explicit false = fire-and-forget (then must sessions_yield).
++	// Default true = block this spawn until its child finishes (stops parent polling).
++	if (params && params.awaitResult === false) return false;
++	return true;
++}
++/** Lean child context: skip parent Chat Lab sidebar/debug system prompts (token + conflict). */
++function resolveOpenStudioSubagentSpawnContext(params) {
++	/* OPEN_STUDIO_SESSIONS_SPAWN_LEAN_CHILD */
++	if (!isOpenStudioSubagentMode()) {
++		return {
++			context: params && (params.context === "fork" || params.context === "isolated") ? params.context : void 0,
++			lightContext: Boolean(params && params.lightContext === true)
++		};
++	}
++	// Default isolated + lightweight. Explicit context:"fork" / lightContext:false still honored.
++	const context = params && params.context === "fork" ? "fork" : "isolated";
++	const lightContext = !(params && params.lightContext === false);
++	return { context, lightContext };
++}
++const OPEN_STUDIO_SUBAGENT_TOOL_DENY = ["sidebar_action", "sidebar_debug", "sidebar_screenshot", "sidebar_debugger"];
++function mergeOpenStudioSubagentToolDenylist(base) {
++	/* OPEN_STUDIO_SESSIONS_SPAWN_LEAN_CHILD */
++	const deny = new Set();
++	if (Array.isArray(base)) {
++		for (const name of base) {
++			if (typeof name === "string" && name.trim()) deny.add(name.trim());
++		}
++	}
++	if (isOpenStudioSubagentMode()) {
++		for (const name of OPEN_STUDIO_SUBAGENT_TOOL_DENY) deny.add(name);
++	}
++	return [...deny];
++}
++function resolveOpenStudioSpawnAwaitTimeoutSeconds(params) {
++	const raw = params && typeof params.timeoutSeconds === "number" && Number.isFinite(params.timeoutSeconds) ? params.timeoutSeconds : void 0;
++	if (raw === void 0) return 600;
++	return Math.max(0, Math.floor(raw));
++}
++function resolveOpenStudioPendingSpawnKey(opts) {
++	const key = opts?.agentSessionKey || opts?.sessionId || opts?.completionOwnerKey || "default";
++	return String(key);
++}
++const __openStudioPendingSpawnsBySession = globalThis.__openStudioPendingSpawnsBySession || new Map();
++globalThis.__openStudioPendingSpawnsBySession = __openStudioPendingSpawnsBySession;
++function trackOpenStudioPendingSpawn(opts, spawnResult, params) {
++	if (!isOpenStudioSubagentMode()) return;
++	if (shouldAwaitOpenStudioSpawnResult(params)) return;
++	if (!spawnResult || typeof spawnResult !== "object") return;
++	if (spawnResult.status !== "accepted") return;
++	const runId = typeof spawnResult.runId === "string" ? spawnResult.runId.trim() : "";
++	const childSessionKey = typeof spawnResult.childSessionKey === "string" ? spawnResult.childSessionKey.trim() : "";
++	if (!runId || !childSessionKey) return;
++	const key = resolveOpenStudioPendingSpawnKey(opts);
++	const list = __openStudioPendingSpawnsBySession.get(key) || [];
++	const task = typeof params?.task === "string" ? params.task.trim() : "";
++	const label = typeof params?.label === "string" && params.label.trim() ? params.label.trim() : typeof params?.taskName === "string" && params.taskName.trim() ? params.taskName.trim() : task ? task.slice(0, 80) : "Subagent";
++	list.push({
++		runId,
++		childSessionKey,
++		label,
++		task
++	});
++	__openStudioPendingSpawnsBySession.set(key, list);
++}
++async function openStudioWaitOneSpawn(spawnResult, params) {
++	const runId = typeof spawnResult.runId === "string" ? spawnResult.runId.trim() : "";
++	const childSessionKey = typeof spawnResult.childSessionKey === "string" ? spawnResult.childSessionKey.trim() : "";
++	const timeoutSeconds = resolveOpenStudioSpawnAwaitTimeoutSeconds(params);
++	if (timeoutSeconds === 0) return {
++		...spawnResult,
++		status: "accepted",
++		runId,
++		childSessionKey
++	};
++	const timeoutMs = finiteSecondsToTimerSafeMilliseconds(timeoutSeconds, { floorSeconds: true }) ?? timeoutSeconds * 1e3;
++	const wait = await waitForAgentRunAndReadUpdatedAssistantReply({
++		runId,
++		sessionKey: childSessionKey,
++		timeoutMs: timeoutMs || 6e5,
++		limit: 50
++	});
++	if (wait.status === "timeout") return {
++		...spawnResult,
++		status: "timeout",
++		error: wait.error || "subagent wait timed out",
++		runId,
++		childSessionKey
++	};
++	if (wait.status === "error" || wait.status === "pending") return {
++		...spawnResult,
++		status: wait.status === "pending" ? "timeout" : "error",
++		error: wait.error || (wait.status === "pending" ? "subagent still pending" : "subagent wait failed"),
++		runId,
++		childSessionKey
++	};
++	return {
++		...spawnResult,
++		status: "completed",
++		runId,
++		childSessionKey,
++		result: typeof wait.replyText === "string" ? wait.replyText : ""
++	};
++}
++async function openStudioAwaitSpawnResult(spawnResult, params, opts) {
++	/* OPEN_STUDIO_SESSIONS_SPAWN_AWAIT */
++	if (!isOpenStudioSubagentMode()) return spawnResult;
++	if (!spawnResult || typeof spawnResult !== "object") return spawnResult;
++	if (spawnResult.status !== "accepted") return spawnResult;
++	const runId = typeof spawnResult.runId === "string" ? spawnResult.runId.trim() : "";
++	const childSessionKey = typeof spawnResult.childSessionKey === "string" ? spawnResult.childSessionKey.trim() : "";
++	if (!runId || !childSessionKey) return spawnResult;
++	if (!shouldAwaitOpenStudioSpawnResult(params)) {
++		trackOpenStudioPendingSpawn(opts, spawnResult, params);
++		const key = resolveOpenStudioPendingSpawnKey(opts);
++		const pending = __openStudioPendingSpawnsBySession.get(key) || [];
++		return {
++			...spawnResult,
++			pendingCount: pending.length,
++			nextRequiredTool: "sessions_yield",
++			instruction: "Child started and is working in the background. After you finish all parallel sessions_spawn calls, your NEXT tool MUST be sessions_yield (it blocks until EVERY pending child finishes and returns results[]). Do not call exec/read/other tools and do not poll with text."
++		};
++	}
++	return openStudioWaitOneSpawn(spawnResult, params);
++}
++async function openStudioAwaitAllPendingSpawns(opts, params) {
++	/* OPEN_STUDIO_SESSIONS_SPAWN_AWAIT */
++	const key = resolveOpenStudioPendingSpawnKey(opts);
++	const pending = __openStudioPendingSpawnsBySession.get(key) || [];
++	__openStudioPendingSpawnsBySession.set(key, []);
++	const message = typeof params?.message === "string" && params.message.trim() ? params.message.trim() : "Waiting for subagent results";
++	if (!pending.length) return {
++		status: "completed",
++		message,
++		results: []
++	};
++	const results = await Promise.all(pending.map(async (item) => {
++		const waited = await openStudioWaitOneSpawn({
++			status: "accepted",
++			runId: item.runId,
++			childSessionKey: item.childSessionKey
++		}, params);
++		return {
++			runId: item.runId,
++			childSessionKey: item.childSessionKey,
++			label: item.label,
++			task: item.task,
++			status: waited.status,
++			result: typeof waited.result === "string" ? waited.result : "",
++			error: typeof waited.error === "string" ? waited.error : void 0
++		};
++	}));
++	const failed = results.filter((row) => row.status !== "completed");
++	return {
++		status: failed.length ? "error" : "completed",
++		message,
++		results,
++		error: failed.length ? (String(failed.length) + " of " + String(results.length) + " subagent(s) failed or timed out") : void 0
++	};
++}
++
+ function createSessionsSpawnTool(opts) {
+ 	const acpAvailable = isAcpRuntimeSpawnAvailable({
+ 		config: opts?.config,
+@@ -11542,7 +12033,7 @@ function createSessionsSpawnTool(opts) {
+ 		label: "Sessions",
+ 		name: "sessions_spawn",
+ 		displaySummary: acpAvailable ? SESSIONS_SPAWN_TOOL_DISPLAY_SUMMARY : SESSIONS_SPAWN_SUBAGENT_TOOL_DISPLAY_SUMMARY,
+-		description: describeSessionsSpawnTool({
++		description: isOpenStudioSubagentMode() ? "Spawn subagent(s). Default blocks until the child finishes. For parallel hard-block (e.g. frontend+backend): pass tasks=[{task,taskName},{task,taskName}] in ONE call - starts all in parallel and blocks the parent until ALL finish, returning {status,results[]}. Do not poll with text. Do not split into multiple spawns then wait." : describeSessionsSpawnTool({
+ 			acpAvailable,
+ 			threadAvailable
+ 		}),
+@@ -11552,11 +12043,103 @@ function createSessionsSpawnTool(opts) {
+ 		}),
+ 		execute: async (_toolCallId, args) => {
+ 			const params = args;
++			if (isOpenStudioSubagentMode() && Array.isArray(params.tasks) && params.tasks.length > 0) {
++				const batch = params.tasks.map((item) => {
++					const row = item && typeof item === "object" ? item : {};
++					const taskText = typeof row.task === "string" ? row.task.trim() : "";
++					const taskNameResult = normalizeSubagentTaskName(row.taskName);
++					const taskName = taskNameResult.error ? void 0 : taskNameResult.taskName;
++					const label = typeof row.label === "string" && row.label.trim() ? row.label.trim() : taskName || (taskText ? taskText.slice(0, 80) : "Subagent");
++					return { task: taskText, taskName, label };
++				}).filter((row) => row.task);
++				if (!batch.length) return jsonResult({ status: "error", error: "tasks[] entries require a non-empty task string" });
++				const modelOverride = normalizeToolModelOverride(readStringParam(params, "model"));
++				const thinkingOverrideRaw = readStringParam(params, "thinking");
++				const cwd = readStringParam(params, "cwd");
++				const cleanup = params.cleanup === "keep" || params.cleanup === "delete" ? params.cleanup : "keep";
++				const sandbox = params.sandbox === "require" ? "require" : "inherit";
++				const studioChild = resolveOpenStudioSubagentSpawnContext(params);
++				const context = studioChild.context;
++				const lightContext = studioChild.lightContext;
++				const thread = params.thread === true;
++				const mode = params.mode === "run" || params.mode === "session" ? params.mode : void 0;
++				const started = [];
++				for (const item of batch) {
++					const spawned = await spawnSubagentDirect({
++						task: item.task,
++						taskName: item.taskName,
++						label: item.label,
++						agentId: readStringParam(params, "agentId"),
++						model: modelOverride,
++						thinking: thinkingOverrideRaw,
++						cwd,
++						thread,
++						mode,
++						cleanup,
++						sandbox,
++						context,
++						lightContext,
++						expectsCompletionMessage: false,
++						attachments: Array.isArray(params.attachments) ? params.attachments : void 0,
++						attachMountPath: params.attachAs && typeof params.attachAs === "object" ? readStringParam(params.attachAs, "mountPath") : void 0
++					}, {
++						agentSessionKey: opts?.agentSessionKey,
++						completionOwnerKey: opts?.completionOwnerKey,
++						agentChannel: opts?.agentChannel,
++						agentAccountId: opts?.agentAccountId,
++						agentTo: opts?.agentTo,
++						agentThreadId: opts?.agentThreadId,
++						agentGroupId: opts?.agentGroupId,
++						agentGroupChannel: opts?.agentGroupChannel,
++						agentGroupSpace: opts?.agentGroupSpace,
++						agentMemberRoleIds: opts?.agentMemberRoleIds,
++						requesterAgentIdOverride: opts?.requesterAgentIdOverride,
++						workspaceDir: opts?.workspaceDir,
++						inheritedToolAllowlist: opts?.inheritedToolAllowlist,
++						inheritedToolDenylist: mergeOpenStudioSubagentToolDenylist(opts?.inheritedToolDenylist)
++					});
++					if (!spawned || spawned.status !== "accepted") {
++						return jsonResult({
++							status: "error",
++							error: spawned?.error || "failed to spawn parallel subagent",
++							failedTask: item.task,
++							partial: started
++						});
++					}
++					started.push({
++						status: "accepted",
++						runId: spawned.runId,
++						childSessionKey: spawned.childSessionKey,
++						label: item.label,
++						task: item.task
++					});
++				}
++				const results = await Promise.all(started.map(async (item) => {
++					const waited = await openStudioWaitOneSpawn(item, params);
++					return {
++						runId: item.runId,
++						childSessionKey: item.childSessionKey,
++						label: item.label,
++						task: item.task,
++						status: waited.status,
++						result: typeof waited.result === "string" ? waited.result : "",
++						error: typeof waited.error === "string" ? waited.error : void 0
++					};
++				}));
++				const failed = results.filter((row) => row.status !== "completed");
++				return jsonResult({
++					status: failed.length ? "error" : "completed",
++					results,
++					error: failed.length ? (String(failed.length) + " of " + String(results.length) + " subagent(s) failed or timed out") : void 0
++				});
++			}
+ 			const unsupportedParam = UNSUPPORTED_SESSIONS_SPAWN_PARAM_KEYS.find((key) => Object.hasOwn(params, key));
+ 			if (unsupportedParam) throw new ToolInputError(`sessions_spawn does not support "${unsupportedParam}". Use "message" or "sessions_send" for channel delivery.`);
+-			const unsupportedTimeoutParam = UNSUPPORTED_SESSIONS_SPAWN_TIMEOUT_PARAM_KEYS.find((key) => resolveSnakeCaseParamKey(params, key));
++			const studioMode = isOpenStudioSubagentMode();
++			const studioAwait = shouldAwaitOpenStudioSpawnResult(params);
++			const unsupportedTimeoutParam = studioMode ? void 0 : UNSUPPORTED_SESSIONS_SPAWN_TIMEOUT_PARAM_KEYS.find((key) => resolveSnakeCaseParamKey(params, key));
+ 			if (unsupportedTimeoutParam) throw new ToolInputError(`sessions_spawn does not support per-call "${resolveSnakeCaseParamKey(params, unsupportedTimeoutParam) ?? unsupportedTimeoutParam}". Configure agents.defaults.subagents.runTimeoutSeconds instead.`);
+-			const task = readStringParam(params, "task", { required: true });
++			const task = readStringParam(params, "task", { required: true }); /* single-child path */
+ 			const taskNameResult = normalizeSubagentTaskName(params.taskName);
+ 			if (taskNameResult.error) return jsonResult({
+ 				status: "error",
+@@ -11572,18 +12155,22 @@ function createSessionsSpawnTool(opts) {
+ 			const cwd = readStringParam(params, "cwd");
+ 			const mode = params.mode === "run" || params.mode === "session" ? params.mode : void 0;
+ 			const cleanup = params.cleanup === "keep" || params.cleanup === "delete" ? params.cleanup : "keep";
+-			const expectsCompletionMessage = params.expectsCompletionMessage !== false;
++			const expectsCompletionMessage = studioMode ? false : params.expectsCompletionMessage !== false;
+ 			const sandbox = params.sandbox === "require" ? "require" : "inherit";
+-			const context = params.context === "fork" || params.context === "isolated" ? params.context : void 0;
++			const studioChild = resolveOpenStudioSubagentSpawnContext(params);
++			const context = runtime === "acp"
++				? (params.context === "fork" || params.context === "isolated" ? params.context : void 0)
++				: studioChild.context;
+ 			const streamTo = runtime === "acp" && params.streamTo === "parent" ? "parent" : void 0;
+-			const lightContext = params.lightContext === true;
++			const lightContext = runtime === "acp" ? params.lightContext === true : studioChild.lightContext;
++			const studioToolDenylist = mergeOpenStudioSubagentToolDenylist(opts?.inheritedToolDenylist);
+ 			const roleContext = requestedAgentId ? { role: requestedAgentId } : {};
+ 			if (runtime === "acp" && !acpAvailable) return jsonResult({
+ 				status: "error",
+ 				error: resolveAcpUnavailableMessage(opts),
+ 				...roleContext
+ 			});
+-			const acpUnsupportedInheritedTool = runtime === "acp" ? findAcpUnsupportedInheritedToolDeny(opts?.inheritedToolDenylist) : void 0;
++			const acpUnsupportedInheritedTool = runtime === "acp" ? findAcpUnsupportedInheritedToolDeny(studioToolDenylist) : void 0;
+ 			if (acpUnsupportedInheritedTool) return jsonResult({
+ 				status: "forbidden",
+ 				error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
+@@ -11634,7 +12221,7 @@ function createSessionsSpawnTool(opts) {
+ 					agentMemberRoleIds: opts?.agentMemberRoleIds,
+ 					sandboxed: opts?.sandboxed,
+ 					inheritedToolAllowlist: opts?.inheritedToolAllowlist,
+-					inheritedToolDenylist: opts?.inheritedToolDenylist
++					inheritedToolDenylist: studioToolDenylist
+ 				});
+ 				const childSessionKey = result.childSessionKey?.trim();
+ 				const childRunId = isSpawnAcpAcceptedResult(result) ? result.runId?.trim() : void 0;
+@@ -11684,9 +12271,9 @@ function createSessionsSpawnTool(opts) {
+ 						});
+ 					}
+ 				}
+-				return jsonResult(addRoleToFailureResult(result, requestedAgentId));
++				return jsonResult(addRoleToFailureResult(await openStudioAwaitSpawnResult(result, params, opts), requestedAgentId));
+ 			}
+-			return jsonResult(addRoleToFailureResult(await spawnSubagentDirect({
++			return jsonResult(addRoleToFailureResult(await openStudioAwaitSpawnResult(await spawnSubagentDirect({
+ 				task,
+ 				taskName,
+ 				label: label || void 0,
+@@ -11717,8 +12304,8 @@ function createSessionsSpawnTool(opts) {
+ 				requesterAgentIdOverride: opts?.requesterAgentIdOverride,
+ 				workspaceDir: opts?.workspaceDir,
+ 				inheritedToolAllowlist: opts?.inheritedToolAllowlist,
+-				inheritedToolDenylist: opts?.inheritedToolDenylist
+-			}), requestedAgentId));
++				inheritedToolDenylist: studioToolDenylist
++			}), params, opts), requestedAgentId));
+ 		}
+ 	};
+ }
+@@ -11729,9 +12316,10 @@ function createSessionsYieldTool(opts) {
+ 	return {
+ 		label: "Yield",
+ 		name: "sessions_yield",
+-		description: "End current turn. Use after spawning subagents; results arrive as next message.",
++		description: isOpenStudioSubagentMode() ? "REQUIRED barrier after parallel sessions_spawn: blocks the parent until ALL pending subagents finish, then returns {status, results[]}. Call this immediately after your last sessions_spawn. Do not call other tools before this. Continue in the same turn after it returns." : "End current turn. Use after spawning subagents; results arrive as next message.",
+ 		parameters: SessionsYieldToolSchema,
+ 		execute: async (_toolCallId, args) => {
++			if (isOpenStudioSubagentMode()) return jsonResult(await openStudioAwaitAllPendingSpawns(opts, args));
+ 			const message = readStringParam(args, "message") || "Turn yielded.";
+ 			if (!opts?.sessionId) return jsonResult({
+ 				status: "error",
+@@ -13921,6 +14509,13 @@ function createOpenClawTools(options) {
  		lateBindRuntimeConfig: true
  	});
  	options?.recordToolPrepStage?.("openclaw-tools:web-fetch-tool");
 +	const sidebarActionTool = createSidebarActionTool();
++	const sidebarDebugTool = createSidebarDebugTool();
++	const sidebarScreenshotTool = createSidebarScreenshotTool();
 +	const sidebarDebuggerTool = createSidebarDebuggerTool();
 +	options?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");
++	options?.recordToolPrepStage?.("openclaw-tools:sidebar-preview-tools");
 +	options?.recordToolPrepStage?.("openclaw-tools:sidebar-debugger-tool");
  	const messageTool = options?.disableMessageTool ? null : createMessageTool({
  		agentAccountId: options?.agentAccountId,
  		agentSessionKey: options?.agentSessionKey,
-@@ -14104,7 +14266,9 @@ function createOpenClawTools(options) {
+@@ -14104,7 +14699,9 @@ function createOpenClawTools(options) {
  			webSearchTool,
  			webFetchTool,
  			imageTool,

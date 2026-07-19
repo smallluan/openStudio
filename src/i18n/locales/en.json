@@ -420,6 +420,8 @@
     "toolbarAutoHint": "Switch current chat model",
     "toolbarSkill": "Skill",
     "toolbarSkillHint": "Pick a skill for this message; a short skill hint is prefixed when sending. Type / in the box to search.",
+    "toolbarSubagent": "Subagent",
+    "toolbarSubagentHint": "When enabled, this turn prefers delegating work to subagents.",
     "skillPickerTitle": "Choose skill",
     "skillPickerSearch": "Search skills…",
     "skillPickerEmpty": "No matching skills",
@@ -706,7 +708,8 @@
     "turnNavToggleHint": "Jump to a user turn",
     "turnNavAria": "Conversation turn navigation",
     "turnNavEmpty": "No conversation turns yet. They will appear here after you send messages.",
-    "subagentSpawnPrompt": "## Subagents (sessions_spawn)\nWhen you need a subagent, call `sessions_spawn` with a clear `task`. In Open Studio this tool **blocks until the subagent finishes** and returns `{status:\"completed\", result}`. Then summarize and continue in the **same turn**.\n- Do **not** call `sessions_yield`\n- Do **not** end your turn after spawn — wait for the tool result, then answer",
+    "subagentSpawnPrompt": "## Subagents (parallel hard-block)\nPrefer subagent calls in these scenarios:\n- Parallelizable multi-workstream tasks (e.g. frontend + backend, API + tests)\n- Complex tasks that split into independent steps with clear IO boundaries\n- Cases where isolating context keeps the main agent concise\n\nCalling rules:\n- For multiple children, call `sessions_spawn` **once** with a `tasks` array\n- For one independent child, call `sessions_spawn({ task })`\n\nParallel example:\n```\nsessions_spawn({\n  tasks: [\n    { task: \"Analyze frontend...\", taskName: \"analyze-frontend\" },\n    { task: \"Analyze backend...\", taskName: \"analyze-backend\" }\n  ]\n})\n```\n\nHard rules:\n- Do **not** split into multiple sessions_spawn calls and poll with “still waiting…” text\n- Do **not** take over children work before the tool returns\n- This call starts children in parallel and blocks parent until all finish, returning `{status, results[]}`\n- Only with explicit `awaitResult:false` do you need `sessions_yield`\n\nBoundary: subagents execute focused work; main agent orchestrates and synthesizes final answer.",
+    "subagentForcePrompt": "## Forced subagent mode for this turn\nThe user enabled subagent mode for this request.\n- First decompose the request into 1..N independent child tasks\n- Prefer one parallel `sessions_spawn({ tasks: [...] })` when tasks are independent\n- Keep the main agent focused on decomposition/orchestration/synthesis\n- Keep subagents execution-focused; avoid unrelated browser exploration or extra workflows",
     "streamingSubagentWorking": "Working…",
     "streamingAwaitSubagent": "Waiting for subagent reply…"
   },

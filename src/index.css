@@ -5244,6 +5244,53 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   font-size: 0.8rem;
   line-height: 1.45;
   color: var(--os-fg-muted);
+  position: relative;
+  display: grid;
+  overflow: hidden;
+}
+
+.chat-lab-preview-dock__orch-idle-step-line {
+  grid-area: 1 / 1;
+  display: block;
+}
+
+.chat-lab-preview-dock__orch-idle-step-line--leave {
+  animation: orch-idle-step-leave 280ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.chat-lab-preview-dock__orch-idle-step-line--enter {
+  animation: orch-idle-step-enter 280ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes orch-idle-step-leave {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-55%);
+  }
+}
+
+@keyframes orch-idle-step-enter {
+  from {
+    opacity: 0;
+    transform: translateY(55%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-lab-preview-dock__orch-idle-step-line--leave,
+  .chat-lab-preview-dock__orch-idle-step-line--enter {
+    animation: none;
+  }
 }
 
 .chat-lab-preview-dock__orch-worker {
@@ -6946,6 +6993,12 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   flex-shrink: 0;
   align-items: center;
   gap: 0.42rem;
+}
+
+.chat-lab__subagent-toggle-label {
+  font-size: 0.74rem;
+  color: color-mix(in srgb, var(--os-text-muted) 86%, transparent);
+  white-space: nowrap;
 }
 
 .chat-lab__pill-btn {
@@ -9039,32 +9092,56 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   box-shadow: none;
 }
 
-/* Cursor-style subagent step inside the assistant reply body (not a card strip). */
-.chat-lab__subagent-step {
+/* Multiple parallel subagents stack as separate steps (never replace in place). */
+.chat-lab__subagent-stack {
   display: flex;
   flex-direction: column;
-  gap: 0.18rem;
+  gap: 0.72rem;
+  margin: 0.62rem 0;
+}
+
+.chat-lab__subagent-stack .chat-lab__subagent-step {
+  margin: 0;
+}
+
+/* Cursor-style subagent step inside the assistant reply body (not a card strip). */
+.chat-lab__subagent-step {
+  --chat-lab-subagent-title-gap: 0.4rem;
+  --chat-lab-subagent-progress-indent: calc(12px + var(--chat-lab-subagent-title-gap));
+  --chat-lab-subagent-progress-line-height: 1.35em;
+  --chat-lab-subagent-progress-line-gap: 0.26rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
   margin: 0.78rem 0 0.56rem;
   padding: 0;
   border: none;
   background: transparent;
   font-size: 0.84rem;
   line-height: 1.4;
+  overflow: hidden;
 }
 
 .chat-lab__subagent-step-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.4rem;
   color: var(--td-text-color-primary, inherit);
   font-weight: 500;
+  position: relative;
+  z-index: 1;
 }
 
 .chat-lab__subagent-step-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
   flex: 0 0 auto;
   font-size: 0.72rem;
+  line-height: 1;
   opacity: 0.55;
-  transform: translateY(0.05em);
 }
 
 .chat-lab__subagent-step-glyph--grid {
@@ -9074,7 +9151,6 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   gap: 3px;
   width: 12px;
   height: 12px;
-  transform: translateY(0.02em);
 }
 
 .chat-lab__subagent-dot {
@@ -9091,27 +9167,36 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
 }
 
 .chat-lab__subagent-step-progress {
-  padding-left: 1.15rem;
   font-size: 0.78rem;
   line-height: 1.35;
-  min-height: 1.2em;
+  height: var(--chat-lab-subagent-progress-line-height);
+  min-height: var(--chat-lab-subagent-progress-line-height);
   position: relative;
   overflow: hidden;
+  contain: paint;
+  isolation: isolate;
 }
 
 .chat-lab__subagent-step-progress-line {
+  position: absolute;
+  top: 0;
+  left: var(--chat-lab-subagent-progress-indent);
+  right: 0;
   display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-lab__subagent-step-progress-line--enter {
-  animation: chat-lab-subagent-line-enter 220ms ease-out both;
+  animation: chat-lab-subagent-line-enter 480ms ease-out both;
 }
 
 .chat-lab__subagent-step-progress-line--leave {
-  position: absolute;
-  inset: 0 auto auto 0;
-  right: 0;
-  animation: chat-lab-subagent-line-leave 220ms ease-in both;
+  /* Leave upward from current position; fade out at the same time. */
+  animation: chat-lab-subagent-line-leave 480ms ease-in both;
+  pointer-events: none;
 }
 
 @keyframes chat-lab-subagent-dot-pulse {
@@ -9129,7 +9214,7 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
 @keyframes chat-lab-subagent-line-enter {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(calc(var(--chat-lab-subagent-progress-line-height) + var(--chat-lab-subagent-progress-line-gap)));
   }
   to {
     opacity: 1;
@@ -9144,7 +9229,7 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   }
   to {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(calc(-1 * (var(--chat-lab-subagent-progress-line-height) + var(--chat-lab-subagent-progress-line-gap))));
   }
 }
 
@@ -9868,6 +9953,14 @@ button.os-image {
 .chat-lab__md-content {
   min-width: 0;
   max-width: 100%;
+}
+
+.chat-lab__md-content > *:first-child {
+  margin-top: 0;
+}
+
+.chat-lab__md-content > *:last-child {
+  margin-bottom: 0;
 }
 
 .chat-lab__md > *:first-child {

@@ -843,6 +843,8 @@ export function createChatLabMarkdownComponents(t, opts = {}) {
         </table>
       </div>
     ),
+    /** Suppress markdown horizontal rules from model output. */
+    hr: () => null,
     /**
      * @param {import("react").ComponentPropsWithoutRef<"td"> & { children?: import("react").ReactNode }} props
      */

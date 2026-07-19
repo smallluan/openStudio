@@ -1,6 +1,6 @@
 import { memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
-import { Radio, RadioGroup, Select as TSelect } from "tdesign-react";
+import { Radio, RadioGroup, Select as TSelect, Switch as TSwitch } from "tdesign-react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -35,6 +35,7 @@ import {
   isSessionsSpawnToolName,
   pickSubagentProgressLine,
   shortSubagentTitle,
+  toolTraceAwaitsSubagent,
 } from "../chat/toolTraceMerge.js";
 import {
   coalesceImageOnlyTextParts,
@@ -407,6 +408,16 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
     studioSuffix,
     ...extra,
   });
+}
+
+/**
+ * Per-turn hard hint when user explicitly enables subagent mode in composer.
+ * @param {(key: string, vars?: Record<string, string | number>) => string} t
+ */
+function subagentModeSystemRow(t) {
+  const content = String(t("chatLab.subagentForcePrompt") ?? "").trim();
+  if (!content) return null;
+  return { role: "system", content };
 }
 
 /**
@@ -1217,6 +1228,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     /** @type {import("../skills/skillRegistry.js").SkillPickRow | null} */ (null),
   );
   const [composerSkillRowLeaving, setComposerSkillRowLeaving] = useState(false);
+  const [composerSubagentEnabled, setComposerSubagentEnabled] = useState(false);
   const [composerFollowUpRef, setComposerFollowUpRef] = useState(
     /** @type {import("../chat/chatSessionsStore.js").MessageFollowUpRef | null} */ (null),
   );
@@ -1225,7 +1237,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   
   /** Queued messages (max 3) - sent automatically when stream completes */
   const [queuedMessages, setQueuedMessages] = useState(
-    /** @type {Array<{id: string; text: string; attachments: Array<{id: string; name: string; mime: string; dataUrl: string}>; fileRefs: import("../chat/chatLabComposerFileRefs.js").ComposerFileRef[]; modelId: string; skillRow: import("../skills/skillRegistry.js").SkillPickRow | null; followUpRef: import("../chat/chatSessionsStore.js").MessageFollowUpRef | null; mentionIds: string[]}>} */
+    /** @type {Array<{id: string; text: string; attachments: Array<{id: string; name: string; mime: string; dataUrl: string}>; fileRefs: import("../chat/chatLabComposerFileRefs.js").ComposerFileRef[]; modelId: string; skillRow: import("../skills/skillRegistry.js").SkillPickRow | null; followUpRef: import("../chat/chatSessionsStore.js").MessageFollowUpRef | null; mentionIds: string[]; preferSubagent?: boolean}>} */
     ([]),
   );
   const queuedMessagesRef = useRef(queuedMessages);
@@ -2752,8 +2764,10 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               webExploreMode: webExploreEmbed,
             }),
           };
+      const subagentModeRow = composerSubagentEnabled ? subagentModeSystemRow(t) : null;
       const baseOutgoing = [
         ...(sysRow ? [sysRow] : []),
+        ...(subagentModeRow ? [subagentModeRow] : []),
         ...priorRows,
         ...tailUserRows,
       ];
@@ -2830,6 +2844,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       chatApiBlocked,
       composerFileRefs,
       composerSkillRow,
+      composerSubagentEnabled,
       config?.chatLabAutoTitle,
       config?.credentials?.hasProviderApiKey,
       configIssueKey,
@@ -2853,6 +2868,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
      *   imageAttachments?: { mime: string; dataUrl: string }[];
      *   fileRefs?: import("../chat/chatSessionsStore.js").PersistedFileRef[];
      *   skillPickRow: import("../skills/skillRegistry.js").SkillPickRow | null;
+     *   preferSubagent?: boolean;
      *   followUpRef?: import("../chat/chatSessionsStore.js").MessageFollowUpRef | null;
      *   onCommitted?: () => void;
      *   foldIntoAssistantId?: string;
@@ -2863,6 +2879,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       imageAttachments,
       fileRefs,
       skillPickRow,
+      preferSubagent = false,
       followUpRef,
       onCommitted,
       foldIntoAssistantId,
@@ -2948,6 +2965,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
 
       const parallelReply = replyTargets.length > 1;
+      const subagentModeRow = preferSubagent ? subagentModeSystemRow(t) : null;
       const historyBeforeUser = messagesRef.current.filter((m) => m.id !== userMsg.id);
       const tailUserRows = buildGatewayPayloadRows([userMsg], {
         includeImageAttachments: true,
@@ -3010,7 +3028,12 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           agentById,
           mainAgentStudioId: mainAgent?.id,
         });
-        const baseOutgoing = [...(sysRow ? [sysRow] : []), ...ctx.priorRows, ...tailUserRows];
+        const baseOutgoing = [
+          ...(sysRow ? [sysRow] : []),
+          ...(subagentModeRow ? [subagentModeRow] : []),
+          ...ctx.priorRows,
+          ...tailUserRows,
+        ];
         const outgoing = webExploreEmbed
           ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext)
           : baseOutgoing;
@@ -3217,6 +3240,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           imageAttachments: attachmentSnap,
           fileRefs: fileRefsSnap,
           skillPickRow: item.skillRow || null,
+          preferSubagent: item.preferSubagent === true,
           followUpRef: item.followUpRef || null,
           onCommitted: () => {
             setQueuedMessages((prev) => prev.filter((m) => m.id !== item.id));
@@ -3482,6 +3506,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         fileRefs: [...composerFileRefs],
         modelId: toolbarModelId,
         skillRow: composerSkillRow,
+        preferSubagent: composerSubagentEnabled,
         followUpRef: composerFollowUpRef,
         mentionIds,
       };
@@ -3604,6 +3629,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       imageAttachments: attachmentSnap,
       fileRefs: fileRefsSnap,
       skillPickRow: effectiveSkillRow ?? null,
+      preferSubagent: composerSubagentEnabled,
       followUpRef: composerFollowUpRef,
       onCommitted: () => {
         setInput("");
@@ -3620,6 +3646,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     composerAttachments,
     composerFileRefs,
     composerSkillRow,
+    composerSubagentEnabled,
     configIssueKey,
     conversationId,
     gatewayPhase,
@@ -4497,6 +4524,19 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               }
               t={t}
             />
+            <span className="chat-lab__subagent-toggle-label">{t("chatLab.toolbarSubagent")}</span>
+            <TSwitch
+              size="small"
+              value={composerSubagentEnabled}
+              disabled={
+                composerSkillUiLocked ||
+                composerInputLocked ||
+                orchestrationInProgress ||
+                (gatewayStreaming && queuedMessages.length === 0)
+              }
+              onChange={(value) => setComposerSubagentEnabled(Boolean(value))}
+              title={t("chatLab.toolbarSubagentHint")}
+            />
             {showOrchestrationPlanPopover && orchestrationRun ? (
               <ChatLabOrchestrationPlanPopover
                 plan={orchestrationRun.plan}
@@ -4963,11 +5003,11 @@ function isRunningActivityRow(row) {
   if (!row || Boolean(row.orchestrationInterrupted)) return false;
   if (Boolean(row.workerStreaming)) return true;
   const stream = String(row.stream ?? "").trim().toLowerCase();
-  if (stream === "subagent") {
-    const phase = String(row.phase ?? "").trim().toLowerCase();
-    return !phase || !isCompletedActivityPhase(phase);
-  }
-  const phase = String(row.phase ?? "").trim();
+  const phase = String(row.phase ?? "").trim().toLowerCase();
+  if (isCompletedActivityPhase(phase)) return false;
+  // Subagent cards: empty phase + not streaming means settled for this child only.
+  // (Previously empty phase forced "running", so both cards stayed loading after siblings finished.)
+  if (stream === "subagent") return false;
   if (phase === "running") return true;
   if (!phase) return false;
   return !isCompletedActivityPhase(phase);
@@ -5070,6 +5110,10 @@ function getStreamingBusyLabelFromTool(row, t) {
   const nameLower = tool.toLowerCase();
   if (isSidebarAutomationToolRow(row)) {
     return t("chatLab.sidebarAutomationRunning");
+  }
+  // Hard-block / yield wait — never mislabel as "正在执行命令…".
+  if (isSessionsSpawnToolName(tool) || /^sessions_yield$/i.test(tool)) {
+    return t("chatLab.streamingAwaitSubagent");
   }
   const cmdHint = pickToolCommandHint(row);
   if (isShellExecToolName(tool, cmdHint)) {
@@ -5535,24 +5579,23 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
     return -1;
   }, [visibleParts, toolMap]);
 
-  const activeSubagentRow = subagentRows.find((r) => isRunningActivityRow(r));
-  const visibleSubagentRow = activeSubagentRow || subagentRows[0] || null;
   const subagentStepEl =
-    visibleSubagentRow
-      ? (() => {
-          const props = subagentStepPropsFromRow(visibleSubagentRow, t);
+    Array.isArray(subagentRows) && subagentRows.length > 0 ? (
+      <div key="tl-subagent-stack" className="chat-lab__timeline-block chat-lab__subagent-stack">
+        {subagentRows.map((row) => {
+          const props = subagentStepPropsFromRow(row, t);
           return (
-            <div key={`tl-subagent-${visibleSubagentRow.id}`} className="chat-lab__timeline-block">
-              <SubagentStepBlock
-                title={props.title}
-                progress={props.progress}
-                active={props.active}
-                t={t}
-              />
-            </div>
+            <SubagentStepBlock
+              key={row.id}
+              title={props.title}
+              progress={props.progress}
+              active={props.active}
+              t={t}
+            />
           );
-        })()
-      : null;
+        })}
+      </div>
+    ) : null;
 
   return (
     <div className="chat-lab__assistant-timeline">
@@ -6354,23 +6397,85 @@ function ActivityRow({
  *   t: (key: string, vars?: Record<string, string | number>) => string;
  * }} props
  */
+/** Min time each subtitle line stays visible before the next queued step. */
+const SUBAGENT_LINE_HOLD_MS = 900;
+/** Enter/leave animation duration (keep in sync with CSS). */
+const SUBAGENT_LINE_ANIM_MS = 480;
+/** Cap queued rapid tool updates (keep newest). */
+const SUBAGENT_LINE_QUEUE_MAX = 8;
+
 function SubagentStepBlock({ title, progress, active, t }) {
   const heading = String(title ?? "").trim() || t("chatLab.streamingSubagentGeneric");
-  const line =
+  const incoming =
     String(progress ?? "").trim() ||
     (active ? t("chatLab.streamingSubagentWorking") : "");
-  const [currentLine, setCurrentLine] = useState(line);
+  const [currentLine, setCurrentLine] = useState(incoming);
   const [leavingLine, setLeavingLine] = useState("");
   const [lineAnimTick, setLineAnimTick] = useState(0);
+  const currentRef = useRef(incoming);
+  const queueRef = useRef(/** @type {string[]} */ ([]));
+  const busyRef = useRef(false);
+  const lastShownAtRef = useRef(Date.now());
+  const timersRef = useRef(/** @type {number[]} */ ([]));
+
+  const clearTimers = () => {
+    for (const id of timersRef.current) window.clearTimeout(id);
+    timersRef.current = [];
+  };
+
+  const schedule = (fn, ms) => {
+    const id = window.setTimeout(fn, ms);
+    timersRef.current.push(id);
+    return id;
+  };
+
+  const pumpQueue = () => {
+    if (busyRef.current) return;
+    const next = queueRef.current.shift();
+    if (next === undefined) return;
+    if (next === currentRef.current) {
+      pumpQueue();
+      return;
+    }
+    const wait = Math.max(0, SUBAGENT_LINE_HOLD_MS - (Date.now() - lastShownAtRef.current));
+    busyRef.current = true;
+    schedule(() => {
+      setLeavingLine(currentRef.current);
+      currentRef.current = next;
+      setCurrentLine(next);
+      setLineAnimTick((n) => n + 1);
+      lastShownAtRef.current = Date.now();
+      schedule(() => {
+        setLeavingLine("");
+        busyRef.current = false;
+        pumpQueue();
+      }, SUBAGENT_LINE_ANIM_MS);
+    }, wait);
+  };
 
   useEffect(() => {
-    if (line === currentLine) return;
-    setLeavingLine(currentLine);
-    setCurrentLine(line);
-    setLineAnimTick((n) => n + 1);
-    const timer = setTimeout(() => setLeavingLine(""), 240);
-    return () => clearTimeout(timer);
-  }, [line, currentLine]);
+    if (!incoming) {
+      if (!active && currentRef.current) {
+        queueRef.current = [];
+        clearTimers();
+        busyRef.current = false;
+        currentRef.current = "";
+        setCurrentLine("");
+        setLeavingLine("");
+      }
+      return undefined;
+    }
+    if (incoming === currentRef.current) return undefined;
+    const q = queueRef.current;
+    if (q[q.length - 1] === incoming) return undefined;
+    q.push(incoming);
+    while (q.length > SUBAGENT_LINE_QUEUE_MAX) q.shift();
+    pumpQueue();
+    return undefined;
+  }, [incoming, active]);
+
+  useEffect(() => () => clearTimers(), []);
+
   return (
     <div
       className={cn("chat-lab__subagent-step", active && "chat-lab__subagent-step--active")}
@@ -6394,7 +6499,7 @@ function SubagentStepBlock({ title, progress, active, t }) {
         )}
         <span>{heading}</span>
       </div>
-      {line || leavingLine ? (
+      {currentLine || leavingLine ? (
         <div className="chat-lab__subagent-step-progress muted">
           {leavingLine ? (
             <span
@@ -7105,7 +7210,8 @@ const MessageBubble = memo(function MessageBubble({
   const subagentBusy =
     bubbleStreaming &&
     !parentLifecycleEnded &&
-    subagentActivityRows.some((row) => isRunningActivityRow(row));
+    (subagentActivityRows.some((row) => isRunningActivityRow(row)) ||
+      toolTraceAwaitsSubagent(toolRows));
   const generalActivityRows = useMemo(
     () =>
       activityRows.filter((r) => {
@@ -7444,9 +7550,9 @@ const MessageBubble = memo(function MessageBubble({
         !isUser &&
         !isOrchEvent &&
         !interleavedAssistant &&
-        subagentActivityRows.length > 0
-          ? (() => {
-              const row = activeSubagentRow || subagentActivityRows[0];
+        subagentActivityRows.length > 0 ? (
+          <div className="chat-lab__subagent-stack">
+            {subagentActivityRows.map((row) => {
               const props = subagentStepPropsFromRow(row, t);
               return (
                 <SubagentStepBlock
@@ -7457,8 +7563,9 @@ const MessageBubble = memo(function MessageBubble({
                   t={t}
                 />
               );
-            })()
-          : null}
+            })}
+          </div>
+        ) : null}
         {!isOrchPlan && !isUser && !interleavedAssistant && message.thinking ? (
           <TraceDisclosure
             className={cn("chat-lab__think", bubbleStreaming && "thinking-pulse-border")}

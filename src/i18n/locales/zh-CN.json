@@ -420,6 +420,8 @@
     "toolbarAutoHint": "切换当前对话模型",
     "toolbarSkill": "技能",
     "toolbarSkillHint": "为本条消息选择技能；发送时会在后台附加简短技能提示。输入 / 可搜索。",
+    "toolbarSubagent": "子智能体",
+    "toolbarSubagentHint": "开启后，本条需求优先拆分并交给子智能体执行。",
     "skillPickerTitle": "选择技能",
     "skillPickerSearch": "搜索技能…",
     "skillPickerEmpty": "没有匹配的技能",
@@ -708,7 +710,8 @@
     "turnNavToggleHint": "按轮次快速跳转",
     "turnNavAria": "对话轮次导航",
     "turnNavEmpty": "暂无对话轮次，发送消息后将在此显示",
-    "subagentSpawnPrompt": "## 子智能体（sessions_spawn）\n需要子智能体时，调用 `sessions_spawn` 并给出清晰的 `task`。在 Open Studio 中该工具会**阻塞直到子智能体完成**，返回 `{status:\"completed\", result}`。然后在**同一回合**内汇总并继续。\n- **不要**调用 `sessions_yield`\n- spawn 后**不要**结束回合——等待工具结果，再回答用户",
+    "subagentSpawnPrompt": "## 子智能体（并行硬阻塞）\n优先在这些场景调用子智能体：\n- 可并行的多任务（如前端 + 后端、接口 + 测试、文档 + 代码）\n- 可拆分为独立步骤的复杂任务（各子步骤输入输出边界清晰）\n- 需要压缩主上下文、避免把无关细节带入主会话时\n\n调用规则：\n- 需要多个子智能体并行时，必须只调用**一次** `sessions_spawn`，传入 `tasks` 数组\n- 单个独立子任务时，调用 `sessions_spawn({ task })`\n\n并行示例：\n```\nsessions_spawn({\n  tasks: [\n    { task: \"分析前端...\", taskName: \"analyze-frontend\" },\n    { task: \"分析后端...\", taskName: \"analyze-backend\" }\n  ]\n})\n```\n\n硬性规则：\n- **禁止**拆成多次 sessions_spawn 后再自己文字轮询“再等一会”\n- **禁止**在工具返回前接手子智能体工作\n- 该调用会并行启动全部子智能体，并阻塞主智能体直到全部完成，返回 `{status, results[]}`\n- 只有显式 `awaitResult:false` 时才需要再调 `sessions_yield`\n\n边界要求：子智能体聚焦执行型工作（读写代码、跑命令、分析结果）；主智能体负责统筹与最终整合回复。",
+    "subagentForcePrompt": "## 本轮强制子智能体模式（用户已开启）\n本轮用户需求必须优先由子智能体完成：\n- 先判断能否拆分成 1~N 个独立子任务；能拆分就使用 `sessions_spawn`\n- 多个子任务尽量并行，一次 `sessions_spawn({ tasks: [...] })`\n- 主智能体仅负责分解、派发、汇总，不要在主会话里亲自展开细节实现\n- 子智能体应专注执行，不要承担与当前任务无关的浏览器探索或额外流程",
     "streamingSubagentWorking": "进行中…",
     "streamingAwaitSubagent": "正在等待子智能体回复…"
   },

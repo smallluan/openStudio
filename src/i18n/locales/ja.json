@@ -411,6 +411,8 @@
     "toolbarAutoHint": "この会話のモデルを切り替え",
     "toolbarSkill": "スキル",
     "toolbarSkillHint": "このメッセージ用のスキルを選びます。送信時に短いスキルヒントが前置されます。入力で / と打つと検索できます。",
+    "toolbarSubagent": "サブエージェント",
+    "toolbarSubagentHint": "オンにすると、このターンはサブエージェント委譲を優先します。",
     "skillPickerTitle": "スキルを選択",
     "skillPickerSearch": "スキルを検索…",
     "skillPickerEmpty": "該当スキルがありません",
@@ -681,7 +683,8 @@
     "selectionOpenFileLocation": "ファイルの場所を開く",
     "followUpSourceUser": "ユーザー",
     "followUpChipClose": "追問引用を削除",
-    "subagentSpawnPrompt": "## サブエージェント（sessions_spawn）\nサブエージェントが必要なときは、明確な `task` で `sessions_spawn` を呼び出してください。Open Studio ではこのツールは**サブエージェント完了までブロック**し、`{status:\"completed\", result}` を返します。その後**同じターン内**で要約して続けてください。\n- `sessions_yield` を**呼ばない**\n- spawn の後にターンを終えない——ツール結果を待ってから回答する",
+    "subagentSpawnPrompt": "## サブエージェント（並列ハードブロック）\n次の場面ではサブエージェントを優先：\n- 並列化できる複数タスク（例: フロント + バック）\n- 独立したステップに分解できる複雑タスク\n- 主エージェントの文脈を絞って効率化したい場合\n\n呼び出しルール：\n- 複数子タスクは `sessions_spawn` を**1回だけ**、`tasks` 配列で呼ぶ\n- 単一子タスクは `sessions_spawn({ task })`\n\n並列例：\n```\nsessions_spawn({\n  tasks: [\n    { task: \"フロントを分析...\", taskName: \"analyze-frontend\" },\n    { task: \"バックを分析...\", taskName: \"analyze-backend\" }\n  ]\n})\n```\n\n厳守：\n- 複数回 sessions_spawn に分けて「もう少し待つ」テキストでポーリングしない\n- ツールが返る前に子の仕事を親が引き取らない\n- この呼び出しは子を並列起動し、全完了まで親をブロックして `{status, results[]}` を返す\n- `awaitResult:false` のときだけ `sessions_yield` が必要\n\n境界: 子は実行担当、親は分解・調整・最終統合を担当。",
+    "subagentForcePrompt": "## このターンはサブエージェント強制モード\nユーザーがサブエージェントモードを有効化しました。\n- まず要求を 1..N 個の独立タスクへ分解する\n- 並列可能なら `sessions_spawn({ tasks: [...] })` を1回で使う\n- 親は分解・オーケストレーション・統合に専念する\n- 子は実行に専念し、無関係なブラウザ探索や余計なワークフローを行わない",
     "streamingSubagentWorking": "作業中…",
     "streamingAwaitSubagent": "サブエージェントの応答を待機中…"
   },

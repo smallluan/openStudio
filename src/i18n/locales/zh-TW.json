@@ -411,6 +411,8 @@
     "toolbarAutoHint": "切換目前對話模型",
     "toolbarSkill": "技能",
     "toolbarSkillHint": "為本則訊息選擇技能；送出時會在背景附加簡短技能提示。在輸入框輸入 / 可搜尋。",
+    "toolbarSubagent": "子智慧體",
+    "toolbarSubagentHint": "開啟後，本輪需求會優先拆分並交由子智慧體執行。",
     "skillPickerTitle": "選擇技能",
     "skillPickerSearch": "搜尋技能…",
     "skillPickerEmpty": "沒有符合的技能",
@@ -683,7 +685,8 @@
     "selectionOpenFileLocation": "開啟檔案位置",
     "followUpSourceUser": "使用者",
     "followUpChipClose": "移除追問引用",
-    "subagentSpawnPrompt": "## 子智慧體（sessions_spawn）\n需要子智慧體時，呼叫 `sessions_spawn` 並給出清晰的 `task`。在 Open Studio 中該工具會**阻塞直到子智慧體完成**，回傳 `{status:\"completed\", result}`。然後在**同一回合**內彙總並繼續。\n- **不要**呼叫 `sessions_yield`\n- spawn 後**不要**結束回合——等待工具結果，再回答使用者",
+    "subagentSpawnPrompt": "## 子智慧體（並行硬阻塞）\n建議優先呼叫子智慧體的場景：\n- 可並行的多任務（如前端 + 後端、介面 + 測試）\n- 可拆成獨立步驟的複雜需求（輸入輸出邊界明確）\n- 需要精簡主上下文、避免無關內容汙染主會話時\n\n呼叫規則：\n- 多個子任務並行時，只能**一次** `sessions_spawn`，傳入 `tasks` 陣列\n- 單一獨立子任務時，使用 `sessions_spawn({ task })`\n\n並行示例：\n```\nsessions_spawn({\n  tasks: [\n    { task: \"分析前端...\", taskName: \"analyze-frontend\" },\n    { task: \"分析後端...\", taskName: \"analyze-backend\" }\n  ]\n})\n```\n\n硬性規則：\n- **禁止**拆成多次 sessions_spawn 再自己文字輪詢「再等一下」\n- **禁止**在工具返回前接手子智慧體工作\n- 該呼叫會並行啟動全部子智慧體，並阻塞主智慧體直到全部完成，回傳 `{status, results[]}`\n- 只有顯式 `awaitResult:false` 時才需要再呼叫 `sessions_yield`\n\n邊界要求：子智慧體專注執行；主智慧體負責拆解、協調與最終整合。",
+    "subagentForcePrompt": "## 本輪強制子智慧體模式（使用者已開啟）\n本輪需求必須優先由子智慧體完成：\n- 先拆解成 1~N 個可獨立執行的子任務\n- 能並行就一次 `sessions_spawn({ tasks: [...] })` 並行派發\n- 主智慧體只做分解、派發、匯總，不在主會話展開細節實作\n- 子智慧體聚焦執行，不承擔與本任務無關的瀏覽器探索或額外流程",
     "streamingSubagentWorking": "進行中…",
     "streamingAwaitSubagent": "正在等待子智慧體回覆…"
   },
