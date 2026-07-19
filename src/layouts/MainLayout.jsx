@@ -165,7 +165,14 @@ export default function MainLayout({ railResizeEnabled = false }) {
     }, 360);
   }, []);
 
-  const toggle = useCallback(() => {
+  // 拖动结束后不需要触发过渡动画，因为宽度变化是用户主动完成的
+  // railTransitioning 只在点击按钮切换时触发
+  const onRailCommit = useCallback((w) => {
+    setRailPx(finalizeRailWidth(w));
+  }, []);
+
+  // 点击按钮切换时触发过渡动画
+  const handleToggleClick = useCallback(() => {
     startRailTransition();
     setRailPx((w) => {
       if (w < RAIL_MIN) {
@@ -180,11 +187,6 @@ export default function MainLayout({ railResizeEnabled = false }) {
       return RAIL_COLLAPSED;
     });
   }, [startRailTransition]);
-
-  const onRailCommit = useCallback((w) => {
-    if (!railDragging) startRailTransition();
-    setRailPx(finalizeRailWidth(w));
-  }, [railDragging, startRailTransition]);
 
   const handleRailTransitionEnd = useCallback((e) => {
     if (e.propertyName !== "width") return;
@@ -240,7 +242,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
           style={{
             left: railPx,
           }}
-          onClick={toggle}
+          onClick={handleToggleClick}
           title={isNarrow ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
           aria-expanded={!isNarrow}
           aria-label={isNarrow ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
