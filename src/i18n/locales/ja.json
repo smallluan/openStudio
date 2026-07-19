@@ -252,7 +252,19 @@
   "webExplorePage": {
     "hint": "URL を入力して Enter で、このページ内で閲覧します。",
     "urlPlaceholder": "URL を入力（例: https://example.com）",
-    "backToStart": "最初に戻る"
+    "backToStart": "最初に戻る",
+    "newTab": "新しいタブ",
+    "closeTab": "タブを閉じる",
+    "tabsAria": "ウェブ探索タブ",
+    "emptyTabHint": "上のアドレスバーに URL を入力して Enter でページを開きます。",
+    "tabHibernatedHint": "メモリ解放のため休止中。クリックで再読み込みします。",
+    "saveCombo": "組み合わせとして保存",
+    "saveComboDone": "保存しました",
+    "savedCombosTitle": "保存した組み合わせ",
+    "savedCombosAria": "保存した URL の組み合わせ",
+    "openCombo": "組み合わせを開く",
+    "deleteCombo": "組み合わせを削除",
+    "comboTabCount": "{{count}} タブ"
   },
   "webExploreChat": {
     "launcher": "助手",
@@ -441,6 +453,7 @@
     "chartDisplayPrompt": "## グラフ表示（高優先）\nOpen Studio は Markdown 本文の ` ```chart ` / ` ```echarts ` ブロックだけを ECharts として描画します。\n\n### chart ブロックが必須なとき\nユーザーが棒グラフ/折れ線/円グラフ/グラフ/可視化/chart/bar chart 等を求めたら、**必ず** ` ```chart ` を書く。表を添えてもよいが、表や ASCII 図で**代用しない**。\n\n### 禁止（描画されない）\n- ASCII 棒グラフ、█ ブロック、手描き座標軸\n- 「下記グラフ参照」だけでブロックなし\n- 表だけでグラフ代替\n\n### chart 簡易構文\n```chart\ntype: bar\ntitle: 四半期売上（百万円）\nx: [Q1, Q2, Q3, Q4]\nseries:\n  - name: 2024\n    data: [120, 200, 150, 180]\n```\n- 数値は純数字；単位は title または y に\n- type: `bar` `line` `pie` `scatter`\n- **中国地図**: ` ```echarts ` JSON のみ；`series.type: map` と `map: china` / `map: 中国`（省境界、遅延読込）；data の name は省名（例: 广东省）；visualMap 推奨；世界/他国地図は非対応",
     "linkOpenSidebarPrompt": "## ウェブページを開く（右サイドバー）\nリンクは右サイドバーで開きます。スナップショット + 操作可能要素一覧を読み、ネイティブツール `sidebar_action` で observe→act を行います。",
     "sidebarAutomationPrompt": "## 右サイドバー自動化（ネイティブツール `sidebar_action`）\nツール `sidebar_action` を `{ \"steps\": [...] }`（最大 5）で呼ぶ。要素一覧の `ref`（推奨）または selector で指定。自然言語 target は禁止。observation を見て次の呼び出し、または自然言語で完了。長い手順を一度に出さない。\n\n例：\n```json\n{\"steps\":[{\"action\":\"click\",\"ref\":\"e12\"}]}\n```",
+    "sidebarPreviewCapabilitiesPrompt": "## Chat Lab サイドバー preview の範囲（Web Explore ではない）\n現在は **Chat Lab 右サイドバー preview** であり、**Web Explore** のメインビューポートではありません。\n- **利用可**: `sidebar_action` 自動化 + 注入されるスナップショット/要素一覧\n- **ここでは不可**: `sidebar_debug` / `sidebar_debugger` / `sidebar_screenshot` — **Web Explore のみ**で登録。使えると言ったり手順を捏造しない\n- ブレークポイント/ネットワーク/深い調査が必要なら **Web Explore** へ案内",
     "sidebarAutomationRunning": "ページを自動操作中…",
     "sidebarAutomationToolLabel": "ページ自動操作",
     "sidebarDebugToolLabel": "ページデバッグ（ログ/ネットワーク）",

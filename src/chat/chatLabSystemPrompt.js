@@ -18,7 +18,7 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
   } else if (linkOpenMode !== "external") {
     parts.push(String(t("chatLab.linkOpenSidebarPrompt") ?? "").trim());
     parts.push(String(t("chatLab.sidebarAutomationPrompt") ?? "").trim());
-    parts.push(String(t("chatLab.sidebarPreviewToolsPrompt") ?? "").trim());
+    parts.push(String(t("chatLab.sidebarPreviewCapabilitiesPrompt") ?? "").trim());
   }
   return parts.filter(Boolean).join("\n\n");
 }

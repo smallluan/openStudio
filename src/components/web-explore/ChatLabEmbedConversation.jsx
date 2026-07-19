@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { newGatewayConversationId } from "../../chat/chatSessionsStore.js";
+import { newWebExploreConversationId } from "../../chat/chatSessionsStore.js";
 import { ChatLabPreviewProvider } from "../../context/ChatLabPreviewContext.jsx";
 import { ChatLabWorkspaceProvider } from "../../context/ChatLabWorkspaceContext.jsx";
 import { ChatLabPageMain } from "../../pages/ChatLabPage.jsx";
@@ -32,7 +32,7 @@ export default function ChatLabEmbedConversation({
   onStartFloatDrag,
   className,
 }) {
-  const conversationIdRef = useRef(newGatewayConversationId());
+  const conversationIdRef = useRef(newWebExploreConversationId());
   const conversationId = conversationIdRef.current;
   const [workspaceEmptySession, setWorkspaceEmptySession] = useState(true);
 

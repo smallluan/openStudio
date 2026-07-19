@@ -252,7 +252,19 @@
   "webExplorePage": {
     "hint": "輸入網址後按 Enter，在本頁內瀏覽。",
     "urlPlaceholder": "輸入網址，例如 https://example.com",
-    "backToStart": "返回起始頁"
+    "backToStart": "返回起始頁",
+    "newTab": "新分頁",
+    "closeTab": "關閉分頁",
+    "tabsAria": "網頁漫遊分頁",
+    "emptyTabHint": "在上方網址列輸入網址並按 Enter 開啟頁面。",
+    "tabHibernatedHint": "已休眠（釋放記憶體）。點擊後重新載入頁面。",
+    "saveCombo": "儲存為組合",
+    "saveComboDone": "已儲存",
+    "savedCombosTitle": "已儲存的組合",
+    "savedCombosAria": "已儲存的網址組合",
+    "openCombo": "開啟組合",
+    "deleteCombo": "刪除組合",
+    "comboTabCount": "{{count}} 個分頁"
   },
   "webExploreChat": {
     "launcher": "助手",
@@ -441,6 +453,7 @@
     "chartDisplayPrompt": "## 圖表展示（高優先級）\nOpen Studio **只能**透過 Markdown 正文裡的 ` ```chart ` / ` ```echarts ` 程式碼區塊渲染互動式圖表（ECharts）。\n\n### 何時必須輸出 chart 程式碼區塊\n使用者提到柱狀圖/折線圖/圓餅圖/圖表/視覺化/趨勢圖/chart/bar chart 等時，**必須**寫 ` ```chart ` 區塊。可另附 Markdown 表格，但**不能**用表格或文字圖代替。\n\n### 嚴禁的替代方式（無效）\n- **禁止** ASCII 文字條形圖、█ 字元塊、手繪座標軸\n- **禁止** 只說「見下圖/已繪製」卻不寫 ` ```chart ` 區塊\n- **禁止** 僅輸出 Markdown 表格代替圖表\n- **禁止** 在使用者只要表格/清單時額外附 chart 區塊；不要「表格 + 預設柱狀圖」成套輸出\n\n### 表格與圖表\n- 僅展示資料、對比、列舉時：**只輸出 Markdown 表格**，不要強行再畫柱狀圖\n- 只有在使用者明確要求圖表/視覺化/趨勢/占比，或你主動寫 ` ```chart ` / ` ```echarts ` 時，才輸出 chart\n- 介面不會對每張表自動補圖；表格本身不等於需要圖表\n\n### chart 簡化語法（推薦）\n```chart\ntype: bar\ntitle: 季度銷售額（萬元）\nx: [Q1, Q2, Q3, Q4]\nseries:\n  - name: 2024\n    data: [120, 200, 150, 180]\n  - name: 2025\n    data: [140, 230, 170, 210]\n```\n- 數值用純數字；單位寫在 title 或 y\n- 支援 type：`bar` `line` `pie` `scatter`\n- **中國地圖**：僅 ` ```echarts ` JSON；`series.type: map` 且 `map: china` 或 `map: 中国`（省級邊界，按需載入）；data 的 name 用完整省名；建議加 visualMap；世界/其他國家地圖暫不支援",
     "linkOpenSidebarPrompt": "## 開啟網頁（右側邊欄預覽）\n連結在 Open Studio 右側邊欄開啟。讀取快照 + 可互動元素清單；用原生工具 `sidebar_action` 做 observe→act。登入頁請使用者先登入。",
     "sidebarAutomationPrompt": "## 右側邊欄自動化（原生工具 `sidebar_action`）\n呼叫工具 `sidebar_action`，參數 `{ \"steps\": [...] }`（最多 5 步）。先讀元素清單，用 `ref`（推薦）或 selector 定位。**禁止**臆造自然语言 target。根據工具回傳的 observation 繼續下一步或用自然語言結束。禁止一次輸出超長劇本。\n\n示例：\n```json\n{\"steps\":[{\"action\":\"click\",\"ref\":\"e12\"}]}\n```",
+    "sidebarPreviewCapabilitiesPrompt": "## Chat Lab 側欄預覽能力範圍（非網頁漫遊）\n目前是 **Chat Lab 右側邊欄預覽**，不是 **網頁漫遊** 主視口。\n- **可用**：`sidebar_action` 自動化 + 系統注入的快照與元素清單\n- **不可用**：`sidebar_debug`、`sidebar_debugger`、`sidebar_screenshot`——僅在 **網頁漫遊** 註冊；勿聲稱可用或編造步驟\n- 用戶要斷點/抓包/深度排查：請切換到 **網頁漫遊**",
     "sidebarAutomationRunning": "正在自動化操作頁面",
     "sidebarAutomationToolLabel": "頁面自動化",
     "sidebarDebugToolLabel": "頁面除錯（日誌/網路）",

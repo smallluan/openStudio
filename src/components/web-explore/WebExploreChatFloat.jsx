@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquare } from "lucide-react";
 import { Button } from "@open-studio/udesign";
+import heroAvatarLight from "../../assets/images/hero-avatar-light.png";
+import heroAvatarDark from "../../assets/images/hero-avatar-dark.png";
 import { useI18n } from "../../context/I18nContext.jsx";
+import { useTheme } from "../../context/ThemeContext.jsx";
 import { cn } from "../../ui/cn.js";
 import ChatLabEmbedConversation from "./ChatLabEmbedConversation.jsx";
 
-const POS_STORAGE_KEY = "openstudio_web_explore_chat_float_pos_v1";
+const POS_STORAGE_KEY = "openstudio_web_explore_chat_float_pos_v2";
 const SIZE_STORAGE_KEY = "openstudio_web_explore_chat_float_size_v1";
 const OPEN_STORAGE_KEY = "openstudio_web_explore_chat_float_open_v1";
-const LAUNCHER_W = 132;
+const LAUNCHER_W = 48;
 const LAUNCHER_H = 48;
 const DEFAULT_W = 440;
 const DEFAULT_H = 560;
@@ -23,6 +25,46 @@ const DRAG_THRESHOLD_PX = 6;
 /** @param {number} value @param {number} min @param {number} max */
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Default dock: bottom-right of the viewport for the current chrome size.
+ * @param {boolean} isOpen
+ * @param {{ w: number; h: number }} panelSize
+ * @param {number} viewW
+ * @param {number} viewH
+ */
+function defaultDockPos(isOpen, panelSize, viewW, viewH) {
+  const width = isOpen ? panelSize.w : LAUNCHER_W;
+  const height = isOpen ? panelSize.h : LAUNCHER_H;
+  return {
+    x: Math.max(MIN_X, viewW - width - VIEWPORT_GAP),
+    y: Math.max(MIN_Y, viewH - height - VIEWPORT_GAP),
+  };
+}
+
+/**
+ * Keep the bottom-right corner fixed while switching launcher ↔ panel.
+ * @param {{ x: number; y: number }} pos
+ * @param {boolean} nextOpen
+ * @param {{ w: number; h: number }} panelSize
+ * @param {number} viewW
+ * @param {number} viewH
+ */
+function posForOpenChange(pos, nextOpen, panelSize, viewW, viewH) {
+  const pw = panelSize.w;
+  const ph = panelSize.h;
+  const next = nextOpen
+    ? { x: pos.x + LAUNCHER_W - pw, y: pos.y + LAUNCHER_H - ph }
+    : { x: pos.x + pw - LAUNCHER_W, y: pos.y + ph - LAUNCHER_H };
+  const width = nextOpen ? pw : LAUNCHER_W;
+  const height = nextOpen ? ph : LAUNCHER_H;
+  const maxX = Math.max(MIN_X, viewW - width - VIEWPORT_GAP);
+  const maxY = Math.max(MIN_Y, viewH - height - VIEWPORT_GAP);
+  return {
+    x: clamp(next.x, MIN_X, maxX),
+    y: clamp(next.y, MIN_Y, maxY),
+  };
 }
 
 /** @returns {{ x: number; y: number } | null} */
@@ -113,6 +155,7 @@ export default function WebExploreChatFloat({
   onNavigate,
 }) {
   const { t } = useI18n();
+  const { theme } = useTheme();
   const [open, setOpen] = useState(() => readStoredOpen());
   const [panelSize, setPanelSize] = useState(() => readStoredSize() ?? { w: DEFAULT_W, h: DEFAULT_H });
   const [boundsRect, setBoundsRect] = useState(() => ({
@@ -123,14 +166,12 @@ export default function WebExploreChatFloat({
   }));
   const [pos, setPos] = useState(() => {
     const stored = readStoredPos();
+    const initiallyOpen = readStoredOpen();
     const vw = Math.max(window.innerWidth, MIN_W + VIEWPORT_GAP * 2);
     const vh = Math.max(window.innerHeight, MIN_H + VIEWPORT_GAP * 2);
     const size = readStoredSize() ?? { w: DEFAULT_W, h: DEFAULT_H };
     if (stored) return stored;
-    return {
-      x: Math.max(MIN_X, vw - size.w - 28),
-      y: Math.max(MIN_Y, vh - size.h - 88),
-    };
+    return defaultDockPos(initiallyOpen, size, vw, vh);
   });
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState(false);
@@ -142,6 +183,10 @@ export default function WebExploreChatFloat({
   posRef.current = pos;
   const panelSizeRef = useRef(panelSize);
   panelSizeRef.current = panelSize;
+  const openRef = useRef(open);
+  openRef.current = open;
+  const boundsRectRef = useRef(boundsRect);
+  boundsRectRef.current = boundsRect;
   const dragRef = useRef(
     /** @type {{ active: boolean; moved: boolean; pointerId: number; startX: number; startY: number; baseX: number; baseY: number }} */ ({
       active: false,
@@ -382,13 +427,26 @@ export default function WebExploreChatFloat({
     setResizing(true);
   };
 
-  const toggleFloatOpen = useCallback(() => {
-    setOpen((prev) => {
-      const next = !prev;
-      if (!next) suppressLauncherClickUntilRef.current = Date.now() + 260;
-      return next;
-    });
+  /** Expand/collapse while keeping the bottom-right corner anchored. */
+  const setOpenAnchored = useCallback((nextOpen) => {
+    const next = Boolean(nextOpen);
+    if (openRef.current === next) return;
+    const anchored = posForOpenChange(
+      posRef.current,
+      next,
+      panelSizeRef.current,
+      boundsRectRef.current.width,
+      boundsRectRef.current.height,
+    );
+    setPos(anchored);
+    writeStoredPos(anchored);
+    if (!next) suppressLauncherClickUntilRef.current = Date.now() + 260;
+    setOpen(next);
   }, []);
+
+  const toggleFloatOpen = useCallback(() => {
+    setOpenAnchored(!openRef.current);
+  }, [setOpenAnchored]);
 
   const openWidth = open ? panelSize.w : LAUNCHER_W;
 
@@ -415,13 +473,18 @@ export default function WebExploreChatFloat({
           onClick={() => {
             if (dragRef.current.moved) return;
             if (Date.now() < suppressLauncherClickUntilRef.current) return;
-            setOpen(true);
+            setOpenAnchored(true);
           }}
           title={t("webExploreChat.launcher")}
           aria-label={t("webExploreChat.launcher")}
         >
-          <MessageSquare size={17} strokeWidth={2} aria-hidden />
-          <span>{t("webExploreChat.launcher")}</span>
+          <img
+            className="web-explore-chat-float__launcher-icon"
+            src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
+            alt=""
+            draggable={false}
+            aria-hidden
+          />
         </Button>
       ) : null}
 

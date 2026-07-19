@@ -135,6 +135,14 @@ export function newGatewayConversationId() {
   return `gwx_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`;
 }
 
+/** Gateway session segment for Web Explore embed threads (`#studio:wexplore:…`). */
+export const WEB_EXPLORE_CONVERSATION_PREFIX = "wexplore:";
+
+/** @returns {string} */
+export function newWebExploreConversationId() {
+  return `${WEB_EXPLORE_CONVERSATION_PREFIX}${newGatewayConversationId()}`;
+}
+
 /** Independent WeChat channel sidebar session (`wechat:thread:<uuid>`). */
 export function newWechatChannelSessionId() {
   return `wechat:thread:${newGatewayConversationId()}`;

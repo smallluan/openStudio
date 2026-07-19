@@ -25,6 +25,8 @@ const RAIL_MAX = 360;
 const RAIL_DEFAULT = 268;
 /** Release width &lt; this → snap to narrow ({@link RAIL_COLLAPSED}); otherwise snap to ≥ {@link RAIL_MIN} */
 const SNAP_NARROW = 124;
+/** Must match `.primary-rail` width transition in index.css */
+const RAIL_WIDTH_TRANSITION_MS = 260;
 
 function clampExpanded(n) {
   return Math.min(RAIL_MAX, Math.max(RAIL_MIN, n));
@@ -171,6 +173,29 @@ export default function MainLayout({ railResizeEnabled = false }) {
     setRailPx(finalizeRailWidth(w));
   }, []);
 
+  /** Collapses the primary rail; resolves after the width transition settles (or immediately if already narrow). */
+  const collapsePrimaryRail = useCallback(() => {
+    let didCollapse = false;
+    setRailPx((w) => {
+      if (w < RAIL_MIN) return w;
+      didCollapse = true;
+      lastExpandedRef.current = clampExpanded(w);
+      try {
+        window.localStorage.setItem(RAIL_LAST_EXPANDED_KEY, String(lastExpandedRef.current));
+      } catch {
+        /* ignore */
+      }
+      return RAIL_COLLAPSED;
+    });
+    if (!didCollapse) return Promise.resolve();
+    startRailTransition();
+    return new Promise((resolve) => {
+      window.setTimeout(() => {
+        requestAnimationFrame(() => resolve());
+      }, RAIL_WIDTH_TRANSITION_MS);
+    });
+  }, [startRailTransition]);
+
   // 点击按钮切换时触发过渡动画
   const handleToggleClick = useCallback(() => {
     startRailTransition();
@@ -187,6 +212,8 @@ export default function MainLayout({ railResizeEnabled = false }) {
       return RAIL_COLLAPSED;
     });
   }, [startRailTransition]);
+
+  const outletContext = useMemo(() => ({ collapsePrimaryRail }), [collapsePrimaryRail]);
 
   const handleRailTransitionEnd = useCallback((e) => {
     if (e.propertyName !== "width") return;
@@ -251,7 +278,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
         </Button>
 
         <div className="app-frame__content">
-          <Outlet />
+          <Outlet context={outletContext} />
         </div>
       </div>
     </div>
