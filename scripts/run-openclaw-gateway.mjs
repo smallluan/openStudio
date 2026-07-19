@@ -57,6 +57,8 @@ const child = spawn(target.electronExe, [target.cliPath, ...forwardArgs], {
       process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL ?? "http://127.0.0.1:19111",
     OPEN_STUDIO_SIDEBAR_TOOL_TOKEN:
       process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN ?? "open-studio-local-sidebar-action",
+    /** sessions_spawn blocks until subagent finishes (see patch-openclaw-sessions-spawn-await.mjs). */
+    OPEN_STUDIO_SUBAGENT_AWAIT: process.env.OPEN_STUDIO_SUBAGENT_AWAIT ?? "1",
   },
   stdio: "inherit",
   windowsHide: false,

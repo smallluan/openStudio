@@ -507,6 +507,8 @@
     "streamingPreparing": "正在准备…",
     "streamingWorking": "正在处理…",
     "streamingOrchestrating": "正在协调任务…",
+    "streamingSubagent": "子智能体：{{task}}",
+    "streamingSubagentGeneric": "子智能体正在工作…",
     "streamingFetching": "正在获取网页…",
     "emptyAssistantReply": "本轮助手未返回可见正文（可能仅在推理通道输出，或网关已完成但未推送文本片段）。",
     "streamAbortedBeforeReply": "回复流在网关返回前被中断（常见于多智能体并行冲突，请重试或分批 @）。",
@@ -705,7 +707,10 @@
     "turnNavToggle": "对话导航",
     "turnNavToggleHint": "按轮次快速跳转",
     "turnNavAria": "对话轮次导航",
-    "turnNavEmpty": "暂无对话轮次，发送消息后将在此显示"
+    "turnNavEmpty": "暂无对话轮次，发送消息后将在此显示",
+    "subagentSpawnPrompt": "## 子智能体（sessions_spawn）\n需要子智能体时，调用 `sessions_spawn` 并给出清晰的 `task`。在 Open Studio 中该工具会**阻塞直到子智能体完成**，返回 `{status:\"completed\", result}`。然后在**同一回合**内汇总并继续。\n- **不要**调用 `sessions_yield`\n- spawn 后**不要**结束回合——等待工具结果，再回答用户",
+    "streamingSubagentWorking": "进行中…",
+    "streamingAwaitSubagent": "正在等待子智能体回复…"
   },
   "bootstrap": {
     "title": "Open Studio 正在就绪",

@@ -9039,6 +9039,115 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   box-shadow: none;
 }
 
+/* Cursor-style subagent step inside the assistant reply body (not a card strip). */
+.chat-lab__subagent-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  margin: 0.78rem 0 0.56rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.chat-lab__subagent-step-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  color: var(--td-text-color-primary, inherit);
+  font-weight: 500;
+}
+
+.chat-lab__subagent-step-glyph {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  opacity: 0.55;
+  transform: translateY(0.05em);
+}
+
+.chat-lab__subagent-step-glyph--grid {
+  display: grid;
+  grid-template-columns: repeat(3, 2px);
+  grid-template-rows: repeat(3, 2px);
+  gap: 3px;
+  width: 12px;
+  height: 12px;
+  transform: translateY(0.02em);
+}
+
+.chat-lab__subagent-dot {
+  width: 2px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.2;
+  animation: chat-lab-subagent-dot-pulse 900ms ease-in-out infinite;
+}
+
+.chat-lab__subagent-step--active .chat-lab__subagent-step-glyph {
+  opacity: 0.75;
+}
+
+.chat-lab__subagent-step-progress {
+  padding-left: 1.15rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  min-height: 1.2em;
+  position: relative;
+  overflow: hidden;
+}
+
+.chat-lab__subagent-step-progress-line {
+  display: block;
+}
+
+.chat-lab__subagent-step-progress-line--enter {
+  animation: chat-lab-subagent-line-enter 220ms ease-out both;
+}
+
+.chat-lab__subagent-step-progress-line--leave {
+  position: absolute;
+  inset: 0 auto auto 0;
+  right: 0;
+  animation: chat-lab-subagent-line-leave 220ms ease-in both;
+}
+
+@keyframes chat-lab-subagent-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: scale(0.82);
+  }
+  45% {
+    opacity: 0.96;
+    transform: scale(1);
+  }
+}
+
+@keyframes chat-lab-subagent-line-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes chat-lab-subagent-line-leave {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
 /* Virtual list measures row height via ResizeObserver; grid-row transitions fire many layouts per expand. */
 .chat-lab__tool-chain > .trace-disclosure__panel,
 .chat-lab__activity-chain > .trace-disclosure__panel {

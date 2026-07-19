@@ -506,6 +506,8 @@
     "streamingPreparing": "Getting ready…",
     "streamingWorking": "Working…",
     "streamingOrchestrating": "Coordinating tasks…",
+    "streamingSubagent": "Subagent: {{task}}",
+    "streamingSubagentGeneric": "Subagent working…",
     "streamingFetching": "Fetching page…",
     "emptyAssistantReply": "The assistant finished without visible reply text (it may only have streamed reasoning, or the gateway completed without text deltas).",
     "streamAbortedBeforeReply": "The reply stream was aborted before the gateway responded (often a multi-agent fan-out race — retry or mention fewer agents at once).",
@@ -703,7 +705,10 @@
     "turnNavToggle": "Turn nav",
     "turnNavToggleHint": "Jump to a user turn",
     "turnNavAria": "Conversation turn navigation",
-    "turnNavEmpty": "No conversation turns yet. They will appear here after you send messages."
+    "turnNavEmpty": "No conversation turns yet. They will appear here after you send messages.",
+    "subagentSpawnPrompt": "## Subagents (sessions_spawn)\nWhen you need a subagent, call `sessions_spawn` with a clear `task`. In Open Studio this tool **blocks until the subagent finishes** and returns `{status:\"completed\", result}`. Then summarize and continue in the **same turn**.\n- Do **not** call `sessions_yield`\n- Do **not** end your turn after spawn — wait for the tool result, then answer",
+    "streamingSubagentWorking": "Working…",
+    "streamingAwaitSubagent": "Waiting for subagent reply…"
   },
   "bootstrap": {
     "title": "Open Studio is getting ready",

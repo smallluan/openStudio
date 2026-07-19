@@ -28,6 +28,7 @@ for (const script of [
   "patch-openclaw-sidebar-action.mjs",
   "patch-openclaw-sidebar-preview-tools.mjs",
   "patch-openclaw-sidebar-debugger.mjs",
+  "patch-openclaw-sessions-spawn-await.mjs",
 ]) {
   const scriptPath = path.join(__dirname, script);
   const result = spawnSync(process.execPath, [scriptPath], { cwd: root, env, stdio: "inherit" });

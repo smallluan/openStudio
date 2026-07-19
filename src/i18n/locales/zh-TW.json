@@ -493,6 +493,8 @@
     "streamingPreparing": "正在準備…",
     "streamingWorking": "正在處理…",
     "streamingOrchestrating": "正在協調任務…",
+    "streamingSubagent": "子智慧體：{{task}}",
+    "streamingSubagentGeneric": "子智慧體正在工作…",
     "streamingFetching": "正在取得網頁…",
     "emptyAssistantReply": "本輪助手沒有顯示可見正文（可能只在推理通道輸出，或閘道已完成但未推送文字片段）。",
     "unknownError": "未知錯誤",
@@ -680,7 +682,10 @@
     "selectionOpenUrl": "開啟網址",
     "selectionOpenFileLocation": "開啟檔案位置",
     "followUpSourceUser": "使用者",
-    "followUpChipClose": "移除追問引用"
+    "followUpChipClose": "移除追問引用",
+    "subagentSpawnPrompt": "## 子智慧體（sessions_spawn）\n需要子智慧體時，呼叫 `sessions_spawn` 並給出清晰的 `task`。在 Open Studio 中該工具會**阻塞直到子智慧體完成**，回傳 `{status:\"completed\", result}`。然後在**同一回合**內彙總並繼續。\n- **不要**呼叫 `sessions_yield`\n- spawn 後**不要**結束回合——等待工具結果，再回答使用者",
+    "streamingSubagentWorking": "進行中…",
+    "streamingAwaitSubagent": "正在等待子智慧體回覆…"
   },
   "bootstrap": {
     "title": "Open Studio 正在就緒",

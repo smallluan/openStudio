@@ -10,6 +10,7 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
   const parts = [
     String(t("chatLab.imageDisplayPrompt") ?? "").trim(),
     String(t("chatLab.chartDisplayPrompt") ?? "").trim(),
+    String(t("chatLab.subagentSpawnPrompt") ?? "").trim(),
   ];
   if (opts.webExploreMode) {
     parts.push(String(t("webExploreChat.linkOpenPrompt") ?? "").trim());

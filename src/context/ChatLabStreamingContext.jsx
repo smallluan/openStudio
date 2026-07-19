@@ -309,16 +309,29 @@ export function ChatLabStreamingProvider({ children }) {
       }
     };
 
-    /** @param {string} streamId */
-    const rescheduleDoneIfPending = (streamId) => {
+    /**
+     * Restart the post-`done` grace window when trailing IPC deltas arrive.
+     * Must not clear `pendingDoneFinalizeRef` — cancel+reschedule used to drop pending and stall forever.
+     * @param {string} streamId
+     */
+    const bumpDoneFinalizeGrace = (streamId) => {
       if (!pendingDoneFinalizeRef.current.has(streamId)) return;
+      const timer = doneGraceTimersRef.current.get(streamId);
+      if (timer) {
+        clearTimeout(timer);
+        doneGraceTimersRef.current.delete(streamId);
+      }
       scheduleDoneFinalize(streamId);
     };
 
     /** @param {string} streamId */
     const scheduleDoneFinalize = (streamId) => {
       pendingDoneFinalizeRef.current.add(streamId);
-      if (doneGraceTimersRef.current.has(streamId)) return;
+      const existing = doneGraceTimersRef.current.get(streamId);
+      if (existing) {
+        clearTimeout(existing);
+        doneGraceTimersRef.current.delete(streamId);
+      }
       const sid = streamId;
       const timer = setTimeout(() => {
         doneGraceTimersRef.current.delete(sid);
@@ -394,7 +407,6 @@ export function ChatLabStreamingProvider({ children }) {
 
       switch (evt.type) {
         case "content_sync": {
-          cancelPendingDoneFinalize(streamId);
           const prev = getSlice(streamId);
           if (!prev || prev.streamId !== streamId) return;
           const content = preferLongerAssistantText(
@@ -408,33 +420,30 @@ export function ChatLabStreamingProvider({ children }) {
           const assistantTimeline = mergeTimelineContentSync(prev.assistantTimeline, content, thinking);
           putSlice(streamId, { ...prev, content, thinking, assistantTimeline });
           schedulePersist(streamId);
-          rescheduleDoneIfPending(streamId);
+          bumpDoneFinalizeGrace(streamId);
           return;
         }
         case "tool_trace": {
-          cancelPendingDoneFinalize(streamId);
           const prev = getSlice(streamId);
           if (!prev || prev.streamId !== streamId) return;
           const toolTrace = mergeToolTrace(prev.toolTrace, evt);
           const assistantTimeline = mergeTimelineToolTrace(prev.assistantTimeline, evt);
           putSlice(streamId, { ...prev, toolTrace, assistantTimeline });
           schedulePersist(streamId);
-          rescheduleDoneIfPending(streamId);
+          bumpDoneFinalizeGrace(streamId);
           return;
         }
         case "agent_activity": {
-          cancelPendingDoneFinalize(streamId);
           const prev = getSlice(streamId);
           if (!prev || prev.streamId !== streamId) return;
           const activityLog = mergeActivityLog(prev.activityLog, evt);
           const assistantTimeline = mergeTimelineAgentActivity(prev.assistantTimeline, evt);
           putSlice(streamId, { ...prev, activityLog, assistantTimeline });
           schedulePersist(streamId);
-          rescheduleDoneIfPending(streamId);
+          bumpDoneFinalizeGrace(streamId);
           return;
         }
         case "thinking":
-          cancelPendingDoneFinalize(streamId);
           if (typeof evt.delta !== "string") return;
           {
             const prev = getSlice(streamId);
@@ -447,10 +456,9 @@ export function ChatLabStreamingProvider({ children }) {
             });
           }
           schedulePersist(streamId);
-          rescheduleDoneIfPending(streamId);
+          bumpDoneFinalizeGrace(streamId);
           return;
         case "text":
-          cancelPendingDoneFinalize(streamId);
           if (typeof evt.delta !== "string") return;
           {
             const prev = getSlice(streamId);
@@ -463,7 +471,7 @@ export function ChatLabStreamingProvider({ children }) {
             });
           }
           schedulePersist(streamId);
-          rescheduleDoneIfPending(streamId);
+          bumpDoneFinalizeGrace(streamId);
           return;
         case "meta":
         case "usage":

@@ -30,6 +30,13 @@ import {
 } from "../chat/assistantQuickReplyParse.js";
 import { preferLongerAssistantText, reconcileTimelineWithCanonicalText } from "../chat/streamTimelineMerge.js";
 import {
+  coalesceSubagentActivityRows,
+  deriveSubagentRowsFromToolTrace,
+  isSessionsSpawnToolName,
+  pickSubagentProgressLine,
+  shortSubagentTitle,
+} from "../chat/toolTraceMerge.js";
+import {
   coalesceImageOnlyTextParts,
 } from "../chat/chatLabMarkdownImageGrid.js";
 import {
@@ -722,7 +729,8 @@ function isChatHttp404(raw) {
  */
 function mergeTerminalAssistantPayload(m, extra) {
   /** @type {*} */
-  const next = { ...m, streaming: false, createdAt: Date.now() };
+  const keepStreaming = extra?.streaming === true;
+  const next = { ...m, streaming: keepStreaming, createdAt: Date.now() };
   if (typeof extra?.content === "string") {
     const prev = String(m.content ?? "");
     const incoming = extra.content;
@@ -2368,6 +2376,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       }
       if (d.kind === "aborted" || d.kind === "done") {
         clearStreamTracking(d.assistantMessageId);
+        const row = messagesRef.current.find((m) => m.id === d.assistantMessageId);
         const extra = {
           ...(typeof d.content === "string" ? { content: d.content } : {}),
           ...(typeof d.thinking === "string" ? { thinking: d.thinking } : {}),
@@ -2376,7 +2385,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           ...(Array.isArray(d.assistantTimeline) ? { assistantTimeline: d.assistantTimeline } : {}),
         };
         if (d.kind === "done" && !orchestrationMode) {
-          const row = messagesRef.current.find((m) => m.id === d.assistantMessageId);
           const sessionAgentIds = new Set(
             groupAgentsInSession({ agents, mainAgent, participantIds }).map((a) => a.id),
           );
@@ -4954,6 +4962,11 @@ function isRunningToolRow(row) {
 function isRunningActivityRow(row) {
   if (!row || Boolean(row.orchestrationInterrupted)) return false;
   if (Boolean(row.workerStreaming)) return true;
+  const stream = String(row.stream ?? "").trim().toLowerCase();
+  if (stream === "subagent") {
+    const phase = String(row.phase ?? "").trim().toLowerCase();
+    return !phase || !isCompletedActivityPhase(phase);
+  }
   const phase = String(row.phase ?? "").trim();
   if (phase === "running") return true;
   if (!phase) return false;
@@ -5132,6 +5145,20 @@ function getStreamingBusyLabelFromActivity(row, t) {
     return t("chatLab.streamingOrchestrating");
   }
 
+  if (stream === "subagent") {
+    const task =
+      typeof row.subagentTask === "string" && row.subagentTask.trim()
+        ? row.subagentTask.trim()
+        : textRaw;
+    if (task && !looksLikeDevTraceLabel(task)) {
+      return t("chatLab.streamingSubagent", { task: truncateOneLine(task, 72) });
+    }
+    if (title && !looksLikeDevTraceLabel(title)) {
+      return t("chatLab.streamingSubagent", { task: truncateOneLine(title, 72) });
+    }
+    return t("chatLab.streamingSubagentGeneric");
+  }
+
   if (title && !looksLikeDevTraceLabel(title) && !looksLikeShellCommand(title)) {
     return truncateOneLine(title, 64);
   }
@@ -5253,7 +5280,27 @@ function GapToolActivityPanel({
   nested = false,
   collapseWhenIdle = true,
 }) {
-  const visibleSegments = useMemo(() => segments, [segments]);
+  /** Hide spawn/subagent noise and de-duplicate repeated timeline refs. */
+  const visibleSegments = useMemo(() => {
+    const seen = new Set();
+    return segments.filter((s) => {
+      const ref = `${s.kind}:${String(s.refId ?? "")}`;
+      if (seen.has(ref)) return false;
+      if (s.kind === "tool") {
+        const row = toolMap.get(s.refId);
+        if (row && isSessionsSpawnToolName(row.toolName)) return false;
+        if (!row) return false;
+      }
+      if (s.kind === "activity") {
+        const row = activityMap.get(s.refId);
+        const stream = String(row?.stream ?? "").toLowerCase();
+        if (stream === "subagent") return false;
+        if (!row) return false;
+      }
+      seen.add(ref);
+      return true;
+    });
+  }, [segments, toolMap, activityMap]);
   const [open, setOpen] = useState(() => !keepCollapsed && Boolean(streaming));
   const enterRegistryRef = useRef(/** @type {Set<string>} */ (new Set()));
   useEffect(() => {
@@ -5356,6 +5403,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
   timeline,
   toolRows,
   activityRows,
+  subagentRows = [],
   mdComponents = {},
   t,
   streaming,
@@ -5474,6 +5522,38 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
     return out;
   }, [visibleParts]);
 
+  const spawnGapPartIdx = useMemo(() => {
+    for (let i = 0; i < visibleParts.length; i++) {
+      const part = visibleParts[i];
+      if (part.kind !== "toolActivityGap") continue;
+      for (const s of part.segments) {
+        if (s.kind !== "tool") continue;
+        const tool = toolMap.get(s.refId);
+        if (tool && isSessionsSpawnToolName(tool.toolName)) return i;
+      }
+    }
+    return -1;
+  }, [visibleParts, toolMap]);
+
+  const activeSubagentRow = subagentRows.find((r) => isRunningActivityRow(r));
+  const visibleSubagentRow = activeSubagentRow || subagentRows[0] || null;
+  const subagentStepEl =
+    visibleSubagentRow
+      ? (() => {
+          const props = subagentStepPropsFromRow(visibleSubagentRow, t);
+          return (
+            <div key={`tl-subagent-${visibleSubagentRow.id}`} className="chat-lab__timeline-block">
+              <SubagentStepBlock
+                title={props.title}
+                progress={props.progress}
+                active={props.active}
+                t={t}
+              />
+            </div>
+          );
+        })()
+      : null;
+
   return (
     <div className="chat-lab__assistant-timeline">
       {visibleParts.map((p, ri) => {
@@ -5524,10 +5604,16 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
           Boolean(streaming) &&
           ri === lastGapPartIdx &&
           !gapHasVisibleTextAfter.get(ri);
-        return (
-          <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--gap-chain">
+        /** @type {import("react").ReactNode[]} */
+        const gapNodes = [];
+        /** @type {Array<{ kind: "tool"; refId: string } | { kind: "activity"; refId: string }>} */
+        let otherBuf = [];
+        const flushOther = (keySuffix) => {
+          if (!otherBuf.length) return;
+          gapNodes.push(
             <GapToolActivityPanel
-              segments={p.segments}
+              key={`gap-other-${p.key}-${keySuffix}`}
+              segments={otherBuf}
               toolMap={toolMap}
               activityMap={activityMap}
               t={t}
@@ -5535,10 +5621,34 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
               keepCollapsed={keepTraceCollapsed}
               nested={nested}
               collapseWhenIdle={!nested}
-            />
+            />,
+          );
+          otherBuf = [];
+        };
+        for (const s of p.segments) {
+          if (s.kind === "tool") {
+            const tool = toolMap.get(s.refId);
+            if (tool && isSessionsSpawnToolName(tool.toolName)) continue;
+          }
+          if (s.kind === "activity") {
+            const act = activityMap.get(s.refId);
+            const stream = String(act?.stream ?? "").toLowerCase();
+            if (stream === "subagent") continue;
+          }
+          otherBuf.push(s);
+        }
+        flushOther("tail");
+        const insertSubagentHere = Boolean(subagentStepEl) && ri === spawnGapPartIdx;
+        if (!gapNodes.length && !insertSubagentHere) return null;
+        return (
+          <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--gap-chain">
+            {gapNodes}
+            {insertSubagentHere ? subagentStepEl : null}
           </div>
         );
       })}
+      {/* Fallback: spawn not present in timeline gaps yet (tool just started). */}
+      {subagentStepEl && spawnGapPartIdx < 0 ? subagentStepEl : null}
       {tailBusy ? (
         <div className="chat-lab__timeline-block chat-lab__timeline-block--pending">
           <ChatStreamingIndicator label={tailBusyLabel} />
@@ -6236,6 +6346,98 @@ function ActivityRow({
 }
 
 /**
+ * Cursor-style subagent step: title + changing progress line (in the reply body).
+ * @param {{
+ *   title: string;
+ *   progress?: string;
+ *   active?: boolean;
+ *   t: (key: string, vars?: Record<string, string | number>) => string;
+ * }} props
+ */
+function SubagentStepBlock({ title, progress, active, t }) {
+  const heading = String(title ?? "").trim() || t("chatLab.streamingSubagentGeneric");
+  const line =
+    String(progress ?? "").trim() ||
+    (active ? t("chatLab.streamingSubagentWorking") : "");
+  const [currentLine, setCurrentLine] = useState(line);
+  const [leavingLine, setLeavingLine] = useState("");
+  const [lineAnimTick, setLineAnimTick] = useState(0);
+
+  useEffect(() => {
+    if (line === currentLine) return;
+    setLeavingLine(currentLine);
+    setCurrentLine(line);
+    setLineAnimTick((n) => n + 1);
+    const timer = setTimeout(() => setLeavingLine(""), 240);
+    return () => clearTimeout(timer);
+  }, [line, currentLine]);
+  return (
+    <div
+      className={cn("chat-lab__subagent-step", active && "chat-lab__subagent-step--active")}
+      aria-live="polite"
+    >
+      <div className="chat-lab__subagent-step-title">
+        {active ? (
+          <span className="chat-lab__subagent-step-glyph chat-lab__subagent-step-glyph--grid" aria-hidden>
+            {Array.from({ length: 9 }).map((_, idx) => (
+              <i
+                key={idx}
+                className="chat-lab__subagent-dot"
+                style={{ animationDelay: `${idx * 60}ms` }}
+              />
+            ))}
+          </span>
+        ) : (
+          <span className="chat-lab__subagent-step-glyph" aria-hidden>
+            {"\u2713"}
+          </span>
+        )}
+        <span>{heading}</span>
+      </div>
+      {line || leavingLine ? (
+        <div className="chat-lab__subagent-step-progress muted">
+          {leavingLine ? (
+            <span
+              key={`leave-${lineAnimTick}`}
+              className="chat-lab__subagent-step-progress-line chat-lab__subagent-step-progress-line--leave"
+            >
+              {leavingLine}
+            </span>
+          ) : null}
+          {currentLine ? (
+            <span
+              key={`enter-${lineAnimTick}`}
+              className="chat-lab__subagent-step-progress-line chat-lab__subagent-step-progress-line--enter"
+            >
+              {currentLine}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * @param {import("../chat/toolTraceMerge.js").ActivityRow} row
+ * @param {(key: string, vars?: Record<string, string | number>) => string} t
+ */
+function subagentStepPropsFromRow(row, t) {
+  const task = typeof row.subagentTask === "string" ? row.subagentTask : "";
+  const title = shortSubagentTitle(task, row.title) || t("chatLab.streamingSubagentGeneric");
+  const progress = pickSubagentProgressLine({
+    task,
+    progress: row.text,
+    active: isRunningActivityRow(row),
+  });
+  return {
+    title,
+    progress,
+    active: isRunningActivityRow(row),
+  };
+}
+
+/**
  * @param {{
  *   rows: import("../chat/toolTraceMerge.js").ActivityRow[];
  *   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -6877,55 +7079,92 @@ const MessageBubble = memo(function MessageBubble({
   const interleavedAssistant = timeline.length > 0;
   const anchorActivityRows = isOrchAnchor && Array.isArray(message.activityLog) ? message.activityLog : [];
   const anchorStepRows = anchorActivityRows;
+
+  const toolRows = Array.isArray(message.toolTrace) ? message.toolTrace : [];
+  const activityRows = Array.isArray(message.activityLog) ? message.activityLog : [];
+  const subagentActivityRows = useMemo(() => {
+    const fromLog = activityRows.filter((r) => String(r.stream ?? "").toLowerCase() === "subagent");
+    const fromTools = deriveSubagentRowsFromToolTrace(toolRows, {
+      streaming: Boolean(message.streaming),
+    });
+    return coalesceSubagentActivityRows(fromLog, fromTools, {
+      streaming: Boolean(message.streaming),
+    });
+  }, [activityRows, toolRows, message.streaming]);
+  // Parent turn streaming is authoritative; never fake "正在生成" after the turn ends.
+  const bubbleStreaming = Boolean(message.streaming);
+  const parentLifecycleEnded = useMemo(
+    () =>
+      activityRows.some(
+        (r) =>
+          String(r.stream ?? "").toLowerCase() === "lifecycle" &&
+          isCompletedActivityPhase(r.phase),
+      ),
+    [activityRows],
+  );
+  const subagentBusy =
+    bubbleStreaming &&
+    !parentLifecycleEnded &&
+    subagentActivityRows.some((row) => isRunningActivityRow(row));
+  const generalActivityRows = useMemo(
+    () =>
+      activityRows.filter((r) => {
+        const stream = String(r.stream ?? "").toLowerCase();
+        return stream !== "subagent";
+      }),
+    [activityRows],
+  );
+
   const showTyping =
     !isUser &&
-    message.streaming &&
+    bubbleStreaming &&
     !message.content &&
     !message.thinking &&
     !message.error &&
     !interleavedAssistant &&
     !(isOrchAnchor && anchorActivityRows.length > 0);
 
-  const interleavedTailBusy =
-    interleavedAssistant && Boolean(message.streaming) && !message.error;
+  const interleavedTailBusy = interleavedAssistant && bubbleStreaming && !message.error;
 
   const previewApi = useContext(ChatLabPreviewContext);
 
   const mdComponents = useMemo(
-    () => createChatLabMarkdownComponents(t, { streaming: Boolean(message.streaming) }),
-    [t, message.streaming],
+    () => createChatLabMarkdownComponents(t, { streaming: bubbleStreaming }),
+    [t, bubbleStreaming],
   );
 
   const [thinkOpen, setThinkOpen] = useState(() => Boolean(message.streaming));
 
   useEffect(() => {
-    if (message.streaming) setThinkOpen(true);
-  }, [message.streaming]);
+    if (bubbleStreaming) setThinkOpen(true);
+  }, [bubbleStreaming]);
 
-  const toolRows = Array.isArray(message.toolTrace) ? message.toolTrace : [];
-  const activityRows = Array.isArray(message.activityLog) ? message.activityLog : [];
-
-  const streamingBusyLabel = useMemo(
-    () =>
-      resolveStreamingBusyLabel({
-        streaming: Boolean(message.streaming),
-        timeline,
-        toolRows,
-        activityRows,
-        thinking: message.thinking,
-        content: message.content,
-        t,
-      }),
-    [
-      message.streaming,
-      message.thinking,
-      message.content,
+  const streamingBusyLabel = useMemo(() => {
+    if (!bubbleStreaming) return "";
+    if (subagentBusy) {
+      return t("chatLab.streamingAwaitSubagent");
+    }
+    return resolveStreamingBusyLabel({
+      streaming: bubbleStreaming,
       timeline,
       toolRows,
-      activityRows,
+      activityRows: generalActivityRows,
+      thinking: message.thinking,
+      content: message.content,
       t,
-    ],
-  );
+    });
+  }, [
+    parentLifecycleEnded,
+    subagentBusy,
+    subagentActivityRows,
+    bubbleStreaming,
+    message.thinking,
+    message.content,
+    timeline,
+    toolRows,
+    generalActivityRows,
+    t,
+  ]);
 
   const timeLabel =
     typeof message.createdAt === "number" ? formatMessageTimestamp(message.createdAt, locale) : "";
@@ -7179,11 +7418,11 @@ const MessageBubble = memo(function MessageBubble({
         !isUser &&
         !isOrchEvent &&
         !interleavedAssistant &&
-        toolRows.length > 0 ? (
+        toolRows.some((r) => !isSessionsSpawnToolName(r.toolName)) ? (
           <ToolChainPanel
-            rows={toolRows}
+            rows={toolRows.filter((r) => !isSessionsSpawnToolName(r.toolName))}
             t={t}
-            streaming={Boolean(message.streaming)}
+            streaming={bubbleStreaming}
             keepCollapsed={collapseTracePanels}
           />
         ) : null}
@@ -7192,17 +7431,37 @@ const MessageBubble = memo(function MessageBubble({
         !isUser &&
         !isOrchEvent &&
         !interleavedAssistant &&
-        activityRows.length > 0 ? (
+        generalActivityRows.length > 0 ? (
           <ActivityChainPanel
-            rows={activityRows}
+            rows={generalActivityRows}
             t={t}
-            streaming={Boolean(message.streaming)}
+            streaming={bubbleStreaming}
             keepCollapsed={collapseTracePanels}
           />
         ) : null}
+        {!isOrchPlan &&
+        !isOrchAnchor &&
+        !isUser &&
+        !isOrchEvent &&
+        !interleavedAssistant &&
+        subagentActivityRows.length > 0
+          ? (() => {
+              const row = activeSubagentRow || subagentActivityRows[0];
+              const props = subagentStepPropsFromRow(row, t);
+              return (
+                <SubagentStepBlock
+                  key={row.id}
+                  title={props.title}
+                  progress={props.progress}
+                  active={props.active}
+                  t={t}
+                />
+              );
+            })()
+          : null}
         {!isOrchPlan && !isUser && !interleavedAssistant && message.thinking ? (
           <TraceDisclosure
-            className={cn("chat-lab__think", message.streaming && "thinking-pulse-border")}
+            className={cn("chat-lab__think", bubbleStreaming && "thinking-pulse-border")}
             open={thinkOpen}
             onOpenChange={setThinkOpen}
             triggerClassName="chat-lab__think-summary"
@@ -7232,10 +7491,11 @@ const MessageBubble = memo(function MessageBubble({
             <AssistantInterleavedBody
               timeline={timeline}
               toolRows={toolRows}
-              activityRows={activityRows}
+              activityRows={generalActivityRows}
+              subagentRows={subagentActivityRows}
               mdComponents={mdComponents}
               t={t}
-              streaming={Boolean(message.streaming)}
+              streaming={bubbleStreaming}
               tailBusy={Boolean(interleavedTailBusy)}
               tailBusyLabel={streamingBusyLabel}
               keepTraceCollapsed={collapseTracePanels}
@@ -7290,7 +7550,7 @@ const MessageBubble = memo(function MessageBubble({
           ))}
         </div>
       ) : null}
-      {isUser || !message.streaming ? (
+      {isUser || !bubbleStreaming ? (
         <div
           className={cn(
             "chat-lab__msg-footer",

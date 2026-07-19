@@ -492,6 +492,8 @@
     "streamingPreparing": "準備中…",
     "streamingWorking": "処理中…",
     "streamingOrchestrating": "タスクを調整中…",
+    "streamingSubagent": "サブエージェント: {{task}}",
+    "streamingSubagentGeneric": "サブエージェントが作業中…",
     "streamingFetching": "ページを取得中…",
     "emptyAssistantReply": "このターンではモデルから本文が返ってきませんでした（推論チャネルのみ、またはゲートウェイがテキストデルタを送らなかった可能性があります）。",
     "unknownError": "不明なエラー",
@@ -678,7 +680,10 @@
     "selectionOpenUrl": "URLを開く",
     "selectionOpenFileLocation": "ファイルの場所を開く",
     "followUpSourceUser": "ユーザー",
-    "followUpChipClose": "追問引用を削除"
+    "followUpChipClose": "追問引用を削除",
+    "subagentSpawnPrompt": "## サブエージェント（sessions_spawn）\nサブエージェントが必要なときは、明確な `task` で `sessions_spawn` を呼び出してください。Open Studio ではこのツールは**サブエージェント完了までブロック**し、`{status:\"completed\", result}` を返します。その後**同じターン内**で要約して続けてください。\n- `sessions_yield` を**呼ばない**\n- spawn の後にターンを終えない——ツール結果を待ってから回答する",
+    "streamingSubagentWorking": "作業中…",
+    "streamingAwaitSubagent": "サブエージェントの応答を待機中…"
   },
   "bootstrap": {
     "title": "Open Studio を準備しています",
