@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@open-studio/udesign";
 import { Outlet } from "react-router-dom";
-import { Compass, MessageSquarePlus, Puzzle, Timer, Users } from "lucide-react";
+import { Compass, GitBranch, MessageSquarePlus, Puzzle, Timer, Users } from "lucide-react";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
 import ChatHistoryList from "../components/shell/ChatHistoryList.jsx";
@@ -95,6 +95,12 @@ export default function MainLayout({ railResizeEnabled = false }) {
         to: "/automation",
         label: t("nav.automation"),
         icon: <NavIcon icon={Timer} />,
+      },
+      {
+        id: "workflow",
+        to: "/workflow",
+        label: t("nav.workflow"),
+        icon: <NavIcon icon={GitBranch} />,
       },
       {
         id: "web-explore",

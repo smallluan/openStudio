@@ -54,6 +54,7 @@
     "lobster": "エージェント",
     "skills": "スキル",
     "automation": "自動化",
+    "workflow": "ワークフロー",
     "webExplore": "ウェブ探索",
     "settings": "設定",
     "profile": "アカウント",
@@ -244,6 +245,9 @@
   },
   "automationPage": {
     "placeholder": "スケジュールタスクと自動化 — 近日公開。"
+  },
+  "workflowPage": {
+    "placeholder": "ワークフロー機能 — 近日公開。"
   },
   "webExplorePage": {
     "hint": "URL を入力して Enter で、このページ内で閲覧します。",

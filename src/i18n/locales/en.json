@@ -54,6 +54,7 @@
     "lobster": "Agents",
     "skills": "Skills",
     "automation": "Automation",
+    "workflow": "Workflow",
     "webExplore": "Web Explore",
     "settings": "Settings",
     "profile": "Profile",
@@ -246,6 +247,9 @@
   },
   "automationPage": {
     "placeholder": "Scheduled tasks and automation — coming soon."
+  },
+  "workflowPage": {
+    "placeholder": "Workflow capabilities — coming soon."
   },
   "webExplorePage": {
     "hint": "Enter a URL and press Enter to browse in this page.",

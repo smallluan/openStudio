@@ -54,6 +54,7 @@
     "lobster": "智能体",
     "skills": "技能",
     "automation": "自动化",
+    "workflow": "工作流",
     "webExplore": "网页漫游",
     "settings": "设置",
     "profile": "账户",
@@ -246,6 +247,9 @@
   },
   "automationPage": {
     "placeholder": "定时任务与自动化能力，即将推出。"
+  },
+  "workflowPage": {
+    "placeholder": "工作流能力，即将推出。"
   },
   "webExplorePage": {
     "hint": "输入网址后按 Enter，在本页内浏览。",
