@@ -315,8 +315,24 @@
     "toolPanTip": "キャンバス背景をドラッグして移動"
   },
   "webExplorePage": {
-    "hint": "URL を入力して Enter で、このページ内で閲覧します。",
-    "urlPlaceholder": "URL を入力（例: https://example.com）",
+    "urlPlaceholder": "URL を入力して、一緒に探索しましょう！",
+    "urlInputAria": "URL を入力",
+    "startExplore": "探索を開始",
+    "featuresAria": "機能ハイライト",
+    "features": {
+      "automation": {
+        "title": "自動操作とデバッグ",
+        "description": "ページ助手が現在のページを読み取り操作できます。ブレークポイント、ネットワークキャプチャ、リクエストリダイレクトでフロントエンドのデバッグを支援します。"
+      },
+      "session": {
+        "title": "ログイン状態の保持",
+        "description": "デスクトップ版は独立したセッションパーティションで閲覧し、Cookie とログイン状態を次回以降も引き継ぎます。"
+      },
+      "combos": {
+        "title": "カスタムタブの組み合わせ",
+        "description": "複数 URL を組み合わせとして保存し、ワンクリックでワークスペースを復元。タブごとのスクリプト注入にも対応します。"
+      }
+    },
     "backToStart": "最初に戻る",
     "newTab": "新しいタブ",
     "closeTab": "タブを閉じる",

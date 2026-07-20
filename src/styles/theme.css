@@ -42,6 +42,8 @@
   --os-blur-lg: 32px;
 
   --os-titlebar-height: 40px;
+  /** Landing hero avatar / illustration size (Chat Lab + Web Explore). */
+  --os-landing-hero-size: 9rem;
   --os-titlebar-bg: #ffffff;
   /** Right segment of split title bar (main pane strip). */
   --os-titlebar-text: rgba(20, 24, 32, 0.82);

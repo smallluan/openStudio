@@ -315,8 +315,24 @@
     "toolPanTip": "拖動畫布背景進行平移"
   },
   "webExplorePage": {
-    "hint": "輸入網址後按 Enter，在本頁內瀏覽。",
-    "urlPlaceholder": "輸入網址，例如 https://example.com",
+    "urlPlaceholder": "輸入網址，一起開始探索吧！",
+    "urlInputAria": "輸入網址",
+    "startExplore": "開始探索",
+    "featuresAria": "功能亮點",
+    "features": {
+      "automation": {
+        "title": "自動化操作與偵錯",
+        "description": "頁面助手可讀取並操控目前頁面；支援斷點偵錯、網路抓包與請求重新導向，方便前端聯調。"
+      },
+      "session": {
+        "title": "登入狀態保持",
+        "description": "桌面端使用獨立工作階段分區瀏覽，Cookie 與登入狀態在多次開啟間延續，無需反覆登入。"
+      },
+      "combos": {
+        "title": "自訂分頁組合",
+        "description": "將多個網址儲存為組合，一鍵恢復工作區；還可為各分頁設定注入腳本。"
+      }
+    },
     "backToStart": "返回起始頁",
     "newTab": "新分頁",
     "closeTab": "關閉分頁",

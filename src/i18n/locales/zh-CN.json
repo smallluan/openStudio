@@ -317,8 +317,24 @@
     "toolPanTip": "拖动画布背景进行平移"
   },
   "webExplorePage": {
-    "hint": "输入网址后按 Enter，在本页内浏览。",
-    "urlPlaceholder": "输入网址，例如 https://example.com",
+    "urlPlaceholder": "输入网址，一起开始探索吧！",
+    "urlInputAria": "输入网址",
+    "startExplore": "开始探索",
+    "featuresAria": "功能亮点",
+    "features": {
+      "automation": {
+        "title": "自动化操作与调试",
+        "description": "页面助手可读取并操控当前页面；支持断点调试、网络抓包与请求重定向，方便前端联调。"
+      },
+      "session": {
+        "title": "登录状态保持",
+        "description": "桌面端使用独立会话分区浏览，Cookie 与登录态在多次打开间延续，无需反复登录。"
+      },
+      "combos": {
+        "title": "自定义页签组合",
+        "description": "将多个网址保存为组合，一键恢复工作区；还可为各标签页配置注入脚本。"
+      }
+    },
     "backToStart": "返回起始页",
     "newTab": "新标签页",
     "closeTab": "关闭标签页",

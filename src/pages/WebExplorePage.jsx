@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import htmlwanderHero from "../assets/images/htmlwander.png";
+import htmlwanderHeroDark from "../assets/images/htmlwander-dark.png";
 import {
   ArrowLeft,
+  Bot,
   Check,
   Code,
   ExternalLink,
-  Globe,
   Layers,
   Monitor,
   Plus,
   RefreshCw,
   Replace,
+  ShieldCheck,
   Smartphone,
   X,
 } from "lucide-react";
@@ -21,6 +24,7 @@ import WebExploreRedirectModal from "../components/web-explore/WebExploreRedirec
 import WebExplorePageScriptModal from "../components/web-explore/WebExplorePageScriptModal.jsx";
 import { openChatLabExternalUrl } from "../chat/chatLabLinkOpenPreference.js";
 import { useI18n } from "../context/I18nContext.jsx";
+import { useTheme } from "../context/ThemeContext.jsx";
 import { cn } from "../ui/cn.js";
 import {
   EXPLORE_TAB_IDLE_HIBERNATE_MS,
@@ -99,6 +103,15 @@ function withLifecycle(tabs, activeTabId) {
 
 export default function WebExplorePage() {
   const { t } = useI18n();
+  const { theme } = useTheme();
+  const featureCards = useMemo(
+    () => [
+      { id: "automation", icon: Bot },
+      { id: "session", icon: ShieldCheck },
+      { id: "combos", icon: Layers },
+    ],
+    [],
+  );
   const { collapsePrimaryRail } = useOutletContext() ?? {};
   const landingInputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
   const barInputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
@@ -668,16 +681,32 @@ export default function WebExplorePage() {
   if (!browsing) {
     return (
       <div className="web-explore-page">
-        <div className="web-explore-page__landing">
+        <div className="web-explore-page__landing" aria-label={t("nav.webExplore")}>
           <div className="web-explore-page__hero" aria-hidden>
-            <Globe size={28} strokeWidth={1.8} />
+            <img
+              className="web-explore-page__hero-img"
+              src={theme === "dark" ? htmlwanderHeroDark : htmlwanderHero}
+              alt=""
+            />
           </div>
-          <h1 className="web-explore-page__title">{t("nav.webExplore")}</h1>
-          <p className="web-explore-page__hint">{t("webExplorePage.hint")}</p>
+          <section className="web-explore-page__features" aria-label={t("webExplorePage.featuresAria")}>
+            {featureCards.map(({ id, icon: Icon }) => (
+              <article key={id} className="web-explore-page__feature-card">
+                <div className="web-explore-page__feature-head">
+                  <span className="web-explore-page__feature-icon" aria-hidden>
+                    <Icon size={18} strokeWidth={1.9} />
+                  </span>
+                  <h2 className="web-explore-page__feature-title">{t(`webExplorePage.features.${id}.title`)}</h2>
+                </div>
+                <p className="web-explore-page__feature-desc">{t(`webExplorePage.features.${id}.description`)}</p>
+              </article>
+            ))}
+          </section>
           <form key={landingKey} className="web-explore-page__form" onSubmit={handleSubmit}>
             <Input
               ref={landingInputRef}
               block
+              align="center"
               size="large"
               autofocus
               autocomplete="off"
@@ -686,7 +715,17 @@ export default function WebExplorePage() {
               value={draft}
               onChange={setDraft}
               placeholder={t("webExplorePage.urlPlaceholder")}
-              aria-label={t("webExplorePage.urlPlaceholder")}
+              aria-label={t("webExplorePage.urlInputAria")}
+              suffix={
+                <Button
+                  type="submit"
+                  theme="primary"
+                  size="small"
+                  className="web-explore-page__input-submit"
+                >
+                  {t("webExplorePage.startExplore")}
+                </Button>
+              }
             />
           </form>
           {presets.length > 0 ? (

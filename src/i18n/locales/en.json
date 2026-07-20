@@ -317,8 +317,24 @@
     "toolPanTip": "Drag the canvas background to pan"
   },
   "webExplorePage": {
-    "hint": "Enter a URL and press Enter to browse in this page.",
-    "urlPlaceholder": "Enter URL, e.g. https://example.com",
+    "urlPlaceholder": "Enter a URL — let's explore together!",
+    "urlInputAria": "Enter URL",
+    "startExplore": "Start exploring",
+    "featuresAria": "Highlights",
+    "features": {
+      "automation": {
+        "title": "Automation & debugging",
+        "description": "The page assistant reads and controls the current page; breakpoints, network capture, and request redirects help with frontend debugging."
+      },
+      "session": {
+        "title": "Login state persistence",
+        "description": "The desktop client browses in a dedicated session partition so cookies and sign-in state carry over between visits."
+      },
+      "combos": {
+        "title": "Custom tab combos",
+        "description": "Save multiple URLs as a combo and reopen your workspace in one click; per-tab script injection is supported."
+      }
+    },
     "backToStart": "Back to start",
     "newTab": "New tab",
     "closeTab": "Close tab",

@@ -4647,8 +4647,8 @@ html[data-os-motion="reduced"] .chat-lab__context-trigger {
 /* 机器人头像 */
 .chat-lab__hero-avatar {
   position: relative;
-  width: 120px;
-  height: 120px;
+  width: var(--os-landing-hero-size);
+  height: var(--os-landing-hero-size);
   margin: 0 auto 1.25rem;
   display: flex;
   align-items: center;
@@ -10029,6 +10029,8 @@ html[data-os-motion="reduced"] .chat-lab__reveal-blur-veil {
 }
 
 .web-explore-page__landing {
+  --web-explore-landing-width: min(720px, 100%);
+  --web-explore-hero-size: calc(var(--os-landing-hero-size) * 1.12);
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -10044,54 +10046,131 @@ html[data-os-motion="reduced"] .chat-lab__reveal-blur-veil {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3.25rem;
-  height: 3.25rem;
-  border-radius: 999px;
-  color: var(--os-accent, #2563eb);
-  background: color-mix(in srgb, var(--os-accent, #2563eb) 12%, transparent);
-  margin-bottom: 0.35rem;
+  width: var(--web-explore-hero-size);
+  height: var(--web-explore-hero-size);
+  margin: 0 auto 0.15rem;
 }
 
-.web-explore-page__title {
+.web-explore-page__hero-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+.web-explore-page__features {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 1.35rem;
+  row-gap: 0.7rem;
+  width: var(--web-explore-landing-width);
+  margin: 0 0 0.85rem;
+}
+
+.web-explore-page__feature-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0.75rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--os-border) 82%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--os-bg-elevated, var(--os-bg-base)) 88%, transparent);
+  box-shadow: 0 10px 28px -22px color-mix(in srgb, var(--os-shadow-color, #000) 24%, transparent);
+  text-align: left;
+}
+
+.web-explore-page__feature-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.web-explore-page__feature-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9px;
+  color: var(--os-accent, #2563eb);
+  background: color-mix(in srgb, var(--os-accent, #2563eb) 12%, transparent);
+}
+
+.web-explore-page__feature-title {
   margin: 0;
-  font-size: 1.35rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  line-height: 1.35;
   color: var(--os-text-primary);
 }
 
-.web-explore-page__hint {
-  margin: 0 0 0.75rem;
-  font-size: 0.875rem;
+.web-explore-page__feature-desc {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
   color: var(--os-text-muted);
-  text-align: center;
-  max-width: 28rem;
+}
+
+@media (max-width: 760px) {
+  .web-explore-page__features {
+    grid-template-columns: 1fr;
+  }
 }
 
 .web-explore-page__form {
-  width: min(640px, 100%);
+  width: var(--web-explore-landing-width);
+  max-width: 100%;
 }
 
-.web-explore-page__input.udesign-input {
+.web-explore-page__input.udesign-input-wrap {
+  width: 100%;
+}
+
+.web-explore-page__input .udesign-input {
   min-height: 3.25rem;
+  padding-right: 0.35rem;
   border-radius: 14px;
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--os-border) 78%, transparent),
     0 12px 32px -16px color-mix(in srgb, var(--os-shadow-color, #000) 22%, transparent);
 }
 
-.web-explore-page__input.udesign-input .udesign-input__inner {
-  font-size: 1.05rem;
+.web-explore-page__input .udesign-input__suffix {
+  flex-shrink: 0;
+  padding-right: 0.15rem;
 }
 
-.web-explore-page__input.udesign-input.udesign-input--focused {
+.web-explore-page__input-submit.udesign-btn {
+  height: 2.35rem;
+  padding: 0 0.95rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.web-explore-page__input .udesign-input__inner {
+  font-size: 1.05rem;
+  text-align: center;
+}
+
+.web-explore-page__input .udesign-input__inner::placeholder {
+  text-align: center;
+}
+
+.web-explore-page__input .udesign-input.udesign-input--focused {
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--os-accent, #2563eb) 42%, transparent),
     0 12px 32px -16px color-mix(in srgb, var(--os-shadow-color, #000) 22%, transparent);
 }
 
 .web-explore-page__saved {
-  width: min(640px, 100%);
+  width: var(--web-explore-landing-width);
   margin-top: 1.25rem;
 }
 
