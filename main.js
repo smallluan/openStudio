@@ -108,8 +108,14 @@ const {
 const {
   initPreviewRequestOverride,
   setPreviewRequestOverrides,
+  refreshPreviewDevCache,
 } = require("./lib/preview-request-override.cjs");
 const { handleSidebarDebugger } = require("./lib/preview-guest-debugger.cjs");
+const { handleApplyGuestPreloadScript } = require("./lib/preview-guest-eval.cjs");
+const {
+  initPreviewGuestFileInput,
+  handleSetGuestFileInputFiles,
+} = require("./lib/preview-guest-file-input.cjs");
 
 /** Sidebar cannot embed Office; open these locally in the OS default viewer instead. */
 const OPEN_EXTERNALLY_SIDE_PREVIEW_EXT = new Set([".pptx", ".ppt", ".xlsx", ".xls"]);
@@ -918,6 +924,7 @@ app.whenReady().then(async () => {
   try {
     initPreviewGuestCapture(getStudioLog());
     initPreviewRequestOverride(getStudioLog());
+    initPreviewGuestFileInput(getStudioLog());
     startSidebarActionToolBridge({
       getMainWindow: () => mainWindow,
       log: getStudioLog(),
@@ -1316,6 +1323,42 @@ app.whenReady().then(async () => {
       return {
         ok: false,
         error: "set_failed",
+        message: e instanceof Error ? e.message : String(e),
+      };
+    }
+  });
+
+  ipcMain.handle("studio:refreshPreviewDevCache", async () => {
+    try {
+      return await refreshPreviewDevCache();
+    } catch (e) {
+      return {
+        ok: false,
+        error: "refresh_failed",
+        message: e instanceof Error ? e.message : String(e),
+      };
+    }
+  });
+
+  ipcMain.handle("studio:setGuestFileInputFiles", async (_event, payload) => {
+    try {
+      return await handleSetGuestFileInputFiles(payload && typeof payload === "object" ? payload : {});
+    } catch (e) {
+      return {
+        ok: false,
+        error: "set_files_failed",
+        message: e instanceof Error ? e.message : String(e),
+      };
+    }
+  });
+
+  ipcMain.handle("studio:applyGuestPreloadScript", async (_event, payload) => {
+    try {
+      return await handleApplyGuestPreloadScript(payload && typeof payload === "object" ? payload : {});
+    } catch (e) {
+      return {
+        ok: false,
+        error: "preload_script_failed",
         message: e instanceof Error ? e.message : String(e),
       };
     }

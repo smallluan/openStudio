@@ -209,10 +209,10 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
 +		label: "Sidebar Debug",
 +		name: "sidebar_debug",
 +		displaySummary: "Preview console/network debug",
-+		description: "Record and inspect console logs + network requests for the Open Studio sidebar preview or Web Explore page. For first-load traffic: op=start with reload=true (starts recording then reloads the webview). Or op=reload while already recording. Then op=catalog → op=fetch. Also: start|stop|clear|status|catalog|fetch|reload. Large payloads are NOT auto-injected.",
++		description: "Read buffered console logs and record network for Open Studio preview / Web Explore. User asks what is in the console → op=console (or fetch with fetchLogs:true). Console is buffered continuously; no start needed. For first-load network only: op=start with reload=true, then catalog/fetch. Ops: start|stop|clear|status|catalog|console|logs|fetch|reload. Do NOT use sidebar_debugger to read console output.",
 +		parameters: Type.Object({
 +			op: Type.String({
-+				description: "start | stop | clear | status | catalog | fetch | reload"
++				description: "console | logs | start | stop | clear | status | catalog | fetch | reload"
 +			}),
 +			clear: Type.Optional(Type.Boolean({ description: "For start: clear prior buffers (default true)" })),
 +			reload: Type.Optional(Type.Boolean({ description: "For start: reload the webview after recording starts (capture first-load network/console). Also use op=reload." })),
@@ -756,13 +756,15 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  	const messageTool = options?.disableMessageTool ? null : createMessageTool({
  		agentAccountId: options?.agentAccountId,
  		agentSessionKey: options?.agentSessionKey,
-@@ -14104,7 +14699,9 @@ function createOpenClawTools(options) {
+@@ -14104,7 +14699,11 @@ function createOpenClawTools(options) {
  			webSearchTool,
  			webFetchTool,
  			imageTool,
 -			pdfTool
 +			pdfTool,
 +			sidebarActionTool,
++			sidebarDebugTool,
++			sidebarScreenshotTool,
 +			sidebarDebuggerTool
  		])
  	];

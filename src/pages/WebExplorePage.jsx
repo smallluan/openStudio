@@ -18,6 +18,7 @@ import { useOutletContext } from "react-router-dom";
 import ChatLabPreviewWebFrame from "../components/chat-lab/ChatLabPreviewWebFrame.jsx";
 import WebExploreChatFloat from "../components/web-explore/WebExploreChatFloat.jsx";
 import WebExploreRedirectModal from "../components/web-explore/WebExploreRedirectModal.jsx";
+import WebExplorePageScriptModal from "../components/web-explore/WebExplorePageScriptModal.jsx";
 import { openChatLabExternalUrl } from "../chat/chatLabLinkOpenPreference.js";
 import { useI18n } from "../context/I18nContext.jsx";
 import { cn } from "../ui/cn.js";
@@ -36,6 +37,9 @@ import {
   serializeExploreRedirectGroups,
 } from "../web-explore/exploreRedirectOverride.js";
 import { useExploreUrlPresets } from "../web-explore/useExploreUrlPresets.js";
+import {
+  serializeExploreTabPageScripts,
+} from "../web-explore/explorePageScript.js";
 
 /**
  * @typedef {{
@@ -44,6 +48,7 @@ import { useExploreUrlPresets } from "../web-explore/useExploreUrlPresets.js";
  *   frameKey: string;
  *   lastActiveAt: number;
  *   hibernated: boolean;
+ *   pageScript?: import("../web-explore/explorePageScript.js").ExploreTabPageScript | null;
  * }} ExploreTab
  *
  * @typedef {{
@@ -79,9 +84,9 @@ function explorePageTitle(url) {
   }
 }
 
-/** @param {string} [url] @returns {ExploreTab} */
-function createExploreTab(url = "") {
-  return createExploreTabRow(normalizeExploreUrl(url));
+/** @param {string} [url] @param {import("../web-explore/explorePageScript.js").ExploreTabPageScript | null} [pageScript] @returns {ExploreTab} */
+function createExploreTab(url = "", pageScript = null) {
+  return { ...createExploreTabRow(normalizeExploreUrl(url)), pageScript: pageScript ?? null };
 }
 
 /**
@@ -114,6 +119,10 @@ export default function WebExplorePage() {
     /** @type {import("../web-explore/exploreRedirectOverride.js").ExploreRedirectGroup[]} */ ([]),
   );
   const [redirectModalOpen, setRedirectModalOpen] = useState(false);
+  const [pageScriptModalTabId, setPageScriptModalTabId] = useState("");
+  const [tabContextMenu, setTabContextMenu] = useState(
+    /** @type {{ tabId: string; x: number; y: number } | null} */ (null),
+  );
   const [landingKey, setLandingKey] = useState(0);
   const [deviceMode, setDeviceMode] = useState(/** @type {"desktop" | "mobile"} */ ("desktop"));
   const [saveComboDone, setSaveComboDone] = useState(false);
@@ -193,6 +202,19 @@ export default function WebExplorePage() {
   const canSaveCombo = savableComboUrls.length > 0;
   const redirectActive = useMemo(() => hasActiveExploreRedirectRules(redirectGroups), [redirectGroups]);
 
+  useEffect(() => {
+    if (!tabContextMenu) return undefined;
+    const close = () => setTabContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [tabContextMenu]);
+
   const syncRedirectOverrides = useCallback(async () => {
     if (!inElectron) return null;
     const bridge = window.studioBridge;
@@ -202,16 +224,31 @@ export default function WebExplorePage() {
     });
   }, [inElectron]);
 
+  useLayoutEffect(() => {
+    if (!inElectron || redirectModalOpen) return undefined;
+    void syncRedirectOverrides();
+    return undefined;
+  }, [inElectron, redirectGroups, redirectModalOpen, syncRedirectOverrides]);
+
   useEffect(() => {
-    if (!inElectron) return undefined;
+    if (!inElectron || !redirectModalOpen) return undefined;
     const timer = window.setTimeout(() => {
       void syncRedirectOverrides();
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [inElectron, redirectGroups, syncRedirectOverrides]);
+  }, [inElectron, redirectGroups, redirectModalOpen, syncRedirectOverrides]);
 
-  const reloadActiveFrameIgnoringCache = useCallback(() => {
+  const refreshPreviewDevCacheIfNeeded = useCallback(async () => {
+    if (!inElectron || !hasActiveExploreRedirectRules(redirectGroupsRef.current)) return;
+    const bridge = window.studioBridge;
+    if (typeof bridge?.refreshPreviewDevCache === "function") {
+      await bridge.refreshPreviewDevCache();
+    }
+  }, [inElectron]);
+
+  const reloadActiveFrameIgnoringCache = useCallback(async () => {
     if (!activeUrl) return;
+    await refreshPreviewDevCacheIfNeeded();
     const id = activeTabIdRef.current;
     if (activeTab?.hibernated || (!webviewRef.current && !iframeRef.current)) {
       if (!id) return;
@@ -265,7 +302,7 @@ export default function WebExplorePage() {
         tab.id === id ? { ...tab, frameKey: `explore-${tab.id}-${Date.now()}` } : tab,
       ),
     );
-  }, [activeTab?.hibernated, activeUrl, inElectron]);
+  }, [activeTab?.hibernated, activeUrl, inElectron, refreshPreviewDevCacheIfNeeded]);
 
   const focusBarInput = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -438,7 +475,7 @@ export default function WebExplorePage() {
   const handleReload = useCallback(() => {
     if (!activeUrl) return;
     if (redirectActive && inElectron) {
-      reloadActiveFrameIgnoringCache();
+      void reloadActiveFrameIgnoringCache();
       return;
     }
     const id = activeTabIdRef.current;
@@ -506,32 +543,100 @@ export default function WebExplorePage() {
       const list = collectPresetUrls(urls);
       if (!list.length) return;
       const nextPresetId = String(presetId ?? "").trim();
+      const preset = presets.find((row) => row.id === nextPresetId);
+      const groups = normalizeExploreRedirectGroups(preset?.redirectGroups);
+      if (inElectron && hasActiveExploreRedirectRules(groups)) {
+        const bridge = window.studioBridge;
+        if (typeof bridge?.setPreviewRequestOverrides === "function") {
+          await bridge.setPreviewRequestOverrides({
+            groups: serializeExploreRedirectGroups(groups),
+          });
+        }
+        if (typeof bridge?.refreshPreviewDevCache === "function") {
+          await bridge.refreshPreviewDevCache();
+        }
+      }
       await withRailCollapsedIfNeeded(() => {
-        const nextTabs = list.map((url) => createExploreTab(url));
+        const nextTabs = list.map((url, index) =>
+          createExploreTab(url, preset?.tabPageScripts?.[index] ?? null),
+        );
         const activeId = nextTabs[0].id;
-        const preset = presets.find((row) => row.id === nextPresetId);
         setTabs(withLifecycle(nextTabs, activeId));
         setActiveTabId(activeId);
         setActivePresetId(nextPresetId);
-        setRedirectGroups(normalizeExploreRedirectGroups(preset?.redirectGroups));
+        setRedirectGroups(groups);
         setDraft(list[0]);
       });
     },
-    [presets, withRailCollapsedIfNeeded],
+    [inElectron, presets, withRailCollapsedIfNeeded],
+  );
+
+  const persistCombo = useCallback(
+    (tabsOverride) => {
+      const tabRows = tabsOverride ?? tabsRef.current;
+      const urls = collectPresetUrls(tabRows.map((tab) => tab.url));
+      if (!urls.length) return null;
+      const scripts = tabRows.map((tab) => tab.pageScript ?? null);
+      const row = savePreset(
+        urls,
+        activePresetIdRef.current || undefined,
+        redirectGroupsRef.current,
+        serializeExploreTabPageScripts(scripts),
+      );
+      if (row?.id) setActivePresetId(row.id);
+      return row;
+    },
+    [savePreset],
   );
 
   const handleSaveCombo = useCallback(() => {
-    const urls = collectPresetUrls(tabsRef.current.map((tab) => tab.url));
-    if (!urls.length) return;
-    const row = savePreset(
-      urls,
-      activePresetIdRef.current || undefined,
-      redirectGroupsRef.current,
-    );
-    if (row?.id) setActivePresetId(row.id);
+    const row = persistCombo();
+    if (!row) return;
     setSaveComboDone(true);
     window.setTimeout(() => setSaveComboDone(false), 2000);
-  }, [savePreset]);
+  }, [persistCombo]);
+
+  /** @param {string} tabId */
+  const handleTabContextMenu = useCallback((tabId, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setTabContextMenu({ tabId, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleOpenPageScriptModal = useCallback((tabId) => {
+    setTabContextMenu(null);
+    setPageScriptModalTabId(String(tabId ?? "").trim());
+  }, []);
+
+  const handleClosePageScriptModal = useCallback(() => {
+    setPageScriptModalTabId("");
+  }, []);
+
+  /** @param {import("../web-explore/explorePageScript.js").ExploreTabPageScript | null} script */
+  const handleSavePageScript = useCallback(
+    (script) => {
+      const tabId = String(pageScriptModalTabId ?? "").trim();
+      if (!tabId) return;
+      const nextTabs = tabsRef.current.map((tab) =>
+        tab.id === tabId
+          ? { ...tab, pageScript: script, frameKey: `explore-${tab.id}-${Date.now()}` }
+          : tab,
+      );
+      setTabs(nextTabs);
+      persistCombo(nextTabs);
+      setPageScriptModalTabId("");
+    },
+    [pageScriptModalTabId, persistCombo],
+  );
+
+  const pageScriptModalTab = useMemo(
+    () => tabs.find((tab) => tab.id === pageScriptModalTabId) ?? null,
+    [pageScriptModalTabId, tabs],
+  );
+  const pageScriptModalIndex = useMemo(
+    () => (pageScriptModalTab ? tabs.findIndex((tab) => tab.id === pageScriptModalTab.id) : -1),
+    [pageScriptModalTab, tabs],
+  );
 
   const handleOpenDevTools = useCallback(() => {
     const node = webviewRef.current;
@@ -556,9 +661,7 @@ export default function WebExplorePage() {
     setRedirectModalOpen(false);
     if (!hasActiveExploreRedirectRules(redirectGroupsRef.current)) return;
     window.setTimeout(() => {
-      void syncRedirectOverrides().then(() => {
-        reloadActiveFrameIgnoringCache();
-      });
+      void syncRedirectOverrides().then(() => reloadActiveFrameIgnoringCache());
     }, 0);
   }, [reloadActiveFrameIgnoringCache, syncRedirectOverrides]);
 
@@ -797,6 +900,7 @@ export default function WebExplorePage() {
               const labelText = tab.url || t("webExplorePage.newTab");
               const selected = tab.id === activeTabId;
               const hibernated = Boolean(tab.hibernated && tab.url);
+              const hasPageScript = Boolean(tab.pageScript?.code?.trim());
               return (
                 <div
                   key={tab.id}
@@ -808,8 +912,10 @@ export default function WebExplorePage() {
                     "web-explore-page__tab",
                     selected && "web-explore-page__tab--active",
                     hibernated && "web-explore-page__tab--hibernated",
+                    hasPageScript && "web-explore-page__tab--has-script",
                   )}
                   onClick={() => handleActivateTab(tab.id)}
+                  onContextMenu={(e) => handleTabContextMenu(tab.id, e)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -852,6 +958,7 @@ export default function WebExplorePage() {
       <div ref={viewportRef} className={cn("web-explore-page__viewport", "chat-lab-preview-dock__body")}>
         <div className="web-explore-page__frame-stack">
           {tabs.map((tab) => {
+            const preLoadScript = tab.pageScript?.code ?? "";
             const active = tab.id === activeTabId;
             if (!tab.url) {
               if (!active) return null;
@@ -884,6 +991,7 @@ export default function WebExplorePage() {
                   frameKey={tab.frameKey}
                   useWebview={inElectron}
                   deviceMode={deviceMode}
+                  preLoadScript={preLoadScript}
                   iframeRef={hostRefs.iframe}
                   webviewRefFromContext={hostRefs.webview}
                   onNavigate={(url) => handleNavigate(tab.id, url)}
@@ -911,6 +1019,32 @@ export default function WebExplorePage() {
         inElectron={inElectron}
         onChange={setRedirectGroups}
         onClose={handleCloseRedirectModal}
+      />
+      {tabContextMenu ? (
+        <div
+          className="web-explore-page__tab-menu"
+          style={{ top: tabContextMenu.y, left: tabContextMenu.x }}
+          role="menu"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="web-explore-page__tab-menu-item"
+            role="menuitem"
+            onClick={() => handleOpenPageScriptModal(tabContextMenu.tabId)}
+          >
+            {t("webExplorePage.pageScriptMenu")}
+          </button>
+        </div>
+      ) : null}
+      <WebExplorePageScriptModal
+        open={Boolean(pageScriptModalTabId)}
+        tabIndex={Math.max(0, pageScriptModalIndex)}
+        tabUrl={pageScriptModalTab?.url ?? ""}
+        script={pageScriptModalTab?.pageScript ?? null}
+        inElectron={inElectron}
+        onSave={handleSavePageScript}
+        onClose={handleClosePageScriptModal}
       />
     </div>
   );

@@ -99,7 +99,24 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
 ## 3. 可用 action
 
 基础：`focus` `type` `type_chars` `click` `blur` `press` `wait` `scroll` `snapshot` `navigate` `reload`（`refresh` 同义；可选 `ms` 等待加载）  
+文件：`set_files`（`upload` / `attach` 同义）— 通过 CDP 设置 `input[type=file]`，**不要**点击会弹出系统文件选择框的按钮  
 鼠标：`mousedown` `mouseup` `pointerdown` `pointerup` `mousemove` `pointermove` `hover` `dblclick` `rightclick` `contextmenu` `drag`
+
+### 3.1 上传文件（`set_files`）
+
+原生 OS 文件对话框无法被自动化操作。应使用：
+
+```json
+{
+  "action": "set_files",
+  "ref": "e12",
+  "files": ["D:/path/to/document.pdf"]
+}
+```
+
+- `files`：本机**绝对路径**数组，文件必须存在  
+- `ref` / `selector` / `label`：指向 `input[type=file]`，或指向上传按钮（会在附近查找隐藏的 file input）  
+- 设置后会自动触发 `input` / `change` 事件
 
 首屏网络/日志录制请优先用 [`sidebar_debug`](./sidebar-preview-tools.md) 的 `start` + `reload: true`，不要只靠 `sidebar_action` reload。
 

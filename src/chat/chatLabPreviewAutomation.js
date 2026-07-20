@@ -28,6 +28,7 @@ import { captureSidebarPreviewSnapshot, composeChatLabPreviewContextBlock } from
  *   toOffsetX?: number;
  *   toOffsetY?: number;
  *   dragSteps?: number;
+ *   files?: string[];
  * }} SidebarAutomationStep */
 
 /** @typedef {import("./chatLabPreviewSnapshot.js").SidebarPreviewInteractiveElement} SidebarPreviewInteractiveElement */
@@ -167,6 +168,13 @@ export function normalizeAutomationSteps(raw, opts = {}) {
       if (typeof row[coordKey] === "number" && Number.isFinite(row[coordKey])) {
         step[coordKey] = row[coordKey];
       }
+    }
+    if (Array.isArray(row.files)) {
+      step.files = row.files.map((f) => String(f ?? "").trim()).filter(Boolean);
+    } else if (typeof row.file === "string" && row.file.trim()) {
+      step.files = [row.file.trim()];
+    } else if (typeof row.path === "string" && row.path.trim()) {
+      step.files = [row.path.trim()];
     }
     out.push(step);
     if (out.length >= maxSteps) break;
@@ -1046,6 +1054,159 @@ function buildStepScript(step) {
   })()`;
 }
 
+/**
+ * @param {SidebarAutomationStep} step
+ */
+function buildFindFileInputScript(step) {
+  const payload = JSON.stringify(step);
+  return `(function(){
+    var step = ${payload};
+    var INPUT_SELECTOR = "input[type=file], input[type='file']";
+    function vis(el) {
+      if (!el || el.nodeType !== 1) return false;
+      if (el.getAttribute("aria-hidden") === "true") return false;
+      var st = window.getComputedStyle(el);
+      if (st.display === "none" || st.visibility === "hidden") return false;
+      return true;
+    }
+    function cssEscape(value) {
+      var s = String(value || "");
+      if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(s);
+      return s.replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
+    }
+    function uniqueSelector(sel) {
+      try { return document.querySelectorAll(sel).length === 1; } catch (e) { return false; }
+    }
+    function buildSelector(el) {
+      var tag = String(el.tagName || "").toLowerCase();
+      var id = String(el.getAttribute("id") || "").trim();
+      if (id && !/\\s/.test(id)) {
+        var byId = "#" + cssEscape(id);
+        if (uniqueSelector(byId)) return byId;
+      }
+      var name = String(el.getAttribute("name") || "").trim();
+      if (name) {
+        var byName = tag + "[name='" + name.replace(/'/g, "\\\\'") + "']";
+        if (uniqueSelector(byName)) return byName;
+      }
+      var nodes = document.querySelectorAll(tag + "[type=file]");
+      for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i] === el) return tag + "[type=file]:nth-of-type(" + (i + 1) + ")";
+      }
+      return tag + "[type=file]";
+    }
+    function walkShadow(node, visit) {
+      if (!node || node.nodeType !== 1) return;
+      visit(node);
+      if (node.shadowRoot) {
+        visit(node.shadowRoot);
+        walkShadow(node.shadowRoot, visit);
+      }
+      var kids = node.children || [];
+      for (var i = 0; i < kids.length; i++) walkShadow(kids[i], visit);
+    }
+    function queryAllFileInputs(root) {
+      var out = [];
+      var seen = [];
+      function scan(doc) {
+        if (!doc || !doc.querySelectorAll) return;
+        var nodes = doc.querySelectorAll(INPUT_SELECTOR);
+        for (var i = 0; i < nodes.length; i++) {
+          if (seen.indexOf(nodes[i]) < 0) {
+            seen.push(nodes[i]);
+            out.push(nodes[i]);
+          }
+        }
+      }
+      scan(root || document);
+      walkShadow(document.documentElement, function(node) {
+        if (node && node.nodeType === 11) scan(node);
+      });
+      return out;
+    }
+    function resolveTarget(s) {
+      if (s.selector) {
+        try {
+          var hit = document.querySelector(String(s.selector));
+          if (hit) return hit;
+        } catch (e) {}
+      }
+      if (s.label) {
+        var lbl = String(s.label);
+        var nodes = document.querySelectorAll("button, a, label, span, div, input");
+        for (var i = 0; i < nodes.length; i++) {
+          var n = nodes[i];
+          var t = String(n.innerText || n.textContent || n.value || "").trim();
+          if (t.indexOf(lbl) >= 0) return n;
+        }
+      }
+      return null;
+    }
+    function pickFileInput(anchor) {
+      if (anchor && anchor.tagName === "INPUT" && String(anchor.type).toLowerCase() === "file") {
+        return anchor;
+      }
+      var list = queryAllFileInputs(document);
+      if (!list.length) return null;
+      if (anchor) {
+        var parent = anchor;
+        for (var depth = 0; parent && depth < 8; depth++) {
+          for (var i = 0; i < list.length; i++) {
+            if (parent.contains && parent.contains(list[i])) return list[i];
+          }
+          parent = parent.parentElement;
+        }
+      }
+      for (var j = 0; j < list.length; j++) {
+        if (vis(list[j])) return list[j];
+      }
+      return list[0];
+    }
+    try {
+      var anchor = resolveTarget(step);
+      var input = pickFileInput(anchor);
+      if (!input) return { ok: false, error: "file_input_not_found" };
+      return { ok: true, selector: buildSelector(input), inputType: "file" };
+    } catch (e) {
+      return { ok: false, error: String(e && e.message ? e.message : e) };
+    }
+  })()`;
+}
+
+/**
+ * @param {import("electron").WebviewTag} wv
+ * @param {SidebarAutomationStep} step
+ */
+async function runSetFilesOnWebview(wv, step) {
+  const files = Array.isArray(step.files) ? step.files.filter(Boolean) : [];
+  if (!files.length) {
+    return { ok: false, action: "set_files", error: "missing_files" };
+  }
+  const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+  if (typeof bridge?.setGuestFileInputFiles !== "function") {
+    return { ok: false, action: "set_files", error: "electron_only" };
+  }
+  focusWebviewHost(wv);
+  const found = await wv.executeJavaScript(buildFindFileInputScript(step), false);
+  if (!found || found.ok === false || !found.selector) {
+    return {
+      ok: false,
+      action: "set_files",
+      error: String(found?.error || "file_input_not_found"),
+      hint: "Do not click the native upload button. Use set_files with absolute file paths on the hidden input[type=file] (ref/selector/label of upload control).",
+    };
+  }
+  const webContentsId = typeof wv.getWebContentsId === "function" ? wv.getWebContentsId() : 0;
+  const result = await bridge.setGuestFileInputFiles({
+    webContentsId,
+    selector: String(found.selector),
+    files,
+  });
+  return result && typeof result === "object"
+    ? { ...result, action: "set_files" }
+    : { ok: false, action: "set_files", error: "bad_result" };
+}
+
 const WEBVIEW_INTERACTION_ACTIONS = new Set([
   "click",
   "focus",
@@ -1082,6 +1243,10 @@ function focusWebviewHost(wv) {
  * @param {SidebarAutomationStep} step
  */
 async function runStepOnWebview(wv, step) {
+  const action = String(step.action || "").toLowerCase();
+  if (action === "set_files" || action === "upload" || action === "attach") {
+    return runSetFilesOnWebview(wv, { ...step, action: "set_files" });
+  }
   if (step.action === "wait") {
     await new Promise((r) => window.setTimeout(r, step.ms ?? 500));
     return { ok: true, action: "wait", ms: step.ms ?? 500 };
@@ -1127,7 +1292,9 @@ async function runStepOnWebview(wv, step) {
  * @param {SidebarAutomationStep} step
  */
 async function runStepOnWebviewWithRetry(wv, step) {
-  const retryable = !["wait", "snapshot", "navigate", "reload", "refresh", "scroll"].includes(step.action);
+  const retryable = !["wait", "snapshot", "navigate", "reload", "refresh", "scroll", "set_files", "upload", "attach"].includes(
+    step.action,
+  );
   const maxAttempts = retryable ? 1 + STEP_RETRY_DELAYS_MS.length : 1;
   /** @type {Record<string, unknown>} */
   let last = { ok: false, action: step.action, error: "unknown" };
@@ -1282,7 +1449,10 @@ export async function runSidebarPreviewAutomation(input) {
       step.action === "dblclick" ||
       step.action === "rightclick" ||
       step.action === "contextmenu" ||
-      step.action === "drag"
+      step.action === "drag" ||
+      step.action === "set_files" ||
+      step.action === "upload" ||
+      step.action === "attach"
     ) {
       await new Promise((r) => window.setTimeout(r, SIDEBAR_AUTOMATION_STEP_INTERVAL_MS));
     }

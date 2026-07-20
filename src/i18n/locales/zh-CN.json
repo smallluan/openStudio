@@ -269,7 +269,7 @@
     "comboTabCount": "{{count}} 个标签页",
     "redirectButton": "请求重定向",
     "redirectTitle": "请求重定向（Override）",
-    "redirectHintElectron": "将匹配的请求重定向到本地或其他 URL，支持 * 通配符。保存组合时会一并保存。关闭面板后会自动清缓存并强制刷新页面；Network 里若显示 (disk cache) 说明未走网络，需刷新后才会重定向。",
+    "redirectHintElectron": "将匹配的请求重定向到本地 URL（127.0.0.1/localhost）。本地改代码后请点击刷新；若仍不更新，请确认 To 地址在浏览器直接打开也是最新内容（静态路径可能不会热更新，需指向 dev server 实际入口）。",
     "redirectHintBrowser": "请求重定向仅在桌面客户端（Electron）中生效。此处可先编辑规则，保存组合后下次在客户端打开即可使用。",
     "redirectDefaultGroupName": "常用规则",
     "redirectGroupName": "分组名称：",
@@ -289,7 +289,21 @@
     "redirectRuleToggleAria": "启用规则",
     "redirectActiveCount": "有规则正在生效",
     "redirectInactive": "当前无生效规则",
-    "redirectDone": "完成"
+    "redirectDone": "完成",
+    "pageScriptMenu": "页面脚本",
+    "pageScriptTitle": "页面脚本",
+    "pageScriptTabMeta": "标签页 {{index}} · {{url}}",
+    "pageScriptLifecycleLabel": "生命周期",
+    "pageScriptLifecycle": {
+      "beforeLoad": "加载前"
+    },
+    "pageScriptCodeLabel": "脚本代码",
+    "pageScriptCodePlaceholder": "// 在页面任何脚本运行之前注入\nwindow.__MY_FLAG__ = true;",
+    "pageScriptHintElectron": "脚本会在每次打开该标签页 URL 时、页面脚本运行之前自动注入。保存后会写入当前组合并立即生效（刷新页面）。",
+    "pageScriptHintBrowser": "页面脚本注入仅在桌面客户端（Electron）中生效。可在此编辑并保存到组合，下次在客户端打开时自动注入。",
+    "pageScriptSave": "保存",
+    "pageScriptCancel": "取消",
+    "pageScriptClear": "清除脚本"
   },
   "webExploreChat": {
     "launcher": "助手",
@@ -309,7 +323,7 @@
     "gatewayUnavailable": "当前环境无法使用对话。",
     "streamError": "回复流传输出错。",
     "linkOpenPrompt": "## 网页漫游（当前主页面）\n用户正在 **网页漫游** 中浏览，主视口就是当前页面（不是 Chat Lab 右侧边栏）。\n- **读取页面**：每次用户发消息时，系统注入「当前主页面快照」+ **可交互元素清单**（见 previewContext）；必须优先使用\n- **控制页面**：调用原生 OpenClaw 工具 `sidebar_action`（observe→act）。传入短 `steps`（最多 5 步）；同一轮工具结果会返回带 `elements[].ref` 的 `observation`，再决定下一步或直接回答\n- 快照显示登录/权限页时，让用户先在主页面完成登录",
-    "pageAutomationPrompt": "## 网页漫游自动化（原生工具 `sidebar_action`）\n需要操作页面时，**调用工具** `sidebar_action`，参数为 JSON `steps` 数组（最多 5 步）。**不要**再输出 ```sidebar-action``` 代码块。\n\n**工作方式**：\n- 每次只传**当前要执行**的短步骤（如 focus+type+press，或单个 click）\n- 工具会在本轮内暂停执行并返回 `{ ok, steps, observation }`（含 `observation.elements[].ref`）\n- 根据观测再次调用 `sidebar_action`，或用自然语言结束；**禁止**一次写完整长剧本\n- 定位必须用清单/观测中的 `ref`（推荐）或 `selector`/`label`/`placeholder`/`title`；**禁止**臆造自然语言 target\n- 步骤在网页漫游主视口执行\n\n## 网页漫游观测增强（独立工具）\n- **`sidebar_debug`**：需要根据日志/网络排查时，先 `op=start` 开始录制 → 用 `sidebar_action` 复现 → `op=catalog` 看摘要 → `op=fetch` 只拉取需要的 id/过滤结果。**首屏/首次进入才能拿到的请求**：`op=start` 且 `reload=true`（开录后刷新 webview），或录制中调用 `op=reload`。也可用 `sidebar_action` 的 `action:\"reload\"`。不要把全部日志默认塞进上下文。\n- **`sidebar_screenshot`**：DOM 清单不够（图标按钮、Canvas、视觉布局）时可截当前视口；有视觉能力再用图，交互仍用 `sidebar_action`。\n- **`sidebar_debugger`**：断点调试，等同 DevTools 全局搜：`op=enable` → `op=break_on_text` 传关键词（报错文案/code token 均可），**在所有已加载脚本里搜，每个命中行都下断点**；动态 chunk 未加载时会 **watch**，加载后自动补断点 → `sidebar_action` 复现 → `op=wait_paused` → `op=inspect`。可选 `op=search` 先看命中列表。勿开 guest DevTools。",
+    "pageAutomationPrompt": "## 网页漫游自动化（原生工具 `sidebar_action`）\n需要操作页面时，**调用工具** `sidebar_action`，参数为 JSON `steps` 数组（最多 5 步）。**不要**再输出 ```sidebar-action``` 代码块。\n\n**工作方式**：\n- 每次只传**当前要执行**的短步骤（如 focus+type+press，或单个 click）\n- 工具会在本轮内暂停执行并返回 `{ ok, steps, observation }`（含 `observation.elements[].ref`）\n- 根据观测再次调用 `sidebar_action`，或用自然语言结束；**禁止**一次写完整长剧本\n- 定位必须用清单/观测中的 `ref`（推荐）或 `selector`/`label`/`placeholder`/`title`；**禁止**臆造自然语言 target\n- 步骤在网页漫游主视口执行\n- **上传文件**：禁止点击会弹出系统文件选择框的按钮；使用 `{ \"action\": \"set_files\", \"ref\": \"eN\", \"files\": [\"绝对路径\"] }` 直接设置隐藏的 input[type=file]\n\n## 网页漫游观测增强（独立工具）\n- **`sidebar_debug`**：**用户问控制台有什么日志/报错** → 直接 `sidebar_debug { op: \"console\" }` 或 `{ op: \"fetch\", fetchLogs: true, onlyErrors: true }`；读到的就是页面 console 输出，**不要**先 start、**不要**用断点。**仅抓首屏网络**时才 `op=start` + `reload:true`，再 `catalog`/`fetch`。\n- **`sidebar_screenshot`**：DOM 清单不够（图标按钮、Canvas、视觉布局）时可截当前视口；有视觉能力再用图，交互仍用 `sidebar_action`。\n- **`sidebar_debugger`**：**仅**在需要断点调试 JS 时用；**禁止**用来读 console 日志、**禁止**对 `console.error` 全局下断点来「看报错」\n- **`sidebar_eval`**：在页面上下文中执行任意 JavaScript（等同 DevTools 控制台）。用于调试、读取全局变量、调用页面 API；可与 `sidebar_debugger` 断点配合。若页面已因断点暂停，先用 `sidebar_debugger op=resume` 或在其暂停帧内 `op=evaluate`",
     "previewContext": {
       "header": "## 网页漫游当前页面快照（用户正在浏览的页面）",
       "methodNote": "以下内容由客户端从网页漫游主视口读取：可见文字 + 可交互元素清单（非右侧边栏）。",
@@ -495,7 +509,7 @@
     "sidebarDebugRunning": "正在采集页面调试数据…",
     "sidebarScreenshotToolLabel": "页面截图",
     "sidebarScreenshotRunning": "正在截取页面…",
-    "sidebarPreviewToolsPrompt": "## 预览调试与截图（独立工具）\n- `sidebar_debug`：`start`（首屏流量用 `reload:true`）→ 操作复现 → `catalog` → `fetch`（按 id/过滤）；也可 `op=reload` 或 `sidebar_action` 的 `action:\"reload\"`。勿默认拉全量。\n- `sidebar_debugger`：`enable` → `break_on_text` → 用 `sidebar_action` 复现。若返回 `debuggerPaused:true`（或预览出现暂停条），表示断点已命中：`op=inspect` 读变量后**必须** `op=resume` 放行。想再试一次 / 继续点页面之前先 resume，否则页面会一直卡住、用户无法操作。不要把卡住/超时当成没断到。\n- `sidebar_screenshot`：视口截图；DOM 不足时使用。",
+    "sidebarPreviewToolsPrompt": "## 预览调试与截图（独立工具）\n- `sidebar_debug`：问「控制台有什么」→ **`op=console`**（或 `fetch` + `fetchLogs:true`）；抓首屏网络才 `start`+`reload:true`。console 会持续缓冲，无需先 start。\n- `sidebar_debugger`：**不是**读控制台工具；仅 JS 断点调试。用户问日志/报错时**禁止** `break_on_text` 搜 console.error。\n- `sidebar_screenshot`：视口截图；DOM 不足时使用。",
     "previewTabsAria": "侧栏预览页签",
     "previewTabUntitled": "未命名页签",
     "previewTabClose": "关闭标签",

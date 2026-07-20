@@ -15,17 +15,30 @@
 
 ### 推荐工作流
 
+**用户问「控制台有什么 / 有什么报错」**（最常见）：
+
 ```
-# 需要首屏/首次进入才能拿到的请求或日志：
+sidebar_debug { op: "console" }
+# 或只看 warn/error：
+sidebar_debug { op: "fetch", fetchLogs: true, onlyErrors: true }
+```
+
+console 在 webview attach 后**持续缓冲**，无需 `start`。不要用 `sidebar_debugger` 或给 `console.error` 下断点来「读日志」。
+
+**需要首屏/首次进入的网络请求**（才需要 start）：
+
+```
 sidebar_debug { op: "start", reload: true }   # 先开录制，再刷新 webview
+sidebar_debug { op: "catalog" }
+sidebar_debug { op: "fetch", networkIds: ["req_12"] }
+sidebar_debug { op: "stop" }
+```
 
-# 或已在录制中时单独刷新：
-sidebar_debug { op: "reload" }
+交互复现后再抓网络：
 
-# 交互复现（非首屏场景）：
+```
 sidebar_debug { op: "start" }
 sidebar_action { steps: [...] }
-
 sidebar_debug { op: "catalog" }
 sidebar_debug { op: "fetch", networkIds: ["req_12"], logIds: ["log_5"] }
 sidebar_debug { op: "stop" }
@@ -45,6 +58,7 @@ sidebar_debug { op: "stop" }
 | `clear` | 清空缓冲 |
 | `status` | 录制状态与条数 |
 | `catalog` | 返回 `logCatalog` / `networkCatalog`（id + summary） |
+| `console` | 直接拉取最近 console 日志（`logs` 同义）；用户问「控制台有什么」时用此 op |
 | `fetch` | 按 id 或过滤条件拉取详情（可含 response body） |
 
 ### catalog / fetch 常用过滤
@@ -98,5 +112,6 @@ HTTP：`POST /v1/sidebar_screenshot`
 ## 3. 与 `sidebar_action` 的关系
 
 - **不要**把录制/截图塞进 `sidebar_action` steps  
-- 需要 debug 时：先 `sidebar_debug.start`，再操作，再 catalog/fetch  
+- 读 console：直接 `sidebar_debug { op: "console" }`  
+- 抓首屏/交互后的网络：先 `sidebar_debug.start`，再操作，再 catalog/fetch  
 - DOM 读不到图标按钮等场景：可先 `sidebar_screenshot`，再结合 inventory / 点击探测  

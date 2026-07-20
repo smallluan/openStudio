@@ -211,8 +211,9 @@ const EXTRACT_PAGE_SCRIPT = `(function(){
     var seen = {};
     for (var i = 0; i < nodes.length && out.length < EL_MAX; i++) {
       var el = nodes[i];
-      if (!isVisible(el)) continue;
       var tag = String(el.tagName || "").toLowerCase();
+      var fileInput = tag === "input" && String(el.type || "text").toLowerCase() === "file";
+      if (!fileInput && !isVisible(el)) continue;
       if (tag === "input") {
         var itype = String(el.type || "text").toLowerCase();
         if (itype === "hidden") continue;
@@ -242,6 +243,7 @@ const EXTRACT_PAGE_SCRIPT = `(function(){
       }
       if (tag === "input") {
         try { item.inputType = String(el.type || "text"); } catch (e) {}
+        if (item.inputType === "file" && !isVisible(el)) item.hidden = true;
       }
       out.push(item);
     }

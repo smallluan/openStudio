@@ -131,12 +131,23 @@ contextBridge.exposeInMainWorld("studioBridge", {
     ipcRenderer.invoke("studio:setActivePreviewGuest", { webContentsId }),
   setPreviewRequestOverrides: (payload) =>
     ipcRenderer.invoke("studio:setPreviewRequestOverrides", payload && typeof payload === "object" ? payload : {}),
+  refreshPreviewDevCache: () => ipcRenderer.invoke("studio:refreshPreviewDevCache"),
+  setGuestFileInputFiles: (payload) =>
+    ipcRenderer.invoke(
+      "studio:setGuestFileInputFiles",
+      payload && typeof payload === "object" ? payload : {},
+    ),
   onDebuggerPause: (listener) => {
     const wrapped = (_e, data) => listener(data);
     ipcRenderer.on("studio:debuggerPause", wrapped);
     return () => ipcRenderer.removeListener("studio:debuggerPause", wrapped);
   },
   resumeDebugger: () => ipcRenderer.invoke("studio:debuggerResume"),
+  applyGuestPreloadScript: (payload) =>
+    ipcRenderer.invoke(
+      "studio:applyGuestPreloadScript",
+      payload && typeof payload === "object" ? payload : {},
+    ),
 });
 
 ipcRenderer.on("openstudio-notification-click", (_e, data) => {

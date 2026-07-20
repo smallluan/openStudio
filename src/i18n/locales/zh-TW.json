@@ -287,7 +287,21 @@
     "redirectRuleToggleAria": "啟用規則",
     "redirectActiveCount": "有規則正在生效",
     "redirectInactive": "目前無生效規則",
-    "redirectDone": "完成"
+    "redirectDone": "完成",
+    "pageScriptMenu": "頁面腳本",
+    "pageScriptTitle": "頁面腳本",
+    "pageScriptTabMeta": "分頁 {{index}} · {{url}}",
+    "pageScriptLifecycleLabel": "生命週期",
+    "pageScriptLifecycle": {
+      "beforeLoad": "載入前"
+    },
+    "pageScriptCodeLabel": "腳本程式碼",
+    "pageScriptCodePlaceholder": "// 在頁面任何腳本執行前注入\nwindow.__MY_FLAG__ = true;",
+    "pageScriptHintElectron": "每次開啟此分頁 URL 時，會在頁面腳本執行前自動注入。儲存後會寫入目前組合並立即重新載入分頁。",
+    "pageScriptHintBrowser": "頁面腳本注入僅在桌面用戶端（Electron）中生效。可在此編輯並儲存至組合，下次在用戶端開啟時自動注入。",
+    "pageScriptSave": "儲存",
+    "pageScriptCancel": "取消",
+    "pageScriptClear": "清除腳本"
   },
   "webExploreChat": {
     "launcher": "助手",
@@ -307,7 +321,7 @@
     "gatewayUnavailable": "目前環境無法使用對話。",
     "streamError": "回覆流傳輸出錯。",
     "linkOpenPrompt": "## 網頁漫遊（目前主頁面）\n使用者正在 **網頁漫遊** 中瀏覽，主視口就是目前頁面（不是 Chat Lab 右側邊欄）。\n- **讀取頁面**：系統注入「目前主頁面快照」+ **可互動元素清單**；必須優先使用\n- **控制頁面**：呼叫原生工具 `sidebar_action`（observe→act）：短 steps → 同輪回傳 observation → 再決策\n- 登入頁請使用者先完成登入",
-    "pageAutomationPrompt": "## 網頁漫遊自動化（原生工具 `sidebar_action`）\n需要操作頁面時，**呼叫工具** `sidebar_action`（最多 5 步）。不要輸出 ```sidebar-action``` 代碼塊。每次只傳當前短步驟；工具結果含最新 DOM/`elements[].ref`。定位必須用清單中的 ref/selector；禁止臆造自然语言 target。\n\n## 觀測增強（獨立工具）\n- `sidebar_debug`：`start` → 操作復現 → `catalog` → `fetch`（按需）\n- `sidebar_screenshot`：DOM 不足時截視口\n- `sidebar_debugger`：`enable` → `break_on_text` / `break_on_location` → 操作復現 → `wait_paused` → `inspect` / `evaluate` → `resume`",
+    "pageAutomationPrompt": "## 網頁漫遊自動化（原生工具 `sidebar_action`）\n需要操作頁面時，**呼叫工具** `sidebar_action`（最多 5 步）。不要輸出 ```sidebar-action``` 代碼塊。每次只傳當前短步驟；工具結果含最新 DOM/`elements[].ref`。定位必須用清單中的 ref/selector；禁止臆造自然语言 target。\n\n## 觀測增強（獨立工具）\n- `sidebar_debug`：使用者問控制台有什麼日誌/報錯 → 直接 `sidebar_debug { op: \"console\" }` 或 `{ op: \"fetch\", fetchLogs: true, onlyErrors: true }`；**不要**先 start、**不要**用斷點。僅抓首屏網路才 `start`+`reload:true`。\n- `sidebar_screenshot`：DOM 不足時截視口\n- `sidebar_debugger`：**僅** JS 斷點除錯；**禁止**用來讀 console、**禁止**對 `console.error` 下斷點\n- `sidebar_eval`：在頁面上下文執行任意 JavaScript（等同 DevTools 控制台）。用於除錯、讀全域變數、呼叫頁面 API；可搭配斷點。若頁面因斷點暫停，先 `sidebar_debugger op=resume` 或在暫停幀內 `op=evaluate`",
     "previewContext": {
       "header": "## 網頁漫遊目前頁面快照（使用者正在瀏覽的頁面）",
       "methodNote": "以下內容由用戶端從網頁漫遊主視口讀取：可見文字 + 可互動元素清單（非右側邊欄）。",
@@ -483,7 +497,7 @@
     "sidebarDebugRunning": "正在採集頁面除錯資料…",
     "sidebarScreenshotToolLabel": "頁面截圖",
     "sidebarScreenshotRunning": "正在截取頁面…",
-    "sidebarPreviewToolsPrompt": "## 預覽除錯與截圖（獨立工具）\n- `sidebar_debug`：`start`（首屏用 `reload:true`）→ 操作復現 → `catalog` → `fetch`；也可 `op=reload` 或 `sidebar_action` 的 `action:\"reload\"`。勿預設拉全量。\n- `sidebar_screenshot`：視口截圖；DOM 不足時使用。\n- `sidebar_debugger`：`enable` → `break_on_text` → 用 `sidebar_action` 復現。若回傳 `debuggerPaused:true`（黃色暫停條），表示斷點已命中：`op=inspect` 後**必須** `op=resume` 放行。想再試一次 / 繼續操作前先 resume，否則頁面會一直卡住。不要把卡住/超時當成沒斷到。",
+    "sidebarPreviewToolsPrompt": "## 預覽除錯與截圖（獨立工具）\n- `sidebar_debug`：問「控制台有什麼」→ **`op=console`**（或 `fetch` + `fetchLogs:true`）；console 持續緩衝，無需先 start。抓首屏網路才 `start`+`reload:true`。\n- `sidebar_debugger`：**不是**讀控制台工具；僅 JS 斷點。使用者問日誌/報錯時**禁止** `break_on_text` 搜 console.error。\n- `sidebar_screenshot`：視口截圖；DOM 不足時使用。",
     "previewTabsAria": "側欄預覽分頁",
     "previewTabUntitled": "未命名分頁",
     "sidebarPreviewContext": {

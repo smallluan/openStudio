@@ -1315,7 +1315,7 @@ export function ChatLabPreviewProvider({
         stoppedAt: runResult?.stoppedAt,
         steps: Array.isArray(runResult?.steps) ? runResult.steps : [],
         observation,
-        hint: "Use observation.elements[].ref (or selector) for the next sidebar_action call. Call again for the next short batch (max 5 steps). When done, answer the user in natural language.",
+        hint: "Use observation.elements[].ref (or selector) for the next sidebar_action call. For file upload, use set_files with absolute paths — do NOT click buttons that open the native OS file picker. Call again for the next short batch (max 5 steps). When done, answer the user in natural language.",
       };
     },
     [

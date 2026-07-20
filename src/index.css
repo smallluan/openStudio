@@ -11540,6 +11540,93 @@ html[data-os-motion="reduced"] .chat-lab__reveal-blur-veil {
   background: var(--we-tab-hover);
 }
 
+.web-explore-page__tab--has-script .web-explore-page__tab-label::after {
+  content: "";
+  display: inline-block;
+  width: 0.35rem;
+  height: 0.35rem;
+  margin-left: 0.35rem;
+  border-radius: 999px;
+  background: var(--os-accent, #2563eb);
+  vertical-align: middle;
+}
+
+.web-explore-page__tab-menu {
+  position: fixed;
+  z-index: 2600;
+  min-width: 9rem;
+  padding: 0.25rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--os-border) 70%, transparent);
+  background: var(--os-surface, #fff);
+  box-shadow: 0 8px 28px color-mix(in srgb, #000 18%, transparent);
+}
+
+.web-explore-page__tab-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--os-text);
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.web-explore-page__tab-menu-item:hover,
+.web-explore-page__tab-menu-item:focus-visible {
+  background: var(--we-tab-hover, color-mix(in srgb, var(--os-accent) 10%, transparent));
+  outline: none;
+}
+
+.web-explore-page-script-modal__body {
+  min-height: 18rem;
+}
+
+.web-explore-page-script-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.web-explore-page-script-modal__field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--os-text-muted);
+}
+
+.web-explore-page-script-modal__select {
+  width: 100%;
+  max-width: 16rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--os-border) 80%, transparent);
+  background: var(--os-surface-2, var(--os-surface));
+  color: var(--os-text);
+  font-size: 0.875rem;
+}
+
+.web-explore-page-script-modal__field--code {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.web-explore-page-script-modal__textarea {
+  width: 100%;
+  min-height: 14rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--os-border) 80%, transparent);
+  background: color-mix(in srgb, var(--os-surface-2, #f8fafc) 90%, transparent);
+  color: var(--os-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
 .web-explore-page__empty-tab {
   display: flex;
   flex: 1 1 auto;

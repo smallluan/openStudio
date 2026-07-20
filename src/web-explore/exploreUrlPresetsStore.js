@@ -1,4 +1,8 @@
 import { normalizeExploreRedirectGroups } from "./exploreRedirectOverride.js";
+import {
+  normalizeExploreTabPageScripts,
+  serializeExploreTabPageScripts,
+} from "./explorePageScript.js";
 
 const STORAGE_KEY = "openstudio_web_explore_url_presets_v1";
 
@@ -7,10 +11,13 @@ export const EXPLORE_URL_PRESETS_CHANGE_EVENT = "openstudio-web-explore-presets-
 /**
  * @typedef {import("./exploreRedirectOverride.js").ExploreRedirectGroup} ExploreRedirectGroup
  *
+ * @typedef {import("./explorePageScript.js").ExploreTabPageScript} ExploreTabPageScript
+ *
  * @typedef {{
  *   id: string;
  *   urls: string[];
  *   redirectGroups?: ExploreRedirectGroup[];
+ *   tabPageScripts?: (ExploreTabPageScript | null)[];
  *   createdAt: number;
  *   updatedAt: number;
  * }} ExploreUrlPreset
@@ -61,6 +68,7 @@ export function loadExploreUrlPresets() {
         id: String(row?.id ?? "").trim(),
         urls: collectPresetUrls(row?.urls),
         redirectGroups: normalizeExploreRedirectGroups(row?.redirectGroups),
+        tabPageScripts: normalizeExploreTabPageScripts(row?.tabPageScripts, collectPresetUrls(row?.urls).length),
         createdAt: Number(row?.createdAt) || 0,
         updatedAt: Number(row?.updatedAt) || 0,
       }))
@@ -85,9 +93,10 @@ export function saveExploreUrlPresets(presets) {
  * @param {string[]} urls
  * @param {string} [presetId] When set, update this preset in place (even if URLs changed).
  * @param {ExploreRedirectGroup[]} [redirectGroups]
+ * @param {(ExploreTabPageScript | null)[]} [tabPageScripts]
  * @returns {ExploreUrlPreset | null}
  */
-export function upsertExploreUrlPreset(urls, presetId, redirectGroups) {
+export function upsertExploreUrlPreset(urls, presetId, redirectGroups, tabPageScripts) {
   const normalized = collectPresetUrls(urls);
   if (!normalized.length) return null;
 
@@ -97,6 +106,10 @@ export function upsertExploreUrlPreset(urls, presetId, redirectGroups) {
 
   const nextGroups =
     redirectGroups !== undefined ? normalizeExploreRedirectGroups(redirectGroups) : undefined;
+  const nextScripts =
+    tabPageScripts !== undefined
+      ? serializeExploreTabPageScripts(normalizeExploreTabPageScripts(tabPageScripts, normalized.length))
+      : undefined;
 
   if (targetId) {
     const existing = presets.find((row) => row.id === targetId);
@@ -105,6 +118,7 @@ export function upsertExploreUrlPreset(urls, presetId, redirectGroups) {
         ...existing,
         urls: normalized,
         redirectGroups: nextGroups ?? existing.redirectGroups ?? [],
+        tabPageScripts: nextScripts ?? existing.tabPageScripts ?? [],
         updatedAt: now,
       };
       saveExploreUrlPresets([updated, ...presets.filter((row) => row.id !== targetId)]);
@@ -119,6 +133,7 @@ export function upsertExploreUrlPreset(urls, presetId, redirectGroups) {
       ...matched,
       urls: normalized,
       redirectGroups: nextGroups ?? matched.redirectGroups ?? [],
+      tabPageScripts: nextScripts ?? matched.tabPageScripts ?? [],
       updatedAt: now,
     };
     saveExploreUrlPresets([updated, ...presets.filter((row) => row.id !== matched.id)]);
@@ -129,6 +144,7 @@ export function upsertExploreUrlPreset(urls, presetId, redirectGroups) {
     id: `explore_preset_${now.toString(36)}_${Math.random().toString(16).slice(2, 8)}`,
     urls: normalized,
     redirectGroups: nextGroups ?? [],
+    tabPageScripts: nextScripts ?? [],
     createdAt: now,
     updatedAt: now,
   };

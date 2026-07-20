@@ -70,6 +70,7 @@ function previewUrlsMatch(a, b) {
  *   iframeRef?: import("react").RefObject<HTMLIFrameElement | null>;
  *   webviewRefFromContext?: import("react").RefObject<HTMLElement | null>;
  *   onNavigate?: (url: string) => void;
+ *   preLoadScript?: string;
  *   className?: string;
  * }} props
  */
@@ -83,6 +84,7 @@ export default function ChatLabPreviewWebFrame({
   iframeRef,
   webviewRefFromContext,
   onNavigate,
+  preLoadScript = "",
   className,
 }) {
   const { t } = useI18n();
@@ -101,6 +103,7 @@ export default function ChatLabPreviewWebFrame({
   const [debuggerResuming, setDebuggerResuming] = useState(false);
   const effectiveMountKey = `${mountKey}:${recoverNonce}`;
   const mountKeyRef = useRef(effectiveMountKey);
+  const preLoadAppliedRef = useRef("");
 
   useEffect(() => {
     const bridge = /** @type {{
@@ -130,6 +133,7 @@ export default function ChatLabPreviewWebFrame({
   if (mountKeyRef.current !== effectiveMountKey) {
     mountKeyRef.current = effectiveMountKey;
     mountSrcRef.current = src;
+    preLoadAppliedRef.current = "";
   }
   const [webviewNode, setWebviewNode] = useState(/** @type {HTMLElement | null} */ (null));
   const electronWebview = useWebview && typeof window !== "undefined" && Boolean(window.studioBridge);
@@ -317,6 +321,54 @@ export default function ChatLabPreviewWebFrame({
       unsubscribeDevTools?.();
     };
   }, [electronWebview, effectiveMountKey, syncWebviewBackState, webviewNode]);
+
+  /** Register CDP pre-document script (Web Explore tab presets). Electron only. */
+  useEffect(() => {
+    if (!electronWebview || !webviewNode) return undefined;
+
+    /** @type {import("electron").WebviewTag} */
+    const wv = /** @type {import("electron").WebviewTag} */ (/** @type {unknown} */ (webviewNode));
+    let disposed = false;
+
+    const applyPreLoadScript = async () => {
+      if (disposed) return;
+      const code = String(preLoadScript ?? "").trim();
+      const guestId = typeof wv.getWebContentsId === "function" ? wv.getWebContentsId() : 0;
+      if (!guestId) return;
+      const bridge = /** @type {{ applyGuestPreloadScript?: (p: unknown) => Promise<unknown> }} */ (
+        window
+      ).studioBridge;
+      if (typeof bridge?.applyGuestPreloadScript !== "function") return;
+      try {
+        await bridge.applyGuestPreloadScript({ webContentsId: guestId, code });
+      } catch {
+        return;
+      }
+      if (disposed) return;
+      if (code && preLoadAppliedRef.current !== code) {
+        preLoadAppliedRef.current = code;
+        try {
+          wv.reload?.();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      if (!code) preLoadAppliedRef.current = "";
+    };
+
+    const onDomReady = () => {
+      void applyPreLoadScript();
+    };
+
+    wv.addEventListener("dom-ready", onDomReady);
+    void applyPreLoadScript();
+
+    return () => {
+      disposed = true;
+      wv.removeEventListener("dom-ready", onDomReady);
+    };
+  }, [electronWebview, webviewNode, preLoadScript, effectiveMountKey]);
 
   /**
    * Parent `src` updates (address bar / window.open IPC) must not rewrite the `src` attribute

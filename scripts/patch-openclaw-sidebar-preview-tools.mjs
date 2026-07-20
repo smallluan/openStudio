@@ -31,10 +31,10 @@ function createSidebarDebugTool() {
 		label: "Sidebar Debug",
 		name: "sidebar_debug",
 		displaySummary: "Preview console/network debug",
-		description: "Record and inspect console logs + network requests for the Open Studio sidebar preview or Web Explore page. For first-load traffic: op=start with reload=true (starts recording then reloads the webview). Or op=reload while already recording. Then op=catalog → op=fetch. Also: start|stop|clear|status|catalog|fetch|reload. Large payloads are NOT auto-injected.",
+		description: "Read buffered console logs and record network for Open Studio preview / Web Explore. User asks what is in the console → op=console (or fetch with fetchLogs:true). Console is buffered continuously; no start needed. For first-load network only: op=start with reload=true, then catalog/fetch. Ops: start|stop|clear|status|catalog|console|logs|fetch|reload. Do NOT use sidebar_debugger to read console output.",
 		parameters: Type.Object({
 			op: Type.String({
-				description: "start | stop | clear | status | catalog | fetch | reload"
+				description: "console | logs | start | stop | clear | status | catalog | fetch | reload"
 			}),
 			clear: Type.Optional(Type.Boolean({ description: "For start: clear prior buffers (default true)" })),
 			reload: Type.Optional(Type.Boolean({ description: "For start: reload webview after recording starts (capture first-load requests). Or use op=reload." })),
@@ -167,6 +167,100 @@ function createSidebarScreenshotTool() {
 const FN_NEEDLE = `function createGetGoalTool(options) {`;
 
 const RELOAD_MARKER = "OPEN_STUDIO_SIDEBAR_DEBUG_RELOAD";
+const CONSOLE_MARKER = "OPEN_STUDIO_SIDEBAR_DEBUG_CONSOLE";
+const LIST_MARKER = "OPEN_STUDIO_SIDEBAR_DEBUG_TOOL_LIST";
+
+/** Ensure sidebar_debug / sidebar_screenshot are registered in the core tool list. */
+function upgradeToolListRegistration(src) {
+  if (src.includes(LIST_MARKER)) return { src, changed: false };
+  if (!src.includes("const sidebarDebugTool = createSidebarDebugTool();")) {
+    return { src, changed: false };
+  }
+  let next = src;
+  const patterns = [
+    [
+      `pdfTool,
+			sidebarActionTool,
+			sidebarDebuggerTool
+		])`,
+      `pdfTool,
+			sidebarActionTool,
+			sidebarDebugTool,
+			sidebarScreenshotTool,
+			sidebarDebuggerTool
+		]) /* ${LIST_MARKER} */`,
+    ],
+    [
+      `pdfTool,
+			sidebarActionTool
+		])`,
+      `pdfTool,
+			sidebarActionTool,
+			sidebarDebugTool,
+			sidebarScreenshotTool
+		]) /* ${LIST_MARKER} */`,
+    ],
+    [
+      `pdfTool,
+			sidebarDebuggerTool
+		])`,
+      `pdfTool,
+			sidebarActionTool,
+			sidebarDebugTool,
+			sidebarScreenshotTool,
+			sidebarDebuggerTool
+		]) /* ${LIST_MARKER} */`,
+    ],
+  ];
+  for (const [from, to] of patterns) {
+    if (next.includes(from) && !next.includes("sidebarDebugTool,")) {
+      next = next.replace(from, to);
+      return { src: next, changed: true };
+    }
+  }
+  if (
+    next.includes("sidebarDebugTool") &&
+    next.includes("sidebarScreenshotTool") &&
+    !next.includes("sidebarDebugTool,")
+  ) {
+    next = next.replace(
+      /sidebarActionTool,\s*\n\s*sidebarDebuggerTool\s*\n\s*\]\)/,
+      `sidebarActionTool,
+			sidebarDebugTool,
+			sidebarScreenshotTool,
+			sidebarDebuggerTool
+		]) /* ${LIST_MARKER} */`,
+    );
+    if (next !== src) return { src: next, changed: true };
+  }
+  return { src, changed: false };
+}
+
+/** Update sidebar_debug copy for op=console. */
+function upgradeConsoleOp(src) {
+  if (src.includes(CONSOLE_MARKER)) return { src, changed: false };
+  if (!src.includes('name: "sidebar_debug"')) return { src, changed: false };
+  let next = src;
+  const newDesc =
+    "Read buffered console logs and record network for Open Studio preview / Web Explore. User asks what is in the console → op=console (or fetch with fetchLogs:true). Console is buffered continuously; no start needed. For first-load network only: op=start with reload=true, then catalog/fetch. Ops: start|stop|clear|status|catalog|console|logs|fetch|reload. Do NOT use sidebar_debugger to read console output. /* " +
+    CONSOLE_MARKER +
+    " */";
+  next = next.replace(
+    /description: "Record and inspect console logs[\s\S]*?Large payloads are NOT auto-injected\.[^"]*"/,
+    `description: "${newDesc.replace(/"/g, '\\"')}"`,
+  );
+  next = next.replace(
+    /description: "Read buffered console logs[\s\S]*?Do NOT use sidebar_debugger to read console output\.[^"]*"/,
+    `description: "${newDesc.replace(/"/g, '\\"')}"`,
+  );
+  const oldOp = 'description: "start | stop | clear | status | catalog | fetch | reload"';
+  const newOp = 'description: "console | logs | start | stop | clear | status | catalog | fetch | reload"';
+  if (next.includes(oldOp)) next = next.replace(oldOp, newOp);
+  if (!next.includes(CONSOLE_MARKER) && next.includes(MARKER)) {
+    next = next.replace(`/* ${MARKER} */`, `/* ${MARKER} */\n\t/* ${CONSOLE_MARKER} */`);
+  }
+  return { src: next, changed: next !== src };
+}
 
 /** Update already-injected tool text when reload support is missing. */
 function upgradeReloadSupport(src) {
@@ -216,10 +310,16 @@ function main() {
   }
   let src = fs.readFileSync(target, "utf8");
   if (src.includes(MARKER)) {
-    const upgraded = upgradeReloadSupport(src);
-    if (upgraded.changed) {
-      fs.writeFileSync(target, upgraded.src, "utf8");
-      console.log("[patch-openclaw-sidebar-preview-tools] upgraded reload support →", path.relative(root, target));
+    let next = src;
+    let changed = false;
+    for (const upgrade of [upgradeToolListRegistration, upgradeConsoleOp, upgradeReloadSupport]) {
+      const result = upgrade(next);
+      next = result.src;
+      changed = changed || result.changed;
+    }
+    if (changed) {
+      fs.writeFileSync(target, next, "utf8");
+      console.log("[patch-openclaw-sidebar-preview-tools] upgraded existing injection →", path.relative(root, target));
     } else {
       console.log("[patch-openclaw-sidebar-preview-tools] already applied");
     }
@@ -279,54 +379,56 @@ function main() {
   }
 
   // Tool list: prefer inserting after sidebarActionTool if present.
-  if (src.includes("sidebarDebugTool") && src.includes("sidebarScreenshotTool")) {
-    // already applied
-  } else if (src.includes(`pdfTool,
+  const listUpgraded = upgradeToolListRegistration(src);
+  src = listUpgraded.src;
+  if (!listUpgraded.changed && !src.includes(LIST_MARKER)) {
+    if (src.includes(`pdfTool,
 			sidebarActionTool,
 			sidebarDebuggerTool
 		])`)) {
-    src = src.replace(
-      `pdfTool,
+      src = src.replace(
+        `pdfTool,
 			sidebarActionTool,
 			sidebarDebuggerTool
 		])`,
-      `pdfTool,
+        `pdfTool,
 			sidebarActionTool,
 			sidebarDebugTool,
 			sidebarScreenshotTool,
 			sidebarDebuggerTool
-		])`,
-    );
-  } else if (src.includes(`pdfTool,
+		]) /* ${LIST_MARKER} */`,
+      );
+    } else if (src.includes(`pdfTool,
 			sidebarActionTool
 		])`)) {
-    src = src.replace(
-      `pdfTool,
+      src = src.replace(
+        `pdfTool,
 			sidebarActionTool
 		])`,
-      `pdfTool,
+        `pdfTool,
 			sidebarActionTool,
 			sidebarDebugTool,
 			sidebarScreenshotTool
-		])`,
-    );
-  } else if (src.includes(`imageTool,
+		]) /* ${LIST_MARKER} */`,
+      );
+    } else if (src.includes(`imageTool,
 			pdfTool
 		])`)) {
-    src = src.replace(
-      `imageTool,
+      src = src.replace(
+        `imageTool,
 			pdfTool
 		])`,
-      `imageTool,
+        `imageTool,
 			pdfTool,
 			sidebarDebugTool,
 			sidebarScreenshotTool
-		])`,
-    );
-  } else {
-    console.warn("[patch-openclaw-sidebar-preview-tools] skip — tool list inject point not found");
-    process.exitCode = 1;
-    return;
+		]) /* ${LIST_MARKER} */`,
+      );
+    } else {
+      console.warn("[patch-openclaw-sidebar-preview-tools] skip — tool list inject point not found");
+      process.exitCode = 1;
+      return;
+    }
   }
 
   fs.writeFileSync(target, src, "utf8");

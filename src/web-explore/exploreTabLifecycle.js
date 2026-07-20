@@ -11,11 +11,17 @@ export const EXPLORE_TAB_IDLE_HIBERNATE_MS = 5 * 60 * 1000;
 
 /**
  * @typedef {{
+ *   lifecycle: "beforeLoad";
+ *   code: string;
+ * }} ExploreTabPageScript
+ *
+ * @typedef {{
  *   id: string;
  *   url: string;
  *   frameKey: string;
  *   lastActiveAt: number;
  *   hibernated: boolean;
+ *   pageScript?: ExploreTabPageScript | null;
  * }} ExploreTab
  */
 

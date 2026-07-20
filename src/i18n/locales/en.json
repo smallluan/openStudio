@@ -269,7 +269,7 @@
     "comboTabCount": "{{count}} tabs",
     "redirectButton": "Request redirect",
     "redirectTitle": "Request redirect (Override)",
-    "redirectHintElectron": "Redirect matching requests to local or other URLs. Supports * wildcards. Saved with the combo. Closing the panel clears cache and hard-reloads; entries marked (disk cache) in Network bypass redirects until reload.",
+    "redirectHintElectron": "Redirect matching requests to local or other URLs. Supports * wildcards. Rules targeting 127.0.0.1/localhost disable caching automatically — reload after local edits to pick up changes.",
     "redirectHintBrowser": "Request redirect only works in the desktop app (Electron). You can edit rules here; save the combo and open it in the app to apply them.",
     "redirectDefaultGroupName": "Common rules",
     "redirectGroupName": "Group name:",
@@ -289,7 +289,21 @@
     "redirectRuleToggleAria": "Enable rule",
     "redirectActiveCount": "Rules are active",
     "redirectInactive": "No active rules",
-    "redirectDone": "Done"
+    "redirectDone": "Done",
+    "pageScriptMenu": "Page script",
+    "pageScriptTitle": "Page script",
+    "pageScriptTabMeta": "Tab {{index}} · {{url}}",
+    "pageScriptLifecycleLabel": "Lifecycle",
+    "pageScriptLifecycle": {
+      "beforeLoad": "Before load"
+    },
+    "pageScriptCodeLabel": "Script code",
+    "pageScriptCodePlaceholder": "// Injected before any page scripts run\nwindow.__MY_FLAG__ = true;",
+    "pageScriptHintElectron": "The script is injected automatically before page scripts each time this tab URL loads. Saving writes it to the current combo and reloads the tab.",
+    "pageScriptHintBrowser": "Page script injection works in the desktop (Electron) client only. You can edit and save to the combo here; it applies the next time you open the combo in the client.",
+    "pageScriptSave": "Save",
+    "pageScriptCancel": "Cancel",
+    "pageScriptClear": "Clear script"
   },
   "webExploreChat": {
     "launcher": "Agent",
@@ -309,7 +323,7 @@
     "gatewayUnavailable": "Chat is unavailable in this environment.",
     "streamError": "Something went wrong while streaming the reply.",
     "linkOpenPrompt": "## Web Explore (current main page)\nThe user is browsing in **Web Explore**. The main viewport is the active page — not the Chat Lab right sidebar.\n- **Read the page**: each user message includes a page snapshot + **interactive element inventory** in previewContext; use them\n- **Control the page**: call the native OpenClaw tool `sidebar_action` (observe→act). Pass a short `steps` batch (max 5); the tool result returns a fresh `observation` with `elements[].ref` in the same turn — call the tool again or answer the user\n- If the snapshot looks like a login gate, ask the user to sign in first",
-    "pageAutomationPrompt": "## Web Explore automation (native tool `sidebar_action`)\nWhen you need to interact with the page, **call the tool** `sidebar_action` with a JSON `steps` array (max 5). Do **not** put steps in a ```sidebar-action``` markdown fence.\n\n**How it works**:\n- Call `sidebar_action` with only the steps to run **now** (e.g. focus+type+press, or a single click)\n- The tool pauses the turn, runs in Open Studio, and returns `{ ok, steps, observation }` including `observation.elements[].ref`\n- Call `sidebar_action` again for the next batch, or answer in natural language when done — do **not** plan a long script up front\n- Locate elements using inventory/`observation` `ref` (preferred) or selector/label/placeholder/title — never invent natural-language `target` fields\n- Steps run in the Web Explore main viewport\n\n## Web Explore observability (separate tools)\n- **`sidebar_debug`**: when debugging with logs/network — `op=start` → reproduce with `sidebar_action` → `op=catalog` for summaries → `op=fetch` only the ids/filters you need. **First-load traffic**: `{ \"op\":\"start\", \"reload\":true }` (start recording then reload the webview), or `op=reload`. Do not dump all logs into context by default.\n- **`sidebar_screenshot`**: capture the viewport when the DOM inventory is insufficient (icon-only controls, canvas, visual layout). Use the image if the model has vision; still act via `sidebar_action`.\n- **`sidebar_debugger`**: JS breakpoints — `op=enable` → `op=break_on_text` (search runtime JS for error text) or `op=break_on_location` (url+0-based line from console stack) → reproduce with `sidebar_action` → `op=wait_paused` → `op=inspect` / `op=evaluate` → `op=resume`. No source maps yet; do not open guest DevTools while using this tool.\n- **`sidebar_action` `reload`**: you can also refresh with `{ \"steps\":[{ \"action\":\"reload\" }] }`.",
+    "pageAutomationPrompt": "## Web Explore automation (native tool `sidebar_action`)\nWhen you need to interact with the page, **call the tool** `sidebar_action` with a JSON `steps` array (max 5). Do **not** put steps in a ```sidebar-action``` markdown fence.\n\n**How it works**:\n- Call `sidebar_action` with only the steps to run **now** (e.g. focus+type+press, or a single click)\n- The tool pauses the turn, runs in Open Studio, and returns `{ ok, steps, observation }` including `observation.elements[].ref`\n- Call `sidebar_action` again for the next batch, or answer in natural language when done — do **not** plan a long script up front\n- Locate elements using inventory/`observation` `ref` (preferred) or selector/label/placeholder/title — never invent natural-language `target` fields\n- Steps run in the Web Explore main viewport\n\n## Web Explore observability (separate tools)\n- **`sidebar_debug`**: when the user asks what is in the console / any errors — call `sidebar_debug { \"op\": \"console\" }` or `{ \"op\": \"fetch\", \"fetchLogs\": true, \"onlyErrors\": true }`; that returns page console output. Do **not** start recording first; do **not** use breakpoints. Use `op=start` + `reload:true` only when you need first-load **network** traffic, then `catalog`/`fetch`.\n- **`sidebar_screenshot`**: capture the viewport when the DOM inventory is insufficient (icon-only controls, canvas, visual layout). Use the image if the model has vision; still act via `sidebar_action`.\n- **`sidebar_debugger`**: JS breakpoints only when you need to debug code — **never** to read console logs; **never** set global breakpoints on `console.error` to \"see errors\"\n- **`sidebar_eval`**: run arbitrary JavaScript in the page context (DevTools console). Use for debugging, globals, page APIs; pairs with `sidebar_debugger` breakpoints. If paused on a breakpoint, `sidebar_debugger op=resume` first or use `op=evaluate` in the paused frame.\n- **`sidebar_action` `reload`**: you can also refresh with `{ \"steps\":[{ \"action\":\"reload\" }] }`.",
     "previewContext": {
       "header": "## Web Explore page snapshot (page the user is viewing)",
       "methodNote": "Captured from the Web Explore main viewport: visible text + interactive element inventory (not the right sidebar).",
@@ -495,7 +509,7 @@
     "sidebarDebugRunning": "Collecting page debug data…",
     "sidebarScreenshotToolLabel": "Page screenshot",
     "sidebarScreenshotRunning": "Capturing screenshot…",
-    "sidebarPreviewToolsPrompt": "## Preview debug & screenshot (separate tools)\n- `sidebar_debug`: `start` (use `reload:true` for first-load traffic) → reproduce → `catalog` → `fetch` (by id/filter); or `op=reload` / `sidebar_action` `{ \"action\":\"reload\" }`. Never pull everything by default.\n- `sidebar_debugger`: `enable` → `break_on_text` → reproduce with `sidebar_action`. If it returns `debuggerPaused:true` (pause bar on preview), the breakpoint HIT — `op=inspect`, then **always** `op=resume`. Before retrying or further clicks, resume first or the page stays frozen. Do not treat freeze/timeout as a miss.\n- `sidebar_screenshot`: viewport capture when DOM inventory is not enough.",
+    "sidebarPreviewToolsPrompt": "## Preview debug & screenshot (separate tools)\n- `sidebar_debug`: user asks \"what's in the console\" → **`op=console`** (or `fetch` + `fetchLogs:true`). Console is buffered continuously — no `start` needed. Use `start`+`reload:true` only for first-load network.\n- `sidebar_debugger`: **not** for reading console output; JS breakpoints only. When user asks for logs/errors, **never** `break_on_text` on `console.error`.\n- `sidebar_screenshot`: viewport capture when DOM inventory is not enough.",
     "previewTabUntitled": "Untitled tab",
     "previewTabClose": "Close tab",
     "previewUrlBar": "Address bar",
