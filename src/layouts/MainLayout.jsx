@@ -14,11 +14,6 @@ import { useI18n } from "../context/I18nContext.jsx";
 import ResizableEdge from "../ui/ResizableEdge.jsx";
 import { cn } from "../ui/cn.js";
 
-const SIDEBAR_LEGACY_KEY = "openstudio_sidebar_collapsed";
-const RAIL_LEGACY_KEY = "openstudio_rail_width";
-const RAIL_STORAGE_KEY = "openstudio_primary_rail_px";
-const RAIL_LAST_EXPANDED_KEY = "openstudio_rail_last_expanded";
-
 const RAIL_COLLAPSED = 64;
 const RAIL_MIN = 208;
 const RAIL_MAX = 360;
@@ -35,35 +30,6 @@ function clampExpanded(n) {
 function finalizeRailWidth(w) {
   if (w < SNAP_NARROW) return RAIL_COLLAPSED;
   return clampExpanded(w);
-}
-
-function readLastExpanded() {
-  try {
-    const n = Number(window.localStorage.getItem(RAIL_LAST_EXPANDED_KEY));
-    if (Number.isFinite(n)) return clampExpanded(n);
-  } catch {
-    /* ignore */
-  }
-  return RAIL_DEFAULT;
-}
-
-function readRailPx() {
-  try {
-    const raw = window.localStorage.getItem(RAIL_STORAGE_KEY);
-    if (raw != null) {
-      const n = Number(raw);
-      if (Number.isFinite(n)) {
-        if (n < RAIL_MIN) return RAIL_COLLAPSED;
-        return clampExpanded(n);
-      }
-    }
-    if (window.localStorage.getItem(SIDEBAR_LEGACY_KEY) === "1") return RAIL_COLLAPSED;
-    const legacyW = Number(window.localStorage.getItem(RAIL_LEGACY_KEY));
-    if (Number.isFinite(legacyW)) return clampExpanded(legacyW);
-  } catch {
-    /* ignore */
-  }
-  return RAIL_DEFAULT;
 }
 
 export default function MainLayout({ railResizeEnabled = false }) {
@@ -117,27 +83,15 @@ export default function MainLayout({ railResizeEnabled = false }) {
     [t],
   );
 
-  const lastExpandedRef = useRef(readLastExpanded());
+  const lastExpandedRef = useRef(RAIL_DEFAULT);
   const railTransitionTimerRef = useRef(/** @type {number | null} */ (null));
-  const [railPx, setRailPx] = useState(readRailPx);
+  const [railPx, setRailPx] = useState(RAIL_DEFAULT);
   const [railDragging, setRailDragging] = useState(false);
   const [railTransitioning, setRailTransitioning] = useState(false);
 
   const isNarrow = railPx < RAIL_MIN;
   useWechatSessionSync();
   useWechatAutoReplyStream();
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(RAIL_STORAGE_KEY, String(railPx));
-      if (railPx >= RAIL_MIN) {
-        lastExpandedRef.current = railPx;
-        window.localStorage.setItem(RAIL_LAST_EXPANDED_KEY, String(railPx));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [railPx]);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--os-primary-rail-px", `${railPx}px`);
@@ -172,7 +126,9 @@ export default function MainLayout({ railResizeEnabled = false }) {
   // 拖动结束后不需要触发过渡动画，因为宽度变化是用户主动完成的
   // railTransitioning 只在点击按钮切换时触发
   const onRailCommit = useCallback((w) => {
-    setRailPx(finalizeRailWidth(w));
+    const next = finalizeRailWidth(w);
+    if (next >= RAIL_MIN) lastExpandedRef.current = next;
+    setRailPx(next);
   }, []);
 
   /** Collapses the primary rail; resolves after the width transition settles (or immediately if already narrow). */
@@ -182,11 +138,6 @@ export default function MainLayout({ railResizeEnabled = false }) {
       if (w < RAIL_MIN) return w;
       didCollapse = true;
       lastExpandedRef.current = clampExpanded(w);
-      try {
-        window.localStorage.setItem(RAIL_LAST_EXPANDED_KEY, String(lastExpandedRef.current));
-      } catch {
-        /* ignore */
-      }
       return RAIL_COLLAPSED;
     });
     if (!didCollapse) return Promise.resolve();
@@ -206,11 +157,6 @@ export default function MainLayout({ railResizeEnabled = false }) {
         return Math.max(RAIL_MIN, lastExpandedRef.current || RAIL_DEFAULT);
       }
       lastExpandedRef.current = clampExpanded(w);
-      try {
-        window.localStorage.setItem(RAIL_LAST_EXPANDED_KEY, String(lastExpandedRef.current));
-      } catch {
-        /* ignore */
-      }
       return RAIL_COLLAPSED;
     });
   }, [startRailTransition]);

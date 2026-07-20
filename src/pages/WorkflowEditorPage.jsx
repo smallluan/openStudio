@@ -1,5 +1,5 @@
-import { Navigate, useLocation, useParams } from "react-router-dom";
-import { useCallback } from "react";
+import { Navigate, useLocation, useOutletContext, useParams } from "react-router-dom";
+import { useCallback, useEffect } from "react";
 import WorkflowEditor from "../components/workflow/WorkflowEditor.jsx";
 import { useWorkflowLibrary } from "../workflow/useWorkflowLibrary.js";
 import { normalizeWorkflowDocument } from "../workflow/workflowNormalize.js";
@@ -7,7 +7,12 @@ import { normalizeWorkflowDocument } from "../workflow/workflowNormalize.js";
 export default function WorkflowEditorPage() {
   const { id } = useParams();
   const location = useLocation();
+  const { collapsePrimaryRail } = useOutletContext() ?? {};
   const { getWorkflow, updateWorkflow, removeWorkflow } = useWorkflowLibrary();
+
+  useEffect(() => {
+    collapsePrimaryRail?.();
+  }, [collapsePrimaryRail, id]);
 
   const stored = id ? getWorkflow(id) : null;
   const bootstrap = location.state?.workflowBootstrap;
