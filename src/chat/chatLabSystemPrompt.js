@@ -31,7 +31,7 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
 export function composeChatLabSystemPrompt(t, opts = {}) {
   const parts = [
     String(t("chatLab.systemPrompt") ?? "").trim(),
-    ...(opts.webExploreMode ? [] : [String(opts.workspaceContext ?? "").trim()]),
+    String(opts.workspaceContext ?? "").trim(),
     String(opts.previewContext ?? "").trim(),
     composeChatLabStudioSuffix(t, opts),
   ].filter(Boolean);

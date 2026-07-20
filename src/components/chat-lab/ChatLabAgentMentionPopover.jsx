@@ -1,6 +1,5 @@
 import { useEffect, useId, useMemo, useRef } from "react";
 import { Popup } from "tdesign-react";
-import { Button } from "@open-studio/udesign";
 import { agentAvatarGlyph, agentDisplayLabel } from "../../studio/agents.js";
 import Avatar from "../../ui/Avatar.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -107,9 +106,7 @@ export default function ChatLabAgentMentionPopover({
         ) : (
           <>
             {everyoneVisible ? (
-              <Button
-                variant="text"
-                block
+              <button
                 ref={(node) => {
                   optionRefs.current[0] = node;
                 }}
@@ -117,24 +114,22 @@ export default function ChatLabAgentMentionPopover({
                 role="option"
                 aria-selected={highlightIndex === 0}
                 className={cn(
-                  "chat-lab__mention-item chat-lab__mention-item--everyone w-full",
+                  "chat-lab__mention-item chat-lab__mention-item--everyone",
                   highlightIndex === 0 && "chat-lab__mention-item--active",
                 )}
                 onMouseEnter={() => onHighlightIndexChange?.(0)}
                 onClick={() => onPickEveryone?.()}
               >
-                <span className="chat-lab__participant-avatar" aria-hidden>
+                <span className="chat-lab__mention-item-avatar chat-lab__participant-avatar" aria-hidden>
                   👥
                 </span>
-                <span className="chat-lab__mention-item-name min-w-0 flex-1 truncate">@{everyoneLabel}</span>
-              </Button>
+                <span className="chat-lab__mention-item-name">@{everyoneLabel}</span>
+              </button>
             ) : null}
             {filtered.map((a, index) => {
               const optionIndex = index + (everyoneVisible ? 1 : 0);
               return (
-                <Button
-                  variant="text"
-                  block
+                <button
                   key={a.id}
                   ref={(node) => {
                     optionRefs.current[optionIndex] = node;
@@ -143,20 +138,20 @@ export default function ChatLabAgentMentionPopover({
                   role="option"
                   aria-selected={optionIndex === highlightIndex}
                   className={cn(
-                    "chat-lab__mention-item w-full",
+                    "chat-lab__mention-item",
                     optionIndex === highlightIndex && "chat-lab__mention-item--active",
                   )}
                   onMouseEnter={() => onHighlightIndexChange?.(optionIndex)}
                   onClick={() => onPick(a)}
                 >
-                  <Avatar src={agentAvatarGlyph(a)} name={agentDisplayLabel(a)} size="xs" shape="rounded" />
-                  <span className="chat-lab__mention-item-name min-w-0 flex-1 truncate">
-                    {mentionLabel(a, mainFallback)}
+                  <span className="chat-lab__mention-item-avatar">
+                    <Avatar src={agentAvatarGlyph(a)} name={agentDisplayLabel(a)} size="xs" shape="rounded" />
                   </span>
+                  <span className="chat-lab__mention-item-name">{mentionLabel(a, mainFallback)}</span>
                   {a.isMain ? (
-                    <span className="chat-lab__mention-item-badge shrink-0">{t("agents.mainBadge")}</span>
+                    <span className="chat-lab__mention-item-badge">{t("agents.mainBadge")}</span>
                   ) : null}
-                </Button>
+                </button>
               );
             })}
           </>

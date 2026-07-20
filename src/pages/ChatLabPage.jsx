@@ -393,7 +393,7 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
         : t("chatLab.groupDelegateHint")
       : "";
   const contextBlocks = [
-    ...(extra.webExploreMode ? [] : [String(extra.workspaceContext ?? "").trim()]),
+    String(extra.workspaceContext ?? "").trim(),
     String(extra.previewContext ?? "").trim(),
   ].filter(Boolean);
   const studioSuffix = [
@@ -1109,11 +1109,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   const isElectron = Boolean(bridge?.startChatStream);
 
   const resolveWorkspaceContextBlock = useCallback(
-    () =>
-      webExploreEmbed
-        ? Promise.resolve("")
-        : fetchChatLabWorkspaceContextBlock(bridge, activeRootRef.current, t),
-    [bridge, t, webExploreEmbed],
+    () => fetchChatLabWorkspaceContextBlock(bridge, activeRootRef.current, t),
+    [bridge, t],
   );
   const resolvePreviewContextBlock = useCallback(async () => {
     if (webExploreEmbed) {

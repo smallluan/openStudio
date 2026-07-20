@@ -6103,15 +6103,23 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 0.45rem;
+  justify-content: flex-start;
+  gap: 0.55rem;
   border: none;
   border-radius: 8px;
   background: transparent;
-  padding: 0.45rem 0.55rem;
+  padding: 0.45rem 0.65rem;
   font-size: 0.78rem;
   color: var(--os-text);
   text-align: left;
   cursor: pointer;
+}
+
+.chat-lab__mention-item-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
 }
 
 .chat-lab__mention-item:hover,
@@ -6122,6 +6130,9 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
 .chat-lab__mention-item-name {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-lab__mention-item-badge {
