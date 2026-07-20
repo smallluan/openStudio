@@ -19,6 +19,9 @@
   /** Near-white cool tints for glass / liquid surfaces (keep blue barely perceptible). */
   --os-blue-tint-faint: rgba(248, 250, 255, 0.96);
   --os-blue-tint-whisper: rgba(253, 254, 255, 0.98);
+
+  /** Landing hero avatar / illustration size (Chat Lab + Web Explore). */
+  --os-landing-hero-size: 9rem;
 }
 
 :root:not([data-theme]),
@@ -42,8 +45,6 @@
   --os-blur-lg: 32px;
 
   --os-titlebar-height: 40px;
-  /** Landing hero avatar / illustration size (Chat Lab + Web Explore). */
-  --os-landing-hero-size: 9rem;
   --os-titlebar-bg: #ffffff;
   /** Right segment of split title bar (main pane strip). */
   --os-titlebar-text: rgba(20, 24, 32, 0.82);
