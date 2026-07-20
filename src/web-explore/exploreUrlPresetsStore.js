@@ -1,11 +1,16 @@
+import { normalizeExploreRedirectGroups } from "./exploreRedirectOverride.js";
+
 const STORAGE_KEY = "openstudio_web_explore_url_presets_v1";
 
 export const EXPLORE_URL_PRESETS_CHANGE_EVENT = "openstudio-web-explore-presets-changed";
 
 /**
+ * @typedef {import("./exploreRedirectOverride.js").ExploreRedirectGroup} ExploreRedirectGroup
+ *
  * @typedef {{
  *   id: string;
  *   urls: string[];
+ *   redirectGroups?: ExploreRedirectGroup[];
  *   createdAt: number;
  *   updatedAt: number;
  * }} ExploreUrlPreset
@@ -55,6 +60,7 @@ export function loadExploreUrlPresets() {
       .map((row) => ({
         id: String(row?.id ?? "").trim(),
         urls: collectPresetUrls(row?.urls),
+        redirectGroups: normalizeExploreRedirectGroups(row?.redirectGroups),
         createdAt: Number(row?.createdAt) || 0,
         updatedAt: Number(row?.updatedAt) || 0,
       }))
@@ -78,9 +84,10 @@ export function saveExploreUrlPresets(presets) {
 /**
  * @param {string[]} urls
  * @param {string} [presetId] When set, update this preset in place (even if URLs changed).
+ * @param {ExploreRedirectGroup[]} [redirectGroups]
  * @returns {ExploreUrlPreset | null}
  */
-export function upsertExploreUrlPreset(urls, presetId) {
+export function upsertExploreUrlPreset(urls, presetId, redirectGroups) {
   const normalized = collectPresetUrls(urls);
   if (!normalized.length) return null;
 
@@ -88,10 +95,18 @@ export function upsertExploreUrlPreset(urls, presetId) {
   const now = Date.now();
   const targetId = String(presetId ?? "").trim();
 
+  const nextGroups =
+    redirectGroups !== undefined ? normalizeExploreRedirectGroups(redirectGroups) : undefined;
+
   if (targetId) {
     const existing = presets.find((row) => row.id === targetId);
     if (existing) {
-      const updated = { ...existing, urls: normalized, updatedAt: now };
+      const updated = {
+        ...existing,
+        urls: normalized,
+        redirectGroups: nextGroups ?? existing.redirectGroups ?? [],
+        updatedAt: now,
+      };
       saveExploreUrlPresets([updated, ...presets.filter((row) => row.id !== targetId)]);
       return updated;
     }
@@ -100,7 +115,12 @@ export function upsertExploreUrlPreset(urls, presetId) {
   const fingerprint = presetUrlsFingerprint(normalized);
   const matched = presets.find((row) => presetUrlsFingerprint(row.urls) === fingerprint);
   if (matched) {
-    const updated = { ...matched, urls: normalized, updatedAt: now };
+    const updated = {
+      ...matched,
+      urls: normalized,
+      redirectGroups: nextGroups ?? matched.redirectGroups ?? [],
+      updatedAt: now,
+    };
     saveExploreUrlPresets([updated, ...presets.filter((row) => row.id !== matched.id)]);
     return updated;
   }
@@ -108,6 +128,7 @@ export function upsertExploreUrlPreset(urls, presetId) {
   const preset = {
     id: `explore_preset_${now.toString(36)}_${Math.random().toString(16).slice(2, 8)}`,
     urls: normalized,
+    redirectGroups: nextGroups ?? [],
     createdAt: now,
     updatedAt: now,
   };

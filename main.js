@@ -105,6 +105,10 @@ const {
   attachPreviewGuest,
   setActivePreviewGuest,
 } = require("./lib/preview-guest-capture.cjs");
+const {
+  initPreviewRequestOverride,
+  setPreviewRequestOverrides,
+} = require("./lib/preview-request-override.cjs");
 const { handleSidebarDebugger } = require("./lib/preview-guest-debugger.cjs");
 
 /** Sidebar cannot embed Office; open these locally in the OS default viewer instead. */
@@ -913,6 +917,7 @@ app.whenReady().then(async () => {
 
   try {
     initPreviewGuestCapture(getStudioLog());
+    initPreviewRequestOverride(getStudioLog());
     startSidebarActionToolBridge({
       getMainWindow: () => mainWindow,
       log: getStudioLog(),
@@ -1301,6 +1306,19 @@ app.whenReady().then(async () => {
   ipcMain.handle("studio:setActivePreviewGuest", (_event, payload) => {
     const id = payload && typeof payload === "object" ? payload.webContentsId : payload;
     return setActivePreviewGuest(id);
+  });
+
+  ipcMain.handle("studio:setPreviewRequestOverrides", async (_event, payload) => {
+    try {
+      const groups = payload && typeof payload === "object" ? payload.groups : payload;
+      return await setPreviewRequestOverrides(groups);
+    } catch (e) {
+      return {
+        ok: false,
+        error: "set_failed",
+        message: e instanceof Error ? e.message : String(e),
+      };
+    }
   });
 
   ipcMain.handle("studio:debuggerResume", async () => {

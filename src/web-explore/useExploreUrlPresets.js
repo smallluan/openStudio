@@ -15,8 +15,8 @@ export function useExploreUrlPresets() {
     return () => window.removeEventListener(EXPLORE_URL_PRESETS_CHANGE_EVENT, onChange);
   }, []);
 
-  const savePreset = useCallback((urls, presetId) => {
-    const row = upsertExploreUrlPreset(urls, presetId);
+  const savePreset = useCallback((urls, presetId, redirectGroups) => {
+    const row = upsertExploreUrlPreset(urls, presetId, redirectGroups);
     setPresets(loadExploreUrlPresets());
     return row;
   }, []);

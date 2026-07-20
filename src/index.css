@@ -11212,6 +11212,107 @@ html[data-os-motion="reduced"] .chat-lab__reveal-blur-veil {
   color: var(--os-accent, #2563eb);
 }
 
+.web-explore-page__bar-btn--redirect-active {
+  color: var(--os-accent, #2563eb);
+}
+
+.web-explore-redirect-modal {
+  max-height: min(92vh, 760px);
+}
+
+.web-explore-redirect-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.web-explore-redirect-modal__group {
+  border: 1px solid color-mix(in srgb, var(--os-border) 72%, transparent);
+  border-radius: 12px;
+  padding: 0.85rem 0.9rem;
+  background: color-mix(in srgb, var(--os-bg-panel) 92%, var(--os-bg-elevated));
+}
+
+.web-explore-redirect-modal__group-head {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto auto auto;
+  gap: 0.55rem 0.65rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+.web-explore-redirect-modal__field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--os-text-muted);
+}
+
+.web-explore-redirect-modal__group-toggle,
+.web-explore-redirect-modal__rule-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding-bottom: 0.15rem;
+}
+
+.web-explore-redirect-modal__toggle-label {
+  min-width: 1.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--os-text-muted);
+}
+
+.web-explore-redirect-modal__rules {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.web-explore-redirect-modal__rule {
+  display: grid;
+  grid-template-columns: auto minmax(140px, 1fr) minmax(140px, 1fr) auto auto;
+  gap: 0.55rem 0.65rem;
+  align-items: end;
+}
+
+.web-explore-redirect-modal__drag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 2rem;
+  color: color-mix(in srgb, var(--os-text-muted) 55%, transparent);
+}
+
+.web-explore-redirect-modal__empty {
+  margin: 0;
+  padding: 0.35rem 0;
+  font-size: 0.82rem;
+  color: var(--os-text-muted);
+}
+
+.web-explore-redirect-modal__add-group {
+  align-self: flex-start;
+}
+
+@media (max-width: 820px) {
+  .web-explore-redirect-modal__group-head {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .web-explore-redirect-modal__rule {
+    grid-template-columns: 1fr;
+  }
+
+  .web-explore-redirect-modal__drag {
+    display: none;
+  }
+}
+
 .web-explore-page--active {
   height: 100%;
   background: var(--os-bg-main-pane, var(--os-bg-base));
