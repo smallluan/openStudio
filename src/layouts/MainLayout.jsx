@@ -19,12 +19,12 @@ const RAIL_LEGACY_KEY = "openstudio_rail_width";
 const RAIL_STORAGE_KEY = "openstudio_primary_rail_px";
 const RAIL_LAST_EXPANDED_KEY = "openstudio_rail_last_expanded";
 
-const RAIL_COLLAPSED = 82;
+const RAIL_COLLAPSED = 64;
 const RAIL_MIN = 208;
 const RAIL_MAX = 360;
 const RAIL_DEFAULT = 268;
 /** Release width &lt; this → snap to narrow ({@link RAIL_COLLAPSED}); otherwise snap to ≥ {@link RAIL_MIN} */
-const SNAP_NARROW = 124;
+const SNAP_NARROW = 112;
 /** Must match `.primary-rail` width transition in index.css */
 const RAIL_WIDTH_TRANSITION_MS = 260;
 
@@ -53,7 +53,7 @@ function readRailPx() {
     if (raw != null) {
       const n = Number(raw);
       if (Number.isFinite(n)) {
-        if (n <= RAIL_COLLAPSED + 4) return RAIL_COLLAPSED;
+        if (n < RAIL_MIN) return RAIL_COLLAPSED;
         return clampExpanded(n);
       }
     }

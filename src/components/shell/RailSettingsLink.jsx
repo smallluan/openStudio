@@ -1,5 +1,6 @@
 import { Settings, ChevronRight } from "lucide-react";
-import { Menu } from "@open-studio/udesign";
+import { Button, Menu } from "@open-studio/udesign";
+import { Tooltip } from "tdesign-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCallback } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -20,14 +21,40 @@ export default function RailSettingsLink({ narrow = false }) {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const openSettings = useCallback(() => {
+    const backgroundLocation = location.state?.backgroundLocation ?? location;
+    navigate("/settings", { state: { backgroundLocation } });
+  }, [navigate, location]);
+
   const handleChange = useCallback(
     (value) => {
       if (value !== SETTINGS_ITEM_ID) return;
-      const backgroundLocation = location.state?.backgroundLocation ?? location;
-      navigate("/settings", { state: { backgroundLocation } });
+      openSettings();
     },
-    [navigate, location],
+    [openSettings],
   );
+
+  if (narrow) {
+    return (
+      <div className="app-rail-nav app-rail-nav--collapsed">
+        <Tooltip content={t("nav.settings")} placement="right" destroyOnClose>
+          <Button
+            type="button"
+            variant="text"
+            aria-label={t("nav.settings")}
+            className="app-rail-nav-item app-rail-nav-item--collapsed app-rail-settings-link"
+            onClick={openSettings}
+          >
+            <NavIcon
+              icon={Settings}
+              size={RAIL_ORB_ICON_SIZE}
+              strokeWidth={RAIL_ORB_ICON_STROKE}
+            />
+          </Button>
+        </Tooltip>
+      </div>
+    );
+  }
 
   return (
     <Menu
