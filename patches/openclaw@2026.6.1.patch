@@ -1,5 +1,5 @@
 diff --git a/dist/capability-provider-runtime-kzHPFTZS.js b/dist/capability-provider-runtime-kzHPFTZS.js
-index e722bbe00300d29551b33cd1ff8ab2cfc4fcab2f..db6da01bc445fab523d63bcc21b140b691291b13 100644
+index e722bbe00300d29551b33cd1ff8ab2cfc4fcab2f..fad9a2abb844b71e59438cf4e92059dbe92c562d 100644
 --- a/dist/capability-provider-runtime-kzHPFTZS.js
 +++ b/dist/capability-provider-runtime-kzHPFTZS.js
 @@ -236,7 +236,8 @@ function loadCapabilityProviderEntries(params) {
@@ -22,8 +22,21 @@ index e722bbe00300d29551b33cd1ff8ab2cfc4fcab2f..db6da01bc445fab523d63bcc21b140b6
  	const activeProviders = getLoadedRuntimePluginRegistry()?.[params.key] ?? [];
  	const missingRequestedProviders = activeProviders.length > 0 ? nonEmptyRequestedProviders(collectRequestedCapabilityProviderIds({
  		key: params.key,
+diff --git a/dist/chat-bmAEPJsF.js b/dist/chat-bmAEPJsF.js
+index 9170d994786c95ac8d4cb8303ba151489a245817..9463c0852c3232cf03ef3d11f522bfa74a6b6e54 100644
+--- a/dist/chat-bmAEPJsF.js
++++ b/dist/chat-bmAEPJsF.js
+@@ -2497,7 +2497,7 @@ const chatHandlers = {
+ 					model: resolvedSessionModel.model
+ 				});
+ 				const explicitOriginSupportsInlineImages = explicitOriginTargetsAcpSession(explicitOriginResult.value) || explicitOriginTargetsPlugin;
+-				const supportsImages = supportsSessionModelImages || explicitOriginSupportsInlineImages;
++				const supportsImages = supportsSessionModelImages || explicitOriginSupportsInlineImages || normalizedAttachments.some((a)=>typeof a?.mimeType==="string"&&a.mimeType.startsWith("image/"));
+ 				const routeImageOffloadsAsMediaPaths = !supportsImages;
+ 				const parsed = await parseMessageWithAttachments(inboundMessage, normalizedAttachments, {
+ 					maxBytes: resolveChatAttachmentMaxBytes(cfg),
 diff --git a/dist/openclaw-tools-ChLzmhJi.js b/dist/openclaw-tools-ChLzmhJi.js
-index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304e0438ead 100644
+index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a55f4f030 100644
 --- a/dist/openclaw-tools-ChLzmhJi.js
 +++ b/dist/openclaw-tools-ChLzmhJi.js
 @@ -1271,7 +1271,7 @@ function resolveOptionalMediaToolFactoryPlan(params) {
@@ -35,7 +48,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  			snapshot,
  			authStore: params.authStore,
  			key: "mediaUnderstandingProviders",
-@@ -2698,6 +2698,311 @@ function resolveGoalSessionScope(options) {
+@@ -2698,6 +2698,375 @@ function resolveGoalSessionScope(options) {
  		storePath: resolveStorePath(options.config?.session?.store, { agentId })
  	};
  }
@@ -209,7 +222,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
 +		label: "Sidebar Debug",
 +		name: "sidebar_debug",
 +		displaySummary: "Preview console/network debug",
-+		description: "Read buffered console logs and record network for Open Studio preview / Web Explore. User asks what is in the console → op=console (or fetch with fetchLogs:true). Console is buffered continuously; no start needed. For first-load network only: op=start with reload=true, then catalog/fetch. Ops: start|stop|clear|status|catalog|console|logs|fetch|reload. Do NOT use sidebar_debugger to read console output.",
++		description: "Read buffered console logs and record network for Open Studio preview / Web Explore. User asks what is in the console → op=console (or fetch with fetchLogs:true). Console is buffered continuously; no start needed. For first-load network only: op=start with reload=true, then catalog/fetch. Ops: start|stop|clear|status|catalog|console|logs|fetch|reload. Do NOT use sidebar_debugger to read console output. /* OPEN_STUDIO_SIDEBAR_DEBUG_CONSOLE */",
 +		parameters: Type.Object({
 +			op: Type.String({
 +				description: "console | logs | start | stop | clear | status | catalog | fetch | reload"
@@ -344,10 +357,74 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
 +	};
 +}
 +
++
++function createSidebarEvalTool() {
++	/* OPEN_STUDIO_SIDEBAR_EVAL_TOOL */
++	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\/$/, "");
++	if (!baseUrl) return null;
++	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
++	return {
++		label: "Sidebar Eval",
++		name: "sidebar_eval",
++		displaySummary: "Run JS on preview page",
++		description: "Execute arbitrary JavaScript in the active Open Studio preview / Web Explore page context (same as DevTools console). Use for debugging, inspecting globals, or driving page APIs that sidebar_action cannot reach. Params: expression (required). Returns serialized result value. If debugger is paused on a breakpoint, use sidebar_debugger op=evaluate in the paused frame or op=resume first. Pair with sidebar_debugger breakpoints for deep inspection.",
++		parameters: Type.Object({
++			expression: Type.Optional(Type.String({ description: "JavaScript expression or statements to run in page context" })),
++			script: Type.Optional(Type.String({ description: "Alias for expression" })),
++			code: Type.Optional(Type.String({ description: "Alias for expression" }))
++		}, { additionalProperties: true }),
++		execute: async (_toolCallId, args) => {
++			const params = asToolParamsRecord(args);
++			const expression = String(params.expression || params.script || params.code || "").trim();
++			if (!expression) throw new ToolInputError("expression is required");
++			const url = `${baseUrl}/v1/sidebar_eval`;
++			const headers = {
++				"content-type": "application/json",
++				accept: "application/json"
++			};
++			if (token) headers.authorization = `Bearer ${token}`;
++			let response;
++			try {
++				response = await fetch(url, {
++					method: "POST",
++					headers,
++					body: JSON.stringify({ ...params, expression }),
++					signal: AbortSignal.timeout(12e4)
++				});
++			} catch (error) {
++				return jsonResult({
++					ok: false,
++					error: "bridge_unreachable",
++					message: formatErrorMessage(error),
++					hint: "Ensure Open Studio is running (sidebar tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
++				});
++			}
++			const text = await response.text();
++			let payload;
++			try {
++				payload = text ? JSON.parse(text) : {};
++			} catch {
++				payload = {
++					ok: false,
++					error: "invalid_bridge_json",
++					raw: text.slice(0, 500)
++				};
++			}
++			if (!response.ok) return jsonResult({
++				ok: false,
++				error: "bridge_http_error",
++				status: response.status,
++				...payload && typeof payload === "object" ? payload : { raw: payload }
++			});
++			return jsonResult(payload);
++		}
++	};
++}
++
  function createGetGoalTool(options) {
  	return {
  		label: "Get Goal",
-@@ -11499,7 +11804,12 @@ function resolveSessionsSpawnThreadAvailability(opts) {
+@@ -11499,7 +11868,12 @@ function resolveSessionsSpawnThreadAvailability(opts) {
  function createSessionsSpawnToolSchema(params) {
  	const spawnModes = params.threadAvailable ? SUBAGENT_SPAWN_MODES : ["run"];
  	const schema = {
@@ -361,7 +438,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  		taskName: Type.Optional(Type.String({ description: "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter." })),
  		label: Type.Optional(Type.String()),
  		runtime: optionalStringEnum(params.acpAvailable ? SESSIONS_SPAWN_RUNTIMES : ["subagent"]),
-@@ -11520,6 +11830,11 @@ function createSessionsSpawnToolSchema(params) {
+@@ -11520,6 +11894,11 @@ function createSessionsSpawnToolSchema(params) {
  			mimeType: Type.Optional(Type.String())
  		}), { maxItems: 50 })),
  		attachAs: Type.Optional(Type.Object({ mountPath: Type.Optional(Type.String()) })),
@@ -373,7 +450,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  		...params.acpAvailable ? {
  			resumeSessionId: Type.Optional(Type.String({ description: "ACP-only resume target; ignored for runtime=\"subagent\". Use id already recorded for this requester." })),
  			streamTo: optionalStringEnum(SESSIONS_SPAWN_ACP_STREAM_TARGETS, { description: "ACP-only stream target; ignored for runtime=\"subagent\". Use \"parent\" to stream turn to requester." })
-@@ -11532,6 +11847,182 @@ function resolveAcpUnavailableMessage(opts) {
+@@ -11532,6 +11911,182 @@ function resolveAcpUnavailableMessage(opts) {
  	if (opts?.config?.acp?.enabled === false) return "runtime=\"acp\" is unavailable because ACP is disabled by policy (`acp.enabled=false`). Use runtime=\"subagent\".";
  	return "runtime=\"acp\" is unavailable in this session because no ACP runtime backend is loaded. Enable the acpx plugin or use runtime=\"subagent\".";
  }
@@ -556,7 +633,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  function createSessionsSpawnTool(opts) {
  	const acpAvailable = isAcpRuntimeSpawnAvailable({
  		config: opts?.config,
-@@ -11542,7 +12033,7 @@ function createSessionsSpawnTool(opts) {
+@@ -11542,7 +12097,7 @@ function createSessionsSpawnTool(opts) {
  		label: "Sessions",
  		name: "sessions_spawn",
  		displaySummary: acpAvailable ? SESSIONS_SPAWN_TOOL_DISPLAY_SUMMARY : SESSIONS_SPAWN_SUBAGENT_TOOL_DISPLAY_SUMMARY,
@@ -565,7 +642,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  			acpAvailable,
  			threadAvailable
  		}),
-@@ -11552,11 +12043,103 @@ function createSessionsSpawnTool(opts) {
+@@ -11552,11 +12107,103 @@ function createSessionsSpawnTool(opts) {
  		}),
  		execute: async (_toolCallId, args) => {
  			const params = args;
@@ -671,7 +748,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  			const taskNameResult = normalizeSubagentTaskName(params.taskName);
  			if (taskNameResult.error) return jsonResult({
  				status: "error",
-@@ -11572,18 +12155,22 @@ function createSessionsSpawnTool(opts) {
+@@ -11572,18 +12219,22 @@ function createSessionsSpawnTool(opts) {
  			const cwd = readStringParam(params, "cwd");
  			const mode = params.mode === "run" || params.mode === "session" ? params.mode : void 0;
  			const cleanup = params.cleanup === "keep" || params.cleanup === "delete" ? params.cleanup : "keep";
@@ -698,7 +775,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  			if (acpUnsupportedInheritedTool) return jsonResult({
  				status: "forbidden",
  				error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
-@@ -11634,7 +12221,7 @@ function createSessionsSpawnTool(opts) {
+@@ -11634,7 +12285,7 @@ function createSessionsSpawnTool(opts) {
  					agentMemberRoleIds: opts?.agentMemberRoleIds,
  					sandboxed: opts?.sandboxed,
  					inheritedToolAllowlist: opts?.inheritedToolAllowlist,
@@ -707,7 +784,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  				});
  				const childSessionKey = result.childSessionKey?.trim();
  				const childRunId = isSpawnAcpAcceptedResult(result) ? result.runId?.trim() : void 0;
-@@ -11684,9 +12271,9 @@ function createSessionsSpawnTool(opts) {
+@@ -11684,9 +12335,9 @@ function createSessionsSpawnTool(opts) {
  						});
  					}
  				}
@@ -719,7 +796,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  				task,
  				taskName,
  				label: label || void 0,
-@@ -11717,8 +12304,8 @@ function createSessionsSpawnTool(opts) {
+@@ -11717,8 +12368,8 @@ function createSessionsSpawnTool(opts) {
  				requesterAgentIdOverride: opts?.requesterAgentIdOverride,
  				workspaceDir: opts?.workspaceDir,
  				inheritedToolAllowlist: opts?.inheritedToolAllowlist,
@@ -730,7 +807,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  		}
  	};
  }
-@@ -11729,9 +12316,10 @@ function createSessionsYieldTool(opts) {
+@@ -11729,9 +12380,10 @@ function createSessionsYieldTool(opts) {
  	return {
  		label: "Yield",
  		name: "sessions_yield",
@@ -742,21 +819,36 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
  			const message = readStringParam(args, "message") || "Turn yielded.";
  			if (!opts?.sessionId) return jsonResult({
  				status: "error",
-@@ -13921,6 +14509,13 @@ function createOpenClawTools(options) {
+@@ -13798,6 +14450,11 @@ function createWebSearchTool(options) {
+ 	};
+ }
+ let openClawToolsDeps = { callGateway };
++function isOpenStudioWebExploreSessionKey(agentSessionKey) {
++	/* OPEN_STUDIO_SIDEBAR_TOOLS_SCOPE */
++	const key = String(agentSessionKey ?? "");
++	return key.includes("#studio:wexplore:");
++}
+ function createOpenClawTools(options) {
+ 	const resolvedConfig = options?.config ?? openClawToolsDeps.config;
+ 	const runtimeSnapshot = getActiveSecretsRuntimeConfigSnapshot();
+@@ -13921,6 +14578,16 @@ function createOpenClawTools(options) {
  		lateBindRuntimeConfig: true
  	});
  	options?.recordToolPrepStage?.("openclaw-tools:web-fetch-tool");
 +	const sidebarActionTool = createSidebarActionTool();
-+	const sidebarDebugTool = createSidebarDebugTool();
-+	const sidebarScreenshotTool = createSidebarScreenshotTool();
-+	const sidebarDebuggerTool = createSidebarDebuggerTool();
++	const __studioWebExploreSession = isOpenStudioWebExploreSessionKey(options?.agentSessionKey);
++	const sidebarDebugTool = __studioWebExploreSession ? createSidebarDebugTool() : null;
++	const sidebarScreenshotTool = __studioWebExploreSession ? createSidebarScreenshotTool() : null;
++	const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;
++	const sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;
 +	options?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");
 +	options?.recordToolPrepStage?.("openclaw-tools:sidebar-preview-tools");
 +	options?.recordToolPrepStage?.("openclaw-tools:sidebar-debugger-tool");
++	options?.recordToolPrepStage?.("openclaw-tools:sidebar-eval-tool");
  	const messageTool = options?.disableMessageTool ? null : createMessageTool({
  		agentAccountId: options?.agentAccountId,
  		agentSessionKey: options?.agentSessionKey,
-@@ -14104,7 +14699,11 @@ function createOpenClawTools(options) {
+@@ -14104,7 +14771,12 @@ function createOpenClawTools(options) {
  			webSearchTool,
  			webFetchTool,
  			imageTool,
@@ -765,7 +857,8 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..73005c08545f3fa1664d31b0247b5304
 +			sidebarActionTool,
 +			sidebarDebugTool,
 +			sidebarScreenshotTool,
-+			sidebarDebuggerTool
++			sidebarDebuggerTool,
++			sidebarEvalTool
  		])
  	];
  	options?.recordToolPrepStage?.("openclaw-tools:core-tool-list");

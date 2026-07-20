@@ -114,6 +114,13 @@ function injectCreateCall(src) {
 	options?.recordToolPrepStage?.("openclaw-tools:sidebar-eval-tool");`,
     );
   }
+  if (src.includes("const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;") && !src.includes("sidebarEvalTool")) {
+    return src.replace(
+      "const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;",
+      `const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;
+	const sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;`,
+    );
+  }
   console.warn("[patch-openclaw-sidebar-eval] skip — create call inject point not found");
   return src;
 }

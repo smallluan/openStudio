@@ -6,6 +6,9 @@
  *
  * Force the vision/inline path whenever the RPC already includes image/* attachments.
  * Safe for text-only models: the provider returns a clear error instead of a missing file.
+ *
+ * Shipped via patches/openclaw@2026.6.1.patch (pnpm patchedDependencies).
+ * This script is for regenerating that patch or applying to build/openclaw bundles.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -17,46 +20,67 @@ const openclawRoot = process.env.OPENCLAW_PATCH_ROOT
   ? path.resolve(process.env.OPENCLAW_PATCH_ROOT)
   : path.join(root, "node_modules", "openclaw");
 const distDir = path.join(openclawRoot, "dist");
-const chatBundle =
-  fs.existsSync(distDir) &&
-  fs.readdirSync(distDir).find((name) => name.startsWith("chat-") && name.endsWith(".js"));
-const target = chatBundle ? path.join(distDir, chatBundle) : path.join(openclawRoot, "dist", "chat-DNr22c3k.js");
+
+function findChatBundle() {
+  if (!fs.existsSync(distDir)) return null;
+  for (const name of fs.readdirSync(distDir)) {
+    if (!name.startsWith("chat-") || !name.endsWith(".js")) continue;
+    const file = path.join(distDir, name);
+    if (fs.readFileSync(file, "utf8").includes("resolveGatewayModelSupportsImages")) return file;
+  }
+  return null;
+}
+
+const target = findChatBundle() ?? path.join(openclawRoot, "dist", "chat-bmAEPJsF.js");
 
 const PATCH_TOKEN = `|| normalizedAttachments.some((a)=>typeof a?.mimeType==="string"&&a.mimeType.startsWith("image/"))`;
 
-const NEEDLE = `\t\t\tconst supportsImages = await resolveGatewayModelSupportsImages({
+const REPLACEMENTS = [
+  {
+    needle: `const supportsImages = supportsSessionModelImages || explicitOriginSupportsInlineImages;
+				const routeImageOffloadsAsMediaPaths = !supportsImages;`,
+    replacement: `const supportsImages = supportsSessionModelImages || explicitOriginSupportsInlineImages${PATCH_TOKEN};
+				const routeImageOffloadsAsMediaPaths = !supportsImages;`,
+  },
+  {
+    needle: `\t\t\tconst supportsImages = await resolveGatewayModelSupportsImages({
 				loadGatewayModelCatalog: context.loadGatewayModelCatalog,
 				provider: modelRef.provider,
 				model: modelRef.model
 			}) || explicitOriginTargetsAcpSession(explicitOriginResult.value) || explicitOriginTargetsPlugin;
-\t\t\tconst routeImageOffloadsAsMediaPaths = !supportsImages;`;
-
-const REPLACEMENT = `\t\t\tconst supportsImages = (await resolveGatewayModelSupportsImages({
+\t\t\tconst routeImageOffloadsAsMediaPaths = !supportsImages;`,
+    replacement: `\t\t\tconst supportsImages = (await resolveGatewayModelSupportsImages({
 				loadGatewayModelCatalog: context.loadGatewayModelCatalog,
 				provider: modelRef.provider,
 				model: modelRef.model
 			}) || explicitOriginTargetsAcpSession(explicitOriginResult.value) || explicitOriginTargetsPlugin)${PATCH_TOKEN};
-\t\t\tconst routeImageOffloadsAsMediaPaths = !supportsImages;`;
+\t\t\tconst routeImageOffloadsAsMediaPaths = !supportsImages;`,
+  },
+];
 
 function main() {
   if (!fs.existsSync(target)) {
     console.warn("[patch-openclaw-chat-image-inline] skip — openclaw bundle not found:", path.relative(root, target));
     return;
   }
-  const src = fs.readFileSync(target, "utf8");
+  let src = fs.readFileSync(target, "utf8");
   if (src.includes(PATCH_TOKEN)) {
     console.log("[patch-openclaw-chat-image-inline] already applied");
     return;
   }
-  if (!src.includes(NEEDLE)) {
-    console.warn(
-      "[patch-openclaw-chat-image-inline] skip — upstream chat bundle changed; update patch script or upgrade Open Studio patch for this openclaw version",
-    );
-    return;
+  for (const { needle, replacement } of REPLACEMENTS) {
+    if (src.includes(needle)) {
+      fs.writeFileSync(target, src.replace(needle, replacement), "utf8");
+      console.log("[patch-openclaw-chat-image-inline] applied to", path.relative(root, target));
+      console.log(
+        "[patch-openclaw-chat-image-inline] restart the OpenClaw gateway (e.g. stop and re-run npm run dev) so the patched bundle loads.",
+      );
+      return;
+    }
   }
-  fs.writeFileSync(target, src.replace(NEEDLE, REPLACEMENT), "utf8");
-  console.log("[patch-openclaw-chat-image-inline] applied to", path.relative(root, target));
-  console.log("[patch-openclaw-chat-image-inline] restart the OpenClaw gateway (e.g. stop and re-run npm run dev) so the patched bundle loads.");
+  console.warn(
+    "[patch-openclaw-chat-image-inline] skip — upstream chat bundle changed; update patch script or upgrade Open Studio patch for this openclaw version",
+  );
 }
 
 main();
