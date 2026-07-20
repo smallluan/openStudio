@@ -274,7 +274,7 @@ export default function SkillMarketPage() {
                       )}
                       aria-hidden
                     >
-                      <div className="h-14 bg-gradient-to-b from-transparent to-white" />
+                      <div className="h-14 bg-gradient-to-b from-transparent to-[var(--os-bg-elevated)]" />
                       <div className="-mt-1 flex items-center justify-end px-3.5 pb-3.5">
                         <div className="pointer-events-auto">
                           <Button
@@ -328,7 +328,7 @@ export default function SkillMarketPage() {
                     )}
                     aria-hidden
                   >
-                    <div className="h-14 bg-gradient-to-b from-transparent to-white" />
+                    <div className="h-14 bg-gradient-to-b from-transparent to-[var(--os-bg-elevated)]" />
                     <div className="-mt-1 flex items-center justify-end gap-2 px-3.5 pb-3.5">
                       {canOpenUserFolder ? (
                         <div className="pointer-events-auto">

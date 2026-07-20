@@ -175,8 +175,8 @@
   --os-blur-lg: 36px;
 
   --os-titlebar-height: 40px;
-  --os-titlebar-bg: rgba(18, 22, 28, 0.72);
-  --os-titlebar-text: rgba(235, 240, 246, 0.88);
+  --os-titlebar-bg: #12161c;
+  --os-titlebar-text: rgba(235, 240, 246, 0.92);
 
   --os-primary-rail-px: 208px;
 
@@ -212,11 +212,11 @@
   --os-studio-canvas: radial-gradient(ellipse 80% 60% at 70% 20%, rgba(54, 110, 244, 0.1), transparent 55%),
     linear-gradient(165deg, #1a222c 0%, #0e141a 48%, #161c24 100%);
 
-  --os-rail-surface: rgba(16, 20, 26, 0.52);
+  --os-rail-surface: #12161c;
   --os-rail-bg: transparent;
-  --os-rail-text: rgba(235, 240, 246, 0.88);
-  --os-rail-text-muted: rgba(235, 240, 246, 0.56);
-  --os-rail-text-faint: rgba(235, 240, 246, 0.38);
+  --os-rail-text: rgba(235, 240, 246, 0.92);
+  --os-rail-text-muted: rgba(235, 240, 246, 0.62);
+  --os-rail-text-faint: rgba(235, 240, 246, 0.42);
   --os-rail-hover-bg: rgba(255, 255, 255, 0.07);
   --os-rail-active-card: rgba(255, 255, 255, 0.09);
 
@@ -268,6 +268,25 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.09),
     0 26px 62px rgba(0, 0, 0, 0.52),
     0 0 0 1px color-mix(in srgb, var(--os-border) 62%, transparent);
+}
+
+/* After TDesign’s `:root[theme-mode=dark]` block — keep surfaces on OpenStudio graphite. */
+:root[data-theme="dark"][theme-mode="dark"],
+:root.dark[data-theme="dark"] {
+  --td-bg-color-container: #1c222a;
+  --td-bg-color-container-hover: #242b34;
+  --td-bg-color-secondarycontainer: #181e26;
+  --td-bg-color-component: #242b34;
+  --td-bg-color-component-hover: #2c3440;
+  --td-bg-color-specialcomponent: #1c222a;
+  --td-bg-color-page: #0b0e12;
+  --td-text-color-primary: var(--os-text);
+  --td-text-color-secondary: var(--os-text-muted);
+  --td-text-color-placeholder: var(--os-text-faint);
+  --td-border-level-1-color: var(--os-border);
+  --td-border-level-2-color: var(--os-border-strong);
+  --td-component-border: var(--os-border-strong);
+  --td-component-stroke: var(--os-border);
 }
 
 /**

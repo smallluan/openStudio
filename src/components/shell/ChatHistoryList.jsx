@@ -307,6 +307,52 @@ function HistorySessionRow({
     if (activeC === sessionId) navigate("/chat", { replace: true });
   };
 
+  const rowLinkClass = cn(
+    "chat-history-card__link flex min-w-0 flex-1 items-center gap-1.5 rounded-lg py-1 pl-0.5 pr-1 leading-tight text-left no-underline outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
+    rowActive && !selectMode && "font-semibold",
+    selectMode && selectDisabled && "cursor-not-allowed opacity-60",
+  );
+
+  const rowText = (
+    <span className="flex min-w-0 flex-1 flex-col gap-0 text-left">
+      <span className="chat-history-card__title truncate text-[0.78rem] font-medium leading-snug">{displayTitle}</span>
+      <span className="chat-history-card__time text-[0.6875rem] leading-snug text-[var(--os-text-faint)]">
+        {formatSessionRelativeTime(t, updatedAt)}
+      </span>
+    </span>
+  );
+
+  /** Same footprint as HistorySessionGlyph (16×16) so checkbox replaces icon in-place. */
+  const leftSlot = selectMode ? (
+    isStreaming ? (
+      <HistorySessionSpinner label={t("nav.chatHistoryGenerating")} />
+    ) : (
+      <span
+        className={cn(
+          "chat-history-card__select-box shrink-0",
+          selected && "chat-history-card__select-box--checked",
+        )}
+        aria-hidden
+      >
+        {selected ? (
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
+            <path
+              d="M2.2 5.2 4.1 7.1 7.8 3.4"
+              stroke="currentColor"
+              strokeWidth="1.35"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        ) : null}
+      </span>
+    )
+  ) : isStreaming ? (
+    <HistorySessionSpinner label={t("nav.chatHistoryGenerating")} />
+  ) : (
+    <HistorySessionGlyph active={rowActive} />
+  );
+
   const menuContent = (
     <div className={cn("chat-history-card__menu")} role="menu">
       <div className="chat-history-card__menu-row">
@@ -355,67 +401,28 @@ function HistorySessionRow({
         )}
       >
         {selectMode ? (
-          <Button
+          <button
             type="button"
-            variant="text"
-            block
             title={displayTitle}
             disabled={selectDisabled}
-            className={cn(
-              "chat-history-card__link flex min-w-0 flex-1 items-center gap-1.5 text-left",
-              selectDisabled && "cursor-not-allowed",
-            )}
+            aria-pressed={selected}
+            className={cn(rowLinkClass, "m-0 cursor-pointer border-0 bg-transparent font-[inherit] text-[inherit]")}
             onClick={() => {
               if (!selectDisabled) onToggleSelect?.();
             }}
           >
-            <span
-              className={cn(
-                "chat-history-card__select-box shrink-0",
-                selected && "chat-history-card__select-box--checked",
-              )}
-              aria-hidden
-            >
-              {selected ? (
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
-                  <path
-                    d="M2.2 5.2 4.1 7.1 7.8 3.4"
-                    stroke="currentColor"
-                    strokeWidth="1.35"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              ) : null}
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col gap-0 text-left">
-              <span className="chat-history-card__title truncate text-[0.78rem] font-medium leading-snug">{displayTitle}</span>
-              <span className="chat-history-card__time text-[0.6875rem] leading-snug text-[var(--os-text-faint)]">
-                {formatSessionRelativeTime(t, updatedAt)}
-              </span>
-            </span>
-          </Button>
+            {leftSlot}
+            {rowText}
+          </button>
         ) : (
           <NavLink
             to={to}
             title={displayTitle}
-            className={cn(
-              "chat-history-card__link flex min-w-0 flex-1 items-center gap-1.5 rounded-lg py-1 pl-0.5 pr-1 leading-tight no-underline outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--os-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--os-bg-panel)]",
-              rowActive && "font-semibold",
-            )}
+            className={rowLinkClass}
             aria-current={rowActive ? "page" : undefined}
           >
-            {isStreaming ? (
-              <HistorySessionSpinner label={t("nav.chatHistoryGenerating")} />
-            ) : (
-              <HistorySessionGlyph active={rowActive} />
-            )}
-            <span className="flex min-w-0 flex-1 flex-col gap-0 text-left">
-              <span className="chat-history-card__title truncate text-[0.78rem] font-medium leading-snug">{displayTitle}</span>
-              <span className="chat-history-card__time text-[0.6875rem] leading-snug text-[var(--os-text-faint)]">
-                {formatSessionRelativeTime(t, updatedAt)}
-              </span>
-            </span>
+            {leftSlot}
+            {rowText}
           </NavLink>
         )}
         {!selectMode ? (
@@ -495,10 +502,6 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   });
 
   const scrollRootRef = useRef(/** @type {HTMLDivElement | null} */ (null));
-  const scrollContentRef = useRef(/** @type {HTMLDivElement | null} */ (null));
-  const railScrollbarThumbRef = useRef(/** @type {HTMLDivElement | null} */ (null));
-
-  const [railScrollable, setRailScrollable] = useState(false);
 
   useEffect(() => {
     const onStorage = (e) => {
@@ -788,79 +791,6 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     );
   };
 
-  const updateRailScrollbar = useCallback(() => {
-    const el = scrollRootRef.current;
-    const thumb = railScrollbarThumbRef.current;
-    if (!el) return;
-    const { scrollTop, scrollHeight, clientHeight } = el;
-    const scrollRange = scrollHeight - clientHeight;
-    const overflow = scrollRange > 1;
-    setRailScrollable((prev) => (prev === overflow ? prev : overflow));
-    if (!thumb) return;
-    if (!overflow) {
-      thumb.style.height = "0px";
-      thumb.style.opacity = "0";
-      thumb.style.pointerEvents = "none";
-      return;
-    }
-    const trackH = clientHeight;
-    const thumbMin = 28;
-    const thumbH = Math.min(trackH, Math.max(thumbMin, Math.round((clientHeight / scrollHeight) * trackH)));
-    const thumbTravel = Math.max(1, trackH - thumbH);
-    const thumbTop = Math.round((scrollTop / scrollRange) * thumbTravel);
-    thumb.style.height = `${thumbH}px`;
-    thumb.style.opacity = "1";
-    thumb.style.pointerEvents = "auto";
-    thumb.style.transform = `translateY(${thumbTop}px)`;
-  }, []);
-
-  useLayoutEffect(() => {
-    if (narrow) return undefined;
-    const el = scrollRootRef.current;
-    const inner = scrollContentRef.current;
-    if (!el) return undefined;
-    updateRailScrollbar();
-    const onScroll = () => updateRailScrollbar();
-    el.addEventListener("scroll", onScroll, { passive: true });
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => updateRailScrollbar()) : null;
-    ro?.observe(el);
-    if (inner) ro?.observe(inner);
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      ro?.disconnect();
-    };
-  }, [narrow, updateRailScrollbar, listVersion, displaySessions.length, emptyAll, emptyFilter, groupCollapsed, focusedChannel, deleteModeChannel, leavingChannelHeaders.length]);
-
-  const onRailThumbPointerDown = useCallback(
-    (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const el = scrollRootRef.current;
-      const thumb = railScrollbarThumbRef.current;
-      if (!el || !thumb) return;
-      const track = thumb.parentElement;
-      if (!track) return;
-      const scrollRange = el.scrollHeight - el.clientHeight;
-      if (scrollRange <= 1) return;
-      const startY = e.clientY;
-      const startScroll = el.scrollTop;
-      const trackH = track.clientHeight;
-      const thumbH = thumb.offsetHeight;
-      const thumbTravel = Math.max(1, trackH - thumbH);
-      const onMove = (ev) => {
-        const dy = ev.clientY - startY;
-        el.scrollTop = Math.min(scrollRange, Math.max(0, startScroll + (dy / thumbTravel) * scrollRange));
-      };
-      const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-    },
-    [],
-  );
-
   if (narrow) {
     return null;
   }
@@ -870,12 +800,9 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
       <div className="chat-history-rail__scroll-clip relative min-h-0 flex-1">
         <div
           ref={scrollRootRef}
-          className={cn(
-            "chat-history-rail__scroll scrollbar-hide h-full min-h-0 overflow-y-auto overflow-x-hidden pb-1",
-            railScrollable && "pr-2",
-          )}
+          className="chat-history-rail__scroll scrollbar-hide h-full min-h-0 overflow-y-auto overflow-x-hidden pb-1"
         >
-          <div ref={scrollContentRef}>
+          <div>
             {emptyAll ? (
               <EmptyState title={t("nav.chatHistoryEmpty")} hideDecoration className="min-h-[5rem] py-6" />
             ) : emptyFilter ? (
@@ -926,22 +853,6 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
                 })}
               </ul>
             )}
-          </div>
-        </div>
-        <div
-          className={cn(
-            "chat-history-rail__gutter pointer-events-none absolute top-0 right-0 bottom-1 z-[4] w-2 flex justify-center",
-            !railScrollable && "opacity-0",
-          )}
-          aria-hidden
-        >
-          <div className="chat-history-rail__gutter-track pointer-events-none relative h-full w-1 shrink-0 rounded-full">
-            <div
-              ref={railScrollbarThumbRef}
-              className="chat-history-rail__gutter-thumb pointer-events-auto absolute top-0 left-0 w-full rounded-full"
-              style={{ height: 0, willChange: "transform, height" }}
-              onPointerDown={onRailThumbPointerDown}
-            />
           </div>
         </div>
       </div>

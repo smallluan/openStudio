@@ -133,3 +133,40 @@
   --motion-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --motion-ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
 }
+
+:root[data-theme="dark"],
+:root[theme-mode="dark"],
+:root.dark {
+  --neutral-1: #1c222a;
+  --neutral-2: #181e26;
+  --neutral-3: #242b34;
+  --neutral-4: #2c3440;
+  --neutral-5: #3a4350;
+  --neutral-6: #5a6573;
+  --neutral-7: #8b96a5;
+  --neutral-8: #b0b8c4;
+  --neutral-9: #cfd5dd;
+  --neutral-10: #e8eef4;
+  --neutral-11: #f3f6f9;
+  --neutral-12: #ffffff;
+
+  --text-primary: var(--neutral-10);
+  --text-secondary: var(--neutral-8);
+  --text-tertiary: var(--neutral-7);
+  --text-disabled: var(--neutral-6);
+
+  --bg-base: var(--neutral-1);
+  --bg-container: var(--neutral-2);
+  --bg-elevated: var(--neutral-3);
+  --bg-layout: #0b0e12;
+
+  --border-color: var(--neutral-5);
+  --border-color-light: var(--neutral-4);
+  --border-color-dark: var(--neutral-6);
+
+  --divider-color: var(--neutral-4);
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.24), 0 1px 6px -1px rgba(0, 0, 0, 0.18);
+  --shadow-base: 0 6px 16px 0 rgba(0, 0, 0, 0.32), 0 3px 6px -4px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 12px 28px 0 rgba(0, 0, 0, 0.4), 0 6px 12px -4px rgba(0, 0, 0, 0.32);
+}

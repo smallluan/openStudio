@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState } from "react";
 
 const STORAGE_KEY = "openstudio_theme";
 
@@ -16,13 +16,21 @@ function getInitialTheme() {
   return readStoredTheme() ?? "light";
 }
 
+function applyThemeToDocument(theme) {
+  const root = document.documentElement;
+  root.dataset.theme = theme;
+  // TDesign tokens switch on `theme-mode` / `.dark`, not `data-theme`.
+  root.setAttribute("theme-mode", theme);
+  root.classList.toggle("dark", theme === "dark");
+}
+
 const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(getInitialTheme);
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+  useLayoutEffect(() => {
+    applyThemeToDocument(theme);
   }, [theme]);
 
   const setTheme = useCallback((next) => {
@@ -50,6 +58,14 @@ export function ThemeProvider({ children }) {
   const value = useMemo(() => ({ theme, setTheme, toggleTheme }), [theme, setTheme, toggleTheme]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+// Apply stored theme before first paint so TDesign tokens match on boot.
+try {
+  const stored = window.localStorage.getItem(STORAGE_KEY);
+  if (stored === "light" || stored === "dark") applyThemeToDocument(stored);
+} catch {
+  /* ignore */
 }
 
 export function useTheme() {

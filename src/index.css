@@ -570,7 +570,7 @@ code {
   height: 100%;
   min-height: 0;
   overflow-x: hidden;
-  /* Expanded rail: chat history scrolls inside `.chat-history-rail__scroll` only (thin themed bar). */
+  /* Expanded rail: chat history scrolls inside `.chat-history-rail__scroll` (scrollbar hidden). */
   overflow-y: hidden;
   border-right: 1px solid color-mix(in srgb, var(--os-border) 88%, transparent);
   background: var(--os-rail-surface);
@@ -586,6 +586,12 @@ code {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   border-right: 1px solid color-mix(in srgb, var(--os-border) 88%, transparent);
+}
+
+:root[data-theme="dark"] .primary-rail {
+  /* Solid graphite — match settings sheet; avoid frosted wash over the app gradient. */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .primary-rail--dragging {
@@ -721,6 +727,14 @@ code {
 .app-rail-nav-item.udesign-btn,
 .app-rail-nav-item.t-button {
   justify-content: flex-start;
+  height: auto;
+  min-height: 2.5rem;
+  padding: 0 0.55rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--os-rail-text);
+  box-shadow: none;
   font-size: 0.84rem;
   font-weight: 500;
   line-height: 1.35;
@@ -732,6 +746,7 @@ code {
   font-size: 0.84rem;
   line-height: 1.35;
   font-weight: 500;
+  color: inherit;
   background: transparent;
   box-shadow: none;
 }
@@ -760,25 +775,36 @@ code {
   letter-spacing: 0.01em;
 }
 
+/* Hover = same as settings-sheet Menu: soft fill, keep label color (not brand blue). */
 .app-rail-nav-item.t-button:hover:not(.app-rail-nav-item--active) {
-  background: var(--os-rail-hover-bg);
-  color: var(--os-accent);
+  background: var(--td-bg-color-container-hover, var(--os-rail-hover-bg));
+  color: var(--os-rail-text);
 }
 
 .app-rail-nav-item.t-button:hover:not(.app-rail-nav-item--active) .t-button__text,
 .app-rail-nav-item.t-button:hover:not(.app-rail-nav-item--active) .app-rail-nav-item__label,
 .app-rail-nav-item.t-button:hover:not(.app-rail-nav-item--active) .app-rail-nav-item__inner {
   background: transparent;
-  color: var(--os-accent);
+  color: var(--os-rail-text);
   font-weight: 500;
 }
 
+.app-rail-nav-item.t-button:hover:not(.app-rail-nav-item--active) .app-nav-icon,
+.app-rail-nav-item.t-button:hover:not(.app-rail-nav-item--active) .t-icon {
+  color: var(--os-rail-text);
+  opacity: 1;
+}
+
+/* Active — match settings-sheet Menu per theme:
+ * light: brand-light fill + brand text
+ * dark: solid brand fill + white text
+ */
 .app-rail-nav-item--active,
 .app-rail-nav-item--active:hover,
 .app-rail-nav-item.t-button.app-rail-nav-item--active,
 .app-rail-nav-item.t-button.app-rail-nav-item--active:hover {
-  background: var(--os-accent-subtle);
-  color: var(--os-accent);
+  background: var(--td-brand-color-light, var(--os-accent-subtle));
+  color: var(--td-brand-color, var(--os-accent));
   font-weight: 600;
 }
 
@@ -786,16 +812,54 @@ code {
 .app-rail-nav-item.t-button.app-rail-nav-item--active .app-rail-nav-item__label,
 .app-rail-nav-item.t-button.app-rail-nav-item--active .app-rail-nav-item__inner,
 .app-rail-nav-item.t-button.app-rail-nav-item--active:hover .t-button__text,
-.app-rail-nav-item.t-button.app-rail-nav-item--active:hover .app-rail-nav-item__label {
+.app-rail-nav-item.t-button.app-rail-nav-item--active:hover .app-rail-nav-item__label,
+.app-rail-nav-item.t-button.app-rail-nav-item--active:hover .app-rail-nav-item__inner {
   background: transparent;
-  color: var(--os-accent);
+  color: var(--td-brand-color, var(--os-accent));
   font-weight: 600;
 }
 
 .app-rail-nav-item--active .app-nav-icon,
-.app-rail-nav-item--active .t-icon {
-  color: var(--os-accent);
+.app-rail-nav-item--active .t-icon,
+.app-rail-nav-item--active .app-rail-settings-link__chevron {
+  color: var(--td-brand-color, var(--os-accent));
   opacity: 1;
+}
+
+:root[data-theme="dark"] .app-rail-nav-item--active,
+:root[data-theme="dark"] .app-rail-nav-item--active:hover,
+:root[data-theme="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active,
+:root[data-theme="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active:hover,
+:root[theme-mode="dark"] .app-rail-nav-item--active,
+:root[theme-mode="dark"] .app-rail-nav-item--active:hover,
+:root[theme-mode="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active,
+:root[theme-mode="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active:hover {
+  background: var(--os-accent);
+  color: var(--os-accent-fg, #fff);
+}
+
+:root[data-theme="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active .t-button__text,
+:root[data-theme="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active .app-rail-nav-item__label,
+:root[data-theme="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active .app-rail-nav-item__inner,
+:root[data-theme="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active:hover .t-button__text,
+:root[data-theme="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active:hover .app-rail-nav-item__label,
+:root[data-theme="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active:hover .app-rail-nav-item__inner,
+:root[theme-mode="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active .t-button__text,
+:root[theme-mode="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active .app-rail-nav-item__label,
+:root[theme-mode="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active .app-rail-nav-item__inner,
+:root[theme-mode="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active:hover .t-button__text,
+:root[theme-mode="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active:hover .app-rail-nav-item__label,
+:root[theme-mode="dark"] .app-rail-nav-item.t-button.app-rail-nav-item--active:hover .app-rail-nav-item__inner {
+  color: var(--os-accent-fg, #fff);
+}
+
+:root[data-theme="dark"] .app-rail-nav-item--active .app-nav-icon,
+:root[data-theme="dark"] .app-rail-nav-item--active .t-icon,
+:root[data-theme="dark"] .app-rail-nav-item--active .app-rail-settings-link__chevron,
+:root[theme-mode="dark"] .app-rail-nav-item--active .app-nav-icon,
+:root[theme-mode="dark"] .app-rail-nav-item--active .t-icon,
+:root[theme-mode="dark"] .app-rail-nav-item--active .app-rail-settings-link__chevron {
+  color: var(--os-accent-fg, #fff);
 }
 
 .app-rail-nav-item .t-button__text {
@@ -889,67 +953,37 @@ code {
   padding-bottom: 0.15rem;
 }
 
-.app-rail-settings-menu {
-  flex-shrink: 0;
-}
-
-.app-rail-settings-menu .t-menu__inner {
-  gap: 0;
-}
-
-.app-rail-settings-menu .t-menu__item {
-  color: var(--os-rail-text-muted);
-  font-weight: 500;
-  border-radius: 11px;
-  transition:
-    color 0.28s ease,
-    background 0.28s ease;
-}
-
-.app-rail-settings-menu .t-menu__item:hover:not(.t-is-disabled) {
-  background: var(--os-rail-hover-bg);
+.app-rail-settings-link {
   color: var(--os-rail-text);
 }
 
-.app-rail-settings-menu .t-menu__content {
-  display: flex;
-  width: 100%;
-  min-width: 0;
+.app-rail-settings-link__inner {
+  gap: 0.5rem;
 }
 
-.app-rail-settings-menu__inner {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 0.65rem;
-}
-
-.app-rail-settings-menu__label {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-rail-settings-menu__chevron {
+.app-rail-settings-link__chevron {
   width: 1rem;
   height: 1rem;
   flex-shrink: 0;
+  margin-inline-start: auto;
   color: var(--os-rail-text-muted);
-  transition: color 0.2s ease, transform 0.28s ease;
+  transition:
+    color 0.2s ease,
+    transform 0.28s ease;
 }
 
-.app-rail-settings-menu .t-menu__item:hover .app-rail-settings-menu__chevron {
+.app-rail-settings-link:hover:not(.app-rail-nav-item--active) .app-rail-settings-link__chevron {
+  color: var(--os-rail-text);
   transform: translateX(2px);
 }
 
-.app-rail-settings-link {
-  color: var(--os-rail-text-muted);
+.app-rail-settings-link.app-rail-nav-item--active .app-rail-settings-link__chevron {
+  color: var(--td-brand-color, var(--os-accent));
 }
 
-.app-rail-settings-link.t-button:hover:not(.app-rail-nav-item--active) {
-  color: var(--os-rail-text);
+:root[data-theme="dark"] .app-rail-settings-link.app-rail-nav-item--active .app-rail-settings-link__chevron,
+:root[theme-mode="dark"] .app-rail-settings-link.app-rail-nav-item--active .app-rail-settings-link__chevron {
+  color: var(--os-accent-fg, #fff);
 }
 
 .fluid-nav__blob {
@@ -1538,6 +1572,18 @@ code {
   background: transparent;
 }
 
+/* Chat history list: scrollable area with no visible scrollbar. */
+.chat-history-rail__scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.chat-history-rail__scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* Chat history list: overlay thumb (Windows Electron often ignores ::-webkit-scrollbar). */
 .chat-history-rail__gutter-thumb {
   background: color-mix(in srgb, var(--os-rail-scrollbar-thumb) 45%, transparent);
@@ -1811,8 +1857,9 @@ code {
 }
 
 :root[data-theme="dark"] .settings-sheet__aside {
-  backdrop-filter: blur(var(--os-blur-sm));
-  -webkit-backdrop-filter: blur(var(--os-blur-sm));
+  background: var(--os-rail-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .model-profiles-panel__head {
@@ -2509,8 +2556,10 @@ code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 0.9rem;
-  height: 0.9rem;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
   border-radius: 0.22rem;
   border: 1.5px solid color-mix(in srgb, var(--os-border) 88%, var(--os-text-muted));
   background: color-mix(in srgb, var(--os-bg-elevated) 92%, transparent);
@@ -11781,9 +11830,9 @@ html[data-os-motion="reduced"] .chat-lab__reveal-blur-veil {
   border: 1px solid color-mix(in srgb, var(--os-border) 72%, transparent);
   border-radius: 18px;
   overflow: hidden;
-  background: #fff;
+  background: var(--os-bg-popover, var(--os-bg-panel));
   box-shadow:
-    0 0 0 1px color-mix(in srgb, #fff 60%, transparent) inset,
+    0 0 0 1px color-mix(in srgb, var(--os-glass-stroke) 60%, transparent) inset,
     0 18px 44px rgba(15, 23, 42, 0.28);
   backdrop-filter: blur(12px);
 }
@@ -11963,7 +12012,7 @@ html[data-os-motion="reduced"] .chat-lab__reveal-blur-veil {
 .chat-lab--web-explore-embed .chat-lab__conv-header {
   margin: 0;
   padding: 0 0.9rem;
-  background: #fff;
+  background: var(--os-bg-panel);
   border-bottom: 1px solid color-mix(in srgb, var(--os-border) 60%, transparent);
   cursor: grab;
 }
@@ -11973,7 +12022,7 @@ html[data-os-motion="reduced"] .chat-lab__reveal-blur-veil {
 }
 
 .chat-lab--web-explore-embed .chat-lab__thread-stack {
-  background: #fff;
+  background: var(--os-bg-panel);
 }
 
 .chat-lab--web-explore-embed {
