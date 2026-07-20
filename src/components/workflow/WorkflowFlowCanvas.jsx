@@ -21,12 +21,14 @@ import { WORKFLOW_NODE_TYPES } from "../../workflow/workflowTypes.js";
 import { WORKFLOW_DRAG_DATA_KEY } from "./workflowDrag.js";
 import {
   copyWorkflowSubgraph,
+  createWorkflowNodeId,
   deleteWorkflowNode,
   deleteWorkflowNodes,
   flipWorkflowNode,
   pasteWorkflowSubgraph,
+  sanitizeWorkflowNodes,
 } from "./utils/workflowNodeHandles.js";
-import { computeReachableFromNode, getWorkflowNodeAccentColor } from "./utils/workflowGraphUtils.js";
+import { computeReachableFromNode, getWorkflowNodeAccentColor, applySubAgentHandoffOnConnect, isValidWorkflowConnection } from "./utils/workflowGraphUtils.js";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
 import "./workflow-flow.css";
@@ -43,18 +45,21 @@ function snapPosition(pos) {
   };
 }
 
-/** @param {{ nodes: import('@xyflow/react').Node[]; edges: import('@xyflow/react').Edge[]; viewport?: { x: number; y: number; zoom: number }; onGraphChange: (patch: { nodes?: import('@xyflow/react').Node[]; edges?: import('@xyflow/react').Edge[]; viewport?: { x: number; y: number; zoom: number } }) => void; activeNodeId: string | null; onActiveNodeIdChange: (id: string | null) => void; canvasTool?: 'select' | 'pan' }} props */
+/** @param {{ nodes: import('@xyflow/react').Node[]; edges: import('@xyflow/react').Edge[]; viewport?: { x: number; y: number; zoom: number }; onGraphChange: (patch: { nodes?: import('@xyflow/react').Node[]; edges?: import('@xyflow/react').Edge[]; viewport?: { x: number; y: number; zoom: number } }) => void; selectedNodeId: string | null; onSelectedNodeIdChange: (id: string | null) => void; onConfigNodeIdChange: (id: string | null) => void; canvasTool?: 'select' | 'pan'; defaultStudioAgentId?: string | null }} props */
 function FlowCanvasInner({
   nodes,
   edges,
   viewport,
   onGraphChange,
-  activeNodeId,
-  onActiveNodeIdChange,
-  canvasTool = "select",
+  selectedNodeId,
+  onSelectedNodeIdChange,
+  onConfigNodeIdChange,
+  canvasTool = "pan",
+  defaultStudioAgentId = null,
 }) {
   const { t } = useI18n();
   const { setViewport, screenToFlowPosition } = useReactFlow();
+  const nodeDragRef = useRef(false);
   const clipboardRef = useRef(/** @type {{ nodes: import('@xyflow/react').Node[]; edges: import('@xyflow/react').Edge[] } | null} */ (null));
   const [contextMenu, setContextMenu] = useState(
     /** @type {{ kind: 'node' | 'edge' | 'pane'; x: number; y: number; nodeId?: string; edgeId?: string; flowX?: number; flowY?: number } | null} */ (
@@ -71,14 +76,14 @@ function FlowCanvasInner({
   const defaultEdgeColor = "color-mix(in srgb, var(--os-text-muted) 70%, var(--os-border))";
 
   const activeNode = useMemo(
-    () => (activeNodeId ? nodes.find((n) => n.id === activeNodeId) ?? null : null),
-    [nodes, activeNodeId],
+    () => (selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null),
+    [nodes, selectedNodeId],
   );
 
   const reachable = useMemo(() => {
-    if (!activeNodeId) return { nodeIds: new Set(), edgeIds: new Set() };
-    return computeReachableFromNode(activeNodeId, edges);
-  }, [activeNodeId, edges]);
+    if (!selectedNodeId) return { nodeIds: new Set(), edgeIds: new Set() };
+    return computeReachableFromNode(selectedNodeId, edges);
+  }, [selectedNodeId, edges]);
 
   const highlightColor = useMemo(
     () => (activeNode?.type ? getWorkflowNodeAccentColor(activeNode.type) : defaultEdgeColor),
@@ -88,7 +93,7 @@ function FlowCanvasInner({
   const renderedEdges = useMemo(
     () =>
       edges.map((edge) => {
-        const isReachable = activeNodeId ? reachable.edgeIds.has(edge.id) : false;
+        const isReachable = selectedNodeId ? reachable.edgeIds.has(edge.id) : false;
         const stroke = isReachable ? highlightColor : defaultEdgeColor;
         return {
           ...edge,
@@ -98,7 +103,7 @@ function FlowCanvasInner({
             ...edge.style,
             stroke,
             strokeWidth: isReachable ? 2 : 1.6,
-            opacity: activeNodeId && !isReachable ? 0.32 : 1,
+            opacity: selectedNodeId && !isReachable ? 0.32 : 1,
           },
           markerEnd: {
             type: MarkerType.ArrowClosed,
@@ -106,7 +111,7 @@ function FlowCanvasInner({
           },
         };
       }),
-    [edges, activeNodeId, reachable.edgeIds, highlightColor, defaultEdgeColor],
+    [edges, selectedNodeId, reachable.edgeIds, highlightColor, defaultEdgeColor],
   );
 
   const applyGraph = useCallback(
@@ -118,19 +123,23 @@ function FlowCanvasInner({
 
   const onNodesChange = useCallback(
     (changes) => {
-      const nextNodes = applyNodeChanges(changes, nodes);
-      const removedIds = changes.filter((c) => c.type === "remove").map((c) => c.id);
+      const meaningfulChanges = changes.filter((change) => change.type !== "select");
+      if (!meaningfulChanges.length) return;
+
+      const nextNodes = sanitizeWorkflowNodes(applyNodeChanges(meaningfulChanges, nodes));
+      const removedIds = meaningfulChanges.filter((c) => c.type === "remove").map((c) => c.id);
       let nextEdges = edges;
       if (removedIds.length) {
         const idSet = new Set(removedIds);
         nextEdges = edges.filter((e) => !idSet.has(e.source) && !idSet.has(e.target));
-        if (activeNodeId && idSet.has(activeNodeId)) {
-          onActiveNodeIdChange(null);
+        if (selectedNodeId && idSet.has(selectedNodeId)) {
+          onSelectedNodeIdChange(null);
+          onConfigNodeIdChange(null);
         }
       }
       onGraphChange({ nodes: nextNodes, edges: nextEdges });
     },
-    [nodes, edges, onGraphChange, activeNodeId, onActiveNodeIdChange],
+    [nodes, edges, onGraphChange, selectedNodeId, onSelectedNodeIdChange, onConfigNodeIdChange],
   );
 
   const onEdgesChange = useCallback(
@@ -142,6 +151,14 @@ function FlowCanvasInner({
 
   const onConnect = useCallback(
     (connection) => {
+      if (!isValidWorkflowConnection(connection, nodes)) return;
+
+      const handoffResult = applySubAgentHandoffOnConnect(connection, nodes, edges);
+      if (handoffResult?.consumed) {
+        onGraphChange({ nodes: handoffResult.nodes, edges: handoffResult.edges });
+        return;
+      }
+
       onGraphChange({
         edges: addEdge(
           {
@@ -154,7 +171,12 @@ function FlowCanvasInner({
         ),
       });
     },
-    [edges, onGraphChange],
+    [edges, nodes, onGraphChange],
+  );
+
+  const isValidConnection = useCallback(
+    (connection) => isValidWorkflowConnection(connection, nodes),
+    [nodes],
   );
 
   const onMoveEnd = useCallback(
@@ -166,23 +188,40 @@ function FlowCanvasInner({
 
   const onNodeClick = useCallback(
     (_evt, node) => {
-      onActiveNodeIdChange(node.id);
+      onSelectedNodeIdChange(node.id);
+      if (nodeDragRef.current) {
+        nodeDragRef.current = false;
+        return;
+      }
+      onConfigNodeIdChange(node.id);
     },
-    [onActiveNodeIdChange],
+    [onSelectedNodeIdChange, onConfigNodeIdChange],
+  );
+
+  const onNodeDragStart = useCallback(
+    (_evt, node) => {
+      nodeDragRef.current = true;
+      onSelectedNodeIdChange(node.id);
+    },
+    [onSelectedNodeIdChange],
   );
 
   const onPaneClick = useCallback(() => {
-    onActiveNodeIdChange(null);
+    onSelectedNodeIdChange(null);
+    onConfigNodeIdChange(null);
     setContextMenu(null);
-  }, [onActiveNodeIdChange]);
+  }, [onSelectedNodeIdChange, onConfigNodeIdChange]);
 
   const handleDeleteNode = useCallback(
     (nodeId) => {
       const next = deleteWorkflowNode(nodeId, nodes, edges);
       applyGraph(next.nodes, next.edges);
-      if (activeNodeId === nodeId) onActiveNodeIdChange(null);
+      if (selectedNodeId === nodeId) {
+        onSelectedNodeIdChange(null);
+        onConfigNodeIdChange(null);
+      }
     },
-    [nodes, edges, applyGraph, activeNodeId, onActiveNodeIdChange],
+    [nodes, edges, applyGraph, selectedNodeId, onSelectedNodeIdChange, onConfigNodeIdChange],
   );
 
   const handleFlipNode = useCallback(
@@ -204,9 +243,20 @@ function FlowCanvasInner({
   );
 
   const handleCopy = useCallback(() => {
+    if (selectedNodeId) {
+      const targetNodes = nodes.filter((n) => n.id === selectedNodeId);
+      if (!targetNodes.length) return;
+      const idSet = new Set(targetNodes.map((n) => n.id));
+      const subEdges = edges.filter((e) => idSet.has(e.source) && idSet.has(e.target));
+      clipboardRef.current = {
+        nodes: structuredClone(targetNodes),
+        edges: structuredClone(subEdges),
+      };
+      return;
+    }
     const clip = copyWorkflowSubgraph(nodes, edges);
     if (clip) clipboardRef.current = clip;
-  }, [nodes, edges]);
+  }, [nodes, edges, selectedNodeId]);
 
   const handlePaste = useCallback(
     (anchorFlow) => {
@@ -218,21 +268,32 @@ function FlowCanvasInner({
   );
 
   const handleDeleteSelected = useCallback(() => {
-    const selectedIds = nodes.filter((n) => n.selected).map((n) => n.id);
+    const selectedIds = selectedNodeId ? [selectedNodeId] : nodes.filter((n) => n.selected).map((n) => n.id);
     if (!selectedIds.length) return;
     const next = deleteWorkflowNodes(selectedIds, nodes, edges);
     applyGraph(next.nodes, next.edges);
-    if (activeNodeId && selectedIds.includes(activeNodeId)) onActiveNodeIdChange(null);
-  }, [nodes, edges, applyGraph, activeNodeId, onActiveNodeIdChange]);
+    if (selectedNodeId && selectedIds.includes(selectedNodeId)) {
+      onSelectedNodeIdChange(null);
+      onConfigNodeIdChange(null);
+    }
+  }, [nodes, edges, applyGraph, selectedNodeId, onSelectedNodeIdChange, onConfigNodeIdChange]);
+
+  const openNodeConfig = useCallback(
+    (nodeId) => {
+      onSelectedNodeIdChange(nodeId);
+      onConfigNodeIdChange(nodeId);
+    },
+    [onSelectedNodeIdChange, onConfigNodeIdChange],
+  );
 
   const nodeActions = useMemo(
     () => ({
       deleteNode: handleDeleteNode,
       flipHorizontal: (nodeId) => handleFlipNode(nodeId, "x"),
       flipVertical: (nodeId) => handleFlipNode(nodeId, "y"),
-      configureNode: (nodeId) => onActiveNodeIdChange(nodeId),
+      configureNode: openNodeConfig,
     }),
-    [handleDeleteNode, handleFlipNode, onActiveNodeIdChange],
+    [handleDeleteNode, handleFlipNode, openNodeConfig],
   );
 
   const handleDragOver = useCallback((event) => {
@@ -257,18 +318,18 @@ function FlowCanvasInner({
       const position = snapPosition(
         screenToFlowPosition({ x: event.clientX, y: event.clientY }),
       );
-      const node = createWorkflowNode(payload.nodeType, position);
+      const node = createWorkflowNode(payload.nodeType, position, { defaultStudioAgentId });
       onGraphChange({ nodes: [...nodes, node] });
-      onActiveNodeIdChange(node.id);
+      onSelectedNodeIdChange(node.id);
     },
-    [nodes, onGraphChange, onActiveNodeIdChange, screenToFlowPosition],
+    [nodes, onGraphChange, onSelectedNodeIdChange, screenToFlowPosition, defaultStudioAgentId],
   );
 
   const onNodeContextMenu = useCallback((event, node) => {
     event.preventDefault();
-    onActiveNodeIdChange(node.id);
+    onSelectedNodeIdChange(node.id);
     setContextMenu({ kind: "node", x: event.clientX, y: event.clientY, nodeId: node.id });
-  }, [onActiveNodeIdChange]);
+  }, [onSelectedNodeIdChange]);
 
   const onEdgeContextMenu = useCallback((event, edge) => {
     event.preventDefault();
@@ -313,9 +374,9 @@ function FlowCanvasInner({
     () =>
       nodes.map((n) => ({
         ...n,
-        selected: n.id === activeNodeId || Boolean(n.selected),
+        selected: n.id === selectedNodeId,
       })),
-    [nodes, activeNodeId],
+    [nodes, selectedNodeId],
   );
 
   const menuItems = useMemo(() => {
@@ -323,7 +384,7 @@ function FlowCanvasInner({
     if (contextMenu.kind === "node" && contextMenu.nodeId) {
       const nodeId = contextMenu.nodeId;
       return [
-        { id: "configure", label: t("workflowPage.ctxConfigure"), onClick: () => onActiveNodeIdChange(nodeId) },
+        { id: "configure", label: t("workflowPage.ctxConfigure"), onClick: () => openNodeConfig(nodeId) },
         { id: "flip-h", label: t("workflowPage.ctxFlipH"), onClick: () => handleFlipNode(nodeId, "x") },
         { id: "flip-v", label: t("workflowPage.ctxFlipV"), onClick: () => handleFlipNode(nodeId, "y") },
         { id: "delete", label: t("workflowPage.ctxDeleteNode"), onClick: () => handleDeleteNode(nodeId), danger: true },
@@ -341,7 +402,7 @@ function FlowCanvasInner({
     }
     if (contextMenu.kind === "pane") {
       const hasClipboard = Boolean(clipboardRef.current?.nodes?.length);
-      const hasSelection = nodes.some((n) => n.selected);
+      const hasSelection = Boolean(selectedNodeId) || nodes.some((n) => n.selected);
       return [
         {
           id: "paste",
@@ -363,7 +424,7 @@ function FlowCanvasInner({
   }, [
     contextMenu,
     t,
-    onActiveNodeIdChange,
+    openNodeConfig,
     handleFlipNode,
     handleDeleteNode,
     handleDeleteEdge,
@@ -387,8 +448,10 @@ function FlowCanvasInner({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
         onMoveEnd={onMoveEnd}
         onNodeClick={onNodeClick}
+        onNodeDragStart={onNodeDragStart}
         onPaneClick={onPaneClick}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
@@ -401,6 +464,7 @@ function FlowCanvasInner({
         fitViewOptions={{ padding: 0.2 }}
         deleteKeyCode={["Backspace", "Delete"]}
         selectionOnDrag={canvasTool === "select"}
+        multiSelectionKeyCode={null}
         selectionMode={SelectionMode.Partial}
         panOnDrag={canvasTool === "select" ? [1] : true}
         panActivationKeyCode="Space"
@@ -432,7 +496,7 @@ function FlowCanvasInner({
   );
 }
 
-/** @param {{ nodes: import('@xyflow/react').Node[]; edges: import('@xyflow/react').Edge[]; viewport?: { x: number; y: number; zoom: number }; onGraphChange: (patch: { nodes?: import('@xyflow/react').Node[]; edges?: import('@xyflow/react').Edge[]; viewport?: { x: number; y: number; zoom: number } }) => void; activeNodeId: string | null; onActiveNodeIdChange: (id: string | null) => void; canvasTool?: 'select' | 'pan' }} props */
+/** @param {{ nodes: import('@xyflow/react').Node[]; edges: import('@xyflow/react').Edge[]; viewport?: { x: number; y: number; zoom: number }; onGraphChange: (patch: { nodes?: import('@xyflow/react').Node[]; edges?: import('@xyflow/react').Edge[]; viewport?: { x: number; y: number; zoom: number } }) => void; selectedNodeId: string | null; onSelectedNodeIdChange: (id: string | null) => void; onConfigNodeIdChange: (id: string | null) => void; canvasTool?: 'select' | 'pan'; defaultStudioAgentId?: string | null }} props */
 export default function WorkflowFlowCanvas(props) {
   return (
     <ReactFlowProvider>
@@ -444,9 +508,11 @@ export default function WorkflowFlowCanvas(props) {
 /**
  * @param {typeof WORKFLOW_NODE_TYPES[keyof typeof WORKFLOW_NODE_TYPES]} type
  * @param {{ x: number; y: number }} [position]
+ * @param {{ defaultStudioAgentId?: string | null }} [options]
  */
-export function createWorkflowNode(type, position) {
-  const id = `node-${Date.now()}-${Math.round(Math.random() * 1000)}`;
+export function createWorkflowNode(type, position, options = {}) {
+  const defaultStudioAgentId = options.defaultStudioAgentId ?? null;
+  const id = createWorkflowNodeId();
   const base = { id, type, position: position ?? { x: 200, y: 200 } };
   switch (type) {
     case WORKFLOW_NODE_TYPES.INPUT:
@@ -459,7 +525,7 @@ export function createWorkflowNode(type, position) {
         data: {
           label: "智能体",
           description: "",
-          agentId: null,
+          agentId: defaultStudioAgentId,
           skillOverrides: { bind: [], unbind: [] },
           flipX: false,
           flipY: false,
@@ -467,6 +533,18 @@ export function createWorkflowNode(type, position) {
       };
     case WORKFLOW_NODE_TYPES.NESTED:
       return { ...base, data: { label: "嵌套工作流", description: "", workflowId: null, flipX: false, flipY: false } };
+    case WORKFLOW_NODE_TYPES.SUB_AGENT:
+      return {
+        ...base,
+        data: {
+          label: "子智能体",
+          description: "",
+          agentId: null,
+          task: "",
+          flipX: false,
+          flipY: false,
+        },
+      };
     default:
       return { ...base, data: { label: "节点", flipX: false, flipY: false } };
   }

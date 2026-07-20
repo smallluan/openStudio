@@ -20,6 +20,7 @@
  * @typedef {WorkflowTerminalNodeData & {
  *   agentId: string | null;
  *   skillOverrides: WorkflowSkillOverrides;
+ *   handoffSourceNodeId?: string | null;
  * }} WorkflowAgentNodeData
  */
 
@@ -27,6 +28,13 @@
  * @typedef {WorkflowTerminalNodeData & {
  *   workflowId: string | null;
  * }} WorkflowNestedNodeData
+ */
+
+/**
+ * @typedef {WorkflowTerminalNodeData & {
+ *   agentId: string | null;
+ *   task: string;
+ * }} WorkflowSubAgentNodeData
  */
 
 /**
@@ -49,5 +57,6 @@ export const WORKFLOW_NODE_TYPES = {
   INPUT: "workflowInput",
   OUTPUT: "workflowOutput",
   AGENT: "workflowAgent",
+  SUB_AGENT: "workflowSubAgent",
   NESTED: "workflowNested",
 };

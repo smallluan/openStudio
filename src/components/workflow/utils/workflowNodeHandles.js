@@ -1,5 +1,22 @@
 import { Position } from "@xyflow/react";
 
+/** @returns {string} */
+export function createWorkflowNodeId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `node-${crypto.randomUUID()}`;
+  }
+  return `node-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/** Strip ephemeral React Flow fields before persisting node state. */
+/** @param {import('@xyflow/react').Node[]} nodes */
+export function sanitizeWorkflowNodes(nodes) {
+  return nodes.map((node) => {
+    const { selected, dragging, ...rest } = node;
+    return rest;
+  });
+}
+
 /** @param {{ flipX?: boolean; flipY?: boolean } | undefined} data */
 export function getWorkflowHandlePositions(data) {
   const flipX = Boolean(data?.flipX);
@@ -67,12 +84,12 @@ export function pasteWorkflowSubgraph(clipboard, anchorFlow, nodes, edges) {
   const offsetY = anchorFlow ? anchorFlow.y - minY : 32;
 
   const pastedNodes = clipboard.nodes.map((n) => {
-    const newId = `node-${Date.now()}-${Math.round(Math.random() * 10000)}`;
+    const newId = createWorkflowNodeId();
     idMap.set(n.id, newId);
     return {
       ...n,
       id: newId,
-      selected: true,
+      selected: false,
       position: {
         x: n.position.x + offsetX,
         y: n.position.y + offsetY,

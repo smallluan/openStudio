@@ -7,6 +7,7 @@ import { useStudio } from "../../context/StudioContext.jsx";
 import { agentDisplayLabel } from "../../studio/agents.js";
 import { useWorkflowLibrary } from "../../workflow/useWorkflowLibrary.js";
 import { WORKFLOW_NODE_TYPES } from "../../workflow/workflowTypes.js";
+import { normalizeWorkflowGraph, resolveHandoffAgentId } from "./utils/workflowGraphUtils.js";
 import WorkflowFlowCanvas from "./WorkflowFlowCanvas.jsx";
 import WorkflowNodeDrawer from "./WorkflowNodeDrawer.jsx";
 import WorkflowNodePalette from "./WorkflowNodePalette.jsx";
@@ -24,35 +25,52 @@ import "./workflow-flow.css";
 export default function WorkflowEditor({ workflow, onSave, onDiscard }) {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { agentById } = useStudio();
+  const { agentById, mainAgent } = useStudio();
   const { lib } = useWorkflowLibrary();
   const saveTitleId = useId();
 
   const [nodes, setNodes] = useState(workflow.nodes);
   const [edges, setEdges] = useState(workflow.edges);
   const [viewport, setViewport] = useState(workflow.viewport);
-  const [activeNodeId, setActiveNodeId] = useState(/** @type {string | null} */ (null));
+  const [selectedNodeId, setSelectedNodeId] = useState(/** @type {string | null} */ (null));
+  const [configNodeId, setConfigNodeId] = useState(/** @type {string | null} */ (null));
   const [saveOpen, setSaveOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
-  const [canvasTool, setCanvasTool] = useState(/** @type {'select' | 'pan'} */ ("select"));
+  const [canvasTool, setCanvasTool] = useState(/** @type {'select' | 'pan'} */ ("pan"));
   const [saveName, setSaveName] = useState(workflow.name);
   const [saveDesc, setSaveDesc] = useState(workflow.description);
 
   const isDraft = Boolean(workflow.draft);
 
   useEffect(() => {
-    setNodes(workflow.nodes);
-    setEdges(workflow.edges);
+    const normalized = normalizeWorkflowGraph(workflow.nodes, workflow.edges);
+    setNodes(normalized.nodes);
+    setEdges(normalized.edges);
     setViewport(workflow.viewport);
     setSaveName(workflow.name);
     setSaveDesc(workflow.description);
-    setActiveNodeId(null);
+    setSelectedNodeId(null);
+    setConfigNodeId(null);
   }, [workflow.id]);
 
   const enrichedNodes = useMemo(() => {
     return nodes.map((n) => {
       if (n.type === WORKFLOW_NODE_TYPES.AGENT) {
-        const agentId = n.data?.agentId;
+        let agentId = n.data?.agentId;
+        if (!agentId && n.data?.handoffSourceNodeId) {
+          const parent = nodes.find((candidate) => candidate.id === n.data.handoffSourceNodeId);
+          agentId = parent?.data?.agentId ?? null;
+        }
+        const agent = agentId ? agentById.get(String(agentId)) : null;
+        return { ...n, data: { ...n.data, agentName: agent ? agentDisplayLabel(agent) : undefined } };
+      }
+      if (n.type === WORKFLOW_NODE_TYPES.SUB_AGENT) {
+        let agentId = n.data?.agentId;
+        if (!agentId) {
+          const parentAgentNodeId = resolveHandoffAgentId(n.id, nodes, edges);
+          const parent = parentAgentNodeId ? nodes.find((candidate) => candidate.id === parentAgentNodeId) : null;
+          agentId = parent?.data?.agentId ?? null;
+        }
         const agent = agentId ? agentById.get(String(agentId)) : null;
         return { ...n, data: { ...n.data, agentName: agent ? agentDisplayLabel(agent) : undefined } };
       }
@@ -63,23 +81,29 @@ export default function WorkflowEditor({ workflow, onSave, onDiscard }) {
       }
       return n;
     });
-  }, [nodes, agentById, lib.workflows]);
+  }, [nodes, edges, agentById, lib.workflows]);
 
-  const activeNode = useMemo(
-    () => (activeNodeId ? enrichedNodes.find((n) => n.id === activeNodeId) ?? null : null),
-    [enrichedNodes, activeNodeId],
+  const configNode = useMemo(
+    () => (configNodeId ? enrichedNodes.find((n) => n.id === configNodeId) ?? null : null),
+    [enrichedNodes, configNodeId],
   );
 
   const persist = useCallback(
     (patch) => {
-      if (patch.nodes) setNodes(patch.nodes);
-      if (patch.edges) setEdges(patch.edges);
+      const shouldNormalize = Boolean(patch.nodes || patch.edges);
+      const normalized = shouldNormalize
+        ? normalizeWorkflowGraph(patch.nodes ?? nodes, patch.edges ?? edges)
+        : { nodes: patch.nodes ?? nodes, edges: patch.edges ?? edges };
+
+      if (patch.nodes || shouldNormalize) setNodes(normalized.nodes);
+      if (patch.edges || shouldNormalize) setEdges(normalized.edges);
       if (patch.viewport) setViewport(patch.viewport);
+
       onSave({
-        nodes: patch.nodes ?? nodes,
-        edges: patch.edges ?? edges,
-        viewport: patch.viewport ?? viewport,
         ...patch,
+        nodes: normalized.nodes,
+        edges: normalized.edges,
+        viewport: patch.viewport ?? viewport,
       });
     },
     [nodes, edges, viewport, onSave],
@@ -96,7 +120,7 @@ export default function WorkflowEditor({ workflow, onSave, onDiscard }) {
     (nodeId, data) => {
       const nextNodes = nodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n));
       persist({ nodes: nextNodes });
-      setActiveNodeId(null);
+      setConfigNodeId(null);
     },
     [nodes, persist],
   );
@@ -177,16 +201,20 @@ export default function WorkflowEditor({ workflow, onSave, onDiscard }) {
             edges={edges}
             viewport={viewport}
             onGraphChange={onGraphChange}
-            activeNodeId={activeNodeId}
-            onActiveNodeIdChange={setActiveNodeId}
+            selectedNodeId={selectedNodeId}
+            onSelectedNodeIdChange={setSelectedNodeId}
+            onConfigNodeIdChange={setConfigNodeId}
             canvasTool={canvasTool}
+            defaultStudioAgentId={mainAgent?.id ?? null}
           />
           <WorkflowNodeDrawer
-            node={activeNode}
+            node={configNode}
+            nodes={nodes}
+            edges={edges}
             workflows={lib.workflows.filter((w) => !w.draft && w.id !== workflow.id)}
             currentWorkflowId={workflow.id}
-            open={Boolean(activeNode)}
-            onClose={() => setActiveNodeId(null)}
+            open={Boolean(configNode)}
+            onClose={() => setConfigNodeId(null)}
             onApply={handleNodeApply}
           />
         </div>

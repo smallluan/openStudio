@@ -7,14 +7,17 @@ import { agentDisplayLabel } from "../../studio/agents.js";
 import { listSkillsForPicker } from "../../skills/skillRegistry.js";
 import { useSkillEnvironment } from "../../skills/useSkillEnvironment.js";
 import { WORKFLOW_NODE_TYPES } from "../../workflow/workflowTypes.js";
+import { resolveHandoffAgentId } from "./utils/workflowGraphUtils.js";
 import { resolveAgentNodeSkills } from "../../workflow/workflowRuntimeRegistry.js";
 import TextField from "../../ui/TextField.jsx";
 import Select from "../../ui/Select.jsx";
 import { cn } from "../../ui/cn.js";
 
-/** @param {{ node: import('@xyflow/react').Node | null; workflows: { id: string; name: string }[]; currentWorkflowId: string; open: boolean; onClose: () => void; onApply: (nodeId: string, data: Record<string, unknown>) => void }} props */
+/** @param {{ node: import('@xyflow/react').Node | null; nodes: import('@xyflow/react').Node[]; edges: import('@xyflow/react').Edge[]; workflows: { id: string; name: string }[]; currentWorkflowId: string; open: boolean; onClose: () => void; onApply: (nodeId: string, data: Record<string, unknown>) => void }} props */
 export default function WorkflowNodeDrawer({
   node,
+  nodes,
+  edges,
   workflows,
   currentWorkflowId,
   open,
@@ -29,12 +32,62 @@ export default function WorkflowNodeDrawer({
   const [draft, setDraft] = useState(/** @type {Record<string, unknown>} */ ({}));
 
   useEffect(() => {
-    if (node?.data) {
-      setDraft({ ...node.data });
-    } else {
+    if (!node?.data) {
       setDraft({});
+      return;
     }
-  }, [node?.id, node?.data]);
+
+    const nextDraft = { ...node.data };
+    const isHandoffProxy =
+      node.type === WORKFLOW_NODE_TYPES.AGENT && typeof node.data.handoffSourceNodeId === "string";
+    if (node.type === WORKFLOW_NODE_TYPES.SUB_AGENT || isHandoffProxy) {
+      const parentAgentNodeId = isHandoffProxy
+        ? String(node.data.handoffSourceNodeId)
+        : resolveHandoffAgentId(node.id, nodes, edges);
+      const parent = parentAgentNodeId ? nodes.find((candidate) => candidate.id === parentAgentNodeId) : null;
+      if (parent?.data?.agentId) {
+        nextDraft.agentId = parent.data.agentId;
+      }
+    }
+    setDraft(nextDraft);
+  }, [node?.id, node?.data, node?.type, nodes, edges]);
+
+  const agentOptions = useMemo(() => {
+    const agents = [...agentById.values()];
+    return [
+      { value: "", label: t("workflowPage.selectAgent") },
+      ...agents.map((a) => ({ value: a.id, label: agentDisplayLabel(a) })),
+    ];
+  }, [agentById, t]);
+
+  const lockedParentAgentId = useMemo(() => {
+    if (!node) return null;
+    if (node.type === WORKFLOW_NODE_TYPES.SUB_AGENT) {
+      return resolveHandoffAgentId(node.id, nodes, edges);
+    }
+    if (node.type === WORKFLOW_NODE_TYPES.AGENT && node.data?.handoffSourceNodeId) {
+      return String(node.data.handoffSourceNodeId);
+    }
+    return null;
+  }, [node, nodes, edges]);
+
+  const lockedStudioAgentId = useMemo(() => {
+    if (!lockedParentAgentId) return null;
+    const parent = nodes.find((candidate) => candidate.id === lockedParentAgentId);
+    const agentId = parent?.data?.agentId;
+    return typeof agentId === "string" && agentId ? agentId : null;
+  }, [lockedParentAgentId, nodes]);
+
+  const isAgentSelectionLocked = Boolean(lockedStudioAgentId);
+
+  const resolvedAgentOptions = useMemo(() => {
+    if (!isAgentSelectionLocked || !lockedStudioAgentId) return agentOptions;
+    const agent = agentById.get(lockedStudioAgentId);
+    if (!agent) {
+      return [{ value: lockedStudioAgentId, label: lockedStudioAgentId }];
+    }
+    return [{ value: lockedStudioAgentId, label: agentDisplayLabel(agent) }];
+  }, [isAgentSelectionLocked, lockedStudioAgentId, agentOptions, agentById]);
 
   const nodeType = node?.type ?? "";
   const nodeTypeLabel = useMemo(() => {
@@ -45,20 +98,14 @@ export default function WorkflowNodeDrawer({
         return t("workflowPage.nodeTypeOutput");
       case WORKFLOW_NODE_TYPES.AGENT:
         return t("workflowPage.nodeTypeAgent");
+      case WORKFLOW_NODE_TYPES.SUB_AGENT:
+        return t("workflowPage.nodeTypeSubAgent");
       case WORKFLOW_NODE_TYPES.NESTED:
         return t("workflowPage.nodeTypeNested");
       default:
         return "";
     }
   }, [nodeType, t]);
-
-  const agentOptions = useMemo(() => {
-    const agents = [...agentById.values()];
-    return [
-      { value: "", label: t("workflowPage.selectAgent") },
-      ...agents.map((a) => ({ value: a.id, label: agentDisplayLabel(a) })),
-    ];
-  }, [agentById, t]);
 
   const workflowOptions = useMemo(() => {
     return [
@@ -176,15 +223,21 @@ export default function WorkflowNodeDrawer({
               <span className="text-[0.72rem] font-medium text-[var(--os-text-muted)]">
                 {t("workflowPage.agentSelect")}
               </span>
+              {node?.data?.handoffSourceNodeId ? (
+                <p className="text-[0.68rem] leading-relaxed text-[var(--os-text-muted)]">
+                  {t("workflowPage.handoffAgentLockedHint")}
+                </p>
+              ) : null}
               <Select
                 value={String(draft.agentId ?? "")}
                 onChange={(v) => setDraft((p) => ({ ...p, agentId: v || null }))}
-                options={agentOptions}
+                options={resolvedAgentOptions}
                 ariaLabel={t("workflowPage.agentSelect")}
+                disabled={isAgentSelectionLocked}
               />
             </div>
 
-            {selectedAgent ? (
+            {selectedAgent && !node?.data?.handoffSourceNodeId ? (
               <div className="space-y-2">
                 <div className="text-[0.72rem] font-medium text-[var(--os-text-muted)]">
                   {t("workflowPage.nodeSkills")}
@@ -232,6 +285,45 @@ export default function WorkflowNodeDrawer({
                 ) : null}
               </div>
             ) : null}
+          </>
+        ) : null}
+
+        {nodeType === WORKFLOW_NODE_TYPES.SUB_AGENT ? (
+          <>
+            <div className="space-y-1.5">
+              <span className="text-[0.72rem] font-medium text-[var(--os-text-muted)]">
+                {t("workflowPage.agentSelect")}
+              </span>
+              <p className="text-[0.68rem] leading-relaxed text-[var(--os-text-muted)]">
+                {t("workflowPage.subAgentAgentLockedHint")}
+              </p>
+              <Select
+                value={String(draft.agentId ?? "")}
+                onChange={(v) => setDraft((p) => ({ ...p, agentId: v || null }))}
+                options={resolvedAgentOptions}
+                ariaLabel={t("workflowPage.agentSelect")}
+                disabled={isAgentSelectionLocked}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-[0.72rem] font-medium text-[var(--os-text-muted)]">
+                {t("workflowPage.subAgentTask")}
+              </span>
+              <p className="text-[0.68rem] leading-relaxed text-[var(--os-text-muted)]">
+                {t("workflowPage.subAgentTaskHint")}
+              </p>
+              <textarea
+                className="min-h-[120px] w-full resize-y rounded-[10px] border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] bg-[var(--os-bg-elevated)] px-3 py-2 text-[0.78rem] leading-relaxed text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus:border-[color-mix(in_srgb,var(--os-accent)_40%,var(--os-border))] focus:outline-none"
+                value={String(draft.task ?? "")}
+                onChange={(e) => setDraft((p) => ({ ...p, task: e.target.value }))}
+                placeholder={t("workflowPage.subAgentTaskPlaceholder")}
+              />
+            </div>
+
+            <p className="text-[0.68rem] leading-relaxed text-[var(--os-text-muted)]">
+              {t("workflowPage.subAgentNodeHint")}
+            </p>
           </>
         ) : null}
 

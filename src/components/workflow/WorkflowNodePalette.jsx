@@ -39,6 +39,7 @@ export default function WorkflowNodePalette() {
     { type: WORKFLOW_NODE_TYPES.INPUT, label: t("workflowPage.addInput"), theme: "input" },
     { type: WORKFLOW_NODE_TYPES.OUTPUT, label: t("workflowPage.addOutput"), theme: "output" },
     { type: WORKFLOW_NODE_TYPES.AGENT, label: t("workflowPage.addAgent"), theme: "agent" },
+    { type: WORKFLOW_NODE_TYPES.SUB_AGENT, label: t("workflowPage.addSubAgent"), theme: "sub-agent" },
     { type: WORKFLOW_NODE_TYPES.NESTED, label: t("workflowPage.addNested"), theme: "nested" },
   ];
 

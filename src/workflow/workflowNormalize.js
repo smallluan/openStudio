@@ -33,10 +33,16 @@ function normalizeNode(node) {
   if (type === WORKFLOW_NODE_TYPES.AGENT) {
     rawData.agentId = typeof rawData.agentId === "string" ? rawData.agentId : null;
     rawData.skillOverrides = normalizeSkillOverrides(rawData.skillOverrides);
+    rawData.handoffSourceNodeId =
+      typeof rawData.handoffSourceNodeId === "string" ? rawData.handoffSourceNodeId : null;
     rawData.label = typeof rawData.label === "string" ? rawData.label : "智能体节点";
   } else if (type === WORKFLOW_NODE_TYPES.NESTED) {
     rawData.workflowId = typeof rawData.workflowId === "string" ? rawData.workflowId : null;
     rawData.label = typeof rawData.label === "string" ? rawData.label : "嵌套工作流";
+  } else if (type === WORKFLOW_NODE_TYPES.SUB_AGENT) {
+    rawData.agentId = typeof rawData.agentId === "string" ? rawData.agentId : null;
+    rawData.task = typeof rawData.task === "string" ? rawData.task : "";
+    rawData.label = typeof rawData.label === "string" ? rawData.label : "子智能体";
   } else if (type === WORKFLOW_NODE_TYPES.INPUT) {
     rawData.label = typeof rawData.label === "string" ? rawData.label : "输入";
   } else if (type === WORKFLOW_NODE_TYPES.OUTPUT) {

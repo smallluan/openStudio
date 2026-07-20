@@ -1,3 +1,4 @@
+import { MAIN_AGENT_STUDIO_ID } from "../studio/agents.js";
 import { WORKFLOW_NODE_TYPES } from "./workflowTypes.js";
 
 /** @param {{ name?: string; description?: string; draft?: boolean }} [partial] */
@@ -28,7 +29,7 @@ export function createDefaultWorkflow(partial = {}) {
         data: {
           label: "智能体",
           description: "",
-          agentId: null,
+          agentId: MAIN_AGENT_STUDIO_ID,
           skillOverrides: { bind: [], unbind: [] },
         },
       },

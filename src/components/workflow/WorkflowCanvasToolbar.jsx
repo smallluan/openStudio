@@ -17,16 +17,16 @@ export default function WorkflowCanvasToolbar({ canvasTool, onCanvasToolChange, 
 
   const tools = [
     {
-      id: /** @type {const} */ ("select"),
-      label: t("workflowPage.toolSelect"),
-      tip: t("workflowPage.toolSelectTip"),
-      icon: MousePointer2,
-    },
-    {
       id: /** @type {const} */ ("pan"),
       label: t("workflowPage.toolPan"),
       tip: t("workflowPage.toolPanTip"),
       icon: Hand,
+    },
+    {
+      id: /** @type {const} */ ("select"),
+      label: t("workflowPage.toolSelect"),
+      tip: t("workflowPage.toolSelectTip"),
+      icon: MousePointer2,
     },
   ];
 

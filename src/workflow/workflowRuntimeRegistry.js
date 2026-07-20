@@ -4,9 +4,11 @@
  */
 import { loadWorkflowLibrary } from "./workflowsLocalStore.js";
 import { normalizeWorkflowDocument } from "./workflowNormalize.js";
+import { WORKFLOW_NODE_TYPES } from "./workflowTypes.js";
 
 /** @typedef {import('./workflowTypes.js').WorkflowDocument} WorkflowDocument */
 /** @typedef {import('./workflowTypes.js').WorkflowAgentNodeData} WorkflowAgentNodeData */
+/** @typedef {import('./workflowTypes.js').WorkflowSubAgentNodeData} WorkflowSubAgentNodeData */
 
 /**
  * @typedef {{
@@ -51,4 +53,19 @@ export function resolveAgentNodeSkills(agent, nodeData) {
 /** @param {string} workflowId */
 export function getWorkflowById(workflowId) {
   return listWorkflowDocuments().find((w) => w.id === workflowId) ?? null;
+}
+
+/**
+ * Collect sub-agent nodes connected in parallel from a parent agent/sub-agent node.
+ * @param {string} parentNodeId
+ * @param {import('@xyflow/react').Node[]} nodes
+ * @param {import('@xyflow/react').Edge[]} edges
+ * @returns {Array<import('@xyflow/react').Node & { data: WorkflowSubAgentNodeData }>}
+ */
+export function collectParallelSubAgents(parentNodeId, nodes, edges) {
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  return edges
+    .filter((edge) => edge.source === parentNodeId)
+    .map((edge) => nodeById.get(edge.target))
+    .filter((node) => node?.type === WORKFLOW_NODE_TYPES.SUB_AGENT);
 }

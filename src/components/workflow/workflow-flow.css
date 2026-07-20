@@ -179,6 +179,14 @@
   color: color-mix(in srgb, #8b5cf6 80%, var(--os-text-muted));
 }
 
+.wf-node--sub-agent {
+  border-color: color-mix(in srgb, #06b6d4 45%, var(--wf-node-border));
+}
+
+.wf-node--sub-agent .wf-node__badge {
+  color: color-mix(in srgb, #06b6d4 80%, var(--os-text-muted));
+}
+
 .workflow-flow-preview {
   pointer-events: none;
   background: color-mix(in srgb, var(--os-bg-elevated) 60%, var(--os-bg-panel));
@@ -362,6 +370,10 @@
 
 .workflow-palette-item--nested .workflow-palette-item__dot {
   background: #8b5cf6;
+}
+
+.workflow-palette-item--sub-agent .workflow-palette-item__dot {
+  background: #06b6d4;
 }
 
 .workflow-palette-item__label {
