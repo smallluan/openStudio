@@ -7,6 +7,7 @@ import SettingsPage from "./pages/SettingsPage.jsx";
 import ChatLabPage from "./pages/ChatLabPage.jsx";
 import AutomationPage from "./pages/AutomationPage.jsx";
 import WorkflowPage from "./pages/WorkflowPage.jsx";
+import WorkflowEditorPage from "./pages/WorkflowEditorPage.jsx";
 import WebExplorePage from "./pages/WebExplorePage.jsx";
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="skills" element={<SkillMarketPage />} />
           <Route path="automation" element={<AutomationPage />} />
           <Route path="workflow" element={<WorkflowPage />} />
+          <Route path="workflow/:id" element={<WorkflowEditorPage />} />
           <Route path="explore" element={<WebExplorePage />} />
         </Route>
       </Routes>

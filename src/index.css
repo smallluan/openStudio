@@ -1904,6 +1904,11 @@ code {
   overflow: auto;
 }
 
+.route-page--workflow {
+  padding: 0.625rem 1.25rem 1.5rem;
+  overflow: auto;
+}
+
 .route-page__header {
   margin-bottom: 1.25rem;
 }
