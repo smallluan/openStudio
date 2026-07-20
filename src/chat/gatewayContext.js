@@ -3,7 +3,6 @@
  *
  * Canonical transcript lives in chatSessionsStore; each agent session tracks a sync
  * cursor so subsequent turns send deltas instead of replaying the full thread.
- * Orchestration workers use task-scoped slices — no full chat history.
  */
 
 import { agentDisplayLabel, sessionKeyForAgent } from "../studio/agents.js";
@@ -20,7 +19,6 @@ export const GATEWAY_SUMMARY_MAX_CHARS = 2400;
 export const GATEWAY_SUMMARY_REFRESH_TURN_INTERVAL = 12;
 
 /**
- * @typedef {'thread' | 'task' | 'internal'} GatewayContextMode
  * @typedef {'none' | 'bootstrap' | 'incremental' | 'full'} GatewayContextEmbedMode
  */
 
@@ -39,25 +37,14 @@ export const GATEWAY_SUMMARY_REFRESH_TURN_INTERVAL = 12;
 export function isGatewayChatTurn(m) {
   if (!m || m.error) return false;
   if (m.messageKind === "group_member_event") return true;
-  if (m.role !== "user" && m.role !== "assistant") return false;
-  if (m.messageKind === "orchestration_internal") return false;
-  if (m.messageKind === "orchestration_event") return false;
-  if (m.messageKind === "orchestration_plan") return false;
-  return true;
+  return m.role === "user" || m.role === "assistant";
 }
 
 /**
  * @param {Array<Record<string, unknown>>} messages
- * @param {GatewayContextMode} mode
  */
-export function filterMessagesForGatewayContext(messages, mode) {
-  if (mode === "task" || mode === "internal") return [];
-  return (messages ?? []).filter((m) => {
-    if (!isGatewayChatTurn(m)) return false;
-    if (m.messageKind === "orchestration_event") return false;
-    if (m.messageKind === "orchestration_plan") return false;
-    return true;
-  });
+export function filterMessagesForGatewayContext(messages) {
+  return (messages ?? []).filter((m) => isGatewayChatTurn(m));
 }
 
 /**
@@ -78,10 +65,8 @@ export function computeThreadSummary(messages) {
   const turns = (messages ?? []).filter(
     (m) =>
       m.messageKind === "group_member_event" ||
-      ((m.role === "user" || m.role === "assistant") &&
-        m.messageKind !== "orchestration_internal" &&
-        m.messageKind !== "orchestration_event" &&
-        m.messageKind !== "orchestration_plan"),
+      m.role === "user" ||
+      m.role === "assistant",
   );
   if (turns.length <= GATEWAY_BOOTSTRAP_RECENT_TURNS) return "";
   const older = turns.slice(0, Math.max(0, turns.length - GATEWAY_BOOTSTRAP_RECENT_TURNS));
@@ -111,7 +96,7 @@ export function computeThreadSummary(messages) {
  * @param {Array<Record<string, unknown>>} messages
  */
 export function bootstrapMessageSlice(messages) {
-  const chat = filterMessagesForGatewayContext(messages, "thread");
+  const chat = filterMessagesForGatewayContext(messages);
   if (chat.length <= GATEWAY_BOOTSTRAP_RECENT_TURNS) return { slice: chat, summary: "" };
   const summary = computeThreadSummary(chat);
   const slice = chat.slice(-GATEWAY_BOOTSTRAP_RECENT_TURNS);
@@ -134,9 +119,6 @@ export function buildGatewayPayloadRows(msgs, opts = {}) {
         const text = String(m.content ?? "").trim();
         if (!text) return null;
         return { role: "user", content: `[群聊 · 系统]: ${text}` };
-      }
-      if (m.messageKind === "orchestration_plan") {
-        return { role: "assistant", content: `[调度 · 计划]: ${String(m.content ?? "").slice(0, 400)}` };
       }
       if (m.role !== "assistant") {
         const row = {
@@ -186,7 +168,6 @@ export function buildGatewayPayloadRows(msgs, opts = {}) {
  *   conversationId: string;
  *   agentId: string;
  *   historyMessages: Array<Record<string, unknown>>;
- *   mode?: GatewayContextMode;
  *   agentById?: Map<string, import("../studio/agents.js").LobsterAgent>;
  *   mainAgentStudioId?: string;
  *   excludeMessageIds?: string[];
@@ -199,7 +180,6 @@ export function resolveAgentGatewayContext(args) {
     conversationId,
     agentId,
     historyMessages,
-    mode = "thread",
     agentById,
     mainAgentStudioId = "",
     excludeMessageIds = [],
@@ -209,19 +189,11 @@ export function resolveAgentGatewayContext(args) {
   const exclude = new Set(excludeMessageIds.filter(Boolean));
   const rawHistory = (historyMessages ?? []).filter((m) => !exclude.has(String(m.id ?? "")));
 
-  if (mode === "task" || mode === "internal") {
-    return {
-      priorRows: [],
-      contextEmbedMode: "none",
-      syncThroughMessageId: findSyncAnchorMessageId(rawHistory),
-    };
-  }
-
   const rec = getSession(conversationId);
   const sync = rec?.threadContext?.agentSync?.[agentId];
   const lastSyncedId = typeof sync?.lastMessageId === "string" ? sync.lastMessageId : "";
 
-  const chatMessages = filterMessagesForGatewayContext(rawHistory, "thread");
+  const chatMessages = filterMessagesForGatewayContext(rawHistory);
   const syncAnchor = findSyncAnchorMessageId(rawHistory);
 
   if (forceBootstrap || !lastSyncedId) {
@@ -289,7 +261,7 @@ export function recordAgentGatewaySync(conversationId, agentId, lastMessageId, a
   let summary = prev.summary;
   let summaryThroughMessageId = prev.summaryThroughMessageId;
   if (Array.isArray(allMessages) && allMessages.length) {
-    const chat = filterMessagesForGatewayContext(allMessages, "thread");
+    const chat = filterMessagesForGatewayContext(allMessages);
     const turnCount = chat.length;
     const shouldRefresh =
       !summary ||

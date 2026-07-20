@@ -55,8 +55,6 @@ import { AgentMode } from "../studio/modes.js";
  *     memoryMd?: string;
  *     skillIds?: string[];
  *     openclaw?: { sessionKey?: string };
- *     orchestrationRole?: import("../studio/orchestrationRoles.js").OrchestrationRoleValue;
- *     orchestrationDomain?: string;
  *   }) => void;
  *   agentById: Map<string, LobsterAgent>;
  *   mainAgent: LobsterAgent | null;
@@ -295,13 +293,6 @@ export function StudioProvider({ children }) {
         }
         if (!row.openclaw?.sessionKey) {
           row.openclaw = { ...row.openclaw, sessionKey: sessionKeyForAgent(row) };
-        }
-        if (patch.orchestrationRole !== undefined) {
-          row.orchestrationRole =
-            typeof patch.orchestrationRole === "string" ? patch.orchestrationRole.trim() : "";
-        }
-        if (patch.orchestrationDomain !== undefined) {
-          row.orchestrationDomain = patch.orchestrationDomain;
         }
         patched = row;
         return row;

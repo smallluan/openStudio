@@ -53,26 +53,10 @@ import {
   getSession,
   loadAllSessions,
   renameSession,
-  setSessionOrchestrationMode,
-  setSessionOrchestrationFastMode,
-  updateSessionOrchestration,
   updateSessionParticipants,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
 import { buildGroupMemberChangeEvents } from "../chat/chatLabGroupMemberEvents.js";
-import { useOrchestrationRunner } from "../orchestration/useOrchestrationRunner.js";
-import ChatLabOrchestrationPlanPopover from "../components/chat-lab/ChatLabOrchestrationPlanPopover.jsx";
-import ChatLabOrchestrationSidePanel from "../components/chat-lab/ChatLabOrchestrationSidePanel.jsx";
-import {
-  buildOrchestrationAnchorMessage,
-  resolveOrchestrationCurrentStepTitle,
-  hasOrchestrationTimelineMessages,
-  inferOrchestrationRunFromMessages,
-  isOrchestrationSessionBusy,
-  isOrchestrationTuckedMessage,
-  normalizeMessagesForOrchestrationUi,
-  resolveOrchestrationRunForTimeline,
-} from "../studio/orchestrationAnchorMessage.js";
 import {
   activeMentionQuery,
   agentMentionLabel,
@@ -363,7 +347,7 @@ function formatMessageTimestamp(ts, locale) {
  * @param {import("../studio/agents.js").LobsterAgent} agent
  * @param {(key: string) => string} t
  * @param {import("../studio/agents.js").LobsterAgent[]} groupAgents
- * @param {{ orchestrationTeamRoster?: string; mentionDelegateReply?: boolean; workspaceContext?: string; previewContext?: string; webExploreMode?: boolean }} [extra]
+ * @param {{ mentionDelegateReply?: boolean; workspaceContext?: string; previewContext?: string; webExploreMode?: boolean }} [extra]
  */
 /**
  * Ensure page snapshot reaches the model even if system prompt is truncated by the gateway.
@@ -428,13 +412,7 @@ function isDelegatableGroupAssistantMessage(msg, sessionAgentIds) {
   if (!msg || msg.role !== "assistant" || typeof msg.agentId !== "string" || !msg.agentId || msg.error) {
     return false;
   }
-  if (
-    msg.messageKind === "orchestration_event" ||
-    msg.messageKind === "orchestration_internal" ||
-    msg.messageKind === "orchestration_plan" ||
-    msg.messageKind === "orchestration_anchor" ||
-    msg.messageKind === "group_member_event"
-  ) {
+  if (msg.messageKind === "group_member_event") {
     return false;
   }
   if (msg.mentionDelegateReply) return false;
@@ -468,30 +446,7 @@ function toPersistedChatMessage(m) {
     ...(typeof m.mentionDelegateFromAgentId === "string" && m.mentionDelegateFromAgentId
       ? { mentionDelegateFromAgentId: m.mentionDelegateFromAgentId }
       : {}),
-    ...(m.messageKind === "orchestration_event" ||
-    m.messageKind === "orchestration_plan" ||
-    m.messageKind === "orchestration_internal" ||
-    m.messageKind === "group_member_event"
-      ? { messageKind: m.messageKind }
-      : {}),
-    ...(m.orchestrationPlan && typeof m.orchestrationPlan === "object"
-      ? { orchestrationPlan: m.orchestrationPlan }
-      : {}),
-    ...(typeof m.orchestrationPhase === "string" && m.orchestrationPhase
-      ? { orchestrationPhase: m.orchestrationPhase }
-      : {}),
-    ...(typeof m.orchestrationTaskId === "string" && m.orchestrationTaskId
-      ? { orchestrationTaskId: m.orchestrationTaskId }
-      : {}),
-    ...(typeof m.orchestrationEventKey === "string" && m.orchestrationEventKey
-      ? { orchestrationEventKey: m.orchestrationEventKey }
-      : {}),
-    ...(typeof m.orchestrationWorkerId === "string" && m.orchestrationWorkerId
-      ? { orchestrationWorkerId: m.orchestrationWorkerId }
-      : {}),
-    ...(typeof m.orchestrationRunId === "string" && m.orchestrationRunId
-      ? { orchestrationRunId: m.orchestrationRunId }
-      : {}),
+    ...(m.messageKind === "group_member_event" ? { messageKind: m.messageKind } : {}),
   };
 }
 
@@ -542,12 +497,6 @@ function mapSessionMessageRow(m, opts = {}) {
     ...(m.mentionDelegateReply ? { mentionDelegateReply: true } : {}),
     ...(m.mentionDelegateFromAgentId ? { mentionDelegateFromAgentId: m.mentionDelegateFromAgentId } : {}),
     ...(m.messageKind ? { messageKind: m.messageKind } : {}),
-    ...(m.orchestrationPlan ? { orchestrationPlan: m.orchestrationPlan } : {}),
-    ...(m.orchestrationPhase ? { orchestrationPhase: m.orchestrationPhase } : {}),
-    ...(m.orchestrationTaskId ? { orchestrationTaskId: m.orchestrationTaskId } : {}),
-    ...(m.orchestrationEventKey ? { orchestrationEventKey: m.orchestrationEventKey } : {}),
-    ...(m.orchestrationWorkerId ? { orchestrationWorkerId: m.orchestrationWorkerId } : {}),
-    ...(m.orchestrationRunId ? { orchestrationRunId: m.orchestrationRunId } : {}),
     streaming,
   };
 }
@@ -1276,11 +1225,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   conversationModelIdsRef.current = conversationModelIds;
   const [toolbarModelId, setToolbarModelId] = useState("");
   const [participantIds, setParticipantIds] = useState(/** @type {string[]} */ ([]));
-  const [orchestrationMode, setOrchestrationMode] = useState(false);
-  const [orchestrationFastMode, setOrchestrationFastMode] = useState(false);
-  const [orchestrationSideMode, setOrchestrationSideMode] = useState(
-    /** @type {"live" | "timeline"} */ ("live"),
-  );
   const delegatedFromMessageRef = useRef(/** @type {Set<string>} */ (new Set()));
   const delegateAfterAgentReplyRef = useRef(
     /** @type {((assistantMessageId: string, mergedHistory: Array<Record<string, unknown>>) => void) | null} */ (
@@ -1580,7 +1524,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         autoScrollRef.current = true;
         setMessages([]);
         setParticipantIds([]);
-        setOrchestrationMode(false);
         setChatApiBlocked(false);
       } else if (messagesRef.current.length === 0) {
         setChatApiBlocked(false);
@@ -1595,11 +1538,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       setMessages(mapSessionRecordToUiMessages(rec, liveSlices.length ? liveSlices : null));
       const stored = Array.isArray(rec.participantIds) ? rec.participantIds : [];
       setParticipantIds(stored.filter((id) => id && id !== mainAgent?.id));
-      // Temporarily disable multi-agent scheduling until the feature is stabilized.
-      setOrchestrationMode(false);
-      setOrchestrationFastMode(false);
-      if (rec.orchestrationMode) setSessionOrchestrationMode(paramC, false);
-      if (rec.orchestrationFastMode) setSessionOrchestrationFastMode(paramC, false);
       setChatApiBlocked(false);
       return;
     }
@@ -2082,177 +2020,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     [finalizeAssistantById, resetGatewayStream],
   );
 
-  const orchestrationRunner = useOrchestrationRunner({
-    conversationId,
-    agents,
-    mainAgent,
-    participantIds,
-    agentById,
-    messagesRef,
-    setMessages,
-    bridge,
-    beginGatewayStream,
-    resetGatewayStream,
-    flushAndResetGatewayStream,
-    finalizeAssistantById,
-    abortAllActiveStreams,
-    activeStreamIdsRef,
-    assistantStreamIdsRef,
-    orchestrationFastMode,
-    t,
-  });
-
-  const sessionOrchestrationRun = useMemo(() => {
-    void sessionTitleBump;
-    void orchestrationRunner.runnerActivityTick;
-    return getSession(conversationId)?.orchestration ?? null;
-  }, [conversationId, sessionTitleBump, orchestrationRunner.runnerActivityTick]);
-
-  const orchestrationUiMessages = useMemo(
-    () => normalizeMessagesForOrchestrationUi(messages, mainAgent?.id ?? null).messages,
-    [messages, mainAgent?.id],
-  );
-
-  const orchestrationRun = useMemo(
-    () =>
-      resolveOrchestrationRunForTimeline(
-        sessionOrchestrationRun,
-        orchestrationUiMessages,
-        mainAgent?.id ?? null,
-      ),
-    [sessionOrchestrationRun, orchestrationUiMessages, mainAgent?.id],
-  );
-
-  const orchestrationStreamBusy = useMemo(
-    () => orchestrationRunner.isOrchestrationStreamBusy(conversationId),
-    [
-      conversationId,
-      orchestrationRunner,
-      orchestrationRunner.runnerActivityTick,
-      orchestrationRun?.status,
-      orchestrationRun?.updatedAt,
-    ],
-  );
-
-  const orchestrationRunnerActive = useMemo(
-    () => orchestrationRunner.isOrchestrationRunnerActive(conversationId),
-    [
-      conversationId,
-      orchestrationRunner,
-      orchestrationRunner.runnerActivityTick,
-      orchestrationRun?.updatedAt,
-    ],
-  );
-
-  const orchestrationInProgress = useMemo(
-    () => orchestrationRunner.isOrchestrationInProgress(conversationId),
-    [conversationId, orchestrationRunner, orchestrationRun?.status, orchestrationRun?.updatedAt],
-  );
-
-  useEffect(() => {
-    if (!orchestrationInProgress) return;
-    setOrchestrationSideMode("live");
-  }, [orchestrationRun?.runId, orchestrationInProgress]);
-
-  const orchestrationBusyForDock = Boolean(orchestrationRunnerActive || gatewayStreaming);
-  const orchestrationCurrentStepTitle = useMemo(() => {
-    const fallback = orchestrationBusyForDock
-      ? t("chatLab.streaming")
-      : t("orchestration.dock.empty");
-    if (!orchestrationMode || !orchestrationRun?.status || !mainAgent) return fallback;
-    const agentLabels = new Map(agents.map((a) => [a.id, agentDisplayLabel(a)]));
-    const anchor = buildOrchestrationAnchorMessage(
-      orchestrationUiMessages,
-      orchestrationRun,
-      mainAgent,
-      {
-        streaming: orchestrationBusyForDock,
-        t,
-        agentLabels,
-        liveSlices: gatewaySlicesForConv,
-      },
-    );
-    return resolveOrchestrationCurrentStepTitle(anchor?.activityLog, {
-      busy: orchestrationBusyForDock,
-      fallback,
-    });
-  }, [
-    orchestrationMode,
-    orchestrationRun,
-    orchestrationRun?.activeTaskIds,
-    orchestrationRun?.updatedAt,
-    orchestrationRun?.plan,
-    orchestrationRun?.status,
-    mainAgent,
-    orchestrationUiMessages,
-    orchestrationBusyForDock,
-    agents,
-    gatewaySlicesForConv,
-    t,
-  ]);
-
-  const sessionArtifacts = useMemo(() => {
-    const tuckCtx = {
-      orchestrationRun,
-      mainAgentId: mainAgent?.id ?? null,
-      orchestrationMode,
-    };
-    const source = orchestrationInProgress
-      ? orchestrationUiMessages.filter((m) => !isOrchestrationTuckedMessage(m, tuckCtx))
-      : messages;
-    return collectSessionArtifacts(source);
-  }, [messages, orchestrationUiMessages, orchestrationInProgress, orchestrationMode, orchestrationRun, mainAgent?.id]);
-
-  useEffect(() => {
-    if (!conversationId || !orchestrationMode) return;
-    const run = getSession(conversationId)?.orchestration;
-    if (!run) return;
-    if (["planning", "revising", "running"].includes(run.status)) {
-      orchestrationRunner.recoverOrphanOrchestration(conversationId);
-    }
-    // Only recover on conversation entry — not on every status transition (avoids duplicate events).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, orchestrationMode]);
-
-  /** Repair legacy orchestration rows + missing session.orchestration on load. */
-  const orchMigrateDoneRef = useRef(/** @type {Set<string>} */ (new Set()));
-  useEffect(() => {
-    if (!conversationId || !mainAgent?.id) return;
-    const rec = getSession(conversationId);
-    if (!rec) return;
-
-    const uiRows = mapSessionRecordToUiMessages(rec, null);
-    const { messages: normalized, changed } = normalizeMessagesForOrchestrationUi(
-      uiRows,
-      mainAgent.id,
-    );
-
-    const needsRunRepair = !rec.orchestration?.runId;
-    const inferred = needsRunRepair
-      ? inferOrchestrationRunFromMessages(normalized, rec.orchestration ?? null, mainAgent.id)
-      : null;
-
-    if (!changed && !inferred) return;
-    if (orchMigrateDoneRef.current.has(conversationId) && !changed) return;
-
-    if (changed) {
-      const toSave = normalized
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => toPersistedChatMessage(m));
-      if (!ephemeralSession) {
-        upsertSession(conversationId, rec.title || "…", toSave, {
-          participantIds: rec.participantIds,
-          orchestration: rec.orchestration,
-          orchestrationMode: rec.orchestrationMode,
-        });
-      }
-      setMessages(normalized);
-    }
-    if (inferred && !ephemeralSession) {
-      updateSessionOrchestration(conversationId, inferred);
-    }
-    orchMigrateDoneRef.current.add(conversationId);
-  }, [conversationId, ephemeralSession, mainAgent?.id, sessionTitleBump]);
+  const sessionArtifacts = useMemo(() => collectSessionArtifacts(messages), [messages]);
 
   const prevConversationIdRef = useRef(conversationId);
   useEffect(() => {
@@ -2262,34 +2030,15 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   useEffect(() => {
     const prev = prevConversationIdRef.current;
     if (prev && prev !== conversationId) {
-      const leavingOrchBusy = isOrchestrationSessionBusy(getSession(prev));
-      if (!leavingOrchBusy) {
-        void abortAllActiveStreams();
-        void orchestrationRunner.pauseOrchestration(prev);
-      }
+      void abortAllActiveStreams();
       autoScrollRef.current = true;
       const rec = getSession(conversationId);
       if (!rec) {
         setParticipantIds([]);
-        setOrchestrationMode(false);
       }
     }
     prevConversationIdRef.current = conversationId;
-  }, [abortAllActiveStreams, conversationId, mainAgent?.id, orchestrationRunner]);
-
-  /** Background orchestration persists to the session store while another thread is open. */
-  useEffect(() => {
-    if (!conversationId) return undefined;
-    const syncFromStore = () => {
-      const rec = getSession(conversationId);
-      if (!rec || !isOrchestrationSessionBusy(rec)) return;
-      const liveSlices = gatewaySlicesRef.current.filter((s) => s.active && s.conversationId === conversationId);
-      if (liveSlices.length > 0) return;
-      setMessages(mapSessionRecordToUiMessages(rec, null));
-    };
-    window.addEventListener("openstudio-chat-sessions-changed", syncFromStore);
-    return () => window.removeEventListener("openstudio-chat-sessions-changed", syncFromStore);
-  }, [conversationId]);
+  }, [abortAllActiveStreams, conversationId, mainAgent?.id]);
 
   useEffect(() => {
     /** @param {Event} e */
@@ -2393,7 +2142,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           ...(Array.isArray(d.activityLog) ? { activityLog: d.activityLog } : {}),
           ...(Array.isArray(d.assistantTimeline) ? { assistantTimeline: d.assistantTimeline } : {}),
         };
-        if (d.kind === "done" && !orchestrationMode) {
+        if (d.kind === "done") {
           const sessionAgentIds = new Set(
             groupAgentsInSession({ agents, mainAgent, participantIds }).map((a) => a.id),
           );
@@ -2461,7 +2210,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     mainAgent,
     mainAgentLabel,
     mentionEveryoneLabel,
-    orchestrationMode,
     participantIds,
     t,
   ]);
@@ -2881,7 +2629,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       onCommitted,
       foldIntoAssistantId,
     }) => {
-      if (orchestrationMode) return;
       if (!paramC && !ephemeralSession) {
         setSearchParams({ c: conversationId }, { replace: true });
       }
@@ -3173,7 +2920,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       agents,
       mainAgent,
       mainAgentLabel,
-      orchestrationMode,
       paramC,
       mentionEveryoneLabel,
       continuousMentionTargetId,
@@ -3418,7 +3164,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
   const maybeDelegateAfterAgentReply = useCallback(
     (assistantMessageId, mergedHistory) => {
-      if (orchestrationMode) return;
       if (!conversationId) return;
       if (delegatedFromMessageRef.current.has(assistantMessageId)) return;
 
@@ -3460,7 +3205,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       mainAgent,
       mainAgentLabel,
       mentionEveryoneLabel,
-      orchestrationMode,
       participantIds,
     ],
   );
@@ -3565,62 +3309,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       if (hit) effectiveSkillRow = hit;
     }
 
-    if (orchestrationMode) {
-      if (orchestrationStreamBusy) return;
-      if (orchestrationRun?.status === "awaiting_approval") return;
-      if (attachmentSnap?.length || fileRefsSnap?.length) return;
-      const { cleanText, mentionIds } = parseAgentMentions(trimmed, agents, {
-        mainFallback: mainAgentLabel,
-        everyoneLabel: mentionEveryoneLabel,
-        mainAgent,
-        participantIds,
-        stripMentions: false,
-      });
-      const effectiveMentionIds =
-        mentionIds.length === 0 && continuousMentionTargetId ? [continuousMentionTargetId] : mentionIds;
-      const effectiveText = cleanText || trimmed;
-      const now = Date.now();
-      const userMsg = {
-        id: newId(),
-        role: /** @type {const} */ ("user"),
-        content: effectiveText,
-        createdAt: now,
-        ...(effectiveMentionIds.length ? { mentions: effectiveMentionIds } : {}),
-      };
-      setMessages((prev) => [...prev, userMsg]);
-      setInput("");
-      setComposerSkillRow(null);
-      autoScrollRef.current = true;
-      const sessionParticipantIds = [
-        ...new Set([
-          ...(mainAgent ? [mainAgent.id] : []),
-          ...participantIds,
-          ...effectiveMentionIds,
-        ]),
-      ];
-      if (!paramC && !ephemeralSession) setSearchParams({ c: conversationId }, { replace: true });
-      const rec = getSession(conversationId);
-      const persistable = [
-        ...(rec?.messages ?? []),
-        {
-          id: userMsg.id,
-          role: /** @type {const} */ ("user"),
-          content: userMsg.content,
-          createdAt: userMsg.createdAt,
-          ...(effectiveMentionIds.length ? { mentions: effectiveMentionIds } : {}),
-        },
-      ];
-      if (!ephemeralSession) {
-        upsertSession(conversationId, deriveTitleFromMessages(persistable) || "…", persistable, {
-          participantIds: sessionParticipantIds,
-          orchestrationMode: true,
-          orchestration: rec?.orchestration,
-        });
-      }
-      void orchestrationRunner.startOrchestration(conversationId, effectiveText, effectiveMentionIds);
-      return;
-    }
-
     await submitNewUserTurn({
       trimmed,
       imageAttachments: attachmentSnap,
@@ -3650,15 +3338,11 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     gatewayStreaming,
     input,
     isElectron,
-    orchestrationStreamBusy,
-    orchestrationRun?.status,
     agents,
     mainAgent,
     mainAgentLabel,
     mentionEveryoneLabel,
     continuousMentionTargetId,
-    orchestrationMode,
-    orchestrationRunner,
     paramC,
     participantIds,
     setSearchParams,
@@ -3772,12 +3456,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   );
 
   const stop = useCallback(() => {
-    if (orchestrationStreamBusy) {
-      void orchestrationRunner.pauseOrchestration();
-      return;
-    }
     void abortAllActiveStreams();
-  }, [abortAllActiveStreams, orchestrationStreamBusy, orchestrationRunner]);
+  }, [abortAllActiveStreams]);
 
   const exitComposerLongTextMode = useCallback(() => {
     setComposerLongTextMode(false);
@@ -4028,15 +3708,11 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     }
   }, [bootPhase, t]);
 
-  const orchestrationAwaitingPlan =
-    orchestrationMode && orchestrationRun?.status === "awaiting_approval";
-
   const streamLocked = useMemo(
     () =>
       gatewayStreaming ||
-      orchestrationStreamBusy ||
       messages.some((m) => m.role === "assistant" && m.streaming),
-    [gatewayStreaming, orchestrationStreamBusy, messages],
+    [gatewayStreaming, messages],
   );
 
   const sendButtonTitle = useMemo(() => {
@@ -4242,12 +3918,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
   const composerResizeSnapHint =
     composerResizeDragging && composerTextareaPx >= composerSnapPx && !composerLongTextMode;
-
-  const showOrchestrationPlanPopover = Boolean(
-    orchestrationRun?.status &&
-      orchestrationRun.status !== "failed" &&
-      (orchestrationInProgress || Boolean(orchestrationRun.plan?.tasks?.length)),
-  );
 
   const composer = (
     <div className="chat-lab__composer-outer">
@@ -4502,7 +4172,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               className="chat-lab__pill-model"
               disabled={
                 composerInputLocked ||
-                orchestrationInProgress ||
                 (gatewayStreaming && queuedMessages.length === 0)
               }
             />
@@ -4516,7 +4185,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               disabled={
                 composerSkillUiLocked ||
                 composerInputLocked ||
-                orchestrationInProgress ||
                 (gatewayStreaming && queuedMessages.length === 0)
               }
               t={t}
@@ -4528,25 +4196,11 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               disabled={
                 composerSkillUiLocked ||
                 composerInputLocked ||
-                orchestrationInProgress ||
                 (gatewayStreaming && queuedMessages.length === 0)
               }
               onChange={(value) => setComposerSubagentEnabled(Boolean(value))}
               title={t("chatLab.toolbarSubagentHint")}
             />
-            {showOrchestrationPlanPopover && orchestrationRun ? (
-              <ChatLabOrchestrationPlanPopover
-                plan={orchestrationRun.plan}
-                run={orchestrationRun}
-                agents={participantPool}
-                actionsDisabled={orchestrationStreamBusy}
-                onApprove={() => orchestrationRunner.approvePlan(conversationId)}
-                onReject={() => orchestrationRunner.rejectPlan(conversationId)}
-                onRevise={(notes) => orchestrationRunner.revisePlan(conversationId, notes)}
-                onResume={() => orchestrationRunner.resumeOrchestration(conversationId)}
-                t={t}
-              />
-            ) : null}
             {pendingEditMessageId ? (
               <span className="chat-lab__composer-edit-tag" role="status">
                 <span className="chat-lab__composer-edit-tag-label">{t("chatLab.composerEditingMessageTag")}</span>
@@ -4578,19 +4232,13 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               type="button"
               className={cn(
                 "chat-lab__send-round",
-                gatewayStreaming || orchestrationStreamBusy ? "chat-lab__send-round--stop" : "chat-lab__send-round--send",
-                !gatewayStreaming && !orchestrationStreamBusy && canSend && !orchestrationAwaitingPlan && "chat-lab__send-round--active",
+                gatewayStreaming ? "chat-lab__send-round--stop" : "chat-lab__send-round--send",
+                !gatewayStreaming && canSend && "chat-lab__send-round--active",
               )}
-              disabled={!gatewayStreaming && !orchestrationStreamBusy && (!canSend || orchestrationAwaitingPlan)}
-              onClick={gatewayStreaming || orchestrationStreamBusy ? stop : send}
-              title={
-                gatewayStreaming || orchestrationStreamBusy
-                  ? t("chatLab.stop")
-                  : orchestrationAwaitingPlan
-                    ? t("orchestration.awaitingPlanComposerHint")
-                    : sendButtonTitle
-              }
-              aria-label={gatewayStreaming || orchestrationStreamBusy ? t("chatLab.stop") : t("chatLab.send")}
+              disabled={!gatewayStreaming && (!canSend)}
+              onClick={gatewayStreaming ? stop : send}
+              title={gatewayStreaming ? t("chatLab.stop") : sendButtonTitle}
+              aria-label={gatewayStreaming ? t("chatLab.stop") : t("chatLab.send")}
             >
               <span className="chat-lab__send-round-icon" aria-hidden>
                 <Send size={15} strokeWidth={2.25} />
@@ -4650,7 +4298,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                     ...participantIds.filter((id) => id !== mainAgent?.id),
                   ]}
                   onParticipantsChange={handleParticipantsChange}
-                  participantsDisabled={gatewayStreaming || orchestrationRunnerActive}
+                  participantsDisabled={gatewayStreaming}
                   showFloatToggle={showWebExploreFloatToggle}
                   floatOpen={embedMode?.chatFloatOpen !== false}
                   onToggleFloatOpen={embedMode?.onToggleFloatOpen}
@@ -4679,7 +4327,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                     ...participantIds.filter((id) => id !== mainAgent?.id),
                   ]}
                   onParticipantsChange={handleParticipantsChange}
-                  participantsDisabled={gatewayStreaming || orchestrationRunnerActive}
+                  participantsDisabled={gatewayStreaming}
                   showFloatToggle={showWebExploreFloatToggle}
                   floatOpen={embedMode?.chatFloatOpen !== false}
                   onToggleFloatOpen={embedMode?.onToggleFloatOpen}
@@ -4713,14 +4361,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                     mainAgent={mainAgent}
                     participantIds={participantIds}
                     collapseTracePanels={parallelReplyActive}
-                    orchestrationMode={orchestrationMode}
-                    orchestrationUiMessages={orchestrationUiMessages}
-                    orchestrationRun={orchestrationRun}
-                    orchestrationBusy={orchestrationRunnerActive || gatewayStreaming}
-                    onApprovePlan={() => orchestrationRunner.approvePlan(conversationId)}
-                    onRejectPlan={() => orchestrationRunner.rejectPlan(conversationId)}
-                    onRevisePlan={(notes) => orchestrationRunner.revisePlan(conversationId, notes)}
-                    onOpenOrchestrationFlow={() => setOrchestrationSideMode("timeline")}
                   />
                 </ChatLabThreadNav>
                 <ChatLabSelectionToolbar
@@ -4770,50 +4410,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           </div>
         </div>
         {!embedMode?.hidePreviewDock ? (
-        <ChatLabPreviewDock
-          extension={
-            orchestrationMode &&
-            orchestrationRun?.status &&
-            orchestrationRun.status !== "failed" &&
-            (orchestrationInProgress || orchestrationSideMode === "timeline")
-              ? {
-                  title: t("orchestration.dock.title"),
-                  meta:
-                    orchestrationSideMode === "live"
-                      ? t("orchestration.dock.activeWorkers", {
-                          count: Array.isArray(orchestrationRun.activeTaskIds)
-                            ? orchestrationRun.activeTaskIds.length
-                            : 0,
-                        })
-                      : undefined,
-                  body: (
-                    <ChatLabOrchestrationSidePanel
-                      mode={orchestrationSideMode}
-                      run={orchestrationRun}
-                      mainAgent={mainAgent}
-                      agents={agents}
-                      messages={orchestrationUiMessages}
-                      gatewaySlices={gatewaySlicesForConv}
-                      busy={Boolean(orchestrationRunnerActive || gatewayStreaming)}
-                      currentStepTitle={orchestrationCurrentStepTitle}
-                      t={t}
-                      renderWorkerMessage={(message) => (
-                        <OrchestrationWorkerMessageBubble
-                          message={message}
-                          agentById={agentById}
-                          mainAgentLabel={mainAgentLabel}
-                          t={t}
-                          locale={locale}
-                          streamLocked={streamLocked}
-                          orchestrationBusy={Boolean(orchestrationRunnerActive || gatewayStreaming)}
-                        />
-                      )}
-                    />
-                  ),
-                }
-              : null
-          }
-        />
+        <ChatLabPreviewDock />
         ) : null}
         {config?.chatLabRawTraceEnabled ? (
           <ChatLabRawTraceFloatPanel rounds={rawTraceRounds} onClear={clearRawTraceRounds} />
@@ -4997,7 +4594,7 @@ function isRunningToolRow(row) {
 
 /** @param {import("../chat/toolTraceMerge.js").ActivityRow | undefined} row */
 function isRunningActivityRow(row) {
-  if (!row || Boolean(row.orchestrationInterrupted)) return false;
+  if (!row) return false;
   if (Boolean(row.workerStreaming)) return true;
   const stream = String(row.stream ?? "").trim().toLowerCase();
   const phase = String(row.phase ?? "").trim().toLowerCase();
@@ -5015,7 +4612,7 @@ function looksLikeDevTraceLabel(text) {
   const s = String(text ?? "").trim();
   if (!s) return true;
   if (/^[\w.-]+\s·\s[\w.-]+$/i.test(s)) return true;
-  if (/^(lifecycle|orchestration|assistant|tool|session|agent|run|item)([_.:\s-]|$)/i.test(s)) return true;
+  if (/^(lifecycle|assistant|tool|session|agent|run|item)([_.:\s-]|$)/i.test(s)) return true;
   if (/^[a-z][a-z0-9_]*$/i.test(s) && s.includes("_")) return true;
   return false;
 }
@@ -5179,12 +4776,6 @@ function getStreamingBusyLabelFromActivity(row, t) {
     return t("chatLab.streamingWorking");
   }
 
-  if (stream === "orchestration" || Boolean(row.orchestrationLeadStep)) {
-    if (title && !looksLikeDevTraceLabel(title) && !looksLikeShellCommand(title)) {
-      return truncateOneLine(title, 64);
-    }
-    return t("chatLab.streamingOrchestrating");
-  }
 
   if (stream === "subagent") {
     const task =
@@ -5928,30 +5519,6 @@ function isTerminalLifecycleRef(refId) {
   return /^lifecycle:[^:]*:(end|error|failed|cancelled|canceled|complete|completed|ok)$/i.test(ref);
 }
 
-/** @param {import("../chat/toolTraceMerge.js").ActivityRow[] | undefined} nestedActivity */
-function orchestrationNestedLifecycleEnded(nestedActivity) {
-  if (!Array.isArray(nestedActivity) || !nestedActivity.length) return false;
-  return nestedActivity.some(
-    (r) =>
-      String(r.stream ?? "").toLowerCase() === "lifecycle" &&
-      isCompletedActivityPhase(r.phase),
-  );
-}
-
-/** @param {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[] | undefined} timeline */
-function orchestrationTimelineLifecycleEnded(timeline) {
-  if (!Array.isArray(timeline) || !timeline.length) return false;
-  return timeline.some((seg) => seg?.kind === "activity" && isTerminalLifecycleRef(seg.refId));
-}
-
-/** @param {import("../chat/toolTraceMerge.js").ActivityRow} row */
-function orchestrationRowLifecycleEnded(row) {
-  return (
-    orchestrationNestedLifecycleEnded(row.nestedActivity) ||
-    orchestrationTimelineLifecycleEnded(row.assistantTimeline)
-  );
-}
-
 /** @returns {"ok"|"run"|"fail"} */
 function activityGlyphState(row, streaming, isTailRow) {
   const phase = String(row.phase ?? "").toLowerCase();
@@ -6155,88 +5722,46 @@ function ActivityRow({
   mdComponents,
   disableEnterAnim = false,
 }) {
-  const showEnterAnimRaw = useTraceRowEnterOnMount(row.id, enterRegistryRef, disableEnterAnim);
+  const showEnterAnim = useTraceRowEnterOnMount(row.id, enterRegistryRef, disableEnterAnim);
   const stream = truncateOneLine(String(row.stream ?? "").trim(), 64);
-  const isOrchRow = stream.toLowerCase() === "orchestration";
-  const orchEventKey =
-    typeof row.orchestrationEventKey === "string" ? row.orchestrationEventKey.trim() : "";
-  const isOrchAssignment =
-    Boolean(row.orchestrationAssignment) ||
-    orchEventKey === "pre_task_start" ||
-    orchEventKey === "task_assigned";
-  const showEnterAnim = isOrchRow ? false : showEnterAnimRaw;
-  const titleRaw = String(row.title ?? "").trim();
   const phase = String(row.phase ?? "").trim();
+  const titleRaw = String(row.title ?? "").trim();
   const title = formatActivityHeadline(row) || "—";
   const textRaw = typeof row.text === "string" ? row.text.trim() : "";
   const truncatedText = textRaw.length > 2000 ? `${textRaw.slice(0, 2000)}…` : textRaw;
   const nestedToolRows = Array.isArray(row.toolTrace) ? row.toolTrace : [];
   const nestedActivityRows = Array.isArray(row.nestedActivity) ? row.nestedActivity : [];
   const workerTimeline = Array.isArray(row.assistantTimeline) ? row.assistantTimeline : [];
-  const workerStreaming = isOrchAssignment ? false : Boolean(row.workerStreaming);
+  const workerStreaming = Boolean(row.workerStreaming);
   const rowPhase = String(row.phase ?? "").trim();
-  const rowInterrupted = Boolean(row.orchestrationInterrupted);
-  const isOrchLeadStep = Boolean(row.orchestrationLeadStep);
-  const agentLifecycleEnded =
-    isOrchRow &&
-    !rowInterrupted &&
-    (orchestrationNestedLifecycleEnded(nestedActivityRows) ||
-      orchestrationTimelineLifecycleEnded(workerTimeline));
-  const rowDone =
-    !rowInterrupted &&
-    (isOrchAssignment || isCompletedActivityPhase(rowPhase) || agentLifecycleEnded);
-  const rowActive = !rowDone && !rowInterrupted && (workerStreaming || rowPhase === "running");
-
-  const titleOnly =
-    stepTitleOnly || (Boolean(row.orchestrationStepTitleOnly) && !isOrchLeadStep);
+  const rowDone = isCompletedActivityPhase(rowPhase);
+  const rowActive = !rowDone && (workerStreaming || rowPhase === "running");
+  const titleOnly = stepTitleOnly;
   const hasDetail = titleOnly
     ? false
-    : isOrchAssignment
-      ? false
-      : Boolean(
-          isOrchRow
-            ? isOrchLeadStep
-              ? truncatedText.length > 0 ||
-                workerTimeline.length > 0 ||
-                nestedToolRows.length > 0 ||
-                nestedActivityRows.length > 0 ||
-                rowActive
-              : rowActive ||
-                workerTimeline.length > 0 ||
-                truncatedText.length > 0 ||
-                nestedToolRows.length > 0 ||
-                nestedActivityRows.length > 0
-            : phase ||
-              truncatedText.length > 0 ||
-              stream ||
-              nestedToolRows.length > 0 ||
-              nestedActivityRows.length > 0,
-        );
-
+    : Boolean(
+        phase ||
+          truncatedText.length > 0 ||
+          stream ||
+          nestedToolRows.length > 0 ||
+          nestedActivityRows.length > 0 ||
+          workerTimeline.length > 0,
+      );
   const ariaPieces = [stream, titleRaw || undefined, phase || undefined].filter(Boolean);
   const aria = ariaPieces.length ? ariaPieces.join(" · ") : title;
-  const gState = rowInterrupted
-    ? "fail"
-    : rowDone
-      ? "ok"
-      : activityGlyphState(
-          row,
-          Boolean(streaming || workerStreaming),
-          Boolean(isOrchRow ? rowActive : isTail || workerStreaming),
-        );
-
+  const gState = rowDone
+    ? "ok"
+    : activityGlyphState(row, Boolean(streaming || workerStreaming), Boolean(isTail || workerStreaming));
   const [rowOpen, setRowOpen] = useState(false);
   const autoOpenedRef = useRef(false);
   const userInteractedRef = useRef(false);
-
   useEffect(() => {
     if (!autoExpandOnContent || titleOnly) return;
-    const active = isOrchRow
-      ? rowActive
-      : !rowDone &&
-        (workerStreaming ||
-          rowPhase === "running" ||
-          (Boolean(streaming) && Boolean(isTail) && rowPhase === "running"));
+    const active =
+      !rowDone &&
+      (workerStreaming ||
+        rowPhase === "running" ||
+        (Boolean(streaming) && Boolean(isTail) && rowPhase === "running"));
     if (active) {
       autoOpenedRef.current = true;
       if (!rowOpen) setRowOpen(true);
@@ -6245,8 +5770,7 @@ function ActivityRow({
     if (autoOpenedRef.current && !userInteractedRef.current && rowOpen) {
       setRowOpen(false);
     }
-  }, [autoExpandOnContent, isOrchRow, rowActive, rowDone, workerStreaming, streaming, isTail, rowPhase]);
-
+  }, [autoExpandOnContent, rowActive, rowDone, workerStreaming, streaming, isTail, rowPhase, titleOnly, rowOpen]);
   const nestedScrollDigest = useMemo(
     () =>
       [
@@ -6267,19 +5791,9 @@ function ActivityRow({
         timelineContentDigest(workerTimeline),
         truncatedText.length,
         workerStreaming ? 1 : 0,
-        agentLifecycleEnded ? 1 : 0,
       ].join(":"),
-    [
-      nestedActivityRows,
-      nestedToolRows,
-      workerTimeline,
-      truncatedText,
-      workerStreaming,
-      agentLifecycleEnded,
-    ],
+    [nestedActivityRows, nestedToolRows, workerTimeline, truncatedText, workerStreaming],
   );
-  const nestedScrollPinActive = isOrchRow && rowActive;
-
   return (
     <TraceDisclosure
       variant="row"
@@ -6318,67 +5832,21 @@ function ActivityRow({
     >
       {hasDetail ? (
         <TraceNestedScrollBody
-          className={cn("chat-lab__tool-nested-body", isOrchRow && "chat-lab__tool-nested-body--orch")}
-          pinActive={nestedScrollPinActive}
+          className="chat-lab__tool-nested-body"
+          pinActive={false}
           contentDigest={nestedScrollDigest}
         >
-          {isOrchRow ? (
-            isOrchLeadStep ? (
-              truncatedText ? (
-                <div className="chat-lab__activity-text chat-lab__activity-text--orch chat-lab__activity-text--plain">
-                  {truncatedText}
-                </div>
-              ) : workerTimeline.length > 0 || nestedToolRows.length > 0 || nestedActivityRows.length > 0 ? (
-                <div className="chat-lab__orch-nested-traces chat-lab__orch-nested-traces--interleaved">
-                  <AssistantInterleavedBody
-                    timeline={workerTimeline}
-                    toolRows={nestedToolRows}
-                    activityRows={nestedActivityRows}
-                    mdComponents={{}}
-                    t={t}
-                    streaming={workerStreaming}
-                    tailBusy={false}
-                    tailBusyLabel={t("chatLab.streaming")}
-                    keepTraceCollapsed={false}
-                    nested
-                    plainText
-                  />
-                </div>
-              ) : null
-            ) : workerTimeline.length > 0 || nestedToolRows.length > 0 || nestedActivityRows.length > 0 ? (
-              <div className="chat-lab__orch-nested-traces chat-lab__orch-nested-traces--interleaved">
-                <AssistantInterleavedBody
-                  timeline={workerTimeline}
-                  toolRows={nestedToolRows}
-                  activityRows={nestedActivityRows}
-                  mdComponents={mdComponents ?? {}}
-                  t={t}
-                  streaming={workerStreaming}
-                  tailBusy={false}
-                  tailBusyLabel={t("chatLab.streaming")}
-                  keepTraceCollapsed={false}
-                  nested={!mdComponents}
-                  plainText={!mdComponents}
-                />
-              </div>
-            ) : truncatedText ? (
-              <div className="chat-lab__activity-text chat-lab__activity-text--orch">{truncatedText}</div>
-            ) : null
-          ) : (
-            <>
-              {stream ? (
-                <div className="chat-lab__tool-nested-meta">
-                  <span className="muted">{stream}</span>
-                </div>
-              ) : null}
-              {phase ? <div className="muted">{t("chatLab.toolPhase", { phase })}</div> : null}
-              {truncatedText ? (
-                <div className="chat-lab__activity-text">{truncatedText}</div>
-              ) : !phase && stream ? (
-                <div className="muted">{t("chatLab.activityEmptyDetail")}</div>
-              ) : null}
-            </>
-          )}
+          {stream ? (
+            <div className="chat-lab__tool-nested-meta">
+              <span className="muted">{stream}</span>
+            </div>
+          ) : null}
+          {phase ? <div className="muted">{t("chatLab.toolPhase", { phase })}</div> : null}
+          {truncatedText ? (
+            <div className="chat-lab__activity-text">{truncatedText}</div>
+          ) : !phase && stream ? (
+            <div className="muted">{t("chatLab.activityEmptyDetail")}</div>
+          ) : null}
         </TraceNestedScrollBody>
       ) : null}
     </TraceDisclosure>
@@ -6551,7 +6019,6 @@ function ActivityChainPanel({
   t,
   streaming,
   keepCollapsed = false,
-  orchestrationMode = false,
   stepTitleOnly = false,
   mdComponents,
 }) {
@@ -6562,13 +6029,9 @@ function ActivityChainPanel({
       setOpen(false);
       return;
     }
-    if (orchestrationMode) {
-      setOpen(Boolean(streaming));
-      return;
-    }
     if (streaming) setOpen(true);
     else setOpen(false);
-  }, [streaming, keepCollapsed, orchestrationMode]);
+  }, [streaming, keepCollapsed]);
   if (!rows?.length) return null;
   const disableEnterAnim = shouldDisableTraceRowEnterAnim(streaming, rows.length);
   return (
@@ -6588,12 +6051,10 @@ function ActivityChainPanel({
             streaming={streaming}
             isTail={
               Boolean(streaming) &&
-              !r.orchestrationInterrupted &&
-              (Boolean(r.workerStreaming) ||
-                (String(r.phase ?? "") === "running" && !orchestrationRowLifecycleEnded(r)))
+              (Boolean(r.workerStreaming) || String(r.phase ?? "") === "running")
             }
             enterRegistryRef={enterRegistryRef}
-            autoExpandOnContent={orchestrationMode}
+            autoExpandOnContent={false}
             stepTitleOnly={stepTitleOnly}
             mdComponents={mdComponents}
             disableEnterAnim={disableEnterAnim}
@@ -6604,26 +6065,7 @@ function ActivityChainPanel({
   );
 }
 
-/**
- * @param {string} eventKey
- */
-function isOrchestrationStepOnlyEvent(eventKey) {
-  return (
-    eventKey === "task_assigned" ||
-    eventKey === "task_start" ||
-    eventKey === "task_done" ||
-    eventKey === "pre_task_start" ||
-    eventKey === "pre_task_running" ||
-    eventKey === "pre_task_done" ||
-    eventKey === "review_passed" ||
-    eventKey === "review_rework" ||
-    eventKey === "review_blocked" ||
-    eventKey === "synthesizing_plan" ||
-    eventKey === "awaiting_approval" ||
-    eventKey === "plan_approved" ||
-    eventKey === "plan_rejected"
-  );
-}
+
 
 function MessageMetaCopyIcon() {
   return (
@@ -7053,6 +6495,12 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
   );
 });
 
+/** @param {string | undefined} kind */
+function isLegacyDagMessageKind(kind) {
+  if (typeof kind !== "string" || !kind) return false;
+  return /^o[a-z]+_(internal|event|plan|anchor)$/.test(kind);
+}
+
 /**
  * @param {{
  *   message: {
@@ -7069,17 +6517,8 @@ const AssistantQuickReplyChips = memo(function AssistantQuickReplyChips({
  *     skillMeta?: { kind: "openclaw" | "user"; slug?: string; userSkillId?: string; label: string; emoji: string };
  *     imageAttachments?: { mime: string; dataUrl: string }[];
  *     mentions?: string[];
- *     messageKind?: "orchestration_event" | "orchestration_plan";
- *     orchestrationPlan?: import("../studio/orchestration.js").OrchestrationPlan;
  *   };
  *   agents?: import("../studio/agents.js").LobsterAgent[];
- *   orchestrationRun?: import("../studio/orchestration.js").OrchestrationRun | null;
- *   orchestrationBusy?: boolean;
- *   onApprovePlan?: () => void;
- *   onRejectPlan?: () => void;
- *   onRevisePlan?: (notes: string) => void;
- *   showOrchestrationFlowEntry?: boolean;
- *   onOpenOrchestrationFlow?: () => void;
  *   mentionAgents?: Array<{ label: string; glyph: string }>;
  *   collapseTracePanels?: boolean;
  *   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -7119,16 +6558,7 @@ const MessageBubble = memo(function MessageBubble({
   agentName,
   mentionAgents = [],
   collapseTracePanels = false,
-  orchestrationSidePanel = false,
   agents = [],
-  orchestrationMode = false,
-  orchestrationRun = null,
-  orchestrationBusy = false,
-  onApprovePlan,
-  onRejectPlan,
-  onRevisePlan,
-  showOrchestrationFlowEntry = false,
-  onOpenOrchestrationFlow,
 }) {
   const isUser = message.role === "user";
   if (message.messageKind === "group_member_event") {
@@ -7138,7 +6568,9 @@ const MessageBubble = memo(function MessageBubble({
       </div>
     );
   }
-  if (message.messageKind === "orchestration_internal") return null;
+  if (isLegacyDagMessageKind(message.messageKind)) {
+    return null;
+  }
   if (isUser && isSidebarAutomationInternalUserMessage(String(message.content ?? ""))) return null;
 
   const sidebarAutomationPending =
@@ -7146,20 +6578,6 @@ const MessageBubble = memo(function MessageBubble({
     isSidebarAutomationCarrierMessage(message, Boolean(message.streaming)) &&
     !(Array.isArray(message.toolTrace) && message.toolTrace.some((r) => isSidebarAutomationToolRow(r)));
 
-  const orchTimelineActive = Boolean(orchestrationRun?.status);
-  if (
-    orchTimelineActive &&
-    isOrchestrationTuckedMessage(message, { orchestrationRun, orchestrationMode })
-  ) {
-    return null;
-  }
-
-  const isOrchEvent = message.messageKind === "orchestration_event";
-  const orchEventKey = typeof message.orchestrationEventKey === "string" ? message.orchestrationEventKey : "";
-  if (isOrchEvent && orchTimelineActive) return null;
-  const isOrchAnchor = message.messageKind === "orchestration_anchor";
-  const isOrchPlan =
-    !isOrchAnchor && message.messageKind === "orchestration_plan" && message.orchestrationPlan;
   const shouldEnterAnim = isUser && animateUserEnter;
   const handleUserEnterAnimEnd = useCallback(
     /** @param {import("react").AnimationEvent<HTMLDivElement>} e */
@@ -7179,9 +6597,6 @@ const MessageBubble = memo(function MessageBubble({
   }, [shouldEnterAnim, message.id, onUserEnterAnimEnd]);
   const timeline = Array.isArray(message.assistantTimeline) ? message.assistantTimeline : [];
   const interleavedAssistant = timeline.length > 0;
-  const anchorActivityRows = isOrchAnchor && Array.isArray(message.activityLog) ? message.activityLog : [];
-  const anchorStepRows = anchorActivityRows;
-
   const toolRows = Array.isArray(message.toolTrace) ? message.toolTrace : [];
   const activityRows = Array.isArray(message.activityLog) ? message.activityLog : [];
   const subagentActivityRows = useMemo(() => {
@@ -7224,8 +6639,7 @@ const MessageBubble = memo(function MessageBubble({
     !message.content &&
     !message.thinking &&
     !message.error &&
-    !interleavedAssistant &&
-    !(isOrchAnchor && anchorActivityRows.length > 0);
+    !interleavedAssistant;
 
   const interleavedTailBusy = interleavedAssistant && bubbleStreaming && !message.error;
 
@@ -7432,7 +6846,7 @@ const MessageBubble = memo(function MessageBubble({
       className={cn(
         "chat-lab__msg",
         isUser ? "chat-lab__msg--user" : "chat-lab__msg--assistant",
-        orchestrationSidePanel && "chat-lab__msg--orch-side",
+
         shouldEnterAnim && "chat-lab__msg--user-enter chat-lab__reveal-enter",
       )}
       data-message-id={message.id}
@@ -7475,7 +6889,7 @@ const MessageBubble = memo(function MessageBubble({
           ))}
         </div>
       : null}
-      {!isUser && agentName && !orchestrationSidePanel ? (
+      {!isUser && agentName ? (
         <div className="chat-lab__msg-agent-head">
           <Avatar
             src={agentGlyph}
@@ -7490,37 +6904,13 @@ const MessageBubble = memo(function MessageBubble({
         className={cn(
           "chat-lab__bubble",
           isUser && "chat-lab__bubble--user",
-          orchestrationSidePanel && "chat-lab__bubble--orch-side",
+
           shouldEnterAnim && "chat-lab__reveal-blur-host",
         )}
         data-role={message.role}
       >
         {shouldEnterAnim ? <span className="chat-lab__reveal-blur-veil" aria-hidden /> : null}
-        {isOrchAnchor && anchorStepRows.length > 0 ? (
-          <ActivityChainPanel
-            rows={anchorStepRows}
-            t={t}
-            streaming={Boolean(message.streaming)}
-            keepCollapsed={false}
-            orchestrationMode
-            mdComponents={mdComponents}
-          />
-        ) : null}
-        {isOrchAnchor && message.streaming ? (
-          <div className="chat-lab__orch-streaming-tail">
-            <ChatStreamingIndicator label={streamingBusyLabel} />
-          </div>
-        ) : null}
-        {isOrchAnchor && message.error ? (
-          <div className="mt-1 text-[0.78rem]" style={{ color: "#d84b4b" }}>
-            {message.error}
-          </div>
-        ) : null}
-        {!isOrchPlan &&
-        !isOrchAnchor &&
-        !isUser &&
-        !isOrchEvent &&
-        !interleavedAssistant &&
+        {!isUser && !interleavedAssistant &&
         toolRows.some((r) => !isSessionsSpawnToolName(r.toolName)) ? (
           <ToolChainPanel
             rows={toolRows.filter((r) => !isSessionsSpawnToolName(r.toolName))}
@@ -7529,11 +6919,7 @@ const MessageBubble = memo(function MessageBubble({
             keepCollapsed={collapseTracePanels}
           />
         ) : null}
-        {!isOrchPlan &&
-        !isOrchAnchor &&
-        !isUser &&
-        !isOrchEvent &&
-        !interleavedAssistant &&
+        {!isUser && !interleavedAssistant &&
         generalActivityRows.length > 0 ? (
           <ActivityChainPanel
             rows={generalActivityRows}
@@ -7542,11 +6928,7 @@ const MessageBubble = memo(function MessageBubble({
             keepCollapsed={collapseTracePanels}
           />
         ) : null}
-        {!isOrchPlan &&
-        !isOrchAnchor &&
-        !isUser &&
-        !isOrchEvent &&
-        !interleavedAssistant &&
+        {!isUser && !interleavedAssistant &&
         subagentActivityRows.length > 0 ? (
           <div className="chat-lab__subagent-stack">
             {subagentActivityRows.map((row) => {
@@ -7563,7 +6945,7 @@ const MessageBubble = memo(function MessageBubble({
             })}
           </div>
         ) : null}
-        {!isOrchPlan && !isUser && !interleavedAssistant && message.thinking ? (
+        {!isUser && !interleavedAssistant && message.thinking ? (
           <TraceDisclosure
             className={cn("chat-lab__think", bubbleStreaming && "thinking-pulse-border")}
             open={thinkOpen}
@@ -7580,9 +6962,7 @@ const MessageBubble = memo(function MessageBubble({
             <pre className="chat-lab__think-body">{message.thinking}</pre>
           </TraceDisclosure>
         ) : null}
-        {isOrchPlan || (isOrchAnchor && !message.content) || (isOrchEvent && isOrchestrationStepOnlyEvent(orchEventKey))
-          ? null
-          : isUser ? (
+        {isUser ? (
           <UserMessageCollapsibleBody
             message={message}
             t={t}
@@ -7691,20 +7071,6 @@ const MessageBubble = memo(function MessageBubble({
             >
               {copiedPulse ? <MessageMetaCopiedIcon /> : <MessageMetaCopyIcon />}
             </Button>
-            {!isUser && showOrchestrationFlowEntry && onOpenOrchestrationFlow ? (
-              <Button
-                variant="text"
-                shape="square"
-                size="small"
-                type="button"
-                className="chat-lab__msg-action-btn chat-lab__msg-action-btn--flow"
-                onClick={onOpenOrchestrationFlow}
-                title={t("orchestration.dock.viewFlow")}
-                aria-label={t("orchestration.dock.viewFlow")}
-              >
-                {t("orchestration.dock.title")}
-              </Button>
-            ) : null}
             {isUser ? (
               <Button
                 variant="text"
@@ -7731,60 +7097,8 @@ const MessageBubble = memo(function MessageBubble({
 });
 
 /**
- * Worker output inside orchestration preview dock — identical to main chat MessageBubble.
  * @param {{
- *   message: Record<string, unknown> & {
- *     id: string;
- *     role: "user" | "assistant";
- *     content?: string;
- *     thinking?: string;
- *     streaming?: boolean;
- *     error?: string;
- *     agentId?: string;
- *     toolTrace?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
- *     activityLog?: import("../chat/toolTraceMerge.js").ActivityRow[];
- *     assistantTimeline?: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[];
- *   };
- *   agentById: Map<string, import("../studio/agents.js").LobsterAgent>;
- *   mainAgentLabel: string;
- *   t: (key: string, vars?: Record<string, string | number>) => string;
- *   locale: import("../i18n/messages.js").LocaleId;
- *   streamLocked: boolean;
- *   orchestrationBusy?: boolean;
- * }} props
- */
-function OrchestrationWorkerMessageBubble({
-  message,
-  agentById,
-  mainAgentLabel,
-  t,
-  locale,
-  streamLocked,
-  orchestrationBusy = false,
-}) {
-  const agent = message.agentId ? agentById.get(message.agentId) : undefined;
-  return (
-    <MessageBubble
-      message={message}
-      t={t}
-      locale={locale}
-      streamLocked={streamLocked}
-      allowAssistantQuickReply={false}
-      quickReplyDisabled
-      onBeginUserEdit={() => {}}
-      agentGlyph={agent ? agentAvatarGlyph(agent) : undefined}
-      agentName={agent ? agentDisplayLabel(agent) : undefined}
-      mentionAgents={mentionAgentsForMessage(message, agentById, mainAgentLabel)}
-      collapseTracePanels={false}
-      orchestrationSidePanel
-      orchestrationMode={false}
-      orchestrationRun={null}
-      orchestrationBusy={orchestrationBusy}
-    />
-  );
-}
-
-/**
+ *   content?: string;/**
  * @param {{
  *   content?: string;
  *   thinking?: string;
@@ -7878,44 +7192,8 @@ function buildGatewaySlicesDigest(slices) {
     .join("|");
 }
 
-/** @param {import("../chat/toolTraceMerge.js").ActivityRow[] | undefined} activityLog */
-function buildOrchestrationActivityDigest(activityLog) {
-  if (!Array.isArray(activityLog) || !activityLog.length) return "";
-  return activityLog
-    .map((r) =>
-      [
-        r.id,
-        String(r.text ?? "").length,
-        r.phase ?? "",
-        Array.isArray(r.toolTrace) ? r.toolTrace.length : 0,
-        toolTraceContentDigest(r.toolTrace),
-        timelineContentDigest(r.assistantTimeline),
-        r.workerStreaming ? 1 : 0,
-      ].join(":"),
-    )
-    .join("|");
-}
-
 /**
- * @param {import("../chat/toolTraceMerge.js").ActivityRow[] | undefined} activityLog
- */
-function buildOrchestrationActiveWorkerCount(activityLog) {
-  if (!Array.isArray(activityLog) || !activityLog.length) return 0;
-  const activeKeys = new Set(["task_start", "pre_task_running", "review_rework"]);
-  const doneKeys = new Set(["task_done", "pre_task_done", "review_passed", "review_blocked"]);
-  const open = new Set();
-  for (const row of activityLog) {
-    if (!row || typeof row !== "object") continue;
-    const key = String(row.orchestrationEventKey ?? "").trim();
-    const workerId = String(row.orchestrationWorkerId ?? "").trim();
-    if (!key || !workerId) continue;
-    if (activeKeys.has(key)) open.add(workerId);
-    if (doneKeys.has(key)) open.delete(workerId);
-  }
-  return open.size;
-}
-
-/**
+ * @param {{ mentions?: string[]; content?: string; role?: string; agentId?: string }} message/**
  * @param {{ mentions?: string[]; content?: string; role?: string; agentId?: string }} message
  * @param {Map<string, import("../studio/agents.js").LobsterAgent>} agentById
  * @param {string} mainAgentLabel
@@ -7965,16 +7243,7 @@ function mentionAgentsForMessage(message, agentById, mainAgentLabel, opts = {}) 
  * @param {ChatLabMessageListProps} props
  */
 function ChatLabMessageList(props) {
-  const orchActive = Boolean(props.orchestrationRun?.status);
-  const orchSource = props.orchestrationUiMessages ?? props.messages;
-  const orchMessages = hasOrchestrationTimelineMessages(orchSource, props.mainAgent?.id ?? null);
-  // Orchestration tucking + anchor bubble require the plain list (virtual rows skip it).
-  if (
-    props.orchestrationMode ||
-    orchActive ||
-    orchMessages ||
-    props.messages.length <= CHAT_LAB_PLAIN_MESSAGE_MAX
-  ) {
+  if (props.messages.length <= CHAT_LAB_PLAIN_MESSAGE_MAX) {
     return <ChatLabPlainMessageList {...props} />;
   }
   return <ChatLabVirtualMessageList {...props} />;
@@ -8010,66 +7279,14 @@ function ChatLabPlainMessageList({
   mainAgent,
   participantIds,
   collapseTracePanels = false,
-  orchestrationMode = false,
-  orchestrationUiMessages,
-  orchestrationRun = null,
-  orchestrationBusy = false,
-  onApprovePlan,
-  onRejectPlan,
-  onRevisePlan,
-  onOpenOrchestrationFlow,
 }) {
-  const orchSource = orchestrationUiMessages ?? messages;
-  const gatewaySlicesDigest = useMemo(
-    () => buildGatewaySlicesDigest(gatewayStreamSlices),
-    [gatewayStreamSlices],
-  );
   const mentionDisplayOpts = useMemo(
     () => ({ everyoneLabel: mentionEveryoneLabel, mainAgent, participantIds }),
     [mentionEveryoneLabel, mainAgent, participantIds],
   );
   const messagesMeasureDigest = useMemo(() => buildMessagesMeasureDigest(messages), [messages]);
-  const showOrchestrationTimeline = Boolean(orchestrationRun?.status);
-  const tuckCtx = useMemo(
-    () => ({ orchestrationRun, mainAgentId: mainAgent?.id ?? null, orchestrationMode }),
-    [orchestrationRun, mainAgent?.id, orchestrationMode],
-  );
-  const tuckedMessageIds = useMemo(() => {
-    if (!showOrchestrationTimeline) return new Set();
-    return new Set(orchSource.filter((m) => isOrchestrationTuckedMessage(m, tuckCtx)).map((m) => m.id));
-  }, [orchSource, showOrchestrationTimeline, tuckCtx]);
-
-  const orchestrationAnchorMessage = useMemo(() => {
-    if (!showOrchestrationTimeline || !orchestrationRun || !mainAgent) return null;
-    const agentLabels = new Map(
-      agents.map((a) => [a.id, agentDisplayLabel(a)]),
-    );
-    return buildOrchestrationAnchorMessage(orchSource, orchestrationRun, mainAgent, {
-      streaming: orchestrationBusy,
-      t,
-      agentLabels,
-      liveSlices: gatewayStreamSlices,
-    });
-  }, [
-    showOrchestrationTimeline,
-    orchestrationRun,
-    orchestrationRun?.activeTaskIds,
-    orchestrationRun?.updatedAt,
-    orchestrationRun?.plan,
-    mainAgent,
-    orchSource,
-    orchestrationBusy,
-    agents,
-    t,
-    gatewaySlicesDigest,
-    gatewayStreamSlices,
-  ]);
-  const orchestrationActivityDigest = useMemo(
-    () => buildOrchestrationActivityDigest(orchestrationAnchorMessage?.activityLog),
-    [orchestrationAnchorMessage],
-  );
   const scrollPinKey = messages.length
-    ? `${conversationId}:${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}:${orchestrationBusy ? 1 : 0}:${orchestrationActivityDigest}`
+    ? `${conversationId}:${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}`
     : "";
 
   const handleScroll = useCallback(() => {
@@ -8083,34 +7300,14 @@ function ChatLabPlainMessageList({
   const pinScrollRafRef = useRef(/** @type {number | null} */ (null));
   const pinScrollToBottom = useCallback(() => {
     if (messages.length === 0) return;
-    if (orchestrationBusy) autoScrollRef.current = true;
     schedulePinChatScroll(messagesScrollRef.current, autoScrollRef, pinScrollRafRef);
-  }, [autoScrollRef, messages.length, messagesScrollRef, orchestrationBusy]);
+  }, [autoScrollRef, messages.length, messagesScrollRef]);
 
   useLayoutEffect(() => {
     if (!conversationId || messages.length === 0) return;
     autoScrollRef.current = true;
     forcePinChatScroll(messagesScrollRef.current);
   }, [autoScrollRef, conversationId, messages.length, messagesScrollRef]);
-
-  useEffect(() => {
-    if (orchestrationBusy) autoScrollRef.current = true;
-  }, [orchestrationBusy, orchestrationActivityDigest, autoScrollRef]);
-
-  useLayoutEffect(() => {
-    if (!orchestrationBusy || messages.length === 0) return;
-    autoScrollRef.current = true;
-    const el = messagesScrollRef.current;
-    if (!el) return;
-    const pin = () => {
-      if (!autoScrollRef.current) return;
-      el.scrollTop = el.scrollHeight;
-    };
-    pin();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(pin) : null;
-    for (const child of el.children) ro?.observe(child);
-    return () => ro?.disconnect();
-  }, [orchestrationBusy, orchestrationActivityDigest, messages.length, autoScrollRef, messagesScrollRef]);
 
   useLayoutEffect(() => {
     pinScrollToBottom();
@@ -8165,8 +7362,6 @@ function ChatLabPlainMessageList({
     };
   }, [messages, messagesScrollRef, threadScrollApiRef]);
 
-  let orchestrationAnchorRendered = false;
-
   return (
     <div
       className="chat-lab__messages"
@@ -8187,45 +7382,6 @@ function ChatLabPlainMessageList({
       aria-label={threadLabel}
     >
       {messages.map((m, index) => {
-        if (tuckedMessageIds.has(m.id)) {
-          if (!orchestrationAnchorRendered && orchestrationAnchorMessage) {
-            orchestrationAnchorRendered = true;
-            const anchorAgent = mainAgent;
-            return (
-              <MessageBubble
-                key={orchestrationAnchorMessage.id}
-                message={orchestrationAnchorMessage}
-                t={t}
-                locale={locale}
-                streamLocked={streamLocked}
-                animateUserEnter={false}
-                onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
-                allowAssistantQuickReply={false}
-                quickReplyDisabled={quickReplyDisabled}
-                onQuickReply={onQuickReply}
-                onBeginUserEdit={onBeginUserEdit}
-                onFollowUpNavigate={onFollowUpNavigate}
-                agentGlyph={anchorAgent ? agentAvatarGlyph(anchorAgent) : undefined}
-                agentName={anchorAgent ? agentDisplayLabel(anchorAgent) : undefined}
-                mentionAgents={[]}
-                collapseTracePanels={false}
-                orchestrationMode={orchestrationMode}
-                orchestrationRun={orchestrationRun}
-                orchestrationBusy={orchestrationBusy}
-                onApprovePlan={onApprovePlan}
-                onRejectPlan={onRejectPlan}
-                onRevisePlan={onRevisePlan}
-                agents={agents}
-                showOrchestrationFlowEntry={Boolean(
-                  orchestrationMode &&
-                    (orchestrationRun?.status === "completed" || orchestrationRun?.status === "failed"),
-                )}
-                onOpenOrchestrationFlow={onOpenOrchestrationFlow}
-              />
-            );
-          }
-          return null;
-        }
         const agent = m.agentId ? agentById.get(m.agentId) : null;
         return (
           <MessageBubble
@@ -8245,54 +7401,11 @@ function ChatLabPlainMessageList({
             agentName={agent ? agentDisplayLabel(agent) : undefined}
             mentionAgents={mentionAgentsForMessage(m, agentById, mainAgentLabel, mentionDisplayOpts)}
             collapseTracePanels={collapseTracePanels}
-            orchestrationMode={orchestrationMode}
-            orchestrationRun={orchestrationRun}
-            orchestrationBusy={orchestrationBusy}
-            onApprovePlan={onApprovePlan}
-            onRejectPlan={onRejectPlan}
-            onRevisePlan={onRevisePlan}
             agents={agents}
-            showOrchestrationFlowEntry={Boolean(
-              orchestrationMode &&
-                (orchestrationRun?.status === "completed" || orchestrationRun?.status === "failed"),
-            )}
-            onOpenOrchestrationFlow={onOpenOrchestrationFlow}
           />
         );
       })}
-      {showOrchestrationTimeline && !orchestrationAnchorRendered && orchestrationAnchorMessage ? (
-        <MessageBubble
-          key={`${orchestrationAnchorMessage.id}-tail`}
-          message={orchestrationAnchorMessage}
-          t={t}
-          locale={locale}
-          streamLocked={streamLocked}
-          animateUserEnter={false}
-          onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
-          allowAssistantQuickReply={false}
-          quickReplyDisabled={quickReplyDisabled}
-          onQuickReply={onQuickReply}
-          onBeginUserEdit={onBeginUserEdit}
-          onFollowUpNavigate={onFollowUpNavigate}
-          agentGlyph={mainAgent ? agentAvatarGlyph(mainAgent) : undefined}
-          agentName={mainAgent ? agentDisplayLabel(mainAgent) : undefined}
-          mentionAgents={[]}
-          collapseTracePanels={false}
-          orchestrationMode={orchestrationMode}
-          orchestrationRun={orchestrationRun}
-          orchestrationBusy={orchestrationBusy}
-          onApprovePlan={onApprovePlan}
-          onRejectPlan={onRejectPlan}
-          onRevisePlan={onRevisePlan}
-          agents={agents}
-          showOrchestrationFlowEntry={Boolean(
-            orchestrationMode &&
-              (orchestrationRun?.status === "completed" || orchestrationRun?.status === "failed"),
-          )}
-          onOpenOrchestrationFlow={onOpenOrchestrationFlow}
-        />
-      ) : null}
-      {sessionArtifacts?.length && !gatewayStreaming && !orchestrationBusy ? (
+      {sessionArtifacts?.length && !gatewayStreaming ? (
         <ChatLabArtifactsBar artifacts={sessionArtifacts} />
       ) : null}
     </div>
@@ -8368,12 +7481,6 @@ function ChatLabVirtualMessageList({
   mainAgent,
   participantIds,
   collapseTracePanels = false,
-  orchestrationMode = false,
-  orchestrationRun = null,
-  orchestrationBusy = false,
-  onApprovePlan,
-  onRejectPlan,
-  onRevisePlan,
 }) {
   const mentionDisplayOpts = useMemo(
     () => ({ everyoneLabel: mentionEveryoneLabel, mainAgent, participantIds }),
@@ -8763,19 +7870,13 @@ function ChatLabVirtualMessageList({
                   }
                   mentionAgents={mentionAgentsForMessage(m, agentById, mainAgentLabel, mentionDisplayOpts)}
                   collapseTracePanels={collapseTracePanels}
-                  orchestrationMode={orchestrationMode}
-                  orchestrationRun={orchestrationRun}
-                  orchestrationBusy={orchestrationBusy}
-                  onApprovePlan={onApprovePlan}
-                  onRejectPlan={onRejectPlan}
-                  onRevisePlan={onRevisePlan}
                   agents={agents}
                 />
               </div>
             );
           })}
         </div>
-        {sessionArtifacts?.length && !gatewayStreaming && !orchestrationBusy ? (
+        {sessionArtifacts?.length && !gatewayStreaming ? (
           <ChatLabArtifactsBar artifacts={sessionArtifacts} />
         ) : null}
       </div>

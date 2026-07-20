@@ -765,11 +765,8 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     const rowChannel =
       s.channel === CHAT_SESSION_CHANNEL_WECHAT ? CHAT_SESSION_CHANNEL_WECHAT : CHAT_SESSION_CHANNEL_INTERNAL;
     const inDeleteMode = deleteModeChannel === rowChannel;
-    const orchStatus = s.orchestration?.status;
-    const orchestrationActive =
-      orchStatus === "planning" || orchStatus === "revising" || orchStatus === "running";
     const isStreaming =
-      streamingSessionIds.has(s.id) || wechatReplyingSessionId === s.id || orchestrationActive;
+      streamingSessionIds.has(s.id) || wechatReplyingSessionId === s.id;
     return (
       <HistorySessionRow
         key={s.id}

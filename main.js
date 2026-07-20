@@ -88,7 +88,6 @@ const {
   registerRendererProtocol,
   getProductionRendererUrl,
 } = require("./lib/renderer-protocol.cjs");
-const { OrchestrationService } = require("./lib/orchestration-service.cjs");
 const {
   resolveBundledSkillDirectorySync,
   resolveUserSkillDirectorySync,
@@ -246,7 +245,7 @@ const STUDIO_PREWARM_BUDGET_MS = 900_000;
 const CHAT_HYDRATE_THROTTLE_MS = 90_000;
 /** Must cover worst-case `tools.catalog` + multi-minute `sessions.create` / `tools.effective` under Windows + gateway lock contention. */
 const CHAT_HYDRATE_BUDGET_MS = 600_000;
-/** Cap simultaneous `chat.send` streams (group @everyone + orchestration DAG). */
+/** Cap simultaneous `chat.send` streams (group @everyone). */
 const MAX_CONCURRENT_CHAT_STREAMS = Math.max(
   1,
   Math.min(8, Number(process.env.OPEN_STUDIO_CHAT_STREAM_CONCURRENCY) || 4),
@@ -971,14 +970,6 @@ app.whenReady().then(async () => {
       getStudioLog().warn("[startup] bundled python init threw", String(e?.message ?? e));
     }
   }, 0);
-
-  /** @type {import("./lib/orchestration-service.cjs").OrchestrationService} */
-  const orchestrationService = new OrchestrationService({
-    readConfig: () => userConfigStore.readRaw(),
-    syncAgentFromStudio: (reason) => runOpenClawAgentSyncFromStudio(reason),
-    acquireChatStreamSlot,
-    releaseChatStreamSlot,
-  });
 
   getSkillEnvironmentCached().catch((e) => {
     getStudioLog().warn("[skills] env probe failed:", /** @type {any} */ (e)?.message ?? e);
@@ -2080,16 +2071,6 @@ app.whenReady().then(async () => {
     if (typeof streamId !== "string" || !chatStreamAbortControllers.has(streamId)) return { ok: false };
     chatStreamAbortControllers.get(streamId)?.abort();
     return { ok: true };
-  });
-
-  ipcMain.handle("studio:orchestrationCommand", async (event, payload) => {
-    try {
-      await orchestrationService.handleCommand(event.sender, payload && typeof payload === "object" ? payload : {});
-      return { ok: true };
-    } catch (e) {
-      getStudioLog().warn("[orchestration] command failed", { message: String(e?.message ?? e) });
-      return { ok: false, message: String(e?.message ?? e) };
-    }
   });
 
   ipcMain.handle("studio:wechatSendTyping", async (_event, payload) => {

@@ -361,9 +361,6 @@
     "soulPlaceholder": "口調・境界・話し方…",
     "soulHint": "「どう話すか」— 口調と人格。SOUL.md に保存。",
     "fieldGatewayId": "ゲートウェイ Agent ID",
-    "fieldOrchestrationRole": "オーケストレーション役割",
-    "fieldOrchestrationDomain": "担当領域",
-    "orchestrationDomainPlaceholder": "例：決済、認証、モバイル UI",
     "gatewayIdHint": "セッションキー: {{session}}",
     "provisionPending": "ワークスペースとゲートウェイ設定を初期化中…",
     "provisionDone": "エージェントを作成しゲートウェイと同期しました。数秒後にチャットで利用できます。",
@@ -543,7 +540,6 @@
     "streamingEditingFile": "ファイルを編集中…",
     "streamingPreparing": "準備中…",
     "streamingWorking": "処理中…",
-    "streamingOrchestrating": "タスクを調整中…",
     "streamingSubagent": "サブエージェント: {{task}}",
     "streamingSubagentGeneric": "サブエージェントが作業中…",
     "streamingFetching": "ページを取得中…",
@@ -858,126 +854,5 @@
     "break": "休憩",
     "entertainment": "娯楽",
     "offline": "オフライン"
-  },
-  "orchestration": {
-    "modeToggle": "マルチエージェント調度",
-    "modeToggleHint": "メインエージェントが PM・開発・レビューを調整し、計画承認後に実行",
-    "awaitingPlanComposerHint": "入力エリアの開発計画を確認（承認・調整・却下）してから、新しいメッセージを送信してください。",
-    "timeline": {
-      "title": "マルチエージェント調整",
-      "leadOrchestrating": "{{agent}} が調整中",
-      "starting": "調整を開始しています…",
-      "stepInProgress": "進行中 — 完了後に展開して詳細を表示",
-      "noDetail": "詳細はまだありません",
-      "planning": "調査と計画",
-      "planningPending": "プロダクトマネージャーが調査中…",
-      "pmResearch": "{{agent}} の調査",
-      "approval": "計画の承認",
-      "rollup": "最終レポート",
-      "completed": "調整完了",
-      "noOutputYet": "出力なし",
-      "taskState": {
-        "done": "完了",
-        "active": "進行中",
-        "blocked": "ブロック",
-        "waiting": "依存待ち",
-        "queued": "待機中"
-      }
-    },
-    "roles": {
-      "main": "リード",
-      "pm": "プロダクトマネージャー",
-      "fe": "フロントエンド",
-      "be": "バックエンド",
-      "reviewer": "コードレビュー",
-      "none": "未割当"
-    },
-    "runStatus": {
-      "planning": "計画中",
-      "awaiting_approval": "承認待ち",
-      "revising": "計画修正中",
-      "running": "実行中",
-      "paused": "一時停止",
-      "completed": "完了",
-      "failed": "停止 / 失敗"
-    },
-    "panel": {
-      "aria": "調度の進捗",
-      "title": "進捗ボード",
-      "resume": "再開",
-      "empty": "—",
-      "col": {
-        "todo": "未着手",
-        "doing": "進行中",
-        "done": "完了"
-      }
-    },
-    "dock": {
-      "title": "調整",
-      "activeWorkers": "作業中のエージェント：{{count}}",
-      "empty": "アクティブなタスクはありません",
-      "viewFlow": "調整フローを表示"
-    },
-    "planProgress": {
-      "hint": "開発計画と進捗を表示",
-      "awaitingHint": "計画ができました。承認・調整・却下を選んでください",
-      "awaitingShort": "要確認",
-      "planningHint": "調査と計画の生成中です…",
-      "statusHint": {
-        "planning": "PM の調査と計画作成中です。完了すると確認ダイアログが開きます。",
-        "revising": "フィードバックに基づき計画を調整中です…",
-        "running": "実行中です。ここで各フェーズの進捗を確認できます。",
-        "paused": "一時停止中です。計画を確認して再開できます。",
-        "awaiting_approval": "計画ができました。概要を確認し、承認・調整・却下を選んでください。"
-      }
-    },
-    "planCard": {
-      "badge": "計画",
-      "title": "開発計画",
-      "feasibility": "実現性",
-      "depends": "依存 {{n}}",
-      "unstructuredHint": "構造化タスクリストに解析できませんでした — 以下はモデルの計画概要です。",
-      "approve": "計画を承認",
-      "reject": "拒否",
-      "revise": "調整",
-      "revisePlaceholder": "変更したい点を記入…",
-      "reviseSubmit": "調整を送信",
-      "reviseCancel": "キャンセル"
-    },
-    "events": {
-      "noPmAgents": "プロダクトマネージャーエージェントが見つかりません。「エージェント」で少なくとも1体の**調度役割**を PM に設定してから再試行してください。リードは PM の代わりには調査しません。",
-      "analyzing": "リードエージェントが要件を分析し、進め方を決定しています…",
-      "pmSkipped": "PM 調査が推奨されましたが、このセッションに PM がいません — リードが直接計画します。",
-      "started": "調度を開始 — リードエージェントがチームを調整しています。",
-      "pmDispatch": "{{count}} 名の PM に調査を割り当てました。",
-      "pmAgentStart": "プロダクトマネージャー **{{agent}}** に調査を割り当てました",
-      "pmAgentEmpty": "プロダクトマネージャー **{{agent}}** から調査結果がありません（利用可能な文脈で続行）。",
-      "synthesizingPlan": "メインエージェントが開発計画をまとめています…",
-      "awaitingApproval": "計画ができました — 承認・調整・拒否を選んでください。",
-      "planApproved": "計画承認 — 開発フェーズを開始します。",
-      "planRejected": "計画拒否 — 調度を停止しました。",
-      "planRevising": "フィードバックに基づき計画を修正中。",
-      "taskStart": "**{{title}}** を {{agent}} に割り当てました。",
-      "taskDone": "**{{title}}** を完了しました（{{agent}}）。",
-      "task_start": "{{agent}} が **{{title}}** の実行を開始しました。",
-      "task_assigned": "**{{title}}** を {{agent}} に割り当てました。",
-      "task_done": "**{{title}}** を完了しました（{{agent}}）。",
-      "synthesizing_plan": "メインエージェントが開発計画をまとめています…",
-      "awaiting_approval": "計画ができました — 承認・調整・拒否を選んでください。",
-      "plan_approved": "計画承認 — 開発フェーズを開始します。",
-      "plan_rejected": "計画拒否 — 調度を停止しました。",
-      "plan_revising": "フィードバックに基づき計画を修正中。",
-      "pre_tasks_dispatch": "{{count}} 件の事前調査タスクを開始しました。",
-      "pre_task_start": "事前調査を **{{agent}}** に割り当てました",
-      "pre_task_running": "**{{agent}}** が事前調査を実行中です。",
-      "pre_task_done": "事前調査が完了しました（{{agent}}）。",
-      "review_passed": "**{{title}}** のコードレビュー合格。",
-      "review_rework": "**{{title}}** のレビュー差戻し — {{agent}} に修正依頼。",
-      "review_blocked": "**{{title}}** はレビュー上限に達しブロック。",
-      "rollup": "リードエージェントが最終報告をまとめています。",
-      "completed": "調度が完了しました。",
-      "failed": "調度失敗：{{message}}",
-      "resumed": "調度を再開しました。"
-    }
   }
 }

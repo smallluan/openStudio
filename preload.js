@@ -17,7 +17,6 @@ contextBridge.exposeInMainWorld("openclawBridge", {
 });
 
 const CHAT_STREAM_CHAN = "studio:chatStream";
-const ORCH_EVENT_CHAN = "studio:orchestration-event";
 const WECHAT_STATUS_CHAN = "studio:wechatStatus";
 const PREVIEW_URL_CHAN = "studio:openPreviewUrl";
 const WEBVIEW_DEVTOOLS_CHAN = "studio:openWebviewDevTools";
@@ -76,12 +75,6 @@ contextBridge.exposeInMainWorld("studioBridge", {
   readWorkspaceFolder: (payload) => ipcRenderer.invoke("studio:readWorkspaceFolder", payload),
   startChatStream: (payload) => ipcRenderer.invoke("studio:startChatStream", payload),
   abortChatStream: (streamId) => ipcRenderer.invoke("studio:abortChatStream", streamId),
-  orchestrationCommand: (payload) => ipcRenderer.invoke("studio:orchestrationCommand", payload),
-  onOrchestrationEvent: (listener) => {
-    const wrapped = (_e, data) => listener(data);
-    ipcRenderer.on(ORCH_EVENT_CHAN, wrapped);
-    return () => ipcRenderer.removeListener(ORCH_EVENT_CHAN, wrapped);
-  },
   resetTokenUsageStats: () => ipcRenderer.invoke("studio:resetTokenUsageStats"),
   getTokenUsageStats: (opts) => ipcRenderer.invoke("studio:getTokenUsageStats", opts),
   getTokenUsageRecords: (opts) => ipcRenderer.invoke("studio:getTokenUsageRecords", opts),

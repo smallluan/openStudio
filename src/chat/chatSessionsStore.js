@@ -1,7 +1,6 @@
 /** Local persistence for chat conversations (sidebar history). */
 
 import { sanitizeFollowUpRef } from "./chatLabFollowUp.js";
-import { normalizeOrchestrationPlan, normalizeOrchestrationRun } from "../studio/orchestration.js";
 
 const LEGACY_STORAGE_KEY = "openstudio_chat_sessions_v1";
 const PERSIST_DEBOUNCE_MS = 400;
@@ -66,13 +65,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string[]} [mentions] Studio agent ids @-mentioned on user or assistant turns
  * @property {boolean} [mentionDelegateReply] Auto-reply triggered by another agent's @mention
  * @property {string} [mentionDelegateFromAgentId] Studio agent id that @mentioned this reply
- * @property {'orchestration_event' | 'orchestration_plan' | 'orchestration_internal' | 'group_member_event'} [messageKind]
- * @property {import("../studio/orchestration.js").OrchestrationPlan} [orchestrationPlan]
- * @property {string} [orchestrationPhase]
- * @property {string} [orchestrationTaskId]
- * @property {string} [orchestrationEventKey]
- * @property {string} [orchestrationWorkerId]
- * @property {string} [orchestrationRunId]
+ * @property {'group_member_event'} [messageKind]
  */
 
 /**
@@ -100,9 +93,6 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string} [gatewayConversationId] UUID gateway thread for WeChat auto-reply (UI id stays `wechat:<peer>`)
  * @property {string[]} [participantIds] Studio agent ids in this thread (group chat)
  * @property {ThreadContextState} [threadContext]
- * @property {import("../studio/orchestration.js").OrchestrationRun} [orchestration]
- * @property {boolean} [orchestrationMode]
- * @property {boolean} [orchestrationFastMode]
  * @property {PreviewStateRecord} [previewState]
  * @property {PersistedChatMessage[]} messages
  */
@@ -189,9 +179,6 @@ function normalizeSessionRow(r) {
       typeof row.gatewayConversationId === "string" ? row.gatewayConversationId.trim().slice(0, 96) : "",
     participantIds: sanitizeParticipantIds(row.participantIds),
     threadContext: sanitizeThreadContext(row.threadContext),
-    orchestration: row.orchestration ? normalizeOrchestrationRun(row.orchestration) ?? undefined : undefined,
-    orchestrationMode: Boolean(row.orchestrationMode),
-    orchestrationFastMode: Boolean(row.orchestrationFastMode),
     previewState: sanitizePreviewState(row.previewState),
     messages: sanitizeMessages(row.messages),
   };
@@ -626,32 +613,8 @@ function sanitizeMessages(raw) {
       row.mentionDelegateFromAgentId = m.mentionDelegateFromAgentId.trim().slice(0, 96);
     }
     const mk = m.messageKind;
-    if (
-      mk === "orchestration_event" ||
-      mk === "orchestration_plan" ||
-      mk === "orchestration_internal" ||
-      mk === "group_member_event"
-    ) {
+    if (mk === "group_member_event") {
       row.messageKind = mk;
-    }
-    if (m.orchestrationPlan && typeof m.orchestrationPlan === "object") {
-      const plan = normalizeOrchestrationPlan(m.orchestrationPlan);
-      if (plan) row.orchestrationPlan = plan;
-    }
-    if (typeof m.orchestrationPhase === "string" && m.orchestrationPhase.trim()) {
-      row.orchestrationPhase = m.orchestrationPhase.trim().slice(0, 32);
-    }
-    if (typeof m.orchestrationTaskId === "string" && m.orchestrationTaskId.trim()) {
-      row.orchestrationTaskId = m.orchestrationTaskId.trim().slice(0, 96);
-    }
-    if (typeof m.orchestrationEventKey === "string" && m.orchestrationEventKey.trim()) {
-      row.orchestrationEventKey = m.orchestrationEventKey.trim().slice(0, 48);
-    }
-    if (typeof m.orchestrationWorkerId === "string" && m.orchestrationWorkerId.trim()) {
-      row.orchestrationWorkerId = m.orchestrationWorkerId.trim().slice(0, 96);
-    }
-    if (typeof m.orchestrationRunId === "string" && m.orchestrationRunId.trim()) {
-      row.orchestrationRunId = m.orchestrationRunId.trim().slice(0, 96);
     }
     out.push(row);
   }
@@ -682,9 +645,6 @@ function writeAll(rows, persistSession) {
  *   gatewayConversationId?: string;
  *   participantIds?: string[];
  *   threadContext?: ThreadContextState | null;
- *   orchestration?: import("../studio/orchestration.js").OrchestrationRun | null;
- *   orchestrationMode?: boolean;
- *   orchestrationFastMode?: boolean;
  *   previewState?: PreviewStateRecord | null;
  * }} [opts]
  */
@@ -715,18 +675,6 @@ export function upsertSession(id, title, messages, opts = {}) {
     opts.participantIds !== undefined
       ? sanitizeParticipantIds(opts.participantIds)
       : sanitizeParticipantIds(prev?.participantIds);
-  const nextOrchestration =
-    opts.orchestration !== undefined
-      ? opts.orchestration
-        ? normalizeOrchestrationRun(opts.orchestration) ?? undefined
-        : undefined
-      : prev?.orchestration;
-  const nextOrchestrationMode =
-    opts.orchestrationMode !== undefined ? Boolean(opts.orchestrationMode) : Boolean(prev?.orchestrationMode);
-  const nextOrchestrationFastMode =
-    opts.orchestrationFastMode !== undefined
-      ? Boolean(opts.orchestrationFastMode)
-      : Boolean(prev?.orchestrationFastMode);
   const nextThreadContext =
     opts.threadContext !== undefined
       ? sanitizeThreadContext(opts.threadContext)
@@ -746,66 +694,10 @@ export function upsertSession(id, title, messages, opts = {}) {
     ...(nextParticipants.length ? { participantIds: nextParticipants } : {}),
     ...(nextThreadContext ? { threadContext: nextThreadContext } : {}),
     ...(nextPreviewState ? { previewState: nextPreviewState } : {}),
-    ...(nextOrchestration ? { orchestration: nextOrchestration } : {}),
-    ...(nextOrchestrationMode ? { orchestrationMode: true } : {}),
-    ...(nextOrchestrationFastMode ? { orchestrationFastMode: true } : {}),
     messages,
   };
   all.push(sessionRecord);
   writeAll(all, sessionRecord);
-}
-
-/**
- * @param {string} conversationId
- * @param {import("../studio/orchestration.js").OrchestrationRun | null} orchestration
- */
-export function updateSessionOrchestration(conversationId, orchestration) {
-  const rec = getSession(conversationId);
-  if (!rec) return;
-  upsertSession(conversationId, rec.title || "…", rec.messages, {
-    channel: rec.channel,
-    channelPeerId: rec.channelPeerId,
-    gatewayConversationId: rec.gatewayConversationId,
-    participantIds: rec.participantIds,
-    orchestration: orchestration ?? null,
-    orchestrationMode: rec.orchestrationMode,
-  });
-}
-
-/**
- * @param {string} conversationId
- * @param {boolean} enabled
- */
-export function setSessionOrchestrationMode(conversationId, enabled) {
-  const rec = getSession(conversationId);
-  if (!rec) return;
-  upsertSession(conversationId, rec.title || "…", rec.messages, {
-    channel: rec.channel,
-    channelPeerId: rec.channelPeerId,
-    gatewayConversationId: rec.gatewayConversationId,
-    participantIds: rec.participantIds,
-    orchestration: rec.orchestration,
-    orchestrationMode: enabled,
-    orchestrationFastMode: rec.orchestrationFastMode,
-  });
-}
-
-/**
- * @param {string} conversationId
- * @param {boolean} enabled
- */
-export function setSessionOrchestrationFastMode(conversationId, enabled) {
-  const rec = getSession(conversationId);
-  if (!rec) return;
-  upsertSession(conversationId, rec.title || "…", rec.messages, {
-    channel: rec.channel,
-    channelPeerId: rec.channelPeerId,
-    gatewayConversationId: rec.gatewayConversationId,
-    participantIds: rec.participantIds,
-    orchestration: rec.orchestration,
-    orchestrationMode: rec.orchestrationMode,
-    orchestrationFastMode: enabled,
-  });
 }
 
 /**
@@ -910,9 +802,6 @@ export function updateSessionParticipants(id, participantIds, appendMessages = [
     gatewayConversationId: rec.gatewayConversationId,
     participantIds,
     threadContext: rec.threadContext,
-    orchestration: rec.orchestration,
-    orchestrationMode: rec.orchestrationMode,
-    orchestrationFastMode: rec.orchestrationFastMode,
   });
 }
 
@@ -930,8 +819,6 @@ export function updateSessionThreadContext(id, threadContext) {
     gatewayConversationId: rec.gatewayConversationId,
     participantIds: rec.participantIds,
     threadContext,
-    orchestration: rec.orchestration,
-    orchestrationMode: rec.orchestrationMode,
   });
 }
 

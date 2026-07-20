@@ -364,9 +364,6 @@
     "soulPlaceholder": "Tone, boundaries, speaking style…",
     "soulHint": "How this agent talks — voice and personality. Saved to SOUL.md.",
     "fieldGatewayId": "Gateway agent ID",
-    "fieldOrchestrationRole": "Orchestration role",
-    "fieldOrchestrationDomain": "Domain / specialty",
-    "orchestrationDomainPlaceholder": "e.g. payments, auth, mobile UI",
     "gatewayIdHint": "Session key: {{session}}",
     "provisionPending": "Provisioning workspace and gateway config…",
     "provisionDone": "Agent created and gateway synced. Ready for chat in a few seconds.",
@@ -557,7 +554,6 @@
     "streamingEditingFile": "Editing file…",
     "streamingPreparing": "Getting ready…",
     "streamingWorking": "Working…",
-    "streamingOrchestrating": "Coordinating tasks…",
     "streamingSubagent": "Subagent: {{task}}",
     "streamingSubagentGeneric": "Subagent working…",
     "streamingFetching": "Fetching page…",
@@ -883,129 +879,5 @@
     "break": "Break",
     "entertainment": "Fun",
     "offline": "Offline"
-  },
-  "orchestration": {
-    "modeToggle": "Multi-agent orchestration",
-    "modeToggleHint": "Main agent dynamically assigns work among agents in this chat; plans require approval by default",
-    "fastModeToggle": "Fast mode",
-    "fastModeToggleHint": "Skip plan approval and start executing automatically",
-    "awaitingPlanComposerHint": "Review the collaboration plan in the composer — accept, adjust, or reject before sending a new message.",
-    "timeline": {
-      "title": "Multi-agent orchestration",
-      "leadOrchestrating": "{{agent}} is orchestrating",
-      "starting": "Starting orchestration…",
-      "stepInProgress": "In progress — expand when done for details",
-      "noDetail": "No details yet",
-      "planning": "Research & planning",
-      "planningPending": "Product managers researching…",
-      "pmResearch": "{{agent}} research",
-      "approval": "Plan approval",
-      "rollup": "Final report",
-      "completed": "Orchestration complete",
-      "noOutputYet": "No output yet",
-      "taskState": {
-        "done": "Done",
-        "active": "In progress",
-        "blocked": "Blocked",
-        "waiting": "Waiting on deps",
-        "queued": "Queued"
-      }
-    },
-    "roles": {
-      "main": "Lead",
-      "pm": "Product manager",
-      "fe": "Frontend",
-      "be": "Backend",
-      "reviewer": "Code reviewer",
-      "none": "Unassigned"
-    },
-    "runStatus": {
-      "planning": "Planning",
-      "awaiting_approval": "Awaiting your approval",
-      "revising": "Revising plan",
-      "running": "In progress",
-      "paused": "Paused",
-      "completed": "Completed",
-      "failed": "Stopped / failed"
-    },
-    "panel": {
-      "aria": "Orchestration progress",
-      "title": "Progress",
-      "resume": "Resume",
-      "empty": "—",
-      "col": {
-        "todo": "To do",
-        "doing": "In progress",
-        "done": "Done"
-      }
-    },
-    "dock": {
-      "title": "Orchestration",
-      "activeWorkers": "Active agents: {{count}}",
-      "empty": "No active tasks",
-      "viewFlow": "View orchestration flow"
-    },
-    "planProgress": {
-      "hint": "View development plan and progress",
-      "awaitingHint": "Plan ready — accept, adjust, or reject",
-      "awaitingShort": "Review",
-      "planningHint": "Research and plan generation in progress…",
-      "statusHint": {
-        "planning": "PM research and plan synthesis in progress. The review dialog will open when ready.",
-        "revising": "Revising the plan from your feedback…",
-        "running": "Execution in progress — open here to track phase status.",
-        "paused": "Orchestration paused — review the plan here and resume when ready.",
-        "awaiting_approval": "Plan ready — read the summary and accept, adjust, or reject."
-      }
-    },
-    "planCard": {
-      "badge": "Plan",
-      "title": "Collaboration plan",
-      "feasibility": "Feasibility",
-      "depends": "{{n}} deps",
-      "unassignedOwner": "Unassigned",
-      "unstructuredHint": "Could not parse a structured task list — showing the model's plan summary below.",
-      "approve": "Accept plan",
-      "reject": "Reject",
-      "revise": "Adjust",
-      "revisePlaceholder": "Describe what to change in the plan…",
-      "reviseSubmit": "Submit adjustments",
-      "reviseCancel": "Cancel"
-    },
-    "events": {
-      "noPmAgents": "No product manager agent found. Set at least one agent's **orchestration role** to Product manager on the Agents page, then try again. The lead agent will not stand in as PM.",
-      "analyzing": "Lead agent is analyzing the request and deciding how to proceed…",
-      "pmSkipped": "PM research was recommended but no PM is in this session — lead agent will plan directly.",
-      "started": "Orchestration started — lead agent is coordinating the team.",
-      "pmDispatch": "Dispatching {{count}} product manager(s) for research.",
-      "pmAgentStart": "Dispatched research to product manager **{{agent}}**",
-      "pmAgentEmpty": "Product manager **{{agent}}** returned no research (continuing with available context).",
-      "synthesizingPlan": "Lead agent is synthesizing the collaboration plan…",
-      "awaitingApproval": "Plan ready — please review and accept, adjust, or reject.",
-      "planApproved": "Plan accepted — starting execution.",
-      "pre_tasks_dispatch": "Started {{count}} pre-task(s).",
-      "pre_task_start": "Pre-task assigned to **{{agent}}**",
-      "pre_task_running": "**{{agent}}** is working on the pre-task.",
-      "pre_task_done": "Pre-task completed ({{agent}}).",
-      "planRejected": "Plan rejected — orchestration stopped.",
-      "planRevising": "Revising plan based on your feedback.",
-      "taskStart": "{{agent}} started working on **{{title}}**.",
-      "taskDone": "Completed **{{title}}** ({{agent}}).",
-      "task_start": "{{agent}} started working on **{{title}}**.",
-      "task_assigned": "Assigned **{{title}}** to {{agent}}.",
-      "task_done": "Completed **{{title}}** ({{agent}}).",
-      "synthesizing_plan": "Lead agent is synthesizing the collaboration plan…",
-      "awaiting_approval": "Plan ready — please review and accept, adjust, or reject.",
-      "plan_approved": "Plan accepted — starting execution.",
-      "plan_rejected": "Plan rejected — orchestration stopped.",
-      "plan_revising": "Revising plan based on your feedback.",
-      "review_passed": "Code review passed for **{{title}}**.",
-      "review_rework": "Review requested changes on **{{title}}** — sent back to {{agent}}.",
-      "review_blocked": "Code review blocked **{{title}}** after max retries.",
-      "rollup": "Lead agent compiling final report.",
-      "completed": "Orchestration completed.",
-      "failed": "Orchestration failed: {{message}}",
-      "resumed": "Orchestration resumed."
-    }
   }
 }

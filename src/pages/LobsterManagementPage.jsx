@@ -5,7 +5,6 @@ import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useStudio } from "../context/StudioContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { agentAvatarGlyph, agentDisplayLabel, buildIdentityMd } from "../studio/agents.js";
-import { OrchestrationRole, orchestrationRoleLabel } from "../studio/orchestrationRoles.js";
 import { filterUsableBundledSkills } from "../skills/skillAvailability.js";
 import { userSkillDisplayTitle } from "../skills/skillDisplay.js";
 import { BUILTIN_SKILL_DEFS } from "../skills/skillsCatalog.js";
@@ -394,8 +393,6 @@ export default function LobsterManagementPage() {
             {filteredAgents.map((a) => {
               const label = agentDisplayLabel(a);
               const preview = a.description?.trim() || t("skillsPage.noDescription");
-              const role = a.orchestrationRole;
-              const hasRole = role && role !== OrchestrationRole.NONE;
               return (
                 <AgentCardShell key={a.id} className="group relative">
                   <div className="flex items-start gap-2.5">
@@ -419,11 +416,6 @@ export default function LobsterManagementPage() {
                     {a.isMain ? (
                       <span className="rounded-md bg-[color-mix(in_srgb,var(--os-accent)_12%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-accent)]">
                         {t("agents.mainBadge")}
-                      </span>
-                    ) : null}
-                    {hasRole ? (
-                      <span className="rounded-md bg-[color-mix(in_srgb,var(--os-text-muted)_10%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-text-muted)]">
-                        {orchestrationRoleLabel(role, t)}
                       </span>
                     ) : null}
                     {a.skillIds?.length ? (
@@ -518,47 +510,6 @@ export default function LobsterManagementPage() {
                   编辑身份
                 </Button>
               </div>
-
-              {!detailAgent.isMain ? (
-                <>
-                  <label className="flex flex-row items-center gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
-                    <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldOrchestrationRole")}</span>
-                    <Select
-                      value={detailAgent.orchestrationRole || OrchestrationRole.NONE}
-                      onChange={(role) =>
-                        patchAgentMeta(detailAgent.id, {
-                          orchestrationRole: /** @type {import("../studio/orchestrationRoles.js").OrchestrationRoleValue} */ (
-                            role
-                          ),
-                        })
-                      }
-                      options={[
-                        OrchestrationRole.NONE,
-                        OrchestrationRole.PM,
-                        OrchestrationRole.FE,
-                        OrchestrationRole.BE,
-                        OrchestrationRole.REVIEWER,
-                      ].map((role) => ({
-                        value: role,
-                        label: orchestrationRoleLabel(role, t),
-                      }))}
-                      className="flex-1 min-w-0"
-                    />
-                  </label>
-                  <label className="flex flex-row items-center gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
-                    <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldOrchestrationDomain")}</span>
-                    <div className="min-w-0 flex-1">
-                      <TextField
-                        value={detailAgent.orchestrationDomain || ""}
-                        onChange={(e) =>
-                          patchAgentMeta(detailAgent.id, { orchestrationDomain: e.target.value })
-                        }
-                        placeholder={t("lobsterPage.orchestrationDomainPlaceholder")}
-                      />
-                    </div>
-                  </label>
-                </>
-              ) : null}
 
               <div className="flex flex-row items-center justify-between gap-3 text-[0.75rem] text-[var(--os-text-muted)]">
                 <span className="min-w-[80px] shrink-0">{t("lobsterPage.fieldDescription")}</span>

@@ -680,7 +680,7 @@ export default function ChatLabPreviewDock({ extension = null }) {
           />
         </div>
       ) : viewExtension && !viewSession ? (
-        <div className="chat-lab-preview-dock__body chat-lab-preview-dock__body--orch min-h-0 flex-1 overflow-hidden">
+        <div className="chat-lab-preview-dock__body chat-lab-preview-dock__body--extension min-h-0 flex-1 overflow-hidden">
           {viewExtension.body}
         </div>
       ) : (

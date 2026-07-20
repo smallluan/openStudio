@@ -24,7 +24,12 @@ export default function Checkbox({ id, checked, onCheckedChange, label, disabled
       <span
         className={cn(
           toolbarTone
-            ? cn("chat-lab__orch-check-box", checked && "chat-lab__orch-check-box--on")
+            ? cn(
+                "flex size-4 shrink-0 items-center justify-center rounded border transition-[border-color,background-color] duration-150",
+                checked
+                  ? "border-[var(--os-accent)] bg-[var(--os-accent)] text-white"
+                  : "border-[var(--os-border-strong)] bg-[var(--os-bg-elevated)]",
+              )
             : [
                 "flex size-[18px] shrink-0 items-center justify-center rounded-[5px] border transition-[border-color,background-color,box-shadow] duration-150",
                 checked

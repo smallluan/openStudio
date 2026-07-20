@@ -27,6 +27,7 @@ function isRailItemActive(location, item) {
  *     end?: boolean;
  *     state?: unknown;
  *     badge?: string;
+ *     badgeTheme?: "default" | "primary" | "warning" | "danger" | "success";
  *     isActive?: (loc: import("react-router-dom").Location) => boolean;
  *   }>;
  * }} props
@@ -72,7 +73,12 @@ export default function PrimaryRailMenu({ collapsed = false, items }) {
                 {item.icon}
                 <span className="app-rail-nav-item__label">{item.label}</span>
                 {item.badge ? (
-                  <Tag size="small" theme="success" variant="light" className="app-rail-nav-item__badge">
+                  <Tag
+                    size="small"
+                    theme={item.badgeTheme ?? "success"}
+                    variant="light"
+                    className="app-rail-nav-item__badge"
+                  >
                     {item.badge}
                   </Tag>
                 ) : null}
