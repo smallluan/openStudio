@@ -91,7 +91,7 @@
 }
 
 .wf-context-menu {
-  position: fixed;
+  position: relative;
   z-index: 40;
   min-width: 168px;
   padding: 4px;
@@ -99,6 +99,10 @@
   border: 1px solid color-mix(in srgb, var(--os-border) 65%, transparent);
   background: color-mix(in srgb, var(--os-bg-panel) 96%, var(--os-bg-elevated));
   box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--os-shadow-color, #000) 28%, transparent);
+}
+
+.workflow-flow-canvas .react-flow__node.selected .wf-node:not(.is-selected) {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--os-accent) 22%, transparent);
 }
 
 .wf-context-menu__item {

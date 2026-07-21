@@ -4,18 +4,19 @@ import { useWorkflowNodeActions } from "../context/WorkflowNodeActionsContext.js
 import { getWorkflowHandlePositions } from "../utils/workflowNodeHandles.js";
 import WorkflowNodeChrome from "./WorkflowNodeChrome.jsx";
 
-/** @param {import('@xyflow/react').NodeProps & { data?: { label?: string; description?: string; agentName?: string; handoffSourceNodeId?: string | null } }} props */
-export default function WorkflowAgentNode({ id, data, selected }) {
+/** @param {import('@xyflow/react').NodeProps & { data?: { label?: string; description?: string; agentName?: string; handoffSourceNodeId?: string | null; isActive?: boolean } }} props */
+export default function WorkflowAgentNode({ id, data }) {
   const label = data?.label || "智能体";
   const description = data?.description || "";
   const agentName = data?.agentName;
   const isHandoffProxy = Boolean(data?.handoffSourceNodeId);
+  const isActive = Boolean(data?.isActive);
   const { target, source } = getWorkflowHandlePositions(data);
   const chrome = useWorkflowNodeActions(id);
   const flipY = Boolean(data?.flipY);
 
   return (
-    <div className={cn("wf-node wf-node--agent", selected && "is-selected")}>
+    <div className={cn("wf-node wf-node--agent", isActive && "is-selected")}>
       <Handle type="target" position={target} />
       <div className={cn("wf-node__inner", flipY && "is-flip-y")}>
         <div className="wf-node__badge">{isHandoffProxy ? "任务移交" : "智能体节点"}</div>
@@ -30,7 +31,7 @@ export default function WorkflowAgentNode({ id, data, selected }) {
           <div className="wf-node__desc">未选择智能体</div>
         )}
       </div>
-      {selected ? (
+      {isActive ? (
         <WorkflowNodeChrome
           onDelete={chrome.onDelete}
           onFlipHorizontal={chrome.onFlipHorizontal}

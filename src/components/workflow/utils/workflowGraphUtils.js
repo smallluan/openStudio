@@ -204,7 +204,40 @@ export function normalizeWorkflowGraph(nodes, edges) {
   const syncedNodes = syncHandoffProxyAgents(nodes);
   const inheritedNodes = inheritSubAgentAgentsFromParents(syncedNodes, edges);
   const handoffPaths = reconcileSubAgentHandoffPaths(inheritedNodes, edges);
-  return reconcileHandoffGraph(handoffPaths.nodes, handoffPaths.edges);
+  const reconciled = reconcileHandoffGraph(handoffPaths.nodes, handoffPaths.edges);
+  return promoteOrphanedHandoffProxies(reconciled.nodes, reconciled.edges);
+}
+
+/**
+ * Handoff proxy nodes that no longer route to a different downstream agent
+ * (or lost their parent agent) should become regular agent nodes.
+ * @param {import('@xyflow/react').Node[]} nodes
+ * @param {import('@xyflow/react').Edge[]} edges
+ */
+export function promoteOrphanedHandoffProxies(nodes, edges) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+  const nextNodes = nodes.map((node) => {
+    const handoffSourceNodeId = node.data?.handoffSourceNodeId;
+    if (node.type !== WORKFLOW_NODE_TYPES.AGENT || typeof handoffSourceNodeId !== "string") {
+      return node;
+    }
+
+    const parent = nodeById.get(handoffSourceNodeId);
+    const outgoing = edges.filter((edge) => edge.source === node.id);
+    const hasDownstreamAgentTarget = outgoing.some((edge) => {
+      const target = nodeById.get(edge.target);
+      return target?.type === WORKFLOW_NODE_TYPES.AGENT && target.id !== handoffSourceNodeId;
+    });
+
+    if (parent && hasDownstreamAgentTarget) return node;
+
+    const nextData = { ...(node.data ?? {}) };
+    delete nextData.handoffSourceNodeId;
+    return { ...node, data: nextData };
+  });
+
+  return { nodes: nextNodes, edges };
 }
 
 /**

@@ -8,12 +8,19 @@ export function createWorkflowNodeId() {
   return `node-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
-/** Strip ephemeral React Flow fields before persisting node state. */
+const EPHEMERAL_NODE_DATA_KEYS = ["agentName", "isActive", "workflowName"];
+
+/** Strip ephemeral React Flow / display fields before persisting node state. */
 /** @param {import('@xyflow/react').Node[]} nodes */
 export function sanitizeWorkflowNodes(nodes) {
   return nodes.map((node) => {
     const { selected, dragging, ...rest } = node;
-    return rest;
+    if (!rest.data || typeof rest.data !== "object") return rest;
+    const data = { ...rest.data };
+    for (const key of EPHEMERAL_NODE_DATA_KEYS) {
+      delete data[key];
+    }
+    return { ...rest, data };
   });
 }
 

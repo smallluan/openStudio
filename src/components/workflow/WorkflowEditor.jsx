@@ -4,10 +4,9 @@ import { SaveIcon } from "tdesign-icons-react";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { useStudio } from "../../context/StudioContext.jsx";
-import { agentDisplayLabel } from "../../studio/agents.js";
 import { useWorkflowLibrary } from "../../workflow/useWorkflowLibrary.js";
-import { WORKFLOW_NODE_TYPES } from "../../workflow/workflowTypes.js";
-import { normalizeWorkflowGraph, resolveHandoffAgentId } from "./utils/workflowGraphUtils.js";
+import { normalizeWorkflowGraph } from "./utils/workflowGraphUtils.js";
+import { enrichWorkflowNodesForDisplay } from "./utils/workflowDisplayUtils.js";
 import WorkflowFlowCanvas from "./WorkflowFlowCanvas.jsx";
 import WorkflowNodeDrawer from "./WorkflowNodeDrawer.jsx";
 import WorkflowNodePalette from "./WorkflowNodePalette.jsx";
@@ -18,6 +17,38 @@ import ModalCloseButton from "../../ui/ModalCloseButton.jsx";
 import TextField from "../../ui/TextField.jsx";
 import FluidConfirmDialog from "../../ui/FluidConfirmDialog.jsx";
 import "./workflow-flow.css";
+
+/** @param {Record<string, unknown> | undefined} data */
+function stableWorkflowNodeData(data) {
+  if (!data || typeof data !== "object") return {};
+  const next = { ...data };
+  delete next.agentName;
+  delete next.isActive;
+  delete next.workflowName;
+  return next;
+}
+
+/** @param {import('../../workflow/workflowTypes.js').WorkflowDocument['nodes']} prevNodes @param {import('../../workflow/workflowTypes.js').WorkflowDocument['nodes']} nextNodes */
+function isWorkflowPositionOnlyPatch(prevNodes, nextNodes) {
+  if (prevNodes.length !== nextNodes.length) return false;
+
+  const prevById = new Map(prevNodes.map((node) => [node.id, node]));
+  let hasPositionChange = false;
+
+  for (const node of nextNodes) {
+    const prev = prevById.get(node.id);
+    if (!prev) return false;
+    if (prev.type !== node.type) return false;
+    if (JSON.stringify(stableWorkflowNodeData(prev.data)) !== JSON.stringify(stableWorkflowNodeData(node.data))) {
+      return false;
+    }
+    if (prev.position.x !== node.position.x || prev.position.y !== node.position.y) {
+      hasPositionChange = true;
+    }
+  }
+
+  return hasPositionChange;
+}
 
 /** @typedef {import('../../workflow/workflowTypes.js').WorkflowDocument} WorkflowDocument */
 
@@ -53,35 +84,10 @@ export default function WorkflowEditor({ workflow, onSave, onDiscard }) {
     setConfigNodeId(null);
   }, [workflow.id]);
 
-  const enrichedNodes = useMemo(() => {
-    return nodes.map((n) => {
-      if (n.type === WORKFLOW_NODE_TYPES.AGENT) {
-        let agentId = n.data?.agentId;
-        if (!agentId && n.data?.handoffSourceNodeId) {
-          const parent = nodes.find((candidate) => candidate.id === n.data.handoffSourceNodeId);
-          agentId = parent?.data?.agentId ?? null;
-        }
-        const agent = agentId ? agentById.get(String(agentId)) : null;
-        return { ...n, data: { ...n.data, agentName: agent ? agentDisplayLabel(agent) : undefined } };
-      }
-      if (n.type === WORKFLOW_NODE_TYPES.SUB_AGENT) {
-        let agentId = n.data?.agentId;
-        if (!agentId) {
-          const parentAgentNodeId = resolveHandoffAgentId(n.id, nodes, edges);
-          const parent = parentAgentNodeId ? nodes.find((candidate) => candidate.id === parentAgentNodeId) : null;
-          agentId = parent?.data?.agentId ?? null;
-        }
-        const agent = agentId ? agentById.get(String(agentId)) : null;
-        return { ...n, data: { ...n.data, agentName: agent ? agentDisplayLabel(agent) : undefined } };
-      }
-      if (n.type === WORKFLOW_NODE_TYPES.NESTED) {
-        const wfId = n.data?.workflowId;
-        const wf = wfId ? lib.workflows.find((w) => w.id === wfId) : null;
-        return { ...n, data: { ...n.data, workflowName: wf?.name } };
-      }
-      return n;
-    });
-  }, [nodes, edges, agentById, lib.workflows]);
+  const enrichedNodes = useMemo(
+    () => enrichWorkflowNodesForDisplay(nodes, edges, { agentById, workflows: lib.workflows }),
+    [nodes, edges, agentById, lib.workflows],
+  );
 
   const configNode = useMemo(
     () => (configNodeId ? enrichedNodes.find((n) => n.id === configNodeId) ?? null : null),
@@ -90,10 +96,22 @@ export default function WorkflowEditor({ workflow, onSave, onDiscard }) {
 
   const persist = useCallback(
     (patch) => {
-      const shouldNormalize = Boolean(patch.nodes || patch.edges);
+      const nextNodes = patch.nodes ?? nodes;
+      const nextEdges = patch.edges ?? edges;
+
+      if (patch.dragPhase === "move") {
+        setNodes(nextNodes);
+        return;
+      }
+
+      const positionOnly =
+        patch.nodes &&
+        !patch.edges &&
+        isWorkflowPositionOnlyPatch(nodes, nextNodes);
+      const shouldNormalize = Boolean(patch.nodes || patch.edges) && !positionOnly;
       const normalized = shouldNormalize
-        ? normalizeWorkflowGraph(patch.nodes ?? nodes, patch.edges ?? edges)
-        : { nodes: patch.nodes ?? nodes, edges: patch.edges ?? edges };
+        ? normalizeWorkflowGraph(nextNodes, nextEdges)
+        : { nodes: nextNodes, edges: nextEdges };
 
       if (patch.nodes || shouldNormalize) setNodes(normalized.nodes);
       if (patch.edges || shouldNormalize) setEdges(normalized.edges);
@@ -197,8 +215,9 @@ export default function WorkflowEditor({ workflow, onSave, onDiscard }) {
         <WorkflowNodePalette />
         <div className="workflow-editor-canvas-wrap min-h-0 min-w-0 flex-1">
           <WorkflowFlowCanvas
-            nodes={enrichedNodes}
+            nodes={nodes}
             edges={edges}
+            displayNodes={enrichedNodes}
             viewport={viewport}
             onGraphChange={onGraphChange}
             selectedNodeId={selectedNodeId}
