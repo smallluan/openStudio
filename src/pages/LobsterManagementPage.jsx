@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
 import { Plus } from "lucide-react";
+import agentHero from "../assets/images/agent-hero.png";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useStudio } from "../context/StudioContext.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -362,7 +363,31 @@ export default function LobsterManagementPage() {
 
   return (
     <div className="route-page route-page--plain flex min-h-0 flex-1 flex-col bg-[color-mix(in_srgb,var(--os-bg-base)_96%,var(--os-bg-panel))]">
-      <div className="mb-4 flex min-h-0 shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <section className="mb-6 flex shrink-0 flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <h1 className="text-[1.65rem] font-semibold tracking-tight text-[var(--os-text)]">
+            {t("lobsterPage.heroTitle")}
+          </h1>
+          <p className="max-w-lg text-[0.875rem] leading-relaxed text-[var(--os-text-muted)]">
+            {t("lobsterPage.heroDesc")}
+          </p>
+          <div className="pt-1">
+            <Button type="button" theme="primary" icon={<Plus size={16} />} onClick={openCreateModal}>
+              {t("lobsterPage.heroCreate")}
+            </Button>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center justify-center lg:justify-end">
+          <img
+            src={agentHero}
+            alt=""
+            className="h-auto max-h-[min(220px,32vw)] w-full max-w-[min(360px,88vw)] object-contain"
+          />
+        </div>
+      </section>
+
+      <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-[1.05rem] font-semibold text-[var(--os-text)]">{t("lobsterPage.listTitle")}</h2>
         <div className="w-full min-w-[220px] max-w-md sm:w-72">
           <Input
             type="search"
@@ -374,9 +399,6 @@ export default function LobsterManagementPage() {
             aria-label={t("lobsterPage.searchPlaceholder")}
           />
         </div>
-        <Button type="button" theme="primary" icon={<Plus size={16} />} onClick={openCreateModal}>
-          {t("lobsterPage.actions.create")}
-        </Button>
       </div>
 
       {provisionNote ? (

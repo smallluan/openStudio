@@ -244,11 +244,20 @@
     "saveImage": "儲存為圖片"
   },
   "automationPage": {
-    "placeholder": "定時任務與自動化能力，即將推出。"
+    "heroTitle": "自動化",
+    "heroDesc": "建立定時任務，讓 Open Studio 自動為你工作。",
+    "heroCreate": "新增任務",
+    "listTitle": "我的任務",
+    "searchPlaceholder": "搜尋任務",
+    "emptyList": "暫無定時任務，點擊上方按鈕建立第一個。"
   },
   "workflowPage": {
     "title": "工作流",
     "desc": "編排智能體與技能的流程，支援巢狀子工作流。可在對話中選用（即將推出）。",
+    "heroTitle": "工作流",
+    "heroDesc": "編排智能體與技能，Open Studio 與你一起工作。",
+    "heroCreate": "新建工作流",
+    "listTitle": "我的工作流",
     "breadcrumbHome": "首頁",
     "breadcrumbNew": "新建",
     "nodePaletteTitle": "節點",
@@ -256,7 +265,7 @@
     "create": "新建工作流",
     "createTitle": "新建工作流",
     "searchPlaceholder": "搜尋工作流…",
-    "empty": "暫無工作流，點擊右上角新建",
+    "empty": "暫無工作流，點擊上方按鈕新建",
     "namePlaceholder": "工作流名稱",
     "descPlaceholder": "描述（可選）",
     "nodeCount": "{n} 個節點",
@@ -419,6 +428,10 @@
   "lobsterPage": {
     "title": "智慧體管理",
     "desc": "建立並管理 OpenClaw 智慧體：名稱、頭像、soul.md 身份、工作區與技能。新建時會在閘道側初始化 workspace 並註冊到 agents.list。",
+    "heroTitle": "智慧體",
+    "heroDesc": "建立你的智慧體，Open Studio 與你一起工作。",
+    "heroCreate": "新增智慧體",
+    "listTitle": "我的智慧體",
     "actions": {
       "create": "新增智慧體",
       "edit": "編輯",

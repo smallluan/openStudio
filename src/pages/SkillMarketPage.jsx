@@ -1,6 +1,7 @@
 import { useCallback, useId, useMemo, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
-import { Empty, Space, Tabs } from "tdesign-react";
+import { Space, Tabs } from "tdesign-react";
+import OsEmpty from "../ui/OsEmpty.jsx";
 import { AddIcon, FolderIcon } from "tdesign-icons-react";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
@@ -235,9 +236,9 @@ export default function SkillMarketPage() {
         )}
       >
         {shouldShowBuiltinLoading ? (
-          <Empty description="正在加载技能..." />
+          <OsEmpty description="正在加载技能..." />
         ) : shouldShowEmpty ? (
-          <Empty description={t("skillsPage.emptyBuiltin")} />
+          <OsEmpty description={t("skillsPage.emptyBuiltin")} />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filteredBuiltin.map((def) => {

@@ -246,11 +246,20 @@
     "saveImage": "保存为图片"
   },
   "automationPage": {
-    "placeholder": "定时任务与自动化能力，即将推出。"
+    "heroTitle": "自动化",
+    "heroDesc": "创建定时任务，让 Open Studio 自动为你工作。",
+    "heroCreate": "新增任务",
+    "listTitle": "我的任务",
+    "searchPlaceholder": "搜索任务",
+    "emptyList": "暂无定时任务，点击上方按钮创建第一个。"
   },
   "workflowPage": {
     "title": "工作流",
     "desc": "编排智能体与技能的流程，支持嵌套子工作流。可在对话中选用（即将推出）。",
+    "heroTitle": "工作流",
+    "heroDesc": "编排智能体与技能，Open Studio 与你一起工作。",
+    "heroCreate": "新建工作流",
+    "listTitle": "我的工作流",
     "breadcrumbHome": "首页",
     "breadcrumbNew": "新建",
     "nodePaletteTitle": "节点",
@@ -258,7 +267,7 @@
     "create": "新建工作流",
     "createTitle": "新建工作流",
     "searchPlaceholder": "搜索工作流…",
-    "empty": "暂无工作流，点击右上角新建",
+    "empty": "暂无工作流，点击上方按钮新建",
     "namePlaceholder": "工作流名称",
     "descPlaceholder": "描述（可选）",
     "nodeCount": "{n} 个节点",
@@ -421,6 +430,10 @@
   "lobsterPage": {
     "title": "智能体管理",
     "desc": "",
+    "heroTitle": "智能体",
+    "heroDesc": "创建你的智能体，Open Studio 与你一起工作。",
+    "heroCreate": "新增智能体",
+    "listTitle": "我的智能体",
     "actions": {
       "create": "新建智能体",
       "edit": "编辑",

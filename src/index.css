@@ -1909,6 +1909,22 @@ code {
   overflow: auto;
 }
 
+.t-empty__image {
+  display: flex;
+  justify-content: center;
+}
+
+.os-empty__image,
+.t-empty__image img {
+  display: block;
+  max-width: 7.5rem;
+  height: auto;
+}
+
+.t-empty__image .t-image__wrapper {
+  background: transparent;
+}
+
 .route-page__header {
   margin-bottom: 1.25rem;
 }
@@ -4647,8 +4663,8 @@ html[data-os-motion="reduced"] .chat-lab__context-trigger {
 /* 机器人头像 */
 .chat-lab__hero-avatar {
   position: relative;
-  width: var(--os-landing-hero-size);
-  height: var(--os-landing-hero-size);
+  width: calc(var(--os-landing-hero-size) * 1.1);
+  height: calc(var(--os-landing-hero-size) * 1.2);
   margin: 0 auto 1.25rem;
   display: flex;
   align-items: center;
@@ -10030,7 +10046,7 @@ html[data-os-motion="reduced"] .chat-lab__reveal-blur-veil {
 
 .web-explore-page__landing {
   --web-explore-landing-width: min(720px, 100%);
-  --web-explore-hero-size: calc(var(--os-landing-hero-size) * 1.12);
+  --web-explore-hero-size: calc(var(--os-landing-hero-size) * 1.5);
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;

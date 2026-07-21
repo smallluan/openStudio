@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Input } from "@open-studio/udesign";
-import { Empty } from "tdesign-react";
-import { AddIcon } from "tdesign-icons-react";
+import { Plus } from "lucide-react";
+import OsEmpty from "../ui/OsEmpty.jsx";
+import workflowHero from "../assets/images/workflow-hero.png";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
-import WorkflowBreadcrumb from "../components/workflow/WorkflowBreadcrumb.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { useWorkflowLibrary } from "../workflow/useWorkflowLibrary.js";
 import WorkflowFlowPreview from "../components/workflow/WorkflowFlowPreview.jsx";
@@ -85,33 +85,43 @@ export default function WorkflowPage() {
     setPendingDeleteId(null);
   }, [pendingDeleteId, removeWorkflow]);
 
-  const breadcrumbItems = useMemo(
-    () => [
-      { label: t("workflowPage.breadcrumbHome"), onClick: () => navigate("/chat") },
-      { label: t("nav.workflow") },
-    ],
-    [t, navigate],
-  );
-
   return (
-    <div className="route-page route-page--workflow flex min-h-0 flex-1 flex-col bg-[color-mix(in_srgb,var(--os-bg-base)_96%,var(--os-bg-panel))]">
-      <div className="mb-4 flex shrink-0 flex-col gap-3">
-        <WorkflowBreadcrumb items={breadcrumbItems} />
-        <div className="flex min-h-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="w-full min-w-[220px] max-w-md sm:w-72">
-            <Input
-              type="search"
-              prefixIcon={<SearchSparkleIcon className="opacity-75" aria-hidden />}
-              clearable
-              value={query}
-              onChange={(value) => setQuery(value)}
-              placeholder={t("workflowPage.searchPlaceholder")}
-              aria-label={t("workflowPage.searchPlaceholder")}
-            />
+    <div className="route-page route-page--plain flex min-h-0 flex-1 flex-col bg-[color-mix(in_srgb,var(--os-bg-base)_96%,var(--os-bg-panel))]">
+      <section className="mb-6 flex shrink-0 flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <h1 className="text-[1.65rem] font-semibold tracking-tight text-[var(--os-text)]">
+            {t("workflowPage.heroTitle")}
+          </h1>
+          <p className="max-w-lg text-[0.875rem] leading-relaxed text-[var(--os-text-muted)]">
+            {t("workflowPage.heroDesc")}
+          </p>
+          <div className="pt-1">
+            <Button type="button" theme="primary" icon={<Plus size={16} />} onClick={handleCreate}>
+              {t("workflowPage.heroCreate")}
+            </Button>
           </div>
-          <Button type="button" theme="primary" icon={<AddIcon />} onClick={handleCreate}>
-            {t("workflowPage.create")}
-          </Button>
+        </div>
+        <div className="flex shrink-0 items-center justify-center lg:justify-end">
+          <img
+            src={workflowHero}
+            alt=""
+            className="h-auto max-h-[min(220px,32vw)] w-full max-w-[min(360px,88vw)] object-contain"
+          />
+        </div>
+      </section>
+
+      <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-[1.05rem] font-semibold text-[var(--os-text)]">{t("workflowPage.listTitle")}</h2>
+        <div className="w-full min-w-[220px] max-w-md sm:w-72">
+          <Input
+            type="search"
+            prefixIcon={<SearchSparkleIcon className="opacity-75" aria-hidden />}
+            clearable
+            value={query}
+            onChange={(value) => setQuery(value)}
+            placeholder={t("workflowPage.searchPlaceholder")}
+            aria-label={t("workflowPage.searchPlaceholder")}
+          />
         </div>
       </div>
 
@@ -122,7 +132,7 @@ export default function WorkflowPage() {
         )}
       >
         {filtered.length === 0 ? (
-          <Empty description={t("workflowPage.empty")} />
+          <OsEmpty description={t("workflowPage.empty")} />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filtered.map((w) => (

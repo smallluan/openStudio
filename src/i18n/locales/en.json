@@ -246,11 +246,20 @@
     "saveImage": "Save as image"
   },
   "automationPage": {
-    "placeholder": "Scheduled tasks and automation — coming soon."
+    "heroTitle": "Automation",
+    "heroDesc": "Create scheduled tasks and let Open Studio work for you automatically.",
+    "heroCreate": "New task",
+    "listTitle": "My tasks",
+    "searchPlaceholder": "Search tasks",
+    "emptyList": "No scheduled tasks yet. Create your first one above."
   },
   "workflowPage": {
     "title": "Workflows",
     "desc": "Orchestrate agents and skills. Supports nested sub-workflows. Selectable in chat (coming soon).",
+    "heroTitle": "Workflows",
+    "heroDesc": "Orchestrate agents and skills — Open Studio works alongside you.",
+    "heroCreate": "New workflow",
+    "listTitle": "My workflows",
     "breadcrumbHome": "Home",
     "breadcrumbNew": "New",
     "nodePaletteTitle": "Nodes",
@@ -258,7 +267,7 @@
     "create": "New workflow",
     "createTitle": "New workflow",
     "searchPlaceholder": "Search workflows…",
-    "empty": "No workflows yet. Click New to create one.",
+    "empty": "No workflows yet. Create your first one above.",
     "namePlaceholder": "Workflow name",
     "descPlaceholder": "Description (optional)",
     "nodeCount": "{n} nodes",
@@ -421,6 +430,10 @@
   "lobsterPage": {
     "title": "Agent management",
     "desc": "",
+    "heroTitle": "Agents",
+    "heroDesc": "Create your agents — Open Studio works alongside you.",
+    "heroCreate": "New agent",
+    "listTitle": "My agents",
     "actions": {
       "create": "New agent",
       "edit": "Edit",
