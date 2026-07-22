@@ -112,6 +112,7 @@ function FlowCanvasInner({
   const { t } = useI18n();
   const { setViewport, screenToFlowPosition } = useReactFlow();
   const clipboardRef = useRef(/** @type {{ nodes: import('@xyflow/react').Node[]; edges: import('@xyflow/react').Edge[] } | null} */ (null));
+  const suppressConfigClickRef = useRef(/** @type {{ nodeId: string | null; until: number }} */ ({ nodeId: null, until: 0 }));
   const [boxSelectedNodeIds, setBoxSelectedNodeIds] = useState(
     /** @type {Set<string>} */ (() => new Set()),
   );
@@ -277,6 +278,11 @@ function FlowCanvasInner({
 
   const onNodeClick = useCallback(
     (_evt, node) => {
+      const suppress = suppressConfigClickRef.current;
+      if (suppress.nodeId === node.id && Date.now() <= suppress.until) {
+        return;
+      }
+      setBoxSelectedNodeIds(new Set());
       onSelectedNodeIdChange(node.id);
       onConfigNodeIdChange(node.id);
     },
@@ -404,8 +410,10 @@ function FlowCanvasInner({
       }
 
       applyGraph(nextNodes, nextEdges);
+      setBoxSelectedNodeIds(new Set());
       onSelectedNodeIdChange(subAgentNode.id);
-      onConfigNodeIdChange(subAgentNode.id);
+      onConfigNodeIdChange(null);
+      suppressConfigClickRef.current = { nodeId: subAgentNode.id, until: Date.now() + 250 };
     },
     [nodes, edges, applyGraph, onSelectedNodeIdChange, onConfigNodeIdChange, defaultStudioAgentId],
   );
@@ -452,13 +460,18 @@ function FlowCanvasInner({
         screenToFlowPosition({ x: event.clientX, y: event.clientY }),
       );
       const node = createWorkflowNode(payload.nodeType, position, { defaultStudioAgentId });
+      setBoxSelectedNodeIds(new Set());
+      onSelectedNodeIdChange(node.id);
+      onConfigNodeIdChange(null);
+      suppressConfigClickRef.current = { nodeId: node.id, until: Date.now() + 250 };
       onGraphChange({ nodes: [...nodes, node] });
     },
-    [nodes, onGraphChange, screenToFlowPosition, defaultStudioAgentId],
+    [nodes, onGraphChange, screenToFlowPosition, onSelectedNodeIdChange, onConfigNodeIdChange, defaultStudioAgentId],
   );
 
   const onNodeContextMenu = useCallback((event, node) => {
     event.preventDefault();
+    setBoxSelectedNodeIds(new Set());
     onSelectedNodeIdChange(node.id);
     setContextMenu({ kind: "node", x: event.clientX, y: event.clientY, nodeId: node.id });
   }, [onSelectedNodeIdChange]);
