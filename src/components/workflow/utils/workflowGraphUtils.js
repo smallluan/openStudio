@@ -1,4 +1,5 @@
 import { WORKFLOW_NODE_TYPES } from "../../../workflow/workflowTypes.js";
+import { createWorkflowEdgeId } from "../../../workflow/workflowIds.js";
 import { createWorkflowNodeId } from "./workflowNodeHandles.js";
 
 const WORKFLOW_SNAP_GRID = 16;
@@ -448,7 +449,7 @@ function snapWorkflowPosition(position) {
 /** @param {string} source @param {string} target */
 function createWorkflowStepEdge(source, target) {
   return {
-    id: `e-${source}-${target}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: createWorkflowEdgeId(),
     source,
     target,
     type: "workflowStep",

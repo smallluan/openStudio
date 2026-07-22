@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useRef } from "react";
-import { Popup } from "tdesign-react";
+import { Button, Popup } from "tdesign-react";
 import {
   OS_POPUP_ANCHOR_CLASS,
   OS_POPUP_INNER_CLASS,
   OS_POPUP_OVERLAY_CLASS,
 } from "../../ui/osPopupShared.js";
 import { useVirtualPopupAnchor } from "../../ui/useVirtualPopupAnchor.js";
-import { cn } from "../../ui/cn.js";
 
 /**
  * @param {{
  *   open: boolean;
  *   onOpenChange: (open: boolean) => void;
  *   anchorPoint: { x: number; y: number } | null;
- *   items: Array<{ id: string; label: string; onClick: () => void; disabled?: boolean; danger?: boolean }>;
+ *   items: Array<{ id: string; label: string; icon?: import('react').ReactNode; onClick: () => void; disabled?: boolean; danger?: boolean }>;
  * }} props
  */
 export default function WorkflowContextMenu({ open, onOpenChange, anchorPoint, items }) {
@@ -58,12 +57,16 @@ export default function WorkflowContextMenu({ open, onOpenChange, anchorPoint, i
       onContextMenu={(e) => e.preventDefault()}
     >
       {items.map((item) => (
-        <button
+        <Button
           key={item.id}
           type="button"
-          role="menuitem"
-          className={cn("wf-context-menu__item", item.danger && "is-danger")}
+          variant="text"
+          size="small"
+          block
+          theme={item.danger ? "danger" : "default"}
+          icon={item.icon}
           disabled={item.disabled}
+          style={{ justifyContent: "flex-start" }}
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
@@ -74,7 +77,7 @@ export default function WorkflowContextMenu({ open, onOpenChange, anchorPoint, i
           }}
         >
           {item.label}
-        </button>
+        </Button>
       ))}
     </div>
   );

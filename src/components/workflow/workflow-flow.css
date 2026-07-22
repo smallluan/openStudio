@@ -91,49 +91,21 @@
 }
 
 .wf-context-menu {
-  position: relative;
-  z-index: 40;
-  min-width: 168px;
+  min-width: 172px;
   padding: 4px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--os-border) 65%, transparent);
-  background: color-mix(in srgb, var(--os-bg-panel) 96%, var(--os-bg-elevated));
-  box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--os-shadow-color, #000) 28%, transparent);
+  border-radius: var(--td-radius-large, 12px);
+  border: 1px solid var(--td-component-border, color-mix(in srgb, var(--os-border) 60%, transparent));
+  background: var(--td-bg-color-container, var(--os-bg-panel));
+  box-shadow: var(--td-shadow-2, 0 10px 28px -10px color-mix(in srgb, var(--os-shadow-color, #000) 28%, transparent));
 }
 
 .workflow-flow-canvas .react-flow__node.selected .wf-node:not(.is-selected) {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--os-accent) 22%, transparent);
-}
-
-.wf-context-menu__item {
-  display: block;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  text-align: left;
-  font-size: 0.78rem;
-  color: var(--os-text);
-  cursor: pointer;
-}
-
-.wf-context-menu__item:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--os-accent) 10%, transparent);
-}
-
-.wf-context-menu__item.is-danger {
-  color: var(--os-danger, #ef4444);
-}
-
-.wf-context-menu__item:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+  box-shadow: inherit;
 }
 
 .wf-node.is-selected {
-  border-color: color-mix(in srgb, var(--wf-node-accent) 65%, var(--os-border));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wf-node-accent) 18%, transparent);
+  border-color: var(--wf-node-border);
+  box-shadow: 0 4px 14px -8px color-mix(in srgb, var(--os-shadow-color, #000) 22%, transparent);
 }
 
 .wf-node__badge {

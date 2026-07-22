@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@open-studio/udesign";
 import { CloseIcon } from "tdesign-icons-react";
+import { Textarea } from "tdesign-react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { useStudio } from "../../context/StudioContext.jsx";
 import { agentDisplayLabel } from "../../studio/agents.js";
@@ -12,6 +13,16 @@ import { resolveAgentNodeSkills } from "../../workflow/workflowRuntimeRegistry.j
 import TextField from "../../ui/TextField.jsx";
 import Select from "../../ui/Select.jsx";
 import { cn } from "../../ui/cn.js";
+
+/** @param {unknown} value */
+function toTextareaValue(value) {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "target" in value) {
+    const target = /** @type {{ value?: unknown }} */ (value.target);
+    if (typeof target?.value === "string") return target.value;
+  }
+  return "";
+}
 
 /** @param {{ node: import('@xyflow/react').Node | null; nodes: import('@xyflow/react').Node[]; edges: import('@xyflow/react').Edge[]; workflows: { id: string; name: string }[]; currentWorkflowId: string; open: boolean; onClose: () => void; onApply: (nodeId: string, data: Record<string, unknown>) => void }} props */
 export default function WorkflowNodeDrawer({
@@ -217,6 +228,18 @@ export default function WorkflowNodeDrawer({
           />
         </div>
 
+        <div className="space-y-1.5">
+          <span className="text-[0.72rem] font-medium text-[var(--os-text-muted)]">
+            {t("workflowPage.nodePrompt")}
+          </span>
+          <Textarea
+            value={String(draft.prompt ?? "")}
+            onChange={(value) => setDraft((p) => ({ ...p, prompt: toTextareaValue(value) }))}
+            placeholder={t("workflowPage.nodePromptPlaceholder")}
+            autosize={{ minRows: 4, maxRows: 10 }}
+          />
+        </div>
+
         {nodeType === WORKFLOW_NODE_TYPES.AGENT ? (
           <>
             <div className="space-y-1.5">
@@ -313,11 +336,11 @@ export default function WorkflowNodeDrawer({
               <p className="text-[0.68rem] leading-relaxed text-[var(--os-text-muted)]">
                 {t("workflowPage.subAgentTaskHint")}
               </p>
-              <textarea
-                className="min-h-[120px] w-full resize-y rounded-[10px] border border-[color-mix(in_srgb,var(--os-border)_55%,transparent)] bg-[var(--os-bg-elevated)] px-3 py-2 text-[0.78rem] leading-relaxed text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus:border-[color-mix(in_srgb,var(--os-accent)_40%,var(--os-border))] focus:outline-none"
+              <Textarea
                 value={String(draft.task ?? "")}
-                onChange={(e) => setDraft((p) => ({ ...p, task: e.target.value }))}
+                onChange={(value) => setDraft((p) => ({ ...p, task: toTextareaValue(value) }))}
                 placeholder={t("workflowPage.subAgentTaskPlaceholder")}
+                autosize={{ minRows: 4, maxRows: 10 }}
               />
             </div>
 

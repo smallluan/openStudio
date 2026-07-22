@@ -12,12 +12,14 @@ import {
   applyEdgeChanges,
   useReactFlow,
 } from "@xyflow/react";
+import { AddIcon, ChevronRightIcon, DeleteIcon, MirrorIcon, SwapIcon } from "tdesign-icons-react";
 import "@xyflow/react/dist/style.css";
 import { workflowNodeTypes } from "./nodes/index.js";
 import WorkflowStepEdge from "./edges/WorkflowStepEdge.jsx";
 import { WorkflowNodeActionsContext } from "./context/WorkflowNodeActionsContext.jsx";
 import WorkflowContextMenu from "./WorkflowContextMenu.jsx";
 import { WORKFLOW_NODE_TYPES } from "../../workflow/workflowTypes.js";
+import { createWorkflowEdgeId } from "../../workflow/workflowIds.js";
 import { WORKFLOW_DRAG_DATA_KEY } from "./workflowDrag.js";
 import {
   createWorkflowNodeId,
@@ -33,6 +35,9 @@ import { cn } from "../../ui/cn.js";
 import "./workflow-flow.css";
 
 const SNAP_GRID = [16, 16];
+const SUB_AGENT_X_GAP = 280;
+const SUB_AGENT_Y_GAP = 140;
+const SUB_AGENT_RETURN_PROXY_KEY = "subAgentReturnSourceNodeId";
 
 const workflowEdgeTypes = { workflowStep: WorkflowStepEdge };
 
@@ -41,6 +46,53 @@ function snapPosition(pos) {
   return {
     x: Math.round(pos.x / gx) * gx,
     y: Math.round(pos.y / gy) * gy,
+  };
+}
+
+/** @param {string} source @param {string} target */
+function createWorkflowStepEdge(source, target) {
+  return {
+    id: createWorkflowEdgeId(),
+    source,
+    target,
+    type: "workflowStep",
+    animated: false,
+  };
+}
+
+/**
+ * @param {string} parentAgentNodeId
+ * @param {import('@xyflow/react').Node[]} nodes
+ */
+function findSubAgentReturnProxy(parentAgentNodeId, nodes) {
+  return (
+    nodes.find(
+      (node) =>
+        node.type === WORKFLOW_NODE_TYPES.AGENT &&
+        node.data?.[SUB_AGENT_RETURN_PROXY_KEY] === parentAgentNodeId,
+    ) ?? null
+  );
+}
+
+/**
+ * @param {import('@xyflow/react').Node} parentNode
+ * @param {{ x: number; y: number }} position
+ */
+function createSubAgentReturnProxyNode(parentNode, position) {
+  const parentData = /** @type {Record<string, unknown>} */ (parentNode.data ?? {});
+  return {
+    id: createWorkflowNodeId(),
+    type: WORKFLOW_NODE_TYPES.AGENT,
+    position: snapPosition(position),
+    data: {
+      label: typeof parentData.label === "string" ? parentData.label : "智能体",
+      description: typeof parentData.description === "string" ? parentData.description : "",
+      agentId: typeof parentData.agentId === "string" ? parentData.agentId : null,
+      skillOverrides: structuredClone(parentData.skillOverrides ?? { bind: [], unbind: [] }),
+      [SUB_AGENT_RETURN_PROXY_KEY]: parentNode.id,
+      flipX: false,
+      flipY: false,
+    },
   };
 }
 
@@ -59,7 +111,6 @@ function FlowCanvasInner({
 }) {
   const { t } = useI18n();
   const { setViewport, screenToFlowPosition } = useReactFlow();
-  const nodeDragRef = useRef(false);
   const clipboardRef = useRef(/** @type {{ nodes: import('@xyflow/react').Node[]; edges: import('@xyflow/react').Edge[] } | null} */ (null));
   const [boxSelectedNodeIds, setBoxSelectedNodeIds] = useState(
     /** @type {Set<string>} */ (() => new Set()),
@@ -201,7 +252,7 @@ function FlowCanvasInner({
         edges: addEdge(
           {
             ...connection,
-            id: `e-${connection.source}-${connection.target}-${Date.now()}`,
+            id: createWorkflowEdgeId(),
             type: "workflowStep",
             animated: false,
           },
@@ -226,19 +277,11 @@ function FlowCanvasInner({
 
   const onNodeClick = useCallback(
     (_evt, node) => {
-      if (nodeDragRef.current) {
-        nodeDragRef.current = false;
-        return;
-      }
       onSelectedNodeIdChange(node.id);
       onConfigNodeIdChange(node.id);
     },
     [onSelectedNodeIdChange, onConfigNodeIdChange],
   );
-
-  const onNodeDragStart = useCallback(() => {
-    nodeDragRef.current = true;
-  }, []);
 
   const onPaneClick = useCallback(() => {
     onSelectedNodeIdChange(null);
@@ -315,6 +358,58 @@ function FlowCanvasInner({
     }
   }, [nodes, edges, applyGraph, getSelectedNodeIds, selectedNodeId, onSelectedNodeIdChange, onConfigNodeIdChange]);
 
+  const handleAddSubAgent = useCallback(
+    (parentNodeId) => {
+      const parentNode = nodes.find((node) => node.id === parentNodeId);
+      if (
+        parentNode?.type !== WORKFLOW_NODE_TYPES.AGENT ||
+        typeof parentNode.data?.handoffSourceNodeId === "string" ||
+        typeof parentNode.data?.[SUB_AGENT_RETURN_PROXY_KEY] === "string"
+      ) {
+        return;
+      }
+
+      const existingSubAgents = edges
+        .filter((edge) => edge.source === parentNodeId)
+        .map((edge) => nodes.find((node) => node.id === edge.target))
+        .filter((node) => node?.type === WORKFLOW_NODE_TYPES.SUB_AGENT);
+      const subAgentCount = existingSubAgents.length;
+
+      const subAgentPosition = snapPosition({
+        x: parentNode.position.x + SUB_AGENT_X_GAP,
+        y: parentNode.position.y + subAgentCount * SUB_AGENT_Y_GAP,
+      });
+      const subAgentNode = createWorkflowNode(WORKFLOW_NODE_TYPES.SUB_AGENT, subAgentPosition, {
+        defaultStudioAgentId,
+      });
+
+      const nodesWithSubAgent = [...nodes, subAgentNode];
+      let returnProxyNode = findSubAgentReturnProxy(parentNodeId, nodesWithSubAgent);
+      let nextNodes = nodesWithSubAgent;
+
+      if (!returnProxyNode) {
+        returnProxyNode = createSubAgentReturnProxyNode(parentNode, {
+          x: subAgentPosition.x + SUB_AGENT_X_GAP,
+          y: parentNode.position.y,
+        });
+        nextNodes = [...nodesWithSubAgent, returnProxyNode];
+      }
+
+      const nextEdges = [...edges];
+      if (!nextEdges.some((edge) => edge.source === parentNodeId && edge.target === subAgentNode.id)) {
+        nextEdges.push(createWorkflowStepEdge(parentNodeId, subAgentNode.id));
+      }
+      if (!nextEdges.some((edge) => edge.source === subAgentNode.id && edge.target === returnProxyNode.id)) {
+        nextEdges.push(createWorkflowStepEdge(subAgentNode.id, returnProxyNode.id));
+      }
+
+      applyGraph(nextNodes, nextEdges);
+      onSelectedNodeIdChange(subAgentNode.id);
+      onConfigNodeIdChange(subAgentNode.id);
+    },
+    [nodes, edges, applyGraph, onSelectedNodeIdChange, onConfigNodeIdChange, defaultStudioAgentId],
+  );
+
   const openNodeConfig = useCallback(
     (nodeId) => {
       onSelectedNodeIdChange(nodeId);
@@ -351,6 +446,7 @@ function FlowCanvasInner({
         return;
       }
       if (!payload?.nodeType) return;
+      if (payload.nodeType === WORKFLOW_NODE_TYPES.SUB_AGENT) return;
 
       const position = snapPosition(
         screenToFlowPosition({ x: event.clientX, y: event.clientY }),
@@ -432,11 +528,47 @@ function FlowCanvasInner({
     if (!contextMenu) return [];
     if (contextMenu.kind === "node" && contextMenu.nodeId) {
       const nodeId = contextMenu.nodeId;
+      const targetNode = nodes.find((node) => node.id === nodeId);
+      const canAddSubAgent =
+        targetNode?.type === WORKFLOW_NODE_TYPES.AGENT &&
+        typeof targetNode.data?.handoffSourceNodeId !== "string" &&
+        typeof targetNode.data?.[SUB_AGENT_RETURN_PROXY_KEY] !== "string";
       return [
-        { id: "configure", label: t("workflowPage.ctxConfigure"), onClick: () => openNodeConfig(nodeId) },
-        { id: "flip-h", label: t("workflowPage.ctxFlipH"), onClick: () => handleFlipNode(nodeId, "x") },
-        { id: "flip-v", label: t("workflowPage.ctxFlipV"), onClick: () => handleFlipNode(nodeId, "y") },
-        { id: "delete", label: t("workflowPage.ctxDeleteNode"), onClick: () => handleDeleteNode(nodeId), danger: true },
+        ...(canAddSubAgent
+          ? [
+              {
+                id: "add-sub-agent",
+                label: t("workflowPage.ctxAddSubAgent"),
+                icon: <AddIcon size="14px" />,
+                onClick: () => handleAddSubAgent(nodeId),
+              },
+            ]
+          : []),
+        {
+          id: "configure",
+          label: t("workflowPage.ctxConfigure"),
+          icon: <ChevronRightIcon size="14px" />,
+          onClick: () => openNodeConfig(nodeId),
+        },
+        {
+          id: "flip-h",
+          label: t("workflowPage.ctxFlipH"),
+          icon: <SwapIcon size="14px" />,
+          onClick: () => handleFlipNode(nodeId, "x"),
+        },
+        {
+          id: "flip-v",
+          label: t("workflowPage.ctxFlipV"),
+          icon: <MirrorIcon size="14px" />,
+          onClick: () => handleFlipNode(nodeId, "y"),
+        },
+        {
+          id: "delete",
+          label: t("workflowPage.ctxDeleteNode"),
+          icon: <DeleteIcon size="14px" />,
+          onClick: () => handleDeleteNode(nodeId),
+          danger: true,
+        },
       ];
     }
     if (contextMenu.kind === "edge" && contextMenu.edgeId) {
@@ -444,6 +576,7 @@ function FlowCanvasInner({
         {
           id: "delete-edge",
           label: t("workflowPage.ctxDeleteEdge"),
+          icon: <DeleteIcon size="14px" />,
           onClick: () => handleDeleteEdge(contextMenu.edgeId),
           danger: true,
         },
@@ -456,13 +589,21 @@ function FlowCanvasInner({
         {
           id: "paste",
           label: t("workflowPage.ctxPaste"),
+          icon: <ChevronRightIcon size="14px" />,
           onClick: () => handlePaste(contextMenu.flowX != null ? { x: contextMenu.flowX, y: contextMenu.flowY } : undefined),
           disabled: !hasClipboard,
         },
-        { id: "copy", label: t("workflowPage.ctxCopy"), onClick: handleCopy, disabled: !hasSelection },
+        {
+          id: "copy",
+          label: t("workflowPage.ctxCopy"),
+          icon: <ChevronRightIcon size="14px" />,
+          onClick: handleCopy,
+          disabled: !hasSelection,
+        },
         {
           id: "delete-selected",
           label: t("workflowPage.ctxDeleteSelected"),
+          icon: <DeleteIcon size="14px" />,
           onClick: handleDeleteSelected,
           disabled: !hasSelection,
           danger: true,
@@ -474,6 +615,7 @@ function FlowCanvasInner({
     contextMenu,
     t,
     openNodeConfig,
+    handleAddSubAgent,
     handleFlipNode,
     handleDeleteNode,
     handleDeleteEdge,
@@ -482,6 +624,7 @@ function FlowCanvasInner({
     handleDeleteSelected,
     boxSelectedNodeIds,
     selectedNodeId,
+    nodes,
   ]);
 
   return (
@@ -501,7 +644,6 @@ function FlowCanvasInner({
         isValidConnection={isValidConnection}
         onMoveEnd={onMoveEnd}
         onNodeClick={onNodeClick}
-        onNodeDragStart={onNodeDragStart}
         onPaneClick={onPaneClick}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
@@ -567,15 +709,16 @@ export function createWorkflowNode(type, position, options = {}) {
   const base = { id, type, position: position ?? { x: 200, y: 200 } };
   switch (type) {
     case WORKFLOW_NODE_TYPES.INPUT:
-      return { ...base, data: { label: "输入", description: "", flipX: false, flipY: false } };
+      return { ...base, data: { label: "输入", description: "", prompt: "", flipX: false, flipY: false } };
     case WORKFLOW_NODE_TYPES.OUTPUT:
-      return { ...base, data: { label: "输出", description: "", flipX: false, flipY: false } };
+      return { ...base, data: { label: "输出", description: "", prompt: "", flipX: false, flipY: false } };
     case WORKFLOW_NODE_TYPES.AGENT:
       return {
         ...base,
         data: {
           label: "智能体",
           description: "",
+          prompt: "",
           agentId: defaultStudioAgentId,
           skillOverrides: { bind: [], unbind: [] },
           flipX: false,
@@ -583,13 +726,17 @@ export function createWorkflowNode(type, position, options = {}) {
         },
       };
     case WORKFLOW_NODE_TYPES.NESTED:
-      return { ...base, data: { label: "嵌套工作流", description: "", workflowId: null, flipX: false, flipY: false } };
+      return {
+        ...base,
+        data: { label: "嵌套工作流", description: "", prompt: "", workflowId: null, flipX: false, flipY: false },
+      };
     case WORKFLOW_NODE_TYPES.SUB_AGENT:
       return {
         ...base,
         data: {
           label: "子智能体",
           description: "",
+          prompt: "",
           agentId: null,
           task: "",
           flipX: false,

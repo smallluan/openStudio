@@ -1,11 +1,12 @@
 import { Position } from "@xyflow/react";
+import {
+  createWorkflowEdgeId,
+  createWorkflowNodeId as createWorkflowNodeUuid,
+} from "../../../workflow/workflowIds.js";
 
 /** @returns {string} */
 export function createWorkflowNodeId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `node-${crypto.randomUUID()}`;
-  }
-  return `node-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  return createWorkflowNodeUuid();
 }
 
 const EPHEMERAL_NODE_DATA_KEYS = ["agentName", "isActive", "workflowName"];
@@ -110,7 +111,7 @@ export function pasteWorkflowSubgraph(clipboard, anchorFlow, nodes, edges) {
     if (!source || !target) return null;
     return {
       ...e,
-      id: `e-${source}-${target}-${Date.now()}-${Math.round(Math.random() * 1000)}`,
+      id: createWorkflowEdgeId(),
       source,
       target,
     };

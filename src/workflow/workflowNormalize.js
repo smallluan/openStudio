@@ -1,4 +1,5 @@
 import { WORKFLOW_NODE_TYPES } from "./workflowTypes.js";
+import { ensureUniqueWorkflowEdgeIds } from "./workflowIds.js";
 
 /** @param {unknown} overrides */
 function normalizeSkillOverrides(overrides) {
@@ -50,6 +51,7 @@ function normalizeNode(node) {
   }
 
   rawData.description = typeof rawData.description === "string" ? rawData.description : "";
+  rawData.prompt = typeof rawData.prompt === "string" ? rawData.prompt : "";
   rawData.flipX = Boolean(rawData.flipX);
   rawData.flipY = Boolean(rawData.flipY);
 
@@ -80,7 +82,8 @@ export function normalizeWorkflowDocument(raw) {
   if (!id) return null;
 
   const nodes = Array.isArray(o.nodes) ? o.nodes.map(normalizeNode).filter(Boolean) : [];
-  const edges = Array.isArray(o.edges) ? o.edges.map(normalizeEdge).filter(Boolean) : [];
+  const edgesRaw = Array.isArray(o.edges) ? o.edges.map(normalizeEdge).filter(Boolean) : [];
+  const edges = ensureUniqueWorkflowEdgeIds(edgesRaw);
 
   const viewport =
     o.viewport && typeof o.viewport === "object"
