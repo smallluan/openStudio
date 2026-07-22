@@ -6073,6 +6073,18 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   opacity: 0.82;
 }
 
+.chat-lab__pill-model .t-select-input--empty .t-input__inner,
+.chat-lab__pill-skill .t-select-input--empty .t-input__inner,
+.chat-lab__pill-workflow .t-select-input--empty .t-input__inner {
+  color: var(--os-text-faint);
+}
+
+.chat-lab__pill-model .t-input__inner::placeholder,
+.chat-lab__pill-skill .t-input__inner::placeholder,
+.chat-lab__pill-workflow .t-input__inner::placeholder {
+  color: var(--os-text-faint);
+}
+
 .chat-lab__pill-skill .t-input__prefix:not(.t-input__prefix-icon) {
   color: var(--os-text);
   opacity: 1;

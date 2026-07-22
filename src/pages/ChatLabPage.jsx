@@ -1,10 +1,10 @@
 import { memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
-import { Radio, RadioGroup, Select as TSelect, Switch as TSwitch } from "tdesign-react";
+import { Radio, RadioGroup, Select as TSelect } from "tdesign-react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Send, Cpu } from "lucide-react";
+import { Send, Cpu, GitBranch } from "lucide-react";
 import "katex/dist/katex.min.css";
 import {
   CONTEXT_WINDOW_APPROX_TOKENS,
@@ -1283,7 +1283,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     composerWorkflowIdRef.current = composerWorkflowId;
   }, [composerWorkflowId]);
   const [composerSkillRowLeaving, setComposerSkillRowLeaving] = useState(false);
-  const [composerSubagentEnabled, setComposerSubagentEnabled] = useState(false);
   const [composerFollowUpRef, setComposerFollowUpRef] = useState(
     /** @type {import("../chat/chatSessionsStore.js").MessageFollowUpRef | null} */ (null),
   );
@@ -1411,14 +1410,12 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     return listWorkflowsForPicker();
   }, [workflowPickerBump]);
   const workflowPickerOptions = useMemo(
-    () => [
-      { value: "", label: t("chatLab.workflowNone") },
-      ...workflowPickList.map((row) => ({
+    () =>
+      workflowPickList.map((row) => ({
         value: row.id,
         label: row.label || row.id,
       })),
-    ],
-    [t, workflowPickList],
+    [workflowPickList],
   );
   const continuousMentionTargetId = useMemo(() => {
     if (!chatLabGroupContinuousConversation) return "";
@@ -2755,7 +2752,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               webExploreMode: webExploreEmbed,
             }),
           };
-      const subagentModeRow = resolveSubagentModeRow(workflowPlan, composerSubagentEnabled, t);
+      const subagentModeRow = resolveSubagentModeRow(workflowPlan, false, t);
       const workflowModeRow = workflowExecutionSystemRow(workflowPlan);
       const baseOutgoing = [
         ...(sysRow ? [sysRow] : []),
@@ -2844,7 +2841,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       composerFileRefs,
       composerSkillRow,
       composerWorkflowId,
-      composerSubagentEnabled,
       config?.chatLabAutoTitle,
       config?.credentials?.hasProviderApiKey,
       configIssueKey,
@@ -3893,7 +3889,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         modelId: toolbarModelId,
         skillRow: composerSkillRow,
         workflowId: composerWorkflowId,
-        preferSubagent: composerSubagentEnabled,
         followUpRef: composerFollowUpRef,
         mentionIds,
       };
@@ -3961,7 +3956,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       fileRefs: fileRefsSnap,
       skillPickRow: effectiveSkillRow ?? null,
       workflowId: composerWorkflowIdRef.current || composerWorkflowId || null,
-      preferSubagent: composerSubagentEnabled,
       followUpRef: composerFollowUpRef,
       onCommitted: () => {
         setInput("");
@@ -3979,7 +3973,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     composerFileRefs,
     composerSkillRow,
     composerWorkflowId,
-    composerSubagentEnabled,
     configIssueKey,
     conversationId,
     gatewayPhase,
@@ -4808,21 +4801,23 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               borderless
               autoWidth
               prefixIcon={<Cpu size={14} strokeWidth={2} aria-hidden />}
-              value={enabledModelOptions.length > 0 ? toolbarModelId : "__model_not_configured__"}
+              placeholder={
+                enabledModelOptions.length > 0
+                  ? t("chatLab.toolbarAuto")
+                  : t("chatLab.modelNeedConfig")
+              }
+              value={enabledModelOptions.length > 0 ? toolbarModelId : ""}
               onChange={(v) => {
                 if (enabledModelOptions.length === 0) return;
                 setToolbarModelId(String(v));
                 void applyToolbarModelId(String(v));
               }}
-              options={
-                enabledModelOptions.length > 0
-                  ? enabledModelOptions
-                  : [{ value: "__model_not_configured__", label: t("chatLab.modelNeedConfig") }]
-              }
+              options={enabledModelOptions}
               className="chat-lab__pill-model"
               disabled={
                 composerInputLocked ||
-                (gatewayStreaming && queuedMessages.length === 0)
+                (gatewayStreaming && queuedMessages.length === 0) ||
+                enabledModelOptions.length === 0
               }
             />
             <ComposerSkillToolbarPicker
@@ -4843,8 +4838,14 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               id="chat-toolbar-workflow"
               borderless
               autoWidth
+              prefixIcon={<GitBranch size={14} strokeWidth={2} aria-hidden />}
+              clearable={Boolean(composerWorkflowId)}
               placeholder={t("chatLab.toolbarWorkflow")}
               value={composerWorkflowId}
+              onClear={() => {
+                setComposerWorkflowId("");
+                setWorkflowRuntimeState(null);
+              }}
               onChange={(v) => {
                 const nextId = String(v ?? "");
                 setComposerWorkflowId(nextId);
@@ -4897,18 +4898,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                 composerInputLocked ||
                 (gatewayStreaming && queuedMessages.length === 0)
               }
-            />
-            <span className="chat-lab__subagent-toggle-label">{t("chatLab.toolbarSubagent")}</span>
-            <TSwitch
-              size="small"
-              value={composerSubagentEnabled}
-              disabled={
-                composerSkillUiLocked ||
-                composerInputLocked ||
-                (gatewayStreaming && queuedMessages.length === 0)
-              }
-              onChange={(value) => setComposerSubagentEnabled(Boolean(value))}
-              title={t("chatLab.toolbarSubagentHint")}
             />
             {pendingEditMessageId ? (
               <span className="chat-lab__composer-edit-tag" role="status">

@@ -234,7 +234,7 @@ export function ComposerSkillToolbarPicker({ skills, selected, onSelect, disable
         if (!value) onSelect(null);
       }}
       onClear={() => onSelect(null)}
-      valueDisplay={() => (selected ? `${selected.emoji} ${selected.label}` : t("chatLab.toolbarSkill"))}
+      valueDisplay={selected ? () => `${selected.emoji} ${selected.label}` : undefined}
       selectInputProps={{
         "aria-haspopup": "listbox",
         "aria-expanded": open,
