@@ -89,7 +89,12 @@ import {
   stripSidebarActionFences,
   stripSidebarActionFencesFromTimeline,
 } from "../chat/chatLabSidebarActionProtocol.js";
-import { composeChatLabSystemPrompt, composeChatLabStudioSuffix, fetchChatLabWorkspaceContextBlock } from "../chat/chatLabSystemPrompt.js";
+import {
+  composeChatLabSystemPrompt,
+  composeChatLabStudioSuffix,
+  composeWebExploreUserTurnAutomationHint,
+  fetchChatLabWorkspaceContextBlock,
+} from "../chat/chatLabSystemPrompt.js";
 import {
   captureSidebarPreviewSnapshot,
   composeChatLabPreviewContextBlock,
@@ -366,8 +371,9 @@ function formatMessageTimestamp(ts, locale) {
  * @param {Array<{ role: string; content: string; attachments?: unknown[] }>} outgoing
  * @param {string} previewContext
  */
-function withWebExplorePreviewOnUserTurn(outgoing, previewContext) {
-  const block = String(previewContext ?? "").trim();
+function withWebExplorePreviewOnUserTurn(outgoing, previewContext, t) {
+  const automationHint = t ? composeWebExploreUserTurnAutomationHint(t) : "";
+  const block = [String(previewContext ?? "").trim(), automationHint].filter(Boolean).join("\n\n");
   if (!block || !Array.isArray(outgoing)) return outgoing;
   const rows = outgoing.map((row) => ({ ...row }));
   for (let i = rows.length - 1; i >= 0; i--) {
@@ -2759,7 +2765,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         ...tailUserRows,
       ];
       const outgoing = withWorkflowContextOnUserTurn(
-        webExploreEmbed ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext) : baseOutgoing,
+        webExploreEmbed ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext, t) : baseOutgoing,
         workflowPlan,
       );
       const composerSkill = skillPickRowToPayload(composerSkillRow);
@@ -3097,7 +3103,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           ...tailUserRows,
         ];
         const outgoing = withWorkflowContextOnUserTurn(
-          webExploreEmbed ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext) : baseOutgoing,
+          webExploreEmbed ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext, t) : baseOutgoing,
           workflowPlan,
         );
         return {

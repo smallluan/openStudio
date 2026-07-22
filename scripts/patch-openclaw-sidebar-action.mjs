@@ -46,7 +46,7 @@ function createSidebarActionTool() {
 		label: "Sidebar Action",
 		name: "sidebar_action",
 		displaySummary: "Control Open Studio preview page",
-		description: "Execute a short UI automation batch (max 5 steps) on the Open Studio sidebar preview or Web Explore page. Prefer ref/selector from the injected page inventory or the previous tool observation. The result includes a fresh observation with elements[].ref — call sidebar_action again for the next batch, or answer the user in natural language when done. Do not invent natural-language targets.",
+		description: "Execute a short UI automation batch (max 5 steps) on the Web Explore main viewport or Chat Lab sidebar preview. The sidebar_ prefix does NOT mean sidebar-only — call this tool in Web Explore when the user asks to click/type/scroll. Prefer ref/selector from the injected page inventory or the previous tool observation. The result includes a fresh observation with elements[].ref — call sidebar_action again for the next batch, or answer the user in natural language when done. Do not invent natural-language targets.",
 		parameters: Type.Object({
 			steps: Type.Array(stepSchema, {
 				minItems: 1,

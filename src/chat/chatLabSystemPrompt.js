@@ -15,13 +15,20 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
   if (opts.webExploreMode) {
     parts.push(String(t("webExploreChat.linkOpenPrompt") ?? "").trim());
     parts.push(String(t("webExploreChat.pageAutomationPrompt") ?? "").trim());
-    parts.push(String(t("webExploreChat.sidebarPreviewToolsPrompt") ?? "").trim());
   } else if (linkOpenMode !== "external") {
     parts.push(String(t("chatLab.linkOpenSidebarPrompt") ?? "").trim());
     parts.push(String(t("chatLab.sidebarAutomationPrompt") ?? "").trim());
     parts.push(String(t("chatLab.sidebarPreviewCapabilitiesPrompt") ?? "").trim());
   }
   return parts.filter(Boolean).join("\n\n");
+}
+
+/**
+ * Short automation reminder prepended on each Web Explore user turn (survives system-prompt truncation).
+ * @param {(key: string) => string} t
+ */
+export function composeWebExploreUserTurnAutomationHint(t) {
+  return String(t("webExploreChat.userTurnAutomationHint") ?? "").trim();
 }
 
 /**
