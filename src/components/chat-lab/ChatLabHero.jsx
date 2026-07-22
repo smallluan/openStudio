@@ -1,8 +1,6 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
-import heroAvatarLight from "../../assets/images/hero-avatar-light.png";
-import heroAvatarDark from "../../assets/images/hero-avatar-dark.png";
+import heroAvatar from "../../assets/images/hero-avatar.png";
 import { useI18n } from "../../context/I18nContext.jsx";
-import { useTheme } from "../../context/ThemeContext.jsx";
 import { cn } from "../../ui/cn.js";
 
 /** 首页副标题：淡入淡出轮播（比打字机更稳定，避免多 timer 竞态）。 */
@@ -77,7 +75,6 @@ export function HeroPhraseRotator({ phrases, holdMs = 3200, fadeMs = 420 }) {
  * Chat lab landing hero (avatar + greeting + rotating subtitle).
  */
 const ChatLabHero = forwardRef(function ChatLabHero({ className, suppressTitleEntrance = false }, ref) {
-  const { theme } = useTheme();
   const { t } = useI18n();
 
   const phrases = [
@@ -92,7 +89,7 @@ const ChatLabHero = forwardRef(function ChatLabHero({ className, suppressTitleEn
       <div className="chat-lab__hero-avatar">
         <img
           className="chat-lab__hero-avatar-icon"
-          src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
+          src={heroAvatar}
           alt=""
           aria-hidden
         />

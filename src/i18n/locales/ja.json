@@ -244,11 +244,20 @@
     "saveImage": "画像として保存"
   },
   "automationPage": {
-    "placeholder": "スケジュールタスクと自動化 — 近日公開。"
+    "heroTitle": "自動化",
+    "heroDesc": "スケジュールタスクを作成し、Open Studio に自動で働いてもらいましょう。",
+    "heroCreate": "タスクを追加",
+    "listTitle": "マイタスク",
+    "searchPlaceholder": "タスクを検索",
+    "emptyList": "スケジュールタスクはまだありません。上のボタンから最初のタスクを作成してください。"
   },
   "workflowPage": {
     "title": "ワークフロー",
     "desc": "エージェントとスキルを編成。ネストしたサブワークフローに対応。チャットで選択可能（近日公開）。",
+    "heroTitle": "ワークフロー",
+    "heroDesc": "エージェントとスキルを編成し、Open Studio と一緒に働きましょう。",
+    "heroCreate": "新規ワークフロー",
+    "listTitle": "マイワークフロー",
     "breadcrumbHome": "ホーム",
     "breadcrumbNew": "新規",
     "nodePaletteTitle": "ノード",
@@ -256,7 +265,7 @@
     "create": "新規ワークフロー",
     "createTitle": "新規ワークフロー",
     "searchPlaceholder": "ワークフローを検索…",
-    "empty": "ワークフローがありません。右上から新規作成してください。",
+    "empty": "ワークフローがありません。上のボタンから最初のワークフローを作成してください。",
     "namePlaceholder": "ワークフロー名",
     "descPlaceholder": "説明（任意）",
     "nodeCount": "{n} ノード",
@@ -419,6 +428,10 @@
   "lobsterPage": {
     "title": "エージェント管理",
     "desc": "OpenClaw エージェントの作成と管理：名前・アバター・soul.md・ワークスペース・スキル。新規作成時にゲートウェイ側の workspace を初期化し agents.list に登録します。",
+    "heroTitle": "エージェント",
+    "heroDesc": "エージェントを作成し、Open Studio と一緒に働きましょう。",
+    "heroCreate": "エージェントを追加",
+    "listTitle": "マイエージェント",
     "actions": {
       "create": "エージェントを作成",
       "edit": "編集",

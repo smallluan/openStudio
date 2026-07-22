@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import htmlwanderHero from "../assets/images/htmlwander.png";
-import htmlwanderHeroDark from "../assets/images/htmlwander-dark.png";
 import {
   ArrowLeft,
   Bot,
@@ -24,7 +23,6 @@ import WebExploreRedirectModal from "../components/web-explore/WebExploreRedirec
 import WebExplorePageScriptModal from "../components/web-explore/WebExplorePageScriptModal.jsx";
 import { openChatLabExternalUrl } from "../chat/chatLabLinkOpenPreference.js";
 import { useI18n } from "../context/I18nContext.jsx";
-import { useTheme } from "../context/ThemeContext.jsx";
 import { cn } from "../ui/cn.js";
 import {
   EXPLORE_TAB_IDLE_HIBERNATE_MS,
@@ -103,7 +101,6 @@ function withLifecycle(tabs, activeTabId) {
 
 export default function WebExplorePage() {
   const { t } = useI18n();
-  const { theme } = useTheme();
   const featureCards = useMemo(
     () => [
       { id: "automation", icon: Bot },
@@ -685,7 +682,7 @@ export default function WebExplorePage() {
           <div className="web-explore-page__hero" aria-hidden>
             <img
               className="web-explore-page__hero-img"
-              src={theme === "dark" ? htmlwanderHeroDark : htmlwanderHero}
+              src={htmlwanderHero}
               alt=""
             />
           </div>
