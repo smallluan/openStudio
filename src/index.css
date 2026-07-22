@@ -6039,7 +6039,8 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
 }
 
 .chat-lab__pill-model.t-select__wrap,
-.chat-lab__pill-skill.t-select__wrap {
+.chat-lab__pill-skill.t-select__wrap,
+.chat-lab__pill-workflow.t-select__wrap {
   width: auto;
 }
 
@@ -6062,7 +6063,8 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
 }
 
 .chat-lab__pill-model .t-input__prefix-icon,
-.chat-lab__pill-skill .t-input__prefix-icon {
+.chat-lab__pill-skill .t-input__prefix-icon,
+.chat-lab__pill-workflow .t-input__prefix-icon {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
@@ -6082,8 +6084,16 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   max-width: min(16rem, 46vw);
 }
 
+.chat-lab__pill-workflow {
+  flex-shrink: 0;
+  min-width: 4rem;
+  max-width: min(16rem, 46vw);
+}
+
 .chat-lab__pill-skill .t-input,
-.chat-lab__pill-skill .t-select-input {
+.chat-lab__pill-skill .t-select-input,
+.chat-lab__pill-workflow .t-input,
+.chat-lab__pill-workflow .t-select-input {
   width: auto;
   max-width: 100%;
 }
@@ -6094,12 +6104,24 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   white-space: nowrap;
 }
 
+.chat-lab__pill-workflow .t-input__inner {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-lab__pill-skill .t-input__wrap,
 .chat-lab__pill-skill .t-input,
 .chat-lab__pill-skill .t-select-input,
+.chat-lab__pill-workflow .t-input__wrap,
+.chat-lab__pill-workflow .t-input,
+.chat-lab__pill-workflow .t-select-input,
 .chat-lab__pill-skill.t-is-active .t-input__wrap,
 .chat-lab__pill-skill.t-is-active .t-input,
-.chat-lab__pill-skill.t-is-active .t-select-input {
+.chat-lab__pill-skill.t-is-active .t-select-input,
+.chat-lab__pill-workflow.t-is-active .t-input__wrap,
+.chat-lab__pill-workflow.t-is-active .t-input,
+.chat-lab__pill-workflow.t-is-active .t-select-input {
   background: transparent;
   box-shadow: none;
 }

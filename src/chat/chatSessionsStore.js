@@ -1,6 +1,7 @@
 /** Local persistence for chat conversations (sidebar history). */
 
 import { sanitizeFollowUpRef } from "./chatLabFollowUp.js";
+import { sanitizeWorkflowSessionState } from "../workflow/workflowRuntimeRegistry.js";
 
 const LEGACY_STORAGE_KEY = "openstudio_chat_sessions_v1";
 const PERSIST_DEBOUNCE_MS = 400;
@@ -93,6 +94,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string} [gatewayConversationId] UUID gateway thread for WeChat auto-reply (UI id stays `wechat:<peer>`)
  * @property {string[]} [participantIds] Studio agent ids in this thread (group chat)
  * @property {ThreadContextState} [threadContext]
+ * @property {{ selectedWorkflowId?: string; runtime?: import("../workflow/workflowRuntimeRegistry.js").WorkflowSessionRuntimeState | null }} [workflowState]
  * @property {PreviewStateRecord} [previewState]
  * @property {PersistedChatMessage[]} messages
  */
@@ -179,6 +181,7 @@ function normalizeSessionRow(r) {
       typeof row.gatewayConversationId === "string" ? row.gatewayConversationId.trim().slice(0, 96) : "",
     participantIds: sanitizeParticipantIds(row.participantIds),
     threadContext: sanitizeThreadContext(row.threadContext),
+    workflowState: sanitizeWorkflowSessionState(row.workflowState),
     previewState: sanitizePreviewState(row.previewState),
     messages: sanitizeMessages(row.messages),
   };
@@ -645,6 +648,7 @@ function writeAll(rows, persistSession) {
  *   gatewayConversationId?: string;
  *   participantIds?: string[];
  *   threadContext?: ThreadContextState | null;
+ *   workflowState?: { selectedWorkflowId?: string | null; runtime?: import("../workflow/workflowRuntimeRegistry.js").WorkflowSessionRuntimeState | null } | null;
  *   previewState?: PreviewStateRecord | null;
  * }} [opts]
  */
@@ -679,6 +683,10 @@ export function upsertSession(id, title, messages, opts = {}) {
     opts.threadContext !== undefined
       ? sanitizeThreadContext(opts.threadContext)
       : sanitizeThreadContext(prev?.threadContext);
+  const nextWorkflowState =
+    opts.workflowState !== undefined
+      ? sanitizeWorkflowSessionState(opts.workflowState)
+      : sanitizeWorkflowSessionState(prev?.workflowState);
   const nextPreviewState =
     opts.previewState !== undefined
       ? sanitizePreviewState(opts.previewState)
@@ -693,6 +701,7 @@ export function upsertSession(id, title, messages, opts = {}) {
     ...(nextGatewayConversationId ? { gatewayConversationId: nextGatewayConversationId } : {}),
     ...(nextParticipants.length ? { participantIds: nextParticipants } : {}),
     ...(nextThreadContext ? { threadContext: nextThreadContext } : {}),
+    ...(nextWorkflowState ? { workflowState: nextWorkflowState } : {}),
     ...(nextPreviewState ? { previewState: nextPreviewState } : {}),
     messages,
   };

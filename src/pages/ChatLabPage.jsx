@@ -56,6 +56,18 @@ import {
   updateSessionParticipants,
   upsertSession,
 } from "../chat/chatSessionsStore.js";
+import {
+  advanceWorkflowAndCollectHandoffs,
+  advanceWorkflowRuntimeByMessages,
+  buildWorkflowUserTurnContext,
+  getWorkflowById,
+  listWorkflowsForPicker,
+  resolveWorkflowAgents,
+  resolveWorkflowOrchestrationPlan,
+  resolveWorkflowParticipantIds,
+  sanitizeWorkflowSessionState,
+  workflowPlanRequiresSubagents,
+} from "../workflow/workflowRuntimeRegistry.js";
 import { buildGroupMemberChangeEvents } from "../chat/chatLabGroupMemberEvents.js";
 import {
   activeMentionQuery,
@@ -347,7 +359,7 @@ function formatMessageTimestamp(ts, locale) {
  * @param {import("../studio/agents.js").LobsterAgent} agent
  * @param {(key: string) => string} t
  * @param {import("../studio/agents.js").LobsterAgent[]} groupAgents
- * @param {{ mentionDelegateReply?: boolean; workspaceContext?: string; previewContext?: string; webExploreMode?: boolean }} [extra]
+ * @param {{ mentionDelegateReply?: boolean; workspaceContext?: string; previewContext?: string; webExploreMode?: boolean; workflowFlowPrompt?: string; workflowFogPrompt?: string }} [extra]
  */
 /**
  * Ensure page snapshot reaches the model even if system prompt is truncated by the gateway.
@@ -368,6 +380,63 @@ function withWebExplorePreviewOnUserTurn(outgoing, previewContext) {
   return rows;
 }
 
+/**
+ * Ensure workflow constraints reach the model even if the gateway truncates system prompts.
+ * @param {Array<{ role: string; content: string; attachments?: unknown[] }>} outgoing
+ * @param {import("../workflow/workflowRuntimeRegistry.js").WorkflowOrchestrationPlan | null | undefined} workflowPlan
+ */
+function withWorkflowContextOnUserTurn(outgoing, workflowPlan) {
+  const block = buildWorkflowUserTurnContext(workflowPlan);
+  if (!block || !Array.isArray(outgoing)) return outgoing;
+  const rows = outgoing.map((row) => ({ ...row }));
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i]?.role !== "user") continue;
+    const body = String(rows[i].content ?? "");
+    if (body.includes("工作流执行模式（用户已选择")) break;
+    rows[i] = { ...rows[i], content: `${block}\n\n---\n\n${body}` };
+    break;
+  }
+  return rows;
+}
+
+/**
+ * @param {import("../workflow/workflowRuntimeRegistry.js").WorkflowOrchestrationPlan | null | undefined} workflowPlan
+ * @param {boolean} preferSubagent
+ * @param {(key: string) => string} t
+ */
+function resolveSubagentModeRow(workflowPlan, preferSubagent, t) {
+  if (workflowPlan) {
+    return workflowPlanRequiresSubagents(workflowPlan) || preferSubagent ? subagentModeSystemRow(t) : null;
+  }
+  return preferSubagent ? subagentModeSystemRow(t) : null;
+}
+
+/**
+ * Apply workflow participant changes and return optional group member UI events.
+ * @param {{
+ *   participantIds: string[];
+ *   mainAgent: import("../studio/agents.js").LobsterAgent | null | undefined;
+ *   workflowParticipantIds: string[];
+ *   agentById: Map<string, import("../studio/agents.js").LobsterAgent>;
+ *   t: (key: string) => string;
+ * }} args
+ */
+function applyWorkflowParticipantIds({ participantIds, mainAgent, workflowParticipantIds, agentById, t }) {
+  const sessionParticipantIds = [
+    ...new Set([...(mainAgent ? [mainAgent.id] : []), ...participantIds, ...workflowParticipantIds]),
+  ];
+  const prevNonMain = participantIds.filter((id) => id !== mainAgent?.id);
+  const nextNonMain = sessionParticipantIds.filter((id) => id !== mainAgent?.id);
+  const memberEvents = buildGroupMemberChangeEvents(
+    prevNonMain,
+    nextNonMain,
+    agentById,
+    t,
+    t("chatLab.groupMemberActorYou"),
+  );
+  return { sessionParticipantIds, nextNonMain, memberEvents };
+}
+
 function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
   const others = groupAgents.filter((a) => a.id !== agent.id);
   const groupDelegateHint =
@@ -379,6 +448,8 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
   const contextBlocks = [
     String(extra.workspaceContext ?? "").trim(),
     String(extra.previewContext ?? "").trim(),
+    String(extra.workflowFlowPrompt ?? "").trim(),
+    String(extra.workflowFogPrompt ?? "").trim(),
   ].filter(Boolean);
   const studioSuffix = [
     ...contextBlocks,
@@ -401,6 +472,25 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
 function subagentModeSystemRow(t) {
   const content = String(t("chatLab.subagentForcePrompt") ?? "").trim();
   if (!content) return null;
+  return { role: "system", content };
+}
+
+/**
+ * Hard workflow execution guard to avoid silently falling back to plain chat.
+ * @param {import("../workflow/workflowRuntimeRegistry.js").WorkflowOrchestrationPlan | null} workflowPlan
+ */
+function workflowExecutionSystemRow(workflowPlan) {
+  if (!workflowPlan) return null;
+  const content = [
+    "## 工作流执行模式（强约束）",
+    "- 当前对话已选择工作流，必须按工作流节点执行，不要直接忽略流程给最终答案。",
+    "- 禁止跳过流程直接回答；禁止用 web_search 等工具代替流程节点。",
+    "- 仅执行当前待执行节点；完成后做明确handoff，再继续到下一节点。",
+    "- 禁止创建流程图未定义的额外子智能体；若节点无子智能体则不得召唤。",
+    workflowPlan.flowFogPrompt,
+  ]
+    .filter(Boolean)
+    .join("\n");
   return { role: "system", content };
 }
 
@@ -1173,6 +1263,19 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   const [composerSkillRow, setComposerSkillRow] = useState(
     /** @type {import("../skills/skillRegistry.js").SkillPickRow | null} */ (null),
   );
+  const [composerWorkflowId, setComposerWorkflowId] = useState("");
+  const [workflowRuntimeState, setWorkflowRuntimeState] = useState(
+    /** @type {import("../workflow/workflowRuntimeRegistry.js").WorkflowSessionRuntimeState | null} */ (null),
+  );
+  const workflowRuntimeRef = useRef(workflowRuntimeState);
+  const composerWorkflowIdRef = useRef(composerWorkflowId);
+  const workflowHandoffFromMessageRef = useRef(/** @type {Set<string>} */ (new Set()));
+  useEffect(() => {
+    workflowRuntimeRef.current = workflowRuntimeState;
+  }, [workflowRuntimeState]);
+  useEffect(() => {
+    composerWorkflowIdRef.current = composerWorkflowId;
+  }, [composerWorkflowId]);
   const [composerSkillRowLeaving, setComposerSkillRowLeaving] = useState(false);
   const [composerSubagentEnabled, setComposerSubagentEnabled] = useState(false);
   const [composerFollowUpRef, setComposerFollowUpRef] = useState(
@@ -1183,7 +1286,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   
   /** Queued messages (max 3) - sent automatically when stream completes */
   const [queuedMessages, setQueuedMessages] = useState(
-    /** @type {Array<{id: string; text: string; attachments: Array<{id: string; name: string; mime: string; dataUrl: string}>; fileRefs: import("../chat/chatLabComposerFileRefs.js").ComposerFileRef[]; modelId: string; skillRow: import("../skills/skillRegistry.js").SkillPickRow | null; followUpRef: import("../chat/chatSessionsStore.js").MessageFollowUpRef | null; mentionIds: string[]; preferSubagent?: boolean}>} */
+    /** @type {Array<{id: string; text: string; attachments: Array<{id: string; name: string; mime: string; dataUrl: string}>; fileRefs: import("../chat/chatLabComposerFileRefs.js").ComposerFileRef[]; modelId: string; skillRow: import("../skills/skillRegistry.js").SkillPickRow | null; workflowId?: string; followUpRef: import("../chat/chatSessionsStore.js").MessageFollowUpRef | null; mentionIds: string[]; preferSubagent?: boolean}>} */
     ([]),
   );
   const queuedMessagesRef = useRef(queuedMessages);
@@ -1227,6 +1330,11 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   const [participantIds, setParticipantIds] = useState(/** @type {string[]} */ ([]));
   const delegatedFromMessageRef = useRef(/** @type {Set<string>} */ (new Set()));
   const delegateAfterAgentReplyRef = useRef(
+    /** @type {((assistantMessageId: string, mergedHistory: Array<Record<string, unknown>>) => void) | null} */ (
+      null
+    ),
+  );
+  const workflowHandoffAfterAgentReplyRef = useRef(
     /** @type {((assistantMessageId: string, mergedHistory: Array<Record<string, unknown>>) => void) | null} */ (
       null
     ),
@@ -1286,6 +1394,26 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     typeof config?.chatLabGroupContinuousConversation === "boolean"
       ? config.chatLabGroupContinuousConversation
       : true;
+  const [workflowPickerBump, setWorkflowPickerBump] = useState(0);
+  useEffect(() => {
+    const onWorkflowLibChange = () => setWorkflowPickerBump((x) => x + 1);
+    window.addEventListener("openstudio-workflow-library-changed", onWorkflowLibChange);
+    return () => window.removeEventListener("openstudio-workflow-library-changed", onWorkflowLibChange);
+  }, []);
+  const workflowPickList = useMemo(() => {
+    void workflowPickerBump;
+    return listWorkflowsForPicker();
+  }, [workflowPickerBump]);
+  const workflowPickerOptions = useMemo(
+    () => [
+      { value: "", label: t("chatLab.workflowNone") },
+      ...workflowPickList.map((row) => ({
+        value: row.id,
+        label: row.label || row.id,
+      })),
+    ],
+    [t, workflowPickList],
+  );
   const continuousMentionTargetId = useMemo(() => {
     if (!chatLabGroupContinuousConversation) return "";
     const eligibleIds = new Set(mentionEligible.map((a) => a.id));
@@ -1513,6 +1641,20 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     messagesRef.current = messages;
   }, [messages]);
 
+  useEffect(() => {
+    if (!composerWorkflowId || gatewayStreaming) return;
+    const next = advanceWorkflowRuntimeByMessages({
+      workflowId: composerWorkflowId,
+      sessionState: { selectedWorkflowId: composerWorkflowId, runtime: workflowRuntimeRef.current },
+      messages,
+      agentById,
+    });
+    if (!next) return;
+    const cur = workflowRuntimeRef.current;
+    if (JSON.stringify(cur ?? null) === JSON.stringify(next ?? null)) return;
+    setWorkflowRuntimeState(next);
+  }, [agentById, composerWorkflowId, gatewayStreaming, messages]);
+
   const prevParamCRef = useRef(/** @type {string | null} */ (null));
 
   useLayoutEffect(() => {
@@ -1524,6 +1666,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         autoScrollRef.current = true;
         setMessages([]);
         setParticipantIds([]);
+        setComposerWorkflowId("");
+        setWorkflowRuntimeState(null);
         setChatApiBlocked(false);
       } else if (messagesRef.current.length === 0) {
         setChatApiBlocked(false);
@@ -1537,13 +1681,26 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       const liveSlices = gatewaySlicesRef.current.filter((s) => s.active && s.conversationId === paramC);
       setMessages(mapSessionRecordToUiMessages(rec, liveSlices.length ? liveSlices : null));
       const stored = Array.isArray(rec.participantIds) ? rec.participantIds : [];
-      setParticipantIds(stored.filter((id) => id && id !== mainAgent?.id));
+      const workflowState = sanitizeWorkflowSessionState(rec.workflowState);
+      const selectedWorkflowId = String(workflowState?.selectedWorkflowId ?? "").trim();
+      const workflowParticipantIds = selectedWorkflowId
+        ? resolveWorkflowParticipantIds(selectedWorkflowId, agentById)
+        : [];
+      const mergedParticipants = [
+        ...new Set([
+          ...stored.filter((id) => id && id !== mainAgent?.id),
+          ...workflowParticipantIds.filter((id) => id && id !== mainAgent?.id),
+        ]),
+      ];
+      setParticipantIds(mergedParticipants);
+      setComposerWorkflowId(selectedWorkflowId);
+      setWorkflowRuntimeState(workflowState?.runtime ?? null);
       setChatApiBlocked(false);
       return;
     }
     if (messagesRef.current.length > 0) return;
     navigate("/chat", { replace: true });
-  }, [mainAgent?.id, navigate, paramC]);
+  }, [agentById, mainAgent?.id, navigate, paramC]);
 
   const handleParticipantsChange = useCallback(
     (ids) => {
@@ -1671,6 +1828,34 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       { replace: true },
     );
   }, [paramC, searchParams, setSearchParams, skillPickList]);
+
+  useEffect(() => {
+    if (!paramC || ephemeralSession) return;
+    const rec = getSession(conversationId);
+    if (!rec) return;
+    const current = sanitizeWorkflowSessionState(rec.workflowState);
+    const selectedNow = String(current?.selectedWorkflowId ?? "");
+    const runtimeNow = current?.runtime ?? null;
+    const selectedNext = String(composerWorkflowId ?? "").trim();
+    const runtimeNext = workflowRuntimeRef.current && workflowRuntimeRef.current.workflowId === selectedNext
+      ? workflowRuntimeRef.current
+      : null;
+    const sameSelected = selectedNow === selectedNext;
+    const sameRuntime = JSON.stringify(runtimeNow ?? null) === JSON.stringify(runtimeNext ?? null);
+    if (sameSelected && sameRuntime) return;
+    upsertSession(conversationId, rec.title || "…", rec.messages, {
+      channel: rec.channel,
+      channelPeerId: rec.channelPeerId,
+      gatewayConversationId: rec.gatewayConversationId,
+      participantIds: rec.participantIds,
+      threadContext: rec.threadContext,
+      workflowState: {
+        selectedWorkflowId: selectedNext || null,
+        runtime: runtimeNext,
+      },
+      previewState: rec.previewState,
+    });
+  }, [composerWorkflowId, conversationId, ephemeralSession, paramC, workflowRuntimeState]);
 
   useEffect(() => {
     if (ephemeralSession) return;
@@ -2025,6 +2210,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   const prevConversationIdRef = useRef(conversationId);
   useEffect(() => {
     delegatedFromMessageRef.current.clear();
+    workflowHandoffFromMessageRef.current.clear();
   }, [conversationId]);
 
   useEffect(() => {
@@ -2183,7 +2369,11 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               recordAgentGatewaySync(conversationId, agentId, ctx.syncThroughMessageId, merged);
             }
           }
-          delegateAfterAgentReplyRef.current?.(d.assistantMessageId, merged);
+          if (composerWorkflowIdRef.current) {
+            workflowHandoffAfterAgentReplyRef.current?.(d.assistantMessageId, merged);
+          } else {
+            delegateAfterAgentReplyRef.current?.(d.assistantMessageId, merged);
+          }
           // Trigger system notification when reply completes (if window is not focused)
           try {
             if (bridge?.showSystemNotification && typeof document !== "undefined" && !document.hasFocus()) {
@@ -2418,16 +2608,56 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       const base = [...prev.slice(0, idx), editedUser];
 
       const tailUserRows = buildGatewayPayloadRows([editedUser], { includeImageAttachments: true });
-      const lastUserGatewayRow = tailUserRows[tailUserRows.length - 1];
+      const { mentionIds: editMentionIds } = parseAgentMentions(trimmed, agents, {
+        mainFallback: mainAgentLabel,
+        everyoneLabel: mentionEveryoneLabel,
+        mainAgent,
+        participantIds,
+        stripMentions: false,
+      });
+      const activeWorkflowId = String(composerWorkflowId ?? "").trim();
+      let runtimeForPlan = workflowRuntimeRef.current;
+      if (activeWorkflowId) {
+        const advanced = advanceWorkflowRuntimeByMessages({
+          workflowId: activeWorkflowId,
+          sessionState: { selectedWorkflowId: composerWorkflowId, runtime: workflowRuntimeRef.current },
+          messages: base,
+          agentById,
+        });
+        if (advanced) {
+          runtimeForPlan = advanced;
+          if (JSON.stringify(advanced) !== JSON.stringify(workflowRuntimeRef.current)) {
+            workflowRuntimeRef.current = advanced;
+            setWorkflowRuntimeState(advanced);
+          }
+        }
+      }
+      const workflowPlan = resolveWorkflowOrchestrationPlan({
+        workflowId: activeWorkflowId,
+        sessionState: { selectedWorkflowId: composerWorkflowId, runtime: runtimeForPlan },
+        agentById,
+        mentionedAgentIds: editMentionIds,
+      });
+      const workflowDispatchIds = workflowPlan?.targetAgentIds?.length ? workflowPlan.targetAgentIds : [];
+      const workflowReplyTargets = resolveWorkflowAgents(workflowDispatchIds, agentById);
+      const editReplyTargets =
+        editMentionIds.length > 0
+          ? resolveReplyTargets({ mentionIds: editMentionIds, agents })
+          : workflowReplyTargets.length > 0
+            ? workflowReplyTargets
+            : mainAgent
+              ? [mainAgent]
+              : [];
+      const editTarget = editReplyTargets[0] ?? mainAgent ?? null;
       const editCtx =
-        mainAgent ?
+        editTarget ?
           resolveAgentGatewayContext({
             conversationId,
-            agentId: mainAgent.id,
+            agentId: editTarget.id,
             historyMessages: base.slice(0, -1),
             mode: "thread",
             agentById,
-            mainAgentStudioId: mainAgent.id,
+            mainAgentStudioId: mainAgent?.id,
           })
         : { priorRows: buildGatewayPayloadRows(base.slice(0, -1), { agentById }), contextEmbedMode: "full", syncThroughMessageId: null };
       const priorRows = editCtx.priorRows;
@@ -2444,7 +2674,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         thinking: "",
         streaming: true,
         createdAt: assistantNow,
-        ...(mainAgent ? { agentId: mainAgent.id } : {}),
+        ...(editTarget ? { agentId: editTarget.id } : {}),
       };
 
       const persistableBase = base
@@ -2474,7 +2704,12 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         { imageFallback: t("chatLab.chatUntitledImage") },
       );
       if (!ephemeralSession) {
-        upsertSession(conversationId, provisionalTitle || "…", persistableNext);
+        upsertSession(conversationId, provisionalTitle || "…", persistableNext, {
+          workflowState: {
+            selectedWorkflowId: composerWorkflowId || null,
+            runtime: workflowPlan?.runtime ?? workflowRuntimeRef.current,
+          },
+        });
       }
 
       const streamId = newId();
@@ -2495,11 +2730,16 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
       const editGroupAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
       const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
-      const sysRow = mainAgent
-        ? systemRowForGroupAgent(mainAgent, t, editGroupAgents, {
+      const sysRow = editTarget
+        ? systemRowForGroupAgent(editTarget, t, editGroupAgents, {
             workspaceContext,
             previewContext,
             webExploreMode: webExploreEmbed,
+            workflowFlowPrompt: workflowPlan?.flowFogPrompt,
+            workflowFogPrompt:
+              workflowPlan?.fogByAgentId?.[editTarget.id] ??
+              Object.values(workflowPlan?.fogByAgentId ?? {})[0] ??
+              "",
           })
         : {
             role: "system",
@@ -2509,18 +2749,24 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               webExploreMode: webExploreEmbed,
             }),
           };
-      const subagentModeRow = composerSubagentEnabled ? subagentModeSystemRow(t) : null;
+      const subagentModeRow = resolveSubagentModeRow(workflowPlan, composerSubagentEnabled, t);
+      const workflowModeRow = workflowExecutionSystemRow(workflowPlan);
       const baseOutgoing = [
         ...(sysRow ? [sysRow] : []),
+        ...(workflowModeRow ? [workflowModeRow] : []),
         ...(subagentModeRow ? [subagentModeRow] : []),
         ...priorRows,
         ...tailUserRows,
       ];
-      const outgoing = webExploreEmbed
-        ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext)
-        : baseOutgoing;
+      const outgoing = withWorkflowContextOnUserTurn(
+        webExploreEmbed ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext) : baseOutgoing,
+        workflowPlan,
+      );
       const composerSkill = skillPickRowToPayload(composerSkillRow);
       setComposerSkillRow(null);
+      if (workflowPlan?.runtime) {
+        setWorkflowRuntimeState(workflowPlan.runtime);
+      }
 
       const isFirstTurn = priorRows.length === 0;
       if (
@@ -2547,10 +2793,10 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           composerSkill,
           contextEmbedMode: editCtx.contextEmbedMode,
           ...(editCtx.threadSummaryPrefix ? { threadSummaryPrefix: editCtx.threadSummaryPrefix } : {}),
-          ...(mainAgent
+          ...(editTarget
             ? {
-                agentSessionKey: sessionKeyForAgent(mainAgent),
-                gatewayAgentId: mainAgent.gatewayAgentId,
+                agentSessionKey: sessionKeyForAgent(editTarget),
+                gatewayAgentId: editTarget.gatewayAgentId,
               }
             : {}),
           usageMeta: buildStreamUsageMeta({
@@ -2558,7 +2804,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
             assistantMessageId: assistantMsg.id,
             userMessageId: messageId,
             userContentPreview: trimmed,
-            agentId: mainAgent?.id,
+            agentId: editTarget?.id,
           }),
         });
       } catch (err) {
@@ -2584,25 +2830,33 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     },
     [
       abortAllActiveStreams,
+      agentById,
+      agents,
       beginGatewayStream,
       bridge,
       chatApiBlocked,
       composerFileRefs,
       composerSkillRow,
+      composerWorkflowId,
       composerSubagentEnabled,
       config?.chatLabAutoTitle,
       config?.credentials?.hasProviderApiKey,
       configIssueKey,
       conversationId,
+      ephemeralSession,
       finalizeAssistantById,
       gatewayPhase,
       isElectron,
-      paramC,
       mainAgent,
+      mainAgentLabel,
+      mentionEveryoneLabel,
+      paramC,
+      participantIds,
       resetGatewayStream,
       resolveAgentContextBlocks,
       setSearchParams,
       t,
+      webExploreEmbed,
     ],
   );
 
@@ -2613,6 +2867,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
      *   imageAttachments?: { mime: string; dataUrl: string }[];
      *   fileRefs?: import("../chat/chatSessionsStore.js").PersistedFileRef[];
      *   skillPickRow: import("../skills/skillRegistry.js").SkillPickRow | null;
+     *   workflowId?: string | null;
      *   preferSubagent?: boolean;
      *   followUpRef?: import("../chat/chatSessionsStore.js").MessageFollowUpRef | null;
      *   onCommitted?: () => void;
@@ -2624,6 +2879,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       imageAttachments,
       fileRefs,
       skillPickRow,
+      workflowId,
       preferSubagent = false,
       followUpRef,
       onCommitted,
@@ -2640,17 +2896,63 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         participantIds,
         stripMentions: false,
       });
+      const dispatchStartedAt = Date.now();
+      const activeWorkflowId = String(workflowId || composerWorkflowId || "").trim();
+      let runtimeForPlan = workflowRuntimeRef.current;
+      if (activeWorkflowId) {
+        const advanced = advanceWorkflowRuntimeByMessages({
+          workflowId: activeWorkflowId,
+          sessionState: { selectedWorkflowId: composerWorkflowId, runtime: workflowRuntimeRef.current },
+          messages: messagesRef.current,
+          agentById,
+        });
+        if (advanced) {
+          runtimeForPlan = advanced;
+          if (JSON.stringify(advanced) !== JSON.stringify(workflowRuntimeRef.current)) {
+            workflowRuntimeRef.current = advanced;
+            setWorkflowRuntimeState(advanced);
+          }
+        }
+      }
+      const workflowPlan = resolveWorkflowOrchestrationPlan({
+        workflowId: activeWorkflowId,
+        sessionState: { selectedWorkflowId: composerWorkflowId, runtime: runtimeForPlan },
+        agentById,
+        mentionedAgentIds: mentionIds,
+        dispatchStartedAt,
+      });
+      const workflowDispatchIds = workflowPlan?.targetAgentIds?.length ? workflowPlan.targetAgentIds : [];
+      const autoMentionWorkflowIds =
+        workflowDispatchIds.length === 1 && workflowDispatchIds[0] === mainAgent?.id
+          ? []
+          : workflowDispatchIds;
       const effectiveMentionIds =
-        mentionIds.length === 0 && continuousMentionTargetId ? [continuousMentionTargetId] : mentionIds;
+        mentionIds.length > 0
+          ? mentionIds
+          : autoMentionWorkflowIds.length
+            ? autoMentionWorkflowIds
+            : continuousMentionTargetId
+              ? [continuousMentionTargetId]
+              : [];
       const effectiveText = cleanText || trimmed;
       if (!isSidebarAutomationInternalUserMessage(effectiveText)) {
         sidebarAutomationContinueCountRef.current = 0;
       }
-      const replyTargets = resolveReplyTargets({
-        mentionIds: effectiveMentionIds,
-        participantIds,
-        agents,
-      });
+      const workflowReplyTargets = resolveWorkflowAgents(workflowDispatchIds, agentById);
+      const replyTargets =
+        mentionIds.length > 0
+          ? resolveReplyTargets({
+              mentionIds,
+              participantIds,
+              agents,
+            })
+          : workflowReplyTargets.length > 0
+            ? workflowReplyTargets
+            : resolveReplyTargets({
+                mentionIds: effectiveMentionIds,
+                participantIds,
+                agents,
+              });
       if (!replyTargets.length) return;
 
       const priorHistory = buildGatewayPayloadRows(messagesRef.current, { agentById });
@@ -2674,16 +2976,25 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
         .map((m) => toPersistedChatMessage(m));
 
-      const sessionParticipantIds = [
-        ...new Set([
-          ...(mainAgent ? [mainAgent.id] : []),
-          ...participantIds,
-          ...effectiveMentionIds,
-          ...replyTargets.map((a) => a.id),
-        ]),
-      ];
+      const workflowParticipantIds = activeWorkflowId
+        ? resolveWorkflowParticipantIds(activeWorkflowId, agentById)
+        : workflowPlan?.requiredAgentIds ?? [];
+      const { sessionParticipantIds, nextNonMain, memberEvents } = applyWorkflowParticipantIds({
+        participantIds,
+        mainAgent,
+        workflowParticipantIds: [
+          ...new Set([...workflowParticipantIds, ...effectiveMentionIds, ...replyTargets.map((a) => a.id)]),
+        ],
+        agentById,
+        t,
+      });
+      setParticipantIds(nextNonMain);
 
-      setMessages((prev) => [...prev, userMsg]);
+      setMessages((prev) => [
+        ...prev,
+        ...memberEvents.map((m) => mapSessionMessageRow(m)),
+        userMsg,
+      ]);
       setUserBubbleEnterMessageId(userMsg.id);
       onCommitted?.();
       autoScrollRef.current = true;
@@ -2709,7 +3020,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
 
       const parallelReply = replyTargets.length > 1;
-      const subagentModeRow = preferSubagent ? subagentModeSystemRow(t) : null;
+      const subagentModeRow = resolveSubagentModeRow(workflowPlan, preferSubagent, t);
+      const workflowModeRow = workflowExecutionSystemRow(workflowPlan);
       const historyBeforeUser = messagesRef.current.filter((m) => m.id !== userMsg.id);
       const tailUserRows = buildGatewayPayloadRows([userMsg], {
         includeImageAttachments: true,
@@ -2763,6 +3075,11 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           workspaceContext,
           previewContext,
           webExploreMode: webExploreEmbed,
+          workflowFlowPrompt: workflowPlan?.flowFogPrompt,
+          workflowFogPrompt:
+            workflowPlan?.fogByAgentId?.[target.id] ??
+            Object.values(workflowPlan?.fogByAgentId ?? {})[0] ??
+            "",
         });
         const ctx = resolveAgentGatewayContext({
           conversationId,
@@ -2774,13 +3091,15 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         });
         const baseOutgoing = [
           ...(sysRow ? [sysRow] : []),
+          ...(workflowModeRow ? [workflowModeRow] : []),
           ...(subagentModeRow ? [subagentModeRow] : []),
           ...ctx.priorRows,
           ...tailUserRows,
         ];
-        const outgoing = webExploreEmbed
-          ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext)
-          : baseOutgoing;
+        const outgoing = withWorkflowContextOnUserTurn(
+          webExploreEmbed ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext) : baseOutgoing,
+          workflowPlan,
+        );
         return {
           target,
           assistantMsg,
@@ -2830,7 +3149,14 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       if (!ephemeralSession) {
         upsertSession(conversationId, provisionalTitle || "…", persistableNext, {
           participantIds: sessionParticipantIds,
+          workflowState: {
+            selectedWorkflowId: workflowId || composerWorkflowId || null,
+            runtime: workflowPlan?.runtime ?? null,
+          },
         });
+      }
+      if (workflowPlan?.runtime) {
+        setWorkflowRuntimeState(workflowPlan.runtime);
       }
 
       setMessages((prev) => {
@@ -2918,6 +3244,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       conversationId,
       finalizeAssistantById,
       agents,
+      composerWorkflowId,
       mainAgent,
       mainAgentLabel,
       paramC,
@@ -2983,6 +3310,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           imageAttachments: attachmentSnap,
           fileRefs: fileRefsSnap,
           skillPickRow: item.skillRow || null,
+          workflowId: item.workflowId || null,
           preferSubagent: item.preferSubagent === true,
           followUpRef: item.followUpRef || null,
           onCommitted: () => {
@@ -3162,6 +3490,313 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     ],
   );
 
+  const launchWorkflowHandoffReply = useCallback(
+    /**
+     * @param {{
+     *   targets: import("../studio/agents.js").LobsterAgent[];
+     *   historyMessages: Array<Record<string, unknown>>;
+     *   triggerAgentId?: string;
+     *   runtime: import("../workflow/workflowRuntimeRegistry.js").WorkflowSessionRuntimeState;
+     * }} args
+     */
+    async ({ targets, historyMessages, triggerAgentId, runtime }) => {
+      if (!targets.length || !bridge?.startChatStream || !mainAgent || !conversationId) return;
+
+      const workflowId = String(composerWorkflowIdRef.current ?? "").trim();
+      if (!workflowId) return;
+
+      const workflowPlan = resolveWorkflowOrchestrationPlan({
+        workflowId,
+        sessionState: { selectedWorkflowId: workflowId, runtime },
+        agentById,
+        mentionedAgentIds: [],
+        dispatchStartedAt: runtime.dispatchStartedAt,
+      });
+      const workflowParticipantIds = resolveWorkflowParticipantIds(workflowId, agentById);
+      const { sessionParticipantIds, nextNonMain, memberEvents } = applyWorkflowParticipantIds({
+        participantIds,
+        mainAgent,
+        workflowParticipantIds: [
+          ...new Set([...workflowParticipantIds, ...targets.map((a) => a.id)]),
+        ],
+        agentById,
+        t,
+      });
+      setParticipantIds(nextNonMain);
+
+      const groupAgents = groupAgentsInSession({
+        agents,
+        mainAgent,
+        participantIds: sessionParticipantIds,
+      });
+      const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
+      const workflowModeRow = workflowExecutionSystemRow(workflowPlan);
+      const subagentModeRow = resolveSubagentModeRow(workflowPlan, false, t);
+      const triggerName = triggerAgentId ? agentDisplayLabel(agentById.get(triggerAgentId)) : "";
+      const handoffUserRow = {
+        role: "user",
+        content: [
+          "【工作流 handoff】上一节点已完成，请立即执行你被分配的工作流节点。",
+          triggerName ? `上游执行者：${triggerName}` : "",
+          "不要重复上游工作，不要跳过节点直接给最终答案。",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      };
+
+      /** @type {Array<{ target: import("../studio/agents.js").LobsterAgent; assistantMsg: Record<string, unknown>; streamId: string; outgoing: Array<{ role: string; content: string }> }>} */
+      const jobs = targets.map((target, i) => {
+        const assistantMsg = {
+          id: newId(),
+          role: /** @type {const} */ ("assistant"),
+          content: "",
+          thinking: "",
+          streaming: true,
+          createdAt: Date.now() + i,
+          agentId: target.id,
+          workflowHandoffReply: true,
+          ...(triggerAgentId ? { workflowHandoffFromAgentId: triggerAgentId } : {}),
+        };
+        const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
+          workspaceContext,
+          previewContext,
+          webExploreMode: webExploreEmbed,
+          workflowFlowPrompt: workflowPlan?.flowFogPrompt,
+          workflowFogPrompt:
+            workflowPlan?.fogByAgentId?.[target.id] ??
+            Object.values(workflowPlan?.fogByAgentId ?? {})[0] ??
+            "",
+        });
+        const ctx = resolveAgentGatewayContext({
+          conversationId,
+          agentId: target.id,
+          historyMessages,
+          mode: "thread",
+          agentById,
+          mainAgentStudioId: mainAgent.id,
+          forceBootstrap: true,
+        });
+        const baseOutgoing = [
+          ...(sysRow ? [sysRow] : []),
+          ...(workflowModeRow ? [workflowModeRow] : []),
+          ...(subagentModeRow ? [subagentModeRow] : []),
+          ...ctx.priorRows,
+          handoffUserRow,
+        ];
+        const outgoing = withWorkflowContextOnUserTurn(baseOutgoing, workflowPlan);
+        return { target, assistantMsg, streamId: newId(), outgoing, contextEmbedMode: ctx.contextEmbedMode, threadSummaryPrefix: ctx.threadSummaryPrefix };
+      });
+
+      const persistablePrior = historyMessages
+        .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
+        .map((m) => toPersistedChatMessage(m));
+      const persistableNext = [
+        ...persistablePrior,
+        ...jobs.map(({ assistantMsg }) => ({
+          id: String(assistantMsg.id),
+          role: /** @type {const} */ ("assistant"),
+          content: "",
+          thinking: "",
+          createdAt: Number(assistantMsg.createdAt),
+          agentId: String(assistantMsg.agentId),
+          workflowHandoffReply: true,
+          ...(triggerAgentId ? { workflowHandoffFromAgentId: triggerAgentId } : {}),
+        })),
+      ];
+      const rec = getSession(conversationId);
+      const provisionalTitle = deriveTitleFromMessages(
+        persistableNext.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          thinking: m.thinking,
+        })),
+        { imageFallback: t("chatLab.chatUntitledImage") },
+      );
+      if (!ephemeralSession) {
+        upsertSession(conversationId, rec?.title || provisionalTitle || "…", persistableNext, {
+          participantIds: sessionParticipantIds,
+          workflowState: {
+            selectedWorkflowId: workflowId,
+            runtime,
+          },
+        });
+      }
+
+      setWorkflowRuntimeState(runtime);
+      workflowRuntimeRef.current = runtime;
+
+      setMessages((prev) => {
+        let next = prev;
+        if (memberEvents.length > 0) {
+          next = [...next, ...memberEvents.map((m) => mapSessionMessageRow(m))];
+        }
+        for (const job of jobs) {
+          if (next.some((m) => m.id === job.assistantMsg.id)) continue;
+          next = [...next, job.assistantMsg];
+        }
+        return next;
+      });
+      autoScrollRef.current = true;
+
+      for (const job of jobs) {
+        beginGatewayStream({
+          conversationId,
+          streamId: job.streamId,
+          assistantMessageId: String(job.assistantMsg.id),
+        });
+        activeStreamIdsRef.current.add(job.streamId);
+        assistantStreamIdsRef.current.set(String(job.assistantMsg.id), job.streamId);
+      }
+
+      const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
+      const lastTurnPreview = [...historyMessages]
+        .reverse()
+        .find(
+          (m) =>
+            (m.role === "user" || m.role === "assistant") && String(m.content ?? "").trim().length > 0,
+        );
+
+      const runJob = async (job) => {
+        try {
+          await bridge.startChatStream({
+            streamId: job.streamId,
+            conversationId,
+            messages: job.outgoing,
+            composerSkill: null,
+            agentSessionKey: sessionKeyForAgent(job.target),
+            gatewayAgentId: job.target.gatewayAgentId,
+            concurrent: true,
+            contextEmbedMode: job.contextEmbedMode,
+            ...(job.threadSummaryPrefix ? { threadSummaryPrefix: job.threadSummaryPrefix } : {}),
+            usageMeta: buildStreamUsageMeta({
+              conversationTitle: getSession(conversationId)?.title,
+              assistantMessageId: String(job.assistantMsg.id),
+              userContentPreview: String(lastTurnPreview?.content ?? "").trim(),
+              agentId: job.target.id,
+            }),
+          });
+        } catch (err) {
+          resetGatewayStream(job.streamId);
+          activeStreamIdsRef.current.delete(job.streamId);
+          assistantStreamIdsRef.current.delete(String(job.assistantMsg.id));
+          try {
+            await bridge.abortChatStream(job.streamId);
+          } catch {
+            /* ignore */
+          }
+          const raw = String(err?.message ?? err);
+          const msg = formatStreamError(raw, t);
+          finalizeAssistantById(String(job.assistantMsg.id), { error: msg });
+          if (isChatHttp404(raw)) {
+            setChatApiBlocked(true);
+            setProbeRestartKey((k) => k + 1);
+          }
+        }
+      };
+
+      try {
+        await Promise.allSettled(jobs.map((job) => runJob(job)));
+      } finally {
+        stopWechatTyping();
+      }
+    },
+    [
+      agentById,
+      beginGatewayStream,
+      bridge,
+      conversationId,
+      ephemeralSession,
+      finalizeAssistantById,
+      mainAgent,
+      participantIds,
+      resetGatewayStream,
+      resolveAgentContextBlocks,
+      setProbeRestartKey,
+      setMessages,
+      t,
+      webExploreEmbed,
+    ],
+  );
+
+  const maybeWorkflowHandoffAfterAgentReply = useCallback(
+    (assistantMessageId, mergedHistory) => {
+      if (!conversationId) return;
+      if (workflowHandoffFromMessageRef.current.has(assistantMessageId)) return;
+
+      queueMicrotask(() => {
+        if (workflowHandoffFromMessageRef.current.has(assistantMessageId)) return;
+        if (activeStreamIdsRef.current.size > 0) return;
+
+        const workflowId = String(composerWorkflowIdRef.current ?? "").trim();
+        if (!workflowId) return;
+
+        const msg = mergedHistory.find((m) => m.id === assistantMessageId);
+        if (!msg || msg.role !== "assistant" || msg.error || msg.streaming) return;
+
+        const speakerId = String(msg.agentId ?? "").trim();
+        if (!speakerId) return;
+
+        const handoff = advanceWorkflowAndCollectHandoffs({
+          workflowId,
+          sessionState: { selectedWorkflowId: workflowId, runtime: workflowRuntimeRef.current },
+          messages: mergedHistory,
+          agentById,
+          triggerAgentId: speakerId,
+        });
+        if (!handoff) return;
+
+        setWorkflowRuntimeState(handoff.runtime);
+        workflowRuntimeRef.current = handoff.runtime;
+
+        if (!handoff.handoffAgentIds.length) {
+          if (!ephemeralSession) {
+            const rec = getSession(conversationId);
+            if (rec) {
+              upsertSession(conversationId, rec.title || "…", rec.messages, {
+                channel: rec.channel,
+                channelPeerId: rec.channelPeerId,
+                gatewayConversationId: rec.gatewayConversationId,
+                participantIds: rec.participantIds,
+                threadContext: rec.threadContext,
+                workflowState: { selectedWorkflowId: workflowId, runtime: handoff.runtime },
+                previewState: rec.previewState,
+              });
+            }
+          }
+          return;
+        }
+
+        workflowHandoffFromMessageRef.current.add(assistantMessageId);
+
+        let targets = resolveWorkflowAgents(handoff.handoffAgentIds, agentById);
+        if (!targets.length && handoff.runtime.activeNodeIds.length) {
+          const workflow = getWorkflowById(workflowId);
+          const rawIds = [];
+          if (workflow) {
+            const nodeById = new Map((workflow.nodes ?? []).map((n) => [n.id, n]));
+            for (const nodeId of handoff.runtime.activeNodeIds) {
+              const data = nodeById.get(nodeId)?.data;
+              const raw =
+                data && typeof data === "object" && typeof data.agentId === "string" ? data.agentId.trim() : "";
+              if (raw) rawIds.push(raw);
+            }
+          }
+          targets = resolveWorkflowAgents([...handoff.handoffAgentIds, ...rawIds], agentById);
+        }
+        if (!targets.length) return;
+
+        void launchWorkflowHandoffReply({
+          targets,
+          historyMessages: mergedHistory,
+          triggerAgentId: speakerId,
+          runtime: handoff.runtime,
+        });
+      });
+    },
+    [agentById, conversationId, ephemeralSession, launchWorkflowHandoffReply],
+  );
+
   const maybeDelegateAfterAgentReply = useCallback(
     (assistantMessageId, mergedHistory) => {
       if (!conversationId) return;
@@ -3213,6 +3848,10 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     delegateAfterAgentReplyRef.current = maybeDelegateAfterAgentReply;
   }, [maybeDelegateAfterAgentReply]);
 
+  useEffect(() => {
+    workflowHandoffAfterAgentReplyRef.current = maybeWorkflowHandoffAfterAgentReply;
+  }, [maybeWorkflowHandoffAfterAgentReply]);
+
   const send = useCallback(async () => {
     const trimmed = input.trim();
     const attachmentSnap =
@@ -3247,6 +3886,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         fileRefs: [...composerFileRefs],
         modelId: toolbarModelId,
         skillRow: composerSkillRow,
+        workflowId: composerWorkflowId,
         preferSubagent: composerSubagentEnabled,
         followUpRef: composerFollowUpRef,
         mentionIds,
@@ -3314,6 +3954,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       imageAttachments: attachmentSnap,
       fileRefs: fileRefsSnap,
       skillPickRow: effectiveSkillRow ?? null,
+      workflowId: composerWorkflowIdRef.current || composerWorkflowId || null,
       preferSubagent: composerSubagentEnabled,
       followUpRef: composerFollowUpRef,
       onCommitted: () => {
@@ -3331,6 +3972,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     composerAttachments,
     composerFileRefs,
     composerSkillRow,
+    composerWorkflowId,
     composerSubagentEnabled,
     configIssueKey,
     conversationId,
@@ -3368,6 +4010,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         trimmed,
         imageAttachments: undefined,
         skillPickRow: null,
+        workflowId: composerWorkflowIdRef.current || composerWorkflowId || null,
         onCommitted: () => {},
       });
     },
@@ -3378,6 +4021,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       gatewayPhase,
       gatewayStreaming,
       isElectron,
+      composerWorkflowId,
       submitNewUserTurn,
     ],
   );
@@ -4188,6 +4832,65 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                 (gatewayStreaming && queuedMessages.length === 0)
               }
               t={t}
+            />
+            <TSelect
+              id="chat-toolbar-workflow"
+              borderless
+              autoWidth
+              placeholder={t("chatLab.toolbarWorkflow")}
+              value={composerWorkflowId}
+              onChange={(v) => {
+                const nextId = String(v ?? "");
+                setComposerWorkflowId(nextId);
+                if (!nextId) {
+                  setWorkflowRuntimeState(null);
+                  return;
+                }
+                const nextPlan = resolveWorkflowOrchestrationPlan({
+                  workflowId: nextId,
+                  sessionState: { selectedWorkflowId: nextId, runtime: null },
+                  agentById,
+                  mentionedAgentIds: [],
+                });
+                setWorkflowRuntimeState(nextPlan?.runtime ?? null);
+                const workflowParticipantIds = resolveWorkflowParticipantIds(nextId, agentById);
+                if (workflowParticipantIds.length) {
+                  const { nextNonMain, memberEvents } = applyWorkflowParticipantIds({
+                    participantIds,
+                    mainAgent,
+                    workflowParticipantIds,
+                    agentById,
+                    t,
+                  });
+                  setParticipantIds(nextNonMain);
+                  if (memberEvents.length) {
+                    setMessages((prev) => [...prev, ...memberEvents.map((m) => mapSessionMessageRow(m))]);
+                    autoScrollRef.current = true;
+                  }
+                  if (!ephemeralSession && paramC) {
+                    const rec = getSession(conversationId);
+                    if (rec) {
+                      upsertSession(conversationId, rec.title || "…", rec.messages, {
+                        channel: rec.channel,
+                        channelPeerId: rec.channelPeerId,
+                        gatewayConversationId: rec.gatewayConversationId,
+                        participantIds: [...new Set([...(mainAgent ? [mainAgent.id] : []), ...nextNonMain])],
+                        threadContext: rec.threadContext,
+                        workflowState: { selectedWorkflowId: nextId, runtime: nextPlan?.runtime ?? null },
+                        previewState: rec.previewState,
+                      });
+                    }
+                  }
+                }
+              }}
+              options={workflowPickerOptions}
+              className="chat-lab__pill-workflow"
+              title={t("chatLab.toolbarWorkflowHint")}
+              disabled={
+                composerSkillUiLocked ||
+                composerInputLocked ||
+                (gatewayStreaming && queuedMessages.length === 0)
+              }
             />
             <span className="chat-lab__subagent-toggle-label">{t("chatLab.toolbarSubagent")}</span>
             <TSwitch
