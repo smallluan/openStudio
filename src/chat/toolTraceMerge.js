@@ -275,13 +275,28 @@ function readSpawnArgsFromTool(args) {
 }
 
 /**
+ * All visible subagent cards have finished (independent of parent sessions_spawn tool row).
+ * @param {ActivityRow[] | undefined} rows
+ */
+export function areSubagentCardsSettled(rows) {
+  if (!Array.isArray(rows) || !rows.length) return false;
+  return rows.every((row) => {
+    if (Boolean(row.workerStreaming)) return false;
+    const phase = String(row.phase ?? "").trim().toLowerCase();
+    return phase !== "running";
+  });
+}
+
+/**
  * True while parallel subagents are still outstanding for the parent turn:
  * - sessions_spawn tool still in-flight, or
  * - spawn returned accepted/running and sessions_yield has not settled yet, or
  * - sessions_yield itself is still in-flight (barrier wait).
  * @param {ToolTraceRow[] | undefined} toolRows
+ * @param {{ subagentCards?: ActivityRow[] }} [opts]
  */
-export function toolTraceAwaitsSubagent(toolRows) {
+export function toolTraceAwaitsSubagent(toolRows, opts = {}) {
+  if (areSubagentCardsSettled(opts.subagentCards)) return false;
   if (!Array.isArray(toolRows) || !toolRows.length) return false;
   const yieldRows = toolRows.filter((r) => YIELD_TOOL_RE.test(String(r.toolName ?? "").trim()));
   const yieldInFlight = yieldRows.some((r) => {

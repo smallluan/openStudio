@@ -30,6 +30,7 @@ import {
 } from "../chat/assistantQuickReplyParse.js";
 import { preferLongerAssistantText, reconcileTimelineWithCanonicalText } from "../chat/streamTimelineMerge.js";
 import {
+  areSubagentCardsSettled,
   coalesceSubagentActivityRows,
   deriveSubagentRowsFromToolTrace,
   isSessionsSpawnToolName,
@@ -174,6 +175,11 @@ import {
   animateScrollTop,
   scrollThreadToMessage,
 } from "../chat/chatLabThreadScroll.js";
+import {
+  buildChatMessageRenderItems,
+  resolveWorkflowNodeMetaForAgent,
+} from "../chat/chatLabWorkflowMessageLayout.js";
+import ChatLabWorkflowReplyTabs from "../components/chat-lab/ChatLabWorkflowReplyTabs.jsx";
 import { cn } from "../ui/cn.js";
 
 /** Below this count, skip virtual scroll — avoids row-height drift on some Electron/GPU setups. */
@@ -543,7 +549,28 @@ function toPersistedChatMessage(m) {
       ? { mentionDelegateFromAgentId: m.mentionDelegateFromAgentId }
       : {}),
     ...(m.messageKind === "group_member_event" ? { messageKind: m.messageKind } : {}),
+    ...(typeof m.workflowId === "string" && m.workflowId ? { workflowId: m.workflowId } : {}),
+    ...(typeof m.workflowName === "string" && m.workflowName ? { workflowName: m.workflowName } : {}),
+    ...(typeof m.workflowNodeId === "string" && m.workflowNodeId ? { workflowNodeId: m.workflowNodeId } : {}),
+    ...(typeof m.workflowNodeLabel === "string" && m.workflowNodeLabel
+      ? { workflowNodeLabel: m.workflowNodeLabel }
+      : {}),
+    ...(m.workflowHandoffReply ? { workflowHandoffReply: true } : {}),
   };
+}
+
+/**
+ * @param {Record<string, unknown>} assistantMsg
+ * @param {string} workflowId
+ * @param {string[]} activeNodeIds
+ * @param {Map<string, import("../studio/agents.js").LobsterAgent>} agentById
+ */
+function withWorkflowAssistantNodeMeta(assistantMsg, workflowId, activeNodeIds, agentById) {
+  const agentId = typeof assistantMsg.agentId === "string" ? assistantMsg.agentId : "";
+  if (!workflowId || !agentId) return assistantMsg;
+  const meta = resolveWorkflowNodeMetaForAgent(workflowId, agentId, agentById, activeNodeIds);
+  if (!meta) return assistantMsg;
+  return { ...assistantMsg, ...meta };
 }
 
 /**
@@ -593,6 +620,11 @@ function mapSessionMessageRow(m, opts = {}) {
     ...(m.mentionDelegateReply ? { mentionDelegateReply: true } : {}),
     ...(m.mentionDelegateFromAgentId ? { mentionDelegateFromAgentId: m.mentionDelegateFromAgentId } : {}),
     ...(m.messageKind ? { messageKind: m.messageKind } : {}),
+    ...(m.workflowId ? { workflowId: m.workflowId } : {}),
+    ...(m.workflowName ? { workflowName: m.workflowName } : {}),
+    ...(m.workflowNodeId ? { workflowNodeId: m.workflowNodeId } : {}),
+    ...(m.workflowNodeLabel ? { workflowNodeLabel: m.workflowNodeLabel } : {}),
+    ...(m.workflowHandoffReply ? { workflowHandoffReply: true } : {}),
     streaming,
   };
 }
@@ -2608,6 +2640,15 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           : [];
       if (fileSnap.length) editedUser.fileRefs = fileSnap;
       else delete editedUser.fileRefs;
+      const activeWorkflowId = String(composerWorkflowId ?? "").trim();
+      if (activeWorkflowId) {
+        const workflowDoc = getWorkflowById(activeWorkflowId);
+        editedUser.workflowId = activeWorkflowId;
+        editedUser.workflowName = workflowDoc?.name || activeWorkflowId;
+      } else {
+        delete editedUser.workflowId;
+        delete editedUser.workflowName;
+      }
       const base = [...prev.slice(0, idx), editedUser];
 
       const tailUserRows = buildGatewayPayloadRows([editedUser], { includeImageAttachments: true });
@@ -2618,7 +2659,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         participantIds,
         stripMentions: false,
       });
-      const activeWorkflowId = String(composerWorkflowId ?? "").trim();
       let runtimeForPlan = workflowRuntimeRef.current;
       if (activeWorkflowId) {
         const advanced = advanceWorkflowRuntimeByMessages({
@@ -2670,15 +2710,20 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       }
 
       const assistantNow = Date.now();
-      const assistantMsg = {
-        id: newId(),
-        role: /** @type {const} */ ("assistant"),
-        content: "",
-        thinking: "",
-        streaming: true,
-        createdAt: assistantNow,
-        ...(editTarget ? { agentId: editTarget.id } : {}),
-      };
+      const assistantMsg = withWorkflowAssistantNodeMeta(
+        {
+          id: newId(),
+          role: /** @type {const} */ ("assistant"),
+          content: "",
+          thinking: "",
+          streaming: true,
+          createdAt: assistantNow,
+          ...(editTarget ? { agentId: editTarget.id } : {}),
+        },
+        activeWorkflowId,
+        workflowPlan?.runtime?.activeNodeIds ?? [],
+        agentById,
+      );
 
       const persistableBase = base
         .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
@@ -2692,6 +2737,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           thinking: "",
           createdAt: assistantMsg.createdAt,
           ...(assistantMsg.agentId ? { agentId: assistantMsg.agentId } : {}),
+          ...(assistantMsg.workflowNodeId ? { workflowNodeId: assistantMsg.workflowNodeId } : {}),
+          ...(assistantMsg.workflowNodeLabel ? { workflowNodeLabel: assistantMsg.workflowNodeLabel } : {}),
         },
       ];
       const provisionalTitle = deriveTitleFromMessages(
@@ -2962,6 +3009,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       const now = Date.now();
       const skillSnap = skillMetaFromPickRow(skillPickRow ?? null);
       const composerSkill = skillPickRowToPayload(skillPickRow ?? null);
+      const workflowDoc = activeWorkflowId ? getWorkflowById(activeWorkflowId) : null;
       const userMsg = {
         id: newId(),
         role: /** @type {const} */ ("user"),
@@ -2972,6 +3020,12 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         ...(followUpRef ? { followUpRef } : {}),
         ...(imageAttachments && imageAttachments.length ? { imageAttachments: imageAttachments } : {}),
         ...(fileRefs && fileRefs.length ? { fileRefs: fileRefs } : {}),
+        ...(activeWorkflowId
+          ? {
+              workflowId: activeWorkflowId,
+              workflowName: workflowDoc?.name || activeWorkflowId,
+            }
+          : {}),
       };
 
       const persistablePrior = messagesRef.current
@@ -3045,34 +3099,39 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
        * }>} */
       const launchJobs = replyTargets.map((target, i) => {
         const reuse = Boolean(foldTarget && i === 0);
-        const assistantMsg = reuse
-          ? {
-              id: foldTarget.id,
-              role: /** @type {const} */ ("assistant"),
-              content: String(foldTarget.content ?? ""),
-              thinking: String(foldTarget.thinking ?? ""),
-              streaming: true,
-              createdAt: Date.now(),
-              agentId: target.id,
-              sidebarAutomationContinueSession: true,
-              ...(Array.isArray(foldTarget.toolTrace) ? { toolTrace: foldTarget.toolTrace } : {}),
-              ...(Array.isArray(foldTarget.assistantTimeline)
-                ? { assistantTimeline: foldTarget.assistantTimeline }
-                : {}),
-              ...(Array.isArray(foldTarget.activityLog) ? { activityLog: foldTarget.activityLog } : {}),
-              ...(Array.isArray(foldTarget.sidebarAutomationSteps)
-                ? { sidebarAutomationSteps: foldTarget.sidebarAutomationSteps }
-                : {}),
-            }
-          : {
-              id: newId(),
-              role: /** @type {const} */ ("assistant"),
-              content: "",
-              thinking: "",
-              streaming: true,
-              createdAt: now + i + 1,
-              agentId: target.id,
-            };
+        const assistantMsg = withWorkflowAssistantNodeMeta(
+          reuse
+            ? {
+                id: foldTarget.id,
+                role: /** @type {const} */ ("assistant"),
+                content: String(foldTarget.content ?? ""),
+                thinking: String(foldTarget.thinking ?? ""),
+                streaming: true,
+                createdAt: Date.now(),
+                agentId: target.id,
+                sidebarAutomationContinueSession: true,
+                ...(Array.isArray(foldTarget.toolTrace) ? { toolTrace: foldTarget.toolTrace } : {}),
+                ...(Array.isArray(foldTarget.assistantTimeline)
+                  ? { assistantTimeline: foldTarget.assistantTimeline }
+                  : {}),
+                ...(Array.isArray(foldTarget.activityLog) ? { activityLog: foldTarget.activityLog } : {}),
+                ...(Array.isArray(foldTarget.sidebarAutomationSteps)
+                  ? { sidebarAutomationSteps: foldTarget.sidebarAutomationSteps }
+                  : {}),
+              }
+            : {
+                id: newId(),
+                role: /** @type {const} */ ("assistant"),
+                content: "",
+                thinking: "",
+                streaming: true,
+                createdAt: now + i + 1,
+                agentId: target.id,
+              },
+          activeWorkflowId,
+          workflowPlan?.runtime?.activeNodeIds ?? [],
+          agentById,
+        );
         const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
           workspaceContext,
           previewContext,
@@ -3126,6 +3185,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           ...(userMsg.followUpRef ? { followUpRef: userMsg.followUpRef } : {}),
           ...(userMsg.imageAttachments ? { imageAttachments: userMsg.imageAttachments } : {}),
           ...(userMsg.fileRefs ? { fileRefs: userMsg.fileRefs } : {}),
+          ...(userMsg.workflowId ? { workflowId: userMsg.workflowId } : {}),
+          ...(userMsg.workflowName ? { workflowName: userMsg.workflowName } : {}),
         },
         ...launchJobs.map(({ assistantMsg }) => ({
           id: assistantMsg.id,
@@ -3134,6 +3195,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           thinking: assistantMsg.thinking,
           createdAt: assistantMsg.createdAt,
           agentId: assistantMsg.agentId,
+          ...(assistantMsg.workflowNodeId ? { workflowNodeId: assistantMsg.workflowNodeId } : {}),
+          ...(assistantMsg.workflowNodeLabel ? { workflowNodeLabel: assistantMsg.workflowNodeLabel } : {}),
         })),
       ];
       const provisionalTitle = deriveTitleFromMessages(
@@ -3548,17 +3611,22 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
       /** @type {Array<{ target: import("../studio/agents.js").LobsterAgent; assistantMsg: Record<string, unknown>; streamId: string; outgoing: Array<{ role: string; content: string }> }>} */
       const jobs = targets.map((target, i) => {
-        const assistantMsg = {
-          id: newId(),
-          role: /** @type {const} */ ("assistant"),
-          content: "",
-          thinking: "",
-          streaming: true,
-          createdAt: Date.now() + i,
-          agentId: target.id,
-          workflowHandoffReply: true,
-          ...(triggerAgentId ? { workflowHandoffFromAgentId: triggerAgentId } : {}),
-        };
+        const assistantMsg = withWorkflowAssistantNodeMeta(
+          {
+            id: newId(),
+            role: /** @type {const} */ ("assistant"),
+            content: "",
+            thinking: "",
+            streaming: true,
+            createdAt: Date.now() + i,
+            agentId: target.id,
+            workflowHandoffReply: true,
+            ...(triggerAgentId ? { workflowHandoffFromAgentId: triggerAgentId } : {}),
+          },
+          workflowId,
+          runtime.activeNodeIds ?? [],
+          agentById,
+        );
         const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
           workspaceContext,
           previewContext,
@@ -3602,6 +3670,10 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           createdAt: Number(assistantMsg.createdAt),
           agentId: String(assistantMsg.agentId),
           workflowHandoffReply: true,
+          ...(assistantMsg.workflowNodeId ? { workflowNodeId: String(assistantMsg.workflowNodeId) } : {}),
+          ...(assistantMsg.workflowNodeLabel
+            ? { workflowNodeLabel: String(assistantMsg.workflowNodeLabel) }
+            : {}),
           ...(triggerAgentId ? { workflowHandoffFromAgentId: triggerAgentId } : {}),
         })),
       ];
@@ -5526,6 +5598,7 @@ function findRunningActivityBusyLabel(rows, t) {
  *   timeline?: import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[];
  *   toolRows?: import("../chat/toolTraceMerge.js").ToolTraceRow[];
  *   activityRows?: import("../chat/toolTraceMerge.js").ActivityRow[];
+ *   subagentActivityRows?: import("../chat/toolTraceMerge.js").ActivityRow[];
  *   thinking?: string;
  *   content?: string;
  *   t: (key: string, vars?: Record<string, string | number>) => string;
@@ -5538,6 +5611,8 @@ function resolveStreamingBusyLabel(opts) {
 
   const toolRows = Array.isArray(opts.toolRows) ? opts.toolRows : [];
   const activityRows = Array.isArray(opts.activityRows) ? opts.activityRows : [];
+  const subagentActivityRows = Array.isArray(opts.subagentActivityRows) ? opts.subagentActivityRows : [];
+  const subagentsSettled = areSubagentCardsSettled(subagentActivityRows);
   const timeline = Array.isArray(opts.timeline) ? opts.timeline : [];
   const toolMap = new Map(toolRows.map((r) => [r.id, r]));
   const deepTools = collectToolRowsDeep(toolRows, activityRows);
@@ -5550,6 +5625,13 @@ function resolveStreamingBusyLabel(opts) {
   // 2) Any other in-flight tool.
   for (let i = deepTools.length - 1; i >= 0; i--) {
     const row = deepTools[i];
+    const tool = String(row.toolName ?? "").trim();
+    if (
+      subagentsSettled &&
+      (isSessionsSpawnToolName(tool) || /^sessions_yield$/i.test(tool))
+    ) {
+      continue;
+    }
     if (isRunningToolRow(row)) return getStreamingBusyLabelFromTool(row, opts.t);
   }
 
@@ -5575,6 +5657,14 @@ function resolveStreamingBusyLabel(opts) {
     const seg = timeline[i];
     if (seg?.kind !== "tool") continue;
     const row = toolMap.get(seg.refId);
+    const tool = String(row?.toolName ?? "").trim();
+    if (
+      subagentsSettled &&
+      row &&
+      (isSessionsSpawnToolName(tool) || /^sessions_yield$/i.test(tool))
+    ) {
+      continue;
+    }
     if (isRunningToolRow(row)) return getStreamingBusyLabelFromTool(row, opts.t);
   }
 
@@ -7229,6 +7319,8 @@ function isLegacyDagMessageKind(kind) {
  *   onUserEnterAnimEnd?: (messageId: string) => void;
  *   agentGlyph?: string;
  *   agentName?: string;
+ *   hideAgentHead?: boolean;
+ *   embedded?: boolean;
  *   onBeginUserEdit: (
  *     messageId: string,
  *     payload: {
@@ -7254,6 +7346,8 @@ const MessageBubble = memo(function MessageBubble({
   onFollowUpNavigate,
   agentGlyph,
   agentName,
+  hideAgentHead = false,
+  embedded = false,
   mentionAgents = [],
   collapseTracePanels = false,
   agents = [],
@@ -7321,7 +7415,7 @@ const MessageBubble = memo(function MessageBubble({
     bubbleStreaming &&
     !parentLifecycleEnded &&
     (subagentActivityRows.some((row) => isRunningActivityRow(row)) ||
-      toolTraceAwaitsSubagent(toolRows));
+      toolTraceAwaitsSubagent(toolRows, { subagentCards: subagentActivityRows }));
   const generalActivityRows = useMemo(
     () =>
       activityRows.filter((r) => {
@@ -7364,6 +7458,7 @@ const MessageBubble = memo(function MessageBubble({
       timeline,
       toolRows,
       activityRows: generalActivityRows,
+      subagentActivityRows,
       thinking: message.thinking,
       content: message.content,
       t,
@@ -7542,9 +7637,9 @@ const MessageBubble = memo(function MessageBubble({
   return (
     <div
       className={cn(
-        "chat-lab__msg",
-        isUser ? "chat-lab__msg--user" : "chat-lab__msg--assistant",
-
+        !embedded && "chat-lab__msg",
+        !embedded && (isUser ? "chat-lab__msg--user" : "chat-lab__msg--assistant"),
+        embedded && "chat-lab__msg-embedded",
         shouldEnterAnim && "chat-lab__msg--user-enter chat-lab__reveal-enter",
       )}
       data-message-id={message.id}
@@ -7554,8 +7649,17 @@ const MessageBubble = memo(function MessageBubble({
         : {})}
       onAnimationEnd={shouldEnterAnim ? handleUserEnterAnimEnd : undefined}
     >
-      {isUser && (message.followUpRef || message.skillMeta || fileRefs.length > 0) ?
+      {isUser && (message.followUpRef || message.skillMeta || fileRefs.length > 0 || message.workflowName) ?
         <div className="chat-lab__msg-meta-tags">
+          {message.workflowName ?
+            <div
+              className="chat-lab__msg-skill-pill chat-lab__msg-workflow-pill"
+              title={String(message.workflowName)}
+            >
+              <GitBranch className="chat-lab__msg-workflow-icon" aria-hidden size={13} strokeWidth={2.2} />
+              <span className="chat-lab__msg-skill-label">{message.workflowName}</span>
+            </div>
+          : null}
           {message.followUpRef && onFollowUpNavigate ?
             <MessageFollowUpTag
               followUpRef={message.followUpRef}
@@ -7587,7 +7691,7 @@ const MessageBubble = memo(function MessageBubble({
           ))}
         </div>
       : null}
-      {!isUser && agentName ? (
+      {!isUser && agentName && !hideAgentHead ? (
         <div className="chat-lab__msg-agent-head">
           <Avatar
             src={agentGlyph}
@@ -7796,8 +7900,6 @@ const MessageBubble = memo(function MessageBubble({
 
 /**
  * @param {{
- *   content?: string;/**
- * @param {{
  *   content?: string;
  *   thinking?: string;
  *   streaming?: boolean;
@@ -7938,6 +8040,80 @@ function mentionAgentsForMessage(message, agentById, mainAgentLabel, opts = {}) 
 /** @typedef {Parameters<typeof ChatLabVirtualMessageList>[0]} ChatLabMessageListProps */
 
 /**
+ * @param {import("../chat/chatLabWorkflowMessageLayout.js").ChatMessageRenderItem} item
+ */
+function renderItemDomKey(item) {
+  if (item.kind === "message") return String(item.message.id ?? item.messageIndex);
+  return `wf-group:${item.userMessageId}`;
+}
+
+/**
+ * @param {import("../chat/chatLabWorkflowMessageLayout.js").ChatMessageRenderItem} item
+ */
+function estimateRenderItemHeight(item) {
+  if (item.kind === "message") {
+    const m = item.message;
+    if (m.role === "user") {
+      let h =
+        m.skillMeta || m.followUpRef || m.workflowName || (Array.isArray(m.fileRefs) && m.fileRefs.length > 0)
+          ? 118
+          : 96;
+      const textLen = String(m.content ?? "").length;
+      h += Math.min(480, Math.ceil(textLen / 3.2));
+      const n = Array.isArray(m.imageAttachments) ? m.imageAttachments.length : 0;
+      if (n > 0) h += 56 + Math.min(n, 8) * 56;
+      const mentionN = Array.isArray(m.mentions) ? m.mentions.length : 0;
+      if (mentionN > 0) h += 30 + Math.min(mentionN - 1, 3) * 8;
+      return h;
+    }
+    return estimateAssistantRowHeight(m);
+  }
+  let h = 64;
+  let tallest = 120;
+  for (const reply of item.replies) {
+    tallest = Math.max(tallest, estimateAssistantRowHeight(reply.message));
+  }
+  return h + tallest;
+}
+
+/**
+ * @param {{
+ *   item: import("../chat/chatLabWorkflowMessageLayout.js").ChatMessageRenderItem;
+ *   lastAssistantMessageId: string | null;
+ *   renderMessageBubble: (
+ *     message: Record<string, unknown>,
+ *     opts: { messageIndex: number; hideAgentHead?: boolean; embedded?: boolean },
+ *   ) => import("react").ReactNode;
+ * }} args
+ */
+function renderChatLabMessageItem({ item, lastAssistantMessageId, renderMessageBubble }) {
+  if (item.kind === "message") {
+    return renderMessageBubble(item.message, { messageIndex: item.messageIndex });
+  }
+  if (item.replies.length === 1) {
+    const reply = item.replies[0];
+    return renderMessageBubble(reply.message, { messageIndex: reply.messageIndex });
+  }
+  return (
+    <div
+      key={renderItemDomKey(item)}
+      className="chat-lab__msg chat-lab__msg--assistant chat-lab__msg--workflow-group"
+      data-workflow-turn={item.userMessageId}
+    >
+      <ChatLabWorkflowReplyTabs replies={item.replies}>
+        {(reply, { hideAgentHead }) =>
+          renderMessageBubble(reply.message, {
+            messageIndex: reply.messageIndex,
+            hideAgentHead,
+            embedded: true,
+          })
+        }
+      </ChatLabWorkflowReplyTabs>
+    </div>
+  );
+}
+
+/**
  * @param {ChatLabMessageListProps} props
  */
 function ChatLabMessageList(props) {
@@ -7982,9 +8158,19 @@ function ChatLabPlainMessageList({
     () => ({ everyoneLabel: mentionEveryoneLabel, mainAgent, participantIds }),
     [mentionEveryoneLabel, mainAgent, participantIds],
   );
-  const messagesMeasureDigest = useMemo(() => buildMessagesMeasureDigest(messages), [messages]);
-  const scrollPinKey = messages.length
-    ? `${conversationId}:${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}`
+  const renderItems = useMemo(() => buildChatMessageRenderItems(messages, agentById), [messages, agentById]);
+  const lastAssistantMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "assistant") return String(messages[i].id ?? "");
+    }
+    return null;
+  }, [messages]);
+  const messagesMeasureDigest = useMemo(
+    () => `${buildMessagesMeasureDigest(messages)}|${renderItems.length}`,
+    [messages, renderItems.length],
+  );
+  const scrollPinKey = renderItems.length
+    ? `${conversationId}:${renderItems.length}:${renderItemDomKey(renderItems[renderItems.length - 1])}:${gatewayStreaming ? 1 : 0}`
     : "";
 
   const handleScroll = useCallback(() => {
@@ -8079,28 +8265,39 @@ function ChatLabPlainMessageList({
       aria-live="polite"
       aria-label={threadLabel}
     >
-      {messages.map((m, index) => {
-        const agent = m.agentId ? agentById.get(m.agentId) : null;
+      {renderItems.map((item) => {
+        const renderMessageBubble = (message, { messageIndex, hideAgentHead = false, embedded = false }) => {
+          const agent = message.agentId ? agentById.get(String(message.agentId)) : null;
+          return (
+            <MessageBubble
+              key={String(message.id ?? messageIndex)}
+              message={message}
+              t={t}
+              locale={locale}
+              streamLocked={streamLocked}
+              animateUserEnter={message.role === "user" && message.id === userBubbleEnterMessageId}
+              onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
+              allowAssistantQuickReply={
+                message.role === "assistant" && String(message.id ?? "") === lastAssistantMessageId
+              }
+              quickReplyDisabled={quickReplyDisabled}
+              onQuickReply={onQuickReply}
+              onBeginUserEdit={onBeginUserEdit}
+              onFollowUpNavigate={onFollowUpNavigate}
+              agentGlyph={agent ? agentAvatarGlyph(agent) : undefined}
+              agentName={agent ? agentDisplayLabel(agent) : undefined}
+              mentionAgents={mentionAgentsForMessage(message, agentById, mainAgentLabel, mentionDisplayOpts)}
+              collapseTracePanels={collapseTracePanels}
+              agents={agents}
+              hideAgentHead={hideAgentHead}
+              embedded={embedded}
+            />
+          );
+        };
         return (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            t={t}
-            locale={locale}
-            streamLocked={streamLocked}
-            animateUserEnter={m.role === "user" && m.id === userBubbleEnterMessageId}
-            onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
-            allowAssistantQuickReply={index === messages.length - 1 && m.role === "assistant"}
-            quickReplyDisabled={quickReplyDisabled}
-            onQuickReply={onQuickReply}
-            onBeginUserEdit={onBeginUserEdit}
-            onFollowUpNavigate={onFollowUpNavigate}
-            agentGlyph={agent ? agentAvatarGlyph(agent) : undefined}
-            agentName={agent ? agentDisplayLabel(agent) : undefined}
-            mentionAgents={mentionAgentsForMessage(m, agentById, mainAgentLabel, mentionDisplayOpts)}
-            collapseTracePanels={collapseTracePanels}
-            agents={agents}
-          />
+          <div key={renderItemDomKey(item)} className="chat-lab__msg-vrow">
+            {renderChatLabMessageItem({ item, lastAssistantMessageId, renderMessageBubble })}
+          </div>
         );
       })}
       {sessionArtifacts?.length && !gatewayStreaming ? (
@@ -8184,6 +8381,15 @@ function ChatLabVirtualMessageList({
     () => ({ everyoneLabel: mentionEveryoneLabel, mainAgent, participantIds }),
     [mentionEveryoneLabel, mainAgent, participantIds],
   );
+  const renderItems = useMemo(() => buildChatMessageRenderItems(messages, agentById), [messages, agentById]);
+  const renderItemsRef = useRef(renderItems);
+  renderItemsRef.current = renderItems;
+  const lastAssistantMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "assistant") return String(messages[i].id ?? "");
+    }
+    return null;
+  }, [messages]);
   const messagesEstRef = useRef(messages);
   messagesEstRef.current = messages;
   const scrollFadeTimerRef = useRef(/** @type {number | null} */ (null));
@@ -8200,27 +8406,21 @@ function ChatLabVirtualMessageList({
   );
 
   const estimateSize = useCallback((index) => {
-    const m = messagesEstRef.current[index];
-    if (m?.role === "user") {
-      let h = m.skillMeta || m.followUpRef || (Array.isArray(m.fileRefs) && m.fileRefs.length > 0) ? 118 : 96;
-      const textLen = String(m.content ?? "").length;
-      h += Math.min(480, Math.ceil(textLen / 3.2));
-      const n = Array.isArray(m.imageAttachments) ? m.imageAttachments.length : 0;
-      if (n > 0) h += 56 + Math.min(n, 8) * 56;
-      const mentionN = Array.isArray(m.mentions) ? m.mentions.length : 0;
-      if (mentionN > 0) h += 30 + Math.min(mentionN - 1, 3) * 8;
-      return h;
-    }
-    return estimateAssistantRowHeight(m);
+    const item = renderItemsRef.current[index];
+    if (!item) return 120;
+    return estimateRenderItemHeight(item);
   }, []);
 
-  const messagesMeasureDigest = useMemo(() => buildMessagesMeasureDigest(messages), [messages]);
+  const messagesMeasureDigest = useMemo(
+    () => `${buildMessagesMeasureDigest(messages)}|${renderItems.length}`,
+    [messages, renderItems.length],
+  );
   const prevGatewayStreamingRef = useRef(gatewayStreaming);
 
-  const getItemKey = useCallback((index) => messagesEstRef.current[index]?.id ?? index, []);
+  const getItemKey = useCallback((index) => renderItemDomKey(renderItemsRef.current[index] ?? { kind: "message", message: { id: index }, messageIndex: index }), []);
 
   const rowVirtualizer = useVirtualizer({
-    count: messages.length,
+    count: renderItems.length,
     getScrollElement: () => messagesScrollRef.current,
     estimateSize,
     overscan: 8,
@@ -8301,8 +8501,8 @@ function ChatLabVirtualMessageList({
     scheduleScrollbarHide();
   }, [messagesScrollRef, autoScrollRef, scheduleScrollbarHide, syncScrollbarMetrics]);
 
-  const scrollPinKey = messages.length
-    ? `${conversationId}:${messages.length}:${messages[messages.length - 1]?.id ?? ""}:${gatewayStreaming ? 1 : 0}`
+  const scrollPinKey = renderItems.length
+    ? `${conversationId}:${renderItems.length}:${renderItemDomKey(renderItems[renderItems.length - 1])}:${gatewayStreaming ? 1 : 0}`
     : "";
 
   useEffect(
@@ -8375,29 +8575,31 @@ function ChatLabVirtualMessageList({
   }, [messagesScrollRef, syncScrollbarMetrics]);
 
   const pinVirtualToBottom = useCallback(() => {
-    if (!autoScrollRef.current || messages.length === 0) return;
+    const count = renderItemsRef.current.length;
+    if (!autoScrollRef.current || count === 0) return;
     vInstRef.current.measure();
-    vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
-  }, [autoScrollRef, messages.length]);
+    vInstRef.current.scrollToIndex(count - 1, { align: "end", behavior: "instant" });
+  }, [autoScrollRef]);
 
   const forcePinVirtualToBottom = useCallback(() => {
-    if (messages.length === 0) return;
+    const count = renderItemsRef.current.length;
+    if (count === 0) return;
     const run = () => {
       vInstRef.current.measure();
-      vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
+      vInstRef.current.scrollToIndex(count - 1, { align: "end", behavior: "instant" });
     };
     run();
     requestAnimationFrame(() => {
       run();
       requestAnimationFrame(run);
     });
-  }, [messages.length]);
+  }, []);
 
   useLayoutEffect(() => {
-    if (!conversationId || messages.length === 0) return;
+    if (!conversationId || renderItems.length === 0) return;
     autoScrollRef.current = true;
     forcePinVirtualToBottom();
-  }, [autoScrollRef, conversationId, forcePinVirtualToBottom, messages.length]);
+  }, [autoScrollRef, conversationId, forcePinVirtualToBottom, renderItems.length]);
 
   /** Pin when a new turn starts — not on every streaming token (messages reference churn). */
   useLayoutEffect(() => {
@@ -8411,9 +8613,9 @@ function ChatLabVirtualMessageList({
 
   /** User-bubble enter anim + streaming row growth need a remeasure or the first turn can clip. */
   useLayoutEffect(() => {
-    if (messages.length === 0) return;
+    if (renderItems.length === 0) return;
     vInstRef.current.measure();
-  }, [messages.length, userBubbleEnterMessageId, gatewayStreaming]);
+  }, [renderItems.length, userBubbleEnterMessageId, gatewayStreaming]);
 
   /** Content/tool growth during streaming and collapse after `streaming:false` must refresh row offsets. */
   useLayoutEffect(() => {
@@ -8428,21 +8630,21 @@ function ChatLabVirtualMessageList({
     vInstRef.current.measure();
     const raf = requestAnimationFrame(() => {
       vInstRef.current.measure();
-      if (autoScrollRef.current && messages.length > 0) {
-        vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
+      if (autoScrollRef.current && renderItemsRef.current.length > 0) {
+        vInstRef.current.scrollToIndex(renderItemsRef.current.length - 1, { align: "end", behavior: "instant" });
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [gatewayStreaming, messages.length, autoScrollRef]);
+  }, [gatewayStreaming, autoScrollRef]);
 
   useLayoutEffect(() => {
-    if (!remeasureKey || messages.length === 0) return;
+    if (!remeasureKey || renderItems.length === 0) return;
     vInstRef.current.measure();
-  }, [remeasureKey, messages.length]);
+  }, [remeasureKey, renderItems.length]);
 
   useEffect(() => {
     const remeasure = () => {
-      if (messagesEstRef.current.length === 0) return;
+      if (renderItemsRef.current.length === 0) return;
       vInstRef.current.measure();
     };
     const onVis = () => {
@@ -8473,14 +8675,15 @@ function ChatLabVirtualMessageList({
       },
       scrollToBottom: ({ animated = true } = {}) => {
         autoScrollRef.current = true;
-        if (messages.length === 0) return;
+        const count = renderItemsRef.current.length;
+        if (count === 0) return;
         const el = messagesScrollRef.current;
         vInstRef.current.measure();
         if (!animated || !el) {
           forcePinVirtualToBottom();
           return;
         }
-        vInstRef.current.scrollToIndex(messages.length - 1, { align: "end", behavior: "instant" });
+        vInstRef.current.scrollToIndex(count - 1, { align: "end", behavior: "instant" });
         requestAnimationFrame(() => {
           const target = Math.max(0, el.scrollHeight - el.clientHeight);
           animateScrollTop(el, target);
@@ -8526,7 +8729,35 @@ function ChatLabVirtualMessageList({
           }}
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const m = messages[virtualRow.index];
+            const item = renderItems[virtualRow.index];
+            const renderMessageBubble = (message, { messageIndex, hideAgentHead = false, embedded = false }) => {
+              const agent = message.agentId ? agentById.get(String(message.agentId)) : null;
+              return (
+                <MessageBubble
+                  key={String(message.id ?? messageIndex)}
+                  message={message}
+                  t={t}
+                  locale={locale}
+                  streamLocked={streamLocked}
+                  animateUserEnter={message.role === "user" && message.id === userBubbleEnterMessageId}
+                  onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
+                  allowAssistantQuickReply={
+                    message.role === "assistant" && String(message.id ?? "") === lastAssistantMessageId
+                  }
+                  quickReplyDisabled={quickReplyDisabled}
+                  onQuickReply={onQuickReply}
+                  onBeginUserEdit={onBeginUserEdit}
+                  onFollowUpNavigate={onFollowUpNavigate}
+                  agentGlyph={agent ? agentAvatarGlyph(agent) : undefined}
+                  agentName={agent ? agentDisplayLabel(agent) : undefined}
+                  mentionAgents={mentionAgentsForMessage(message, agentById, mainAgentLabel, mentionDisplayOpts)}
+                  collapseTracePanels={collapseTracePanels}
+                  agents={agents}
+                  hideAgentHead={hideAgentHead}
+                  embedded={embedded}
+                />
+              );
+            };
             return (
               <div
                 key={virtualRow.key}
@@ -8539,37 +8770,12 @@ function ChatLabVirtualMessageList({
                   left: 0,
                   width: "100%",
                   transform: `translateY(${virtualRow.start}px)`,
-                  ...(virtualRow.index < messages.length - 1 ? { paddingBottom: "0.85rem" } : {}),
+                  ...(virtualRow.index < renderItems.length - 1 ? { paddingBottom: "0.85rem" } : {}),
                 }}
               >
-                <MessageBubble
-                  message={m}
-                  t={t}
-                  locale={locale}
-                  streamLocked={streamLocked}
-                  animateUserEnter={m.role === "user" && m.id === userBubbleEnterMessageId}
-                  onUserEnterAnimEnd={onUserBubbleEnterAnimEnd}
-                  allowAssistantQuickReply={
-                    virtualRow.index === messages.length - 1 && m.role === "assistant"
-                  }
-                  quickReplyDisabled={quickReplyDisabled}
-                  onQuickReply={onQuickReply}
-                  onBeginUserEdit={onBeginUserEdit}
-                  onFollowUpNavigate={onFollowUpNavigate}
-                  agentGlyph={
-                    m.agentId && agentById?.has(m.agentId)
-                      ? agentAvatarGlyph(agentById.get(m.agentId))
-                      : undefined
-                  }
-                  agentName={
-                    m.agentId && agentById?.has(m.agentId)
-                      ? agentDisplayLabel(agentById.get(m.agentId))
-                      : undefined
-                  }
-                  mentionAgents={mentionAgentsForMessage(m, agentById, mainAgentLabel, mentionDisplayOpts)}
-                  collapseTracePanels={collapseTracePanels}
-                  agents={agents}
-                />
+                {item
+                  ? renderChatLabMessageItem({ item, lastAssistantMessageId, renderMessageBubble })
+                  : null}
               </div>
             );
           })}

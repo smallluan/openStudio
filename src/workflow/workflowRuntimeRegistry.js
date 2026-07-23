@@ -697,7 +697,7 @@ export function buildWorkflowUserTurnContext(workflowPlan) {
     "- 用户已在界面选择工作流，本轮必须严格按节点编排执行，不要当作普通闲聊。",
     "- 禁止跳过流程直接回答；禁止用 web_search 等工具代替流程节点。",
     "- 子智能体节点不是独立轮次，只在当前智能体节点内 sessions_spawn 一次。",
-    "- 「主智能体→子智能体→汇总」是同一个步骤，一次回复内完成；完成后 handoff 给下游不同执行者（如 111）。",
+    "- 「主智能体→子智能体→汇总」是同一个步骤，一次回复内完成；完成后 handoff 给下游不同执行者。",
     workflowPlan.flowFogPrompt,
     ...fogBlocks,
   ]

@@ -67,6 +67,11 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {boolean} [mentionDelegateReply] Auto-reply triggered by another agent's @mention
  * @property {string} [mentionDelegateFromAgentId] Studio agent id that @mentioned this reply
  * @property {'group_member_event'} [messageKind]
+ * @property {string} [workflowId] Workflow document id when user turn was dispatched via workflow
+ * @property {string} [workflowName] Display name for workflow badge on user turns
+ * @property {string} [workflowNodeId] Active workflow graph node id for assistant turns
+ * @property {string} [workflowNodeLabel] Display label for workflow reply tabs
+ * @property {boolean} [workflowHandoffReply] Assistant turn started by workflow handoff (not shown as user bubble)
  */
 
 /**
@@ -619,6 +624,19 @@ function sanitizeMessages(raw) {
     if (mk === "group_member_event") {
       row.messageKind = mk;
     }
+    if (typeof m.workflowId === "string" && m.workflowId.trim()) {
+      row.workflowId = m.workflowId.trim().slice(0, 96);
+    }
+    if (typeof m.workflowName === "string" && m.workflowName.trim()) {
+      row.workflowName = m.workflowName.trim().slice(0, 120);
+    }
+    if (typeof m.workflowNodeId === "string" && m.workflowNodeId.trim()) {
+      row.workflowNodeId = m.workflowNodeId.trim().slice(0, 96);
+    }
+    if (typeof m.workflowNodeLabel === "string" && m.workflowNodeLabel.trim()) {
+      row.workflowNodeLabel = m.workflowNodeLabel.trim().slice(0, 120);
+    }
+    if (m.workflowHandoffReply === true) row.workflowHandoffReply = true;
     out.push(row);
   }
   return out;
