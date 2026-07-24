@@ -168,6 +168,57 @@
   background: color-mix(in srgb, var(--os-bg-elevated) 60%, var(--os-bg-panel));
 }
 
+.workflow-flow-runtime {
+  background: color-mix(in srgb, var(--os-bg-elevated) 55%, var(--os-bg-panel));
+}
+
+.workflow-flow-runtime .react-flow__controls,
+.workflow-flow-runtime .react-flow__panel {
+  display: none;
+}
+
+.workflow-flow-runtime .react-flow__edge.animated path,
+.workflow-flow-runtime .wf-edge-path.is-runtime-flow {
+  stroke: color-mix(in srgb, var(--os-accent) 78%, var(--os-text-muted));
+  stroke-width: 2px;
+}
+
+.workflow-flow-runtime .react-flow__edge.animated path {
+  stroke-dasharray: 6 4;
+  animation: wf-edge-flow 0.8s linear infinite;
+}
+
+.wf-node.is-runtime-active {
+  border-color: color-mix(in srgb, var(--os-accent) 72%, var(--wf-node-border));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--os-accent) 22%, transparent),
+    0 6px 18px -8px color-mix(in srgb, var(--os-accent) 35%, transparent);
+  animation: wf-runtime-node-pulse 1.6s ease-in-out infinite;
+}
+
+.wf-node.is-runtime-completed {
+  border-color: color-mix(in srgb, #22c55e 42%, var(--wf-node-border));
+  opacity: 0.82;
+}
+
+.wf-node.is-runtime-completed .wf-node__badge {
+  color: color-mix(in srgb, #22c55e 70%, var(--os-text-muted));
+}
+
+@keyframes wf-runtime-node-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--os-accent) 18%, transparent),
+      0 6px 18px -8px color-mix(in srgb, var(--os-accent) 28%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--os-accent) 30%, transparent),
+      0 8px 22px -6px color-mix(in srgb, var(--os-accent) 42%, transparent);
+  }
+}
+
 .workflow-flow-preview .react-flow__controls,
 .workflow-flow-preview .react-flow__panel {
   display: none;

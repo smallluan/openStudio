@@ -828,3 +828,19 @@ export function advanceWorkflowAndCollectHandoffs({
   });
   return { runtime: advanced, handoffAgentIds: activeChanged ? handoffAgentIds : [] };
 }
+
+/**
+ * Whether a workflow run has finished (no pending dispatch steps).
+ * @param {WorkflowSessionRuntimeState | null | undefined} runtime
+ */
+export function isWorkflowRuntimeExecutionComplete(runtime) {
+  if (!runtime) return true;
+  if (runtime.waitingAgentIds.length > 0) return false;
+  if (runtime.activeNodeIds.length > 0) return false;
+  const workflow = getWorkflowById(runtime.workflowId);
+  if (!workflow) return true;
+  const index = buildWorkflowGraphIndex(workflow);
+  if (!index.dispatchNodeIds.length) return true;
+  const completed = new Set(runtime.completedNodeIds);
+  return index.dispatchNodeIds.every((id) => completed.has(id));
+}

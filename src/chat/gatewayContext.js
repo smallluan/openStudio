@@ -17,6 +17,8 @@ export const GATEWAY_BOOTSTRAP_RECENT_TURNS = 8;
 export const GATEWAY_SUMMARY_MAX_CHARS = 2400;
 /** After this many chat turns, refresh the stored thread summary. */
 export const GATEWAY_SUMMARY_REFRESH_TURN_INTERVAL = 12;
+/** Max chars of upstream assistant output embedded on workflow handoff. */
+export const GATEWAY_HANDOFF_PRIOR_MAX_CHARS = 16000;
 
 /**
  * @typedef {'none' | 'bootstrap' | 'incremental' | 'full'} GatewayContextEmbedMode
@@ -159,6 +161,76 @@ export function buildGatewayPayloadRows(msgs, opts = {}) {
       return { role, content: body };
     })
     .filter(Boolean);
+}
+
+/**
+ * @param {string} text
+ * @param {number} maxChars
+ */
+function clipGatewayContextBody(text, maxChars) {
+  const body = String(text ?? "").trim();
+  if (!body || body.length <= maxChars) return body;
+  return `${body.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+/**
+ * Minimal thread context for workflow handoff — avoids re-bootstrapping the full turn
+ * (sub-agent/tool payloads can trip gateway limits on the next executor).
+ *
+ * @param {{
+ *   historyMessages: Array<Record<string, unknown>>;
+ *   triggerAgentId?: string;
+ *   targetAgentId: string;
+ *   agentById?: Map<string, import("../studio/agents.js").LobsterAgent>;
+ *   mainAgentStudioId?: string;
+ *   maxTriggerChars?: number;
+ * }} args
+ */
+export function buildWorkflowHandoffGatewayPriorRows({
+  historyMessages,
+  triggerAgentId = "",
+  targetAgentId,
+  agentById,
+  mainAgentStudioId = "",
+  maxTriggerChars = GATEWAY_HANDOFF_PRIOR_MAX_CHARS,
+}) {
+  const chat = filterMessagesForGatewayContext(historyMessages);
+  const trigger = String(triggerAgentId ?? "").trim();
+  const userTurn = [...chat].reverse().find((m) => m.role === "user");
+  const triggerReply = trigger
+    ? [...chat].reverse().find(
+        (m) =>
+          m.role === "assistant" &&
+          String(m.agentId ?? "") === trigger &&
+          !m.error &&
+          (String(m.content ?? "").trim() || String(m.thinking ?? "").trim()),
+      )
+    : [...chat].reverse().find(
+        (m) =>
+          m.role === "assistant" &&
+          !m.error &&
+          (String(m.content ?? "").trim() || String(m.thinking ?? "").trim()),
+      );
+
+  /** @type {Array<Record<string, unknown>>} */
+  const slice = [];
+  if (userTurn) slice.push(userTurn);
+  if (triggerReply) {
+    const content = String(triggerReply.content ?? "").trim();
+    const thinking = String(triggerReply.thinking ?? "").trim();
+    const clippedBody = clipGatewayContextBody(content || thinking, maxTriggerChars);
+    slice.push({
+      ...triggerReply,
+      content: clippedBody,
+      thinking: content ? thinking : "",
+    });
+  }
+
+  return buildGatewayPayloadRows(slice, {
+    agentById,
+    targetAgentId,
+    mainAgentStudioId,
+  });
 }
 
 /**

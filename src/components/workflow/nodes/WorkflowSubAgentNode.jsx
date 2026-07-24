@@ -10,12 +10,20 @@ export default function WorkflowSubAgentNode({ id, data }) {
   const agentName = data?.agentName;
   const task = data?.task?.trim() ?? "";
   const isActive = Boolean(data?.isActive);
+  const isRuntimeView = Boolean(data?.__runtimeView || data?.__preview);
   const { target, source } = getWorkflowHandlePositions(data);
   const chrome = useWorkflowNodeActions(id);
   const flipY = Boolean(data?.flipY);
 
   return (
-    <div className={cn("wf-node wf-node--sub-agent", isActive && "is-selected")}>
+    <div
+      className={cn(
+        "wf-node wf-node--sub-agent",
+        isActive && "is-selected",
+        data?.runtimeStatus === "active" && "is-runtime-active",
+        data?.runtimeStatus === "completed" && "is-runtime-completed",
+      )}
+    >
       <Handle type="target" position={target} />
       <div className={cn("wf-node__inner", flipY && "is-flip-y")}>
         <div className="wf-node__badge">子智能体节点</div>
@@ -31,7 +39,7 @@ export default function WorkflowSubAgentNode({ id, data }) {
           {task || "未配置任务"}
         </div>
       </div>
-      {isActive ? (
+      {isActive && !isRuntimeView ? (
         <WorkflowNodeChrome
           onDelete={chrome.onDelete}
           onFlipHorizontal={chrome.onFlipHorizontal}

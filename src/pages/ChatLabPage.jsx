@@ -33,6 +33,7 @@ import {
   areSubagentCardsSettled,
   coalesceSubagentActivityRows,
   deriveSubagentRowsFromToolTrace,
+  extractLifecycleErrorFromActivityLog,
   isSessionsSpawnToolName,
   pickSubagentProgressLine,
   shortSubagentTitle,
@@ -44,6 +45,9 @@ import {
 import {
   agentSessionKeysForConversation,
   buildGatewayPayloadRows,
+  buildWorkflowHandoffGatewayPriorRows,
+  computeThreadSummary,
+  filterMessagesForGatewayContext,
   recordAgentGatewaySync,
   resetThreadGatewaySync,
   resolveAgentGatewayContext,
@@ -62,6 +66,8 @@ import {
   advanceWorkflowRuntimeByMessages,
   buildWorkflowUserTurnContext,
   getWorkflowById,
+  isWorkflowRuntimeExecutionComplete,
+  listWorkflowDocuments,
   listWorkflowsForPicker,
   resolveWorkflowAgents,
   resolveWorkflowOrchestrationPlan,
@@ -69,6 +75,7 @@ import {
   sanitizeWorkflowSessionState,
   workflowPlanRequiresSubagents,
 } from "../workflow/workflowRuntimeRegistry.js";
+import { resolveWorkflowLiveExecution } from "../workflow/workflowLiveExecution.js";
 import { buildGroupMemberChangeEvents } from "../chat/chatLabGroupMemberEvents.js";
 import {
   activeMentionQuery,
@@ -133,6 +140,7 @@ import ChatLabPreviewContextBridge from "../components/chat-lab/ChatLabPreviewCo
 import ChatLabSidebarActionRunner from "../components/chat-lab/ChatLabSidebarActionRunner.jsx";
 import { ChatLabWorkspaceProvider } from "../context/ChatLabWorkspaceContext.jsx";
 import ChatLabRawTraceFloatPanel from "../components/chat-lab/ChatLabRawTraceFloatPanel.jsx";
+import ChatLabWorkflowRuntimeFloatPanel from "../components/chat-lab/ChatLabWorkflowRuntimeFloatPanel.jsx";
 import {
   ChatLabPreviewContext,
   ChatLabPreviewProvider,
@@ -777,9 +785,11 @@ function providerLabelFromId(t, providerId) {
  * Map a raw backend error (often `http_401`) to a localized string.
  * @param {string} raw
  * @param {(key: string, vars?: Record<string, string | number>) => string} t
+ * @param {import("../chat/toolTraceMerge.js").ActivityRow[] | unknown} [activityLog]
  */
-function formatStreamError(raw, t) {
-  const trimmed = String(raw ?? "").trim();
+function formatStreamError(raw, t, activityLog) {
+  const fromLog = extractLifecycleErrorFromActivityLog(activityLog);
+  const trimmed = String(fromLog || raw || "").trim();
   if (!trimmed) return t("chatLab.unknownError");
   if (trimmed.startsWith("missing_gateway_url")) return t(ERROR_CODE_KEY_MAP.missing_gateway_url);
   if (trimmed.startsWith("gateway_unreachable")) {
@@ -1305,6 +1315,9 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   const [workflowRuntimeState, setWorkflowRuntimeState] = useState(
     /** @type {import("../workflow/workflowRuntimeRegistry.js").WorkflowSessionRuntimeState | null} */ (null),
   );
+  const [workflowFloatRun, setWorkflowFloatRun] = useState(
+    /** @type {{ workflowId: string } | null} */ (null),
+  );
   const workflowRuntimeRef = useRef(workflowRuntimeState);
   const composerWorkflowIdRef = useRef(composerWorkflowId);
   const workflowHandoffFromMessageRef = useRef(/** @type {Set<string>} */ (new Set()));
@@ -1690,6 +1703,34 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     setWorkflowRuntimeState(next);
   }, [agentById, composerWorkflowId, gatewayStreaming, messages]);
 
+  useEffect(() => {
+    if (!workflowFloatRun) return;
+    const wfId = workflowFloatRun.workflowId;
+    if (!composerWorkflowId || composerWorkflowId !== wfId) {
+      setWorkflowFloatRun(null);
+      return;
+    }
+    if (gatewayStreaming) return;
+    if (isWorkflowRuntimeExecutionComplete(workflowRuntimeState)) {
+      setWorkflowFloatRun(null);
+    }
+  }, [workflowFloatRun, composerWorkflowId, workflowRuntimeState, gatewayStreaming]);
+
+  const workflowLibraryDocs = useMemo(() => listWorkflowDocuments(), []);
+
+  const workflowLiveExecution = useMemo(
+    () =>
+      workflowFloatRun
+        ? resolveWorkflowLiveExecution({
+            workflowId: workflowFloatRun.workflowId,
+            runtime: workflowRuntimeState,
+            messages,
+            agentById,
+          })
+        : null,
+    [workflowFloatRun, workflowRuntimeState, messages, agentById],
+  );
+
   const prevParamCRef = useRef(/** @type {string | null} */ (null));
 
   useLayoutEffect(() => {
@@ -1703,6 +1744,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         setParticipantIds([]);
         setComposerWorkflowId("");
         setWorkflowRuntimeState(null);
+        setWorkflowFloatRun(null);
         setChatApiBlocked(false);
       } else if (messagesRef.current.length === 0) {
         setChatApiBlocked(false);
@@ -2303,7 +2345,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           if (!hasFinalRow) {
             finalizeAssistantById(pendingId, {
               ...(d.kind === "error"
-                ? { error: formatStreamError(String(d.message ?? ""), t) }
+                ? { error: formatStreamError(String(d.message ?? ""), t, d.activityLog) }
                 : d.kind === "aborted"
                   ? { error: "aborted" }
                   : {}),
@@ -2338,7 +2380,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       if (d.kind === "error") {
         clearStreamTracking(d.assistantMessageId);
         const raw = String(d.message ?? "");
-        const msg = formatStreamError(raw, t);
+        const msg = formatStreamError(raw, t, d.activityLog);
         finalizeAssistantById(d.assistantMessageId, {
           error: msg,
           ...(typeof d.content === "string" ? { content: d.content } : {}),
@@ -3010,6 +3052,9 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       const skillSnap = skillMetaFromPickRow(skillPickRow ?? null);
       const composerSkill = skillPickRowToPayload(skillPickRow ?? null);
       const workflowDoc = activeWorkflowId ? getWorkflowById(activeWorkflowId) : null;
+      if (activeWorkflowId) {
+        setWorkflowFloatRun({ workflowId: activeWorkflowId });
+      }
       const userMsg = {
         id: newId(),
         role: /** @type {const} */ ("user"),
@@ -3637,24 +3682,35 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
             Object.values(workflowPlan?.fogByAgentId ?? {})[0] ??
             "",
         });
-        const ctx = resolveAgentGatewayContext({
-          conversationId,
-          agentId: target.id,
+        const handoffPriorRows = buildWorkflowHandoffGatewayPriorRows({
           historyMessages,
-          mode: "thread",
+          triggerAgentId: triggerAgentId ?? "",
+          targetAgentId: target.id,
           agentById,
-          mainAgentStudioId: mainAgent.id,
-          forceBootstrap: true,
+          mainAgentStudioId: mainAgent?.id ?? "",
         });
+        const recForSummary = getSession(conversationId);
+        const threadSummaryPrefix =
+          recForSummary?.threadContext?.summary?.trim() ||
+          computeThreadSummary(filterMessagesForGatewayContext(historyMessages)) ||
+          undefined;
+        const contextEmbedMode = handoffPriorRows.length ? "bootstrap" : "none";
         const baseOutgoing = [
           ...(sysRow ? [sysRow] : []),
           ...(workflowModeRow ? [workflowModeRow] : []),
           ...(subagentModeRow ? [subagentModeRow] : []),
-          ...ctx.priorRows,
+          ...handoffPriorRows,
           handoffUserRow,
         ];
         const outgoing = withWorkflowContextOnUserTurn(baseOutgoing, workflowPlan);
-        return { target, assistantMsg, streamId: newId(), outgoing, contextEmbedMode: ctx.contextEmbedMode, threadSummaryPrefix: ctx.threadSummaryPrefix };
+        return {
+          target,
+          assistantMsg,
+          streamId: newId(),
+          outgoing,
+          contextEmbedMode,
+          ...(threadSummaryPrefix ? { threadSummaryPrefix } : {}),
+        };
       });
 
       const persistablePrior = historyMessages
@@ -5185,6 +5241,22 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         {config?.chatLabRawTraceEnabled ? (
           <ChatLabRawTraceFloatPanel rounds={rawTraceRounds} onClear={clearRawTraceRounds} />
         ) : null}
+        {workflowFloatRun ? (() => {
+          const doc = getWorkflowById(workflowFloatRun.workflowId);
+          if (!doc) return null;
+          return (
+            <ChatLabWorkflowRuntimeFloatPanel
+              workflowName={doc.name || workflowFloatRun.workflowId}
+              nodes={doc.nodes}
+              edges={doc.edges}
+              runtime={workflowRuntimeState}
+              liveExecution={workflowLiveExecution}
+              agentById={agentById}
+              workflows={workflowLibraryDocs}
+              onClose={() => setWorkflowFloatRun(null)}
+            />
+          );
+        })() : null}
       </div>
     </ImageViewProvider>
   );
@@ -7414,6 +7486,7 @@ const MessageBubble = memo(function MessageBubble({
   const subagentBusy =
     bubbleStreaming &&
     !parentLifecycleEnded &&
+    !(subagentActivityRows.length > 0 && areSubagentCardsSettled(subagentActivityRows)) &&
     (subagentActivityRows.some((row) => isRunningActivityRow(row)) ||
       toolTraceAwaitsSubagent(toolRows, { subagentCards: subagentActivityRows }));
   const generalActivityRows = useMemo(

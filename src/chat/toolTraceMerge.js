@@ -35,6 +35,16 @@ export const MAX_ACTIVITY_LOG = 120;
 
 const DONE_PHASES = new Set(["end", "error", "failed", "cancelled", "canceled", "complete", "completed", "ok"]);
 
+/** @param {ActivityRow | undefined} row */
+function isSubagentActivityRowDone(row) {
+  if (!row) return false;
+  if (Object.prototype.hasOwnProperty.call(row, "workerStreaming") && row.workerStreaming === false) {
+    return true;
+  }
+  const phase = String(row.phase ?? "").trim().toLowerCase();
+  return DONE_PHASES.has(phase);
+}
+
 /**
  * Stable row id for a `tool_trace` IPC event (matches {@link mergeToolTrace}).
  * @param {*} evt
@@ -135,8 +145,12 @@ export function mergeActivityLog(prev, evt) {
       : typeof payload.name === "string"
         ? payload.name
         : stream;
+  const errorMessage = typeof payload.errorMessage === "string" ? payload.errorMessage.trim() : "";
+  const stopReason = typeof payload.stopReason === "string" ? payload.stopReason.trim() : "";
   const text =
-    typeof payload.summary === "string"
+    errorMessage ||
+    stopReason ||
+    (typeof payload.summary === "string"
       ? payload.summary
       : typeof payload.progressText === "string"
         ? payload.progressText
@@ -146,7 +160,7 @@ export function mergeActivityLog(prev, evt) {
             ? payload.message
             : typeof payload.explanation === "string"
               ? payload.explanation
-              : "";
+              : "");
   /** @type {ActivityRow} */
   const row = {
     id,
@@ -183,6 +197,26 @@ export function mergeActivityLog(prev, evt) {
   } else list.push(row);
   if (list.length > MAX_ACTIVITY_LOG) return list.slice(-MAX_ACTIVITY_LOG);
   return list;
+}
+
+/**
+ * Pull a human-readable failure reason from lifecycle activity rows.
+ * @param {ActivityRow[] | unknown} activityLog
+ */
+export function extractLifecycleErrorFromActivityLog(activityLog) {
+  if (!Array.isArray(activityLog)) return "";
+  for (let i = activityLog.length - 1; i >= 0; i--) {
+    const row = activityLog[i];
+    if (!row || typeof row !== "object") continue;
+    if (String(row.stream ?? "").toLowerCase() !== "lifecycle") continue;
+    const phase = String(row.phase ?? "").trim().toLowerCase();
+    if (phase !== "error" && phase !== "failed" && phase !== "fatal") continue;
+    const text = String(row.text ?? "").trim();
+    if (text) return text;
+    const title = String(row.title ?? "").trim();
+    if (title && title.toLowerCase() !== "lifecycle") return title;
+  }
+  return "";
 }
 
 const SPAWN_TOOL_RE = /^(sessions_spawn|session_spawn|spawn_subagent|subagent_spawn)$/i;
@@ -518,7 +552,11 @@ export function coalesceSubagentActivityRows(fromLog, fromTools, opts = {}) {
 
   /** Prefer tool-derived rows (stable id per spawn); enrich only with matching child activity. */
   if (tools.length) {
-    return tools.map((toolRow) => {
+    const logSubagents = [...log]
+      .filter((a) => String(a.stream ?? "").toLowerCase() === "subagent")
+      .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+
+    return tools.map((toolRow, toolIdx) => {
       let progress = String(toolRow.text ?? "").trim();
       let workerStreaming = Boolean(toolRow.workerStreaming);
       let phase = toolRow.phase;
@@ -550,7 +588,7 @@ export function coalesceSubagentActivityRows(fromLog, fromTools, opts = {}) {
         if (a.phase) phase = a.phase;
         const actPhase = String(a.phase ?? "").trim().toLowerCase();
         const actDone =
-          DONE_PHASES.has(actPhase) ||
+          isSubagentActivityRowDone(a) ||
           (Object.prototype.hasOwnProperty.call(a, "workerStreaming") && a.workerStreaming === false);
         // Per-child completion is independent: one child finishing must not wait on siblings
         // or on the parent sessions_spawn tool still being in-flight.
@@ -561,6 +599,21 @@ export function coalesceSubagentActivityRows(fromLog, fromTools, opts = {}) {
           workerStreaming = true;
         }
       }
+
+      // Parallel batch: when runId/title attribution misses, match by stable spawn order.
+      if (streaming && workerStreaming && logSubagents.length === tools.length) {
+        const logRow = logSubagents[toolIdx];
+        if (isSubagentActivityRowDone(logRow)) {
+          workerStreaming = false;
+          phase = "end";
+          const p = pickSubagentProgressLine({
+            task: toolRow.subagentTask || toolRow.title,
+            progress: logRow.text || logRow.title,
+          });
+          if (p) progress = p;
+        }
+      }
+
       if (!streaming) {
         workerStreaming = false;
         phase = "end";
