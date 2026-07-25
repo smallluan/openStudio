@@ -11,7 +11,7 @@ const SETTLING_MS = 120;
 const BOOT_RETRY_MS = 4000;
 const BOOT_RETRY_FAST_MS = 1200;
 
-const GATE_READY_PHASES = new Set(["gateway_ready", "complete", "skipped_no_gateway"]);
+const GATE_READY_PHASES = new Set(["gateway_ready", "tools_prep", "complete", "skipped_no_gateway"]);
 
 /**
  * Electron bootstrap: fullscreen backdrop; hero + progress render in gatePortalEl (above backdrop).
@@ -40,6 +40,8 @@ export default function StartupBootstrapGate({ children }) {
       case "gateway_connect":
         return 0.65;
       case "gateway_ready":
+        return 0.85;
+      case "tools_prep":
       case "skipped_no_gateway":
       case "complete":
         return 1;

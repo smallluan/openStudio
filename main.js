@@ -2005,8 +2005,13 @@ app.whenReady().then(async () => {
         }
 
         await runGatewayBootstrapReadiness(cfg, ac.signal, emit);
+        emit({ phase: "tools_prep" });
+        const hydrate = await maybeHydrateGatewayForChat(cfg);
+        if (hydrate?.ok) {
+          getStudioLog().info("[bootstrap] gateway tools prep complete");
+        }
         emit({ phase: "complete" });
-        return { ok: true };
+        return { ok: true, hydrate };
       } catch (e) {
         studioInvalidateGatewaySession();
         const message = String(e?.message ?? e);
