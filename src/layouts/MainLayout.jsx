@@ -6,6 +6,7 @@ import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
 import ChatHistoryList from "../components/shell/ChatHistoryList.jsx";
 import { useWechatAutoReplyStream } from "../chat/useWechatAutoReplyStream.js";
+import { useAutomationChatStream } from "../chat/useAutomationChatStream.js";
 import { useWechatSessionSync } from "../chat/useWechatSessionSync.js";
 import PrimaryRailMenu from "../components/shell/PrimaryRailMenu.jsx";
 import RailSettingsLink from "../components/shell/RailSettingsLink.jsx";
@@ -92,6 +93,7 @@ export default function MainLayout({ railResizeEnabled = false }) {
   const isNarrow = railPx < RAIL_MIN;
   useWechatSessionSync();
   useWechatAutoReplyStream();
+  useAutomationChatStream();
 
   useEffect(() => {
     document.documentElement.style.setProperty("--os-primary-rail-px", `${railPx}px`);

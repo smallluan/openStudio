@@ -66,7 +66,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string[]} [mentions] Studio agent ids @-mentioned on user or assistant turns
  * @property {boolean} [mentionDelegateReply] Auto-reply triggered by another agent's @mention
  * @property {string} [mentionDelegateFromAgentId] Studio agent id that @mentioned this reply
- * @property {'group_member_event'} [messageKind]
+ * @property {'group_member_event' | 'automation_run'} [messageKind]
  * @property {string} [workflowId] Workflow document id when user turn was dispatched via workflow
  * @property {string} [workflowName] Display name for workflow badge on user turns
  * @property {string} [workflowNodeId] Active workflow graph node id for assistant turns
@@ -98,6 +98,8 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string} [channelPeerId]
  * @property {string} [gatewayConversationId] UUID gateway thread for WeChat auto-reply (UI id stays `wechat:<peer>`)
  * @property {string[]} [participantIds] Studio agent ids in this thread (group chat)
+ * @property {string} [automationCronJobId] Linked Open Studio automation task id
+ * @property {boolean} [automationTaskSession] Read-only execution log for a scheduled task
  * @property {ThreadContextState} [threadContext]
  * @property {{ selectedWorkflowId?: string; runtime?: import("../workflow/workflowRuntimeRegistry.js").WorkflowSessionRuntimeState | null }} [workflowState]
  * @property {PreviewStateRecord} [previewState]
@@ -185,6 +187,9 @@ function normalizeSessionRow(r) {
     gatewayConversationId:
       typeof row.gatewayConversationId === "string" ? row.gatewayConversationId.trim().slice(0, 96) : "",
     participantIds: sanitizeParticipantIds(row.participantIds),
+    automationCronJobId:
+      typeof row.automationCronJobId === "string" ? row.automationCronJobId.trim().slice(0, 120) : "",
+    automationTaskSession: Boolean(row.automationTaskSession || row.automationCronJobId),
     threadContext: sanitizeThreadContext(row.threadContext),
     workflowState: sanitizeWorkflowSessionState(row.workflowState),
     previewState: sanitizePreviewState(row.previewState),
@@ -367,6 +372,27 @@ export async function initChatSessionsStore() {
 /** Drop parse cache (e.g. after external storage mutation). Next `loadAllSessions` reads disk again. */
 export function invalidateChatSessionsCache() {
   sessionsLoadCache = null;
+}
+
+/** Reload sidebar sessions from Electron disk store (e.g. after main-process writes). */
+export async function reloadChatSessionsFromDisk() {
+  const bridge = getBridge();
+  if (!bridge?.chatSessionsLoadAll) {
+    invalidateChatSessionsCache();
+    notifySessionsChanged();
+    return;
+  }
+  try {
+    const res = await bridge.chatSessionsLoadAll();
+    const rows =
+      res?.ok && Array.isArray(res.sessions)
+        ? res.sessions.map(normalizeSessionRow).filter(Boolean)
+        : [];
+    applyCacheSorted(rows);
+  } catch {
+    invalidateChatSessionsCache();
+  }
+  notifySessionsChanged();
 }
 
 /** @returns {ChatSessionRecord[]} */
@@ -621,7 +647,7 @@ function sanitizeMessages(raw) {
       row.mentionDelegateFromAgentId = m.mentionDelegateFromAgentId.trim().slice(0, 96);
     }
     const mk = m.messageKind;
-    if (mk === "group_member_event") {
+    if (mk === "group_member_event" || mk === "automation_run") {
       row.messageKind = mk;
     }
     if (typeof m.workflowId === "string" && m.workflowId.trim()) {
@@ -665,6 +691,8 @@ function writeAll(rows, persistSession) {
  *   channelPeerId?: string;
  *   gatewayConversationId?: string;
  *   participantIds?: string[];
+ *   automationCronJobId?: string;
+ *   automationTaskSession?: boolean;
  *   threadContext?: ThreadContextState | null;
  *   workflowState?: { selectedWorkflowId?: string | null; runtime?: import("../workflow/workflowRuntimeRegistry.js").WorkflowSessionRuntimeState | null } | null;
  *   previewState?: PreviewStateRecord | null;
@@ -709,6 +737,16 @@ export function upsertSession(id, title, messages, opts = {}) {
     opts.previewState !== undefined
       ? sanitizePreviewState(opts.previewState)
       : sanitizePreviewState(prev?.previewState);
+  const nextAutomationCronJobId =
+    typeof opts.automationCronJobId === "string"
+      ? opts.automationCronJobId.trim().slice(0, 120)
+      : typeof prev?.automationCronJobId === "string"
+        ? prev.automationCronJobId
+        : "";
+  const nextAutomationTaskSession =
+    opts.automationTaskSession !== undefined
+      ? Boolean(opts.automationTaskSession)
+      : Boolean(prev?.automationTaskSession || nextAutomationCronJobId);
   const sessionRecord = {
     id,
     title: resolvedTitle,
@@ -718,6 +756,8 @@ export function upsertSession(id, title, messages, opts = {}) {
     channelPeerId: nextPeer,
     ...(nextGatewayConversationId ? { gatewayConversationId: nextGatewayConversationId } : {}),
     ...(nextParticipants.length ? { participantIds: nextParticipants } : {}),
+    ...(nextAutomationCronJobId ? { automationCronJobId: nextAutomationCronJobId } : {}),
+    ...(nextAutomationTaskSession ? { automationTaskSession: true } : {}),
     ...(nextThreadContext ? { threadContext: nextThreadContext } : {}),
     ...(nextWorkflowState ? { workflowState: nextWorkflowState } : {}),
     ...(nextPreviewState ? { previewState: nextPreviewState } : {}),
@@ -810,6 +850,18 @@ export function deleteSessionsByIds(ids) {
 export function getSession(id) {
   if (!id) return null;
   return loadAllSessions().find((s) => s.id === id) ?? null;
+}
+
+/** @param {ChatSessionRecord | null | undefined} rec */
+export function isAutomationTaskSessionRecord(rec) {
+  return Boolean(rec?.automationTaskSession || rec?.automationCronJobId);
+}
+
+/** @param {string} cronJobId */
+export function findSessionByAutomationCronJobId(cronJobId) {
+  const id = String(cronJobId ?? "").trim();
+  if (!id) return null;
+  return loadAllSessions().find((s) => s.automationCronJobId === id) ?? null;
 }
 
 /**

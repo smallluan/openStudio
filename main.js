@@ -14,6 +14,7 @@
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const { randomUUID } = require("crypto");
 const { fileURLToPath } = require("url");
 const { createConfigStore } = require("./lib/config-store.cjs");
 const {
@@ -35,6 +36,21 @@ const { resolveGateway } = require("./lib/openclaw-gateway-ws.cjs");
 const { generateConversationTitle } = require("./lib/llm-chat-title.cjs");
 const { createTokenUsageStore } = require("./lib/token-usage-store.cjs");
 const { createChatSessionsStore } = require("./lib/chat-sessions-store.cjs");
+const { createAutomationTasksStore } = require("./lib/automation-tasks-store.cjs");
+const { buildCronAddParams, resolveCronModelFromProfile, draftToCronSchedule } = require("./lib/automation-cron-bridge.cjs");
+const { resolveAutomationTaskChannel, isStudioOnlyAutomationTaskId } = require("./lib/automation-channel.cjs");
+const {
+  computeNextRunAtMs,
+  resolveAutomationDueSlotMs,
+} = require("./lib/automation-schedule-due.cjs");
+const {
+  listCronJobs,
+  addCronJob,
+  removeCronJob,
+  updateCronJob,
+  runCronJobNow,
+  formatGatewayCronError,
+} = require("./lib/openclaw-gateway-cron.cjs");
 const {
   runGatewayBootstrapReadiness,
   invalidateGatewaySession,
@@ -146,6 +162,7 @@ if (process.platform === "win32") {
 const CHAT_STREAM_CHAN = "studio:chatStream";
 const BOOTSTRAP_PROGRESS_CHAN = "studio:bootstrapProgress";
 const WECHAT_STATUS_CHAN = "studio:wechatStatus";
+const AUTOMATION_STATUS_CHAN = "studio:automationStatus";
 const PREVIEW_URL_CHAN = "studio:openPreviewUrl";
 const PREVIEW_WEBVIEW_PARTITION = "persist:openstudio-preview";
 
@@ -419,6 +436,8 @@ let userConfigStore = null;
 let tokenUsageStore = null;
 /** @type {ReturnType<typeof createChatSessionsStore> | null} */
 let chatSessionsStore = null;
+/** @type {ReturnType<typeof createAutomationTasksStore> | null} */
+let automationTasksStore = null;
 
 /** @type {Map<string, AbortController>} */
 const chatStreamAbortControllers = new Map();
@@ -443,6 +462,7 @@ const wechatPeerPendingNewChat = new Set();
 /** @type {Map<string, Array<{ text: string; ts: number; messageId?: string }>>} */
 const wechatRecentOutbound = new Map();
 let wechatPollTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
+let automationPollTimer = /** @type {ReturnType<typeof setInterval> | null} */ (null);
 
 /**
  * @param {string} peerId
@@ -492,6 +512,149 @@ function pruneBoundedSet(set, max = 3000) {
 function emitWechatStatus(wc, payload) {
   if (!wc || wc.isDestroyed()) return;
   wc.send(WECHAT_STATUS_CHAN, payload);
+}
+
+/**
+ * @param {import("electron").WebContents} wc
+ * @param {Record<string, unknown>} payload
+ */
+function emitAutomationStatus(wc, payload) {
+  if (!wc || wc.isDestroyed()) return;
+  wc.send(AUTOMATION_STATUS_CHAN, payload);
+}
+
+/**
+ * @param {Record<string, unknown>} meta
+ */
+function buildAutomationChatPayload(meta) {
+  const cronJobId = String(meta.cronJobId ?? "").trim();
+  const message = String(meta.message ?? meta.prompt ?? "").trim();
+  const prompt = String(meta.prompt ?? message).trim();
+  return {
+    type: "automation_chat",
+    cronJobId,
+    message,
+    prompt,
+    taskName: String(meta.name ?? "").trim(),
+    name: String(meta.name ?? "").trim(),
+    agentId: String(meta.agentId ?? "").trim(),
+    workflowId: String(meta.workflowId ?? "").trim(),
+    modelProfileId: String(meta.modelProfileId ?? "").trim(),
+  };
+}
+
+/**
+ * @param {Record<string, unknown>} meta
+ * @param {number} nowMs
+ */
+function buildStudioAutomationTaskCard(meta, nowMs) {
+  const schedule =
+    meta.schedule && typeof meta.schedule === "object"
+      ? /** @type {Record<string, unknown>} */ (meta.schedule)
+      : undefined;
+  const nextRunAtMs = schedule ? computeNextRunAtMs(schedule, nowMs) : undefined;
+  return {
+    cronJobId: String(meta.cronJobId ?? "").trim(),
+    name: typeof meta.name === "string" ? meta.name : "",
+    prompt: typeof meta.prompt === "string" ? meta.prompt : "",
+    channel: resolveAutomationTaskChannel(typeof meta.channel === "string" ? meta.channel : "open-studio"),
+    enabled: meta.enabled !== false,
+    lastRunStatus: typeof meta.lastRunStatus === "string" ? meta.lastRunStatus : undefined,
+    lastRunAtMs: typeof meta.lastRunAtMs === "number" ? meta.lastRunAtMs : undefined,
+    nextRunAtMs: typeof nextRunAtMs === "number" ? nextRunAtMs : undefined,
+    lastError: typeof meta.lastError === "string" ? meta.lastError : undefined,
+    lastDiagnosticSummary:
+      typeof meta.lastDiagnosticSummary === "string" ? meta.lastDiagnosticSummary : undefined,
+    consecutiveErrors:
+      typeof meta.consecutiveErrors === "number" ? meta.consecutiveErrors : undefined,
+    schedule,
+    meta,
+    cronJob: null,
+  };
+}
+
+/**
+ * @param {import("./config-store.cjs").UserConfig} cfg
+ * @param {import("electron").WebContents | null | undefined} wc
+ */
+async function tickOpenStudioAutomationJobs(cfg, wc) {
+  if (!automationTasksStore) return;
+
+  const cronJobs = await listCronJobs(cfg).catch(() => []);
+  const cronById = new Map(
+    cronJobs
+      .filter((job) => job && typeof job === "object" && typeof job.id === "string")
+      .map((job) => [job.id, job]),
+  );
+
+  const nowMs = Date.now();
+  for (const meta of automationTasksStore.list()) {
+    const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
+    if (!cronJobId) continue;
+    if (resolveAutomationTaskChannel(typeof meta.channel === "string" ? meta.channel : "open-studio") !== "open-studio") {
+      continue;
+    }
+    if (meta.enabled === false) continue;
+
+    const job = cronById.get(cronJobId);
+    if (job && job.enabled) {
+      try {
+        await updateCronJob(cfg, cronJobId, { patch: { enabled: false } });
+      } catch (e) {
+        getStudioLog().warn(
+          "[automation] disable legacy open-studio cron failed",
+          cronJobId,
+          String(e?.message ?? e),
+        );
+      }
+    }
+
+    const schedule =
+      meta.schedule && typeof meta.schedule === "object"
+        ? /** @type {{ kind?: string; everyMs?: number; anchorMs?: number }} */ (meta.schedule)
+        : job?.schedule && typeof job.schedule === "object"
+          ? /** @type {{ kind?: string; everyMs?: number; anchorMs?: number }} */ (job.schedule)
+          : null;
+    const dueSlot = resolveAutomationDueSlotMs(meta, schedule, nowMs);
+    if (!dueSlot) continue;
+
+    const message = String(meta.message ?? meta.prompt ?? "").trim();
+    if (!message) continue;
+
+    emitAutomationStatus(wc, buildAutomationChatPayload({ ...meta, cronJobId, message }));
+    automationTasksStore.upsert({
+      ...meta,
+      cronJobId,
+      message,
+      ...(schedule ? { schedule } : {}),
+      lastStudioFiredAtMs: dueSlot,
+      lastRunStatus: "running",
+      lastRunAtMs: nowMs,
+    });
+  }
+}
+
+/**
+ * @param {import("electron").WebContents} wc
+ * @param {unknown | (() => unknown)} getCfg
+ */
+function ensureAutomationPoller(wc, getCfg) {
+  const readCfg = () => (typeof getCfg === "function" ? getCfg() : getCfg);
+  if (automationPollTimer) return;
+  automationPollTimer = setInterval(async () => {
+    if (!wc || wc.isDestroyed()) return;
+    try {
+      await tickOpenStudioAutomationJobs(readCfg(), wc);
+    } catch (err) {
+      getStudioLog().warn("[automation] open-studio sync poll failed:", String(err?.message ?? err));
+    }
+  }, 5_000);
+}
+
+function stopAutomationPoller() {
+  if (!automationPollTimer) return;
+  clearInterval(automationPollTimer);
+  automationPollTimer = null;
 }
 
 /**
@@ -788,7 +951,10 @@ function createWindow() {
 
   win.webContents.on("did-finish-load", () => {
     try {
-      if (userConfigStore) ensureWechatPoller(win.webContents, () => userConfigStore.readRaw());
+      if (userConfigStore) {
+        ensureWechatPoller(win.webContents, () => userConfigStore.readRaw());
+        ensureAutomationPoller(win.webContents, () => userConfigStore.readRaw());
+      }
     } catch {
       /* ignore */
     }
@@ -917,6 +1083,7 @@ app.whenReady().then(async () => {
   userConfigStore = createConfigStore(app.getPath("userData"));
   tokenUsageStore = createTokenUsageStore(app.getPath("userData"));
   chatSessionsStore = createChatSessionsStore(app.getPath("userData"));
+  automationTasksStore = createAutomationTasksStore(app.getPath("userData"));
   createWindow();
   createTray();
 
@@ -2291,6 +2458,307 @@ app.whenReady().then(async () => {
     } catch (e) {
       return { ok: false, error: String(e?.message ?? e) };
     }
+  });
+
+  ipcMain.handle("studio:automationTasksList", async () => {
+    if (!userConfigStore || !automationTasksStore) {
+      return { ok: false, error: "store_unavailable", tasks: [] };
+    }
+    try {
+      const cfg = userConfigStore.readRaw();
+      const cronJobs = await listCronJobs(cfg);
+      const cronById = new Map(
+        cronJobs
+          .filter((job) => job && typeof job === "object" && typeof job.id === "string")
+          .map((job) => [job.id, job]),
+      );
+      const metaRows = automationTasksStore.list();
+      const keepIds = [...cronById.keys()];
+      for (const meta of metaRows) {
+        const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
+        if (cronJobId && isStudioOnlyAutomationTaskId(cronJobId)) keepIds.push(cronJobId);
+      }
+      automationTasksStore.pruneMissing(keepIds);
+
+      for (const meta of metaRows) {
+        const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
+        if (!cronJobId) continue;
+        const job = cronById.get(cronJobId);
+        if (!job || !job.payload || typeof job.payload !== "object") continue;
+        const payload = /** @type {{ kind?: string; model?: string }} */ (job.payload);
+        if (payload.kind !== "agentTurn") continue;
+        const profileId =
+          typeof meta.modelProfileId === "string" ? meta.modelProfileId.trim() : "";
+        const expectedModel = resolveCronModelFromProfile(cfg, profileId);
+        if (!expectedModel) continue;
+        const currentModel = typeof payload.model === "string" ? payload.model.trim() : "";
+        const jobState =
+          job.state && typeof job.state === "object"
+            ? /** @type {Record<string, unknown>} */ (job.state)
+            : {};
+        const needsModelFix = currentModel !== expectedModel;
+        const needsErrorReset =
+          Number(jobState.consecutiveErrors) > 0 &&
+          String(jobState.lastErrorReason ?? "") === "model_not_found";
+        if (!needsModelFix && !needsErrorReset) continue;
+        /** @type {Record<string, unknown>} */
+        const patch = {};
+        if (needsModelFix) {
+          patch.payload = {
+            kind: "agentTurn",
+            model: expectedModel,
+          };
+        }
+        if (needsErrorReset) {
+          patch.state = {
+            consecutiveErrors: 0,
+            consecutiveSkipped: 0,
+          };
+        }
+        try {
+          const updated = await updateCronJob(cfg, cronJobId, { patch });
+          if (updated && typeof updated === "object" && typeof updated.id === "string") {
+            cronById.set(updated.id, updated);
+          }
+        } catch (e) {
+          getStudioLog().warn(
+            "[automation] cron model repair failed",
+            cronJobId,
+            String(e?.message ?? e),
+          );
+        }
+      }
+
+      const nowMs = Date.now();
+      const tasks = metaRows
+        .map((meta) => {
+          const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
+          if (!cronJobId) return null;
+
+          if (isStudioOnlyAutomationTaskId(cronJobId)) {
+            return buildStudioAutomationTaskCard(meta, nowMs);
+          }
+
+          const channel = resolveAutomationTaskChannel(
+            typeof meta.channel === "string" ? meta.channel : "open-studio",
+          );
+          const job = cronById.get(cronJobId);
+          if (channel === "open-studio" && !job) {
+            return buildStudioAutomationTaskCard(meta, nowMs);
+          }
+          if (!job) return null;
+
+          const state =
+            job.state && typeof job.state === "object" ? /** @type {Record<string, unknown>} */ (job.state) : {};
+          if (channel === "open-studio") {
+            return buildStudioAutomationTaskCard(
+              {
+                ...meta,
+                schedule: meta.schedule ?? job.schedule,
+                enabled: meta.enabled !== false,
+                lastRunStatus:
+                  typeof meta.lastRunStatus === "string"
+                    ? meta.lastRunStatus
+                    : typeof state.lastRunStatus === "string"
+                      ? state.lastRunStatus
+                      : undefined,
+                lastRunAtMs:
+                  typeof meta.lastRunAtMs === "number"
+                    ? meta.lastRunAtMs
+                    : typeof state.lastRunAtMs === "number"
+                      ? state.lastRunAtMs
+                      : undefined,
+                lastError:
+                  typeof meta.lastError === "string"
+                    ? meta.lastError
+                    : typeof state.lastError === "string"
+                      ? state.lastError
+                      : undefined,
+              },
+              nowMs,
+            );
+          }
+
+          return {
+            cronJobId,
+            name: typeof job.name === "string" ? job.name : String(meta.name ?? ""),
+            prompt: typeof meta.prompt === "string" ? meta.prompt : "",
+            channel,
+            enabled: Boolean(job.enabled),
+            lastRunStatus:
+              typeof state.lastRunStatus === "string"
+                ? state.lastRunStatus
+                : typeof state.runningAtMs === "number"
+                  ? "running"
+                  : undefined,
+            lastRunAtMs: typeof state.lastRunAtMs === "number" ? state.lastRunAtMs : undefined,
+            nextRunAtMs: typeof state.nextRunAtMs === "number" ? state.nextRunAtMs : undefined,
+            lastError: typeof state.lastError === "string" ? state.lastError : undefined,
+            lastDiagnosticSummary:
+              typeof state.lastDiagnosticSummary === "string" ? state.lastDiagnosticSummary : undefined,
+            lastErrorReason: typeof state.lastErrorReason === "string" ? state.lastErrorReason : undefined,
+            consecutiveErrors:
+              typeof state.consecutiveErrors === "number" ? state.consecutiveErrors : undefined,
+            schedule:
+              job.schedule && typeof job.schedule === "object"
+                ? /** @type {Record<string, unknown>} */ (job.schedule)
+                : undefined,
+            meta,
+            cronJob: job,
+          };
+        })
+        .filter(Boolean);
+      return { ok: true, tasks };
+    } catch (e) {
+      return { ok: false, error: formatGatewayCronError(e), tasks: [] };
+    }
+  });
+
+  ipcMain.handle("studio:automationTaskCreate", async (_event, payload) => {
+    if (!userConfigStore || !automationTasksStore) {
+      return { ok: false, error: "store_unavailable" };
+    }
+    const draft = payload?.draft && typeof payload.draft === "object" ? payload.draft : null;
+    const message = typeof payload?.message === "string" ? payload.message.trim() : "";
+    const studioMeta =
+      payload?.studioMeta && typeof payload.studioMeta === "object" ? payload.studioMeta : {};
+    if (!draft) return { ok: false, error: "invalid_payload" };
+    try {
+      const cfg = userConfigStore.readRaw();
+      const channel = resolveAutomationTaskChannel(
+        typeof studioMeta.channel === "string"
+          ? studioMeta.channel
+          : typeof draft.channel === "string"
+            ? draft.channel
+            : "open-studio",
+      );
+
+      if (channel === "open-studio") {
+        const cronJobId = `studio:${randomUUID()}`;
+        const createdAtMs = Date.now();
+        const schedule = draftToCronSchedule(draft);
+        /** @type {Record<string, unknown>} */
+        const storedSchedule = { ...schedule };
+        if (schedule.kind === "every") {
+          const everyMs = Number(schedule.everyMs);
+          if (Number.isFinite(everyMs) && everyMs > 0) {
+            storedSchedule.anchorMs = createdAtMs + everyMs;
+          }
+        }
+        automationTasksStore.upsert({
+          cronJobId,
+          ...studioMeta,
+          channel: "open-studio",
+          message,
+          schedule: storedSchedule,
+          createdAtMs,
+          enabled: true,
+          name: typeof studioMeta.name === "string" ? studioMeta.name : String(draft.name ?? ""),
+          prompt: typeof studioMeta.prompt === "string" ? studioMeta.prompt : String(draft.prompt ?? ""),
+        });
+        return { ok: true, cronJobId };
+      }
+
+      const jobCreate = buildCronAddParams(cfg, draft, message);
+      const job = await addCronJob(cfg, jobCreate);
+      const cronJobId = typeof job?.id === "string" ? job.id.trim() : "";
+      if (!cronJobId) return { ok: false, error: "missing_job_id" };
+      automationTasksStore.upsert({
+        cronJobId,
+        ...studioMeta,
+        message,
+        name: typeof studioMeta.name === "string" ? studioMeta.name : String(draft.name ?? ""),
+        prompt: typeof studioMeta.prompt === "string" ? studioMeta.prompt : String(draft.prompt ?? ""),
+      });
+      return { ok: true, cronJobId, job };
+    } catch (e) {
+      return { ok: false, error: formatGatewayCronError(e) };
+    }
+  });
+
+  ipcMain.handle("studio:automationTaskRemove", async (_event, cronJobId) => {
+    if (!userConfigStore || !automationTasksStore) {
+      return { ok: false, error: "store_unavailable" };
+    }
+    const id = typeof cronJobId === "string" ? cronJobId.trim() : "";
+    if (!id) return { ok: false, error: "missing_job_id" };
+    try {
+      const cfg = userConfigStore.readRaw();
+      automationTasksStore.deleteOne(id);
+      if (!isStudioOnlyAutomationTaskId(id)) {
+        await removeCronJob(cfg, id);
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: formatGatewayCronError(e) };
+    }
+  });
+
+  ipcMain.handle("studio:automationTaskRunNow", async (event, cronJobId) => {
+    if (!userConfigStore || !automationTasksStore) {
+      return { ok: false, error: "store_unavailable" };
+    }
+    const id = typeof cronJobId === "string" ? cronJobId.trim() : "";
+    if (!id) return { ok: false, error: "missing_job_id" };
+    try {
+      const cfg = userConfigStore.readRaw();
+      const meta = automationTasksStore.get(id) ?? { cronJobId: id };
+      const channel = resolveAutomationTaskChannel(
+        typeof meta.channel === "string" ? meta.channel : "open-studio",
+      );
+      if (channel === "open-studio") {
+        let message = String(meta.message ?? meta.prompt ?? "").trim();
+        if (!message) {
+          const jobs = await listCronJobs(cfg).catch(() => []);
+          const job = jobs.find((row) => row && typeof row === "object" && row.id === id);
+          const payload =
+            job?.payload && typeof job.payload === "object"
+              ? /** @type {{ message?: string }} */ (job.payload)
+              : {};
+          message = String(payload.message ?? "").trim();
+        }
+        if (!message) return { ok: false, error: "missing_prompt" };
+
+        const nowMs = Date.now();
+        emitAutomationStatus(event.sender, buildAutomationChatPayload({ ...meta, cronJobId: id, message }));
+        automationTasksStore.upsert({
+          ...meta,
+          cronJobId: id,
+          message,
+          lastStudioFiredAtMs: nowMs,
+          lastRunStatus: "running",
+          lastRunAtMs: nowMs,
+        });
+        return { ok: true };
+      }
+
+      const result = await runCronJobNow(cfg, id);
+      return { ok: true, result };
+    } catch (e) {
+      return { ok: false, error: formatGatewayCronError(e) };
+    }
+  });
+
+  ipcMain.handle("studio:automationTaskReportRun", async (_event, payload) => {
+    if (!automationTasksStore) return { ok: false, error: "store_unavailable" };
+    const cronJobId = typeof payload?.cronJobId === "string" ? payload.cronJobId.trim() : "";
+    if (!cronJobId) return { ok: false, error: "missing_job_id" };
+    const meta = automationTasksStore.get(cronJobId);
+    if (!meta) return { ok: false, error: "not_found" };
+    const status = String(payload?.status ?? "").trim();
+    automationTasksStore.upsert({
+      ...meta,
+      cronJobId,
+      lastRunStatus: status === "ok" ? "ok" : status === "error" ? "error" : status,
+      lastRunAtMs: Date.now(),
+      ...(typeof payload?.error === "string" && payload.error.trim()
+        ? { lastError: payload.error.trim() }
+        : status === "ok"
+          ? { lastError: "" }
+          : {}),
+      ...(status === "ok" ? { consecutiveErrors: 0 } : {}),
+    });
+    return { ok: true };
   });
 
   ipcMain.handle("studio:generateChatTitle", async (_event, payload) => {

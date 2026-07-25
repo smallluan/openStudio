@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("openclawBridge", {
 
 const CHAT_STREAM_CHAN = "studio:chatStream";
 const WECHAT_STATUS_CHAN = "studio:wechatStatus";
+const AUTOMATION_STATUS_CHAN = "studio:automationStatus";
 const PREVIEW_URL_CHAN = "studio:openPreviewUrl";
 const WEBVIEW_DEVTOOLS_CHAN = "studio:openWebviewDevTools";
 
@@ -86,6 +87,11 @@ contextBridge.exposeInMainWorld("studioBridge", {
   chatSessionsDelete: (id) => ipcRenderer.invoke("studio:chatSessionsDelete", id),
   chatSessionsDeleteMany: (ids) => ipcRenderer.invoke("studio:chatSessionsDeleteMany", ids),
   chatSessionsImportLegacy: (sessions) => ipcRenderer.invoke("studio:chatSessionsImportLegacy", sessions),
+  automationTasksList: () => ipcRenderer.invoke("studio:automationTasksList"),
+  automationTaskCreate: (payload) => ipcRenderer.invoke("studio:automationTaskCreate", payload),
+  automationTaskRemove: (cronJobId) => ipcRenderer.invoke("studio:automationTaskRemove", cronJobId),
+  automationTaskRunNow: (cronJobId) => ipcRenderer.invoke("studio:automationTaskRunNow", cronJobId),
+  automationTaskReportRun: (payload) => ipcRenderer.invoke("studio:automationTaskReportRun", payload),
   generateChatTitle: (payload) => ipcRenderer.invoke("studio:generateChatTitle", payload),
   onChatStream: (listener) => {
     const wrapped = (_e, data) => listener(data);
@@ -101,6 +107,11 @@ contextBridge.exposeInMainWorld("studioBridge", {
     const wrapped = (_e, data) => listener(data);
     ipcRenderer.on(WECHAT_STATUS_CHAN, wrapped);
     return () => ipcRenderer.removeListener(WECHAT_STATUS_CHAN, wrapped);
+  },
+  onAutomationStatus: (listener) => {
+    const wrapped = (_e, data) => listener(data);
+    ipcRenderer.on(AUTOMATION_STATUS_CHAN, wrapped);
+    return () => ipcRenderer.removeListener(AUTOMATION_STATUS_CHAN, wrapped);
   },
   onOpenPreviewUrl: (listener) => {
     const wrapped = (_e, data) => listener(data);

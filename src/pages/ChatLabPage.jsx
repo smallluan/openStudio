@@ -4,7 +4,7 @@ import { Radio, RadioGroup, Select as TSelect } from "tdesign-react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Send, Cpu, GitBranch } from "lucide-react";
+import { Send, Cpu, GitBranch, Timer } from "lucide-react";
 import "katex/dist/katex.min.css";
 import {
   CONTEXT_WINDOW_APPROX_TOKENS,
@@ -56,6 +56,7 @@ import {
   CHAT_SESSION_CHANNEL_WECHAT,
   deriveTitleFromMessages,
   getSession,
+  isAutomationTaskSessionRecord,
   loadAllSessions,
   renameSession,
   updateSessionParticipants,
@@ -556,7 +557,9 @@ function toPersistedChatMessage(m) {
     ...(typeof m.mentionDelegateFromAgentId === "string" && m.mentionDelegateFromAgentId
       ? { mentionDelegateFromAgentId: m.mentionDelegateFromAgentId }
       : {}),
-    ...(m.messageKind === "group_member_event" ? { messageKind: m.messageKind } : {}),
+    ...(m.messageKind === "group_member_event" || m.messageKind === "automation_run"
+      ? { messageKind: m.messageKind }
+      : {}),
     ...(typeof m.workflowId === "string" && m.workflowId ? { workflowId: m.workflowId } : {}),
     ...(typeof m.workflowName === "string" && m.workflowName ? { workflowName: m.workflowName } : {}),
     ...(typeof m.workflowNodeId === "string" && m.workflowNodeId ? { workflowNodeId: m.workflowNodeId } : {}),
@@ -1685,6 +1688,13 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     return deriveTitleFromMessages(messages, { imageFallback: t("chatLab.chatUntitledImage") });
   }, [conversationId, messages, sessionTitleBump, t]);
 
+  const automationTaskSession = useMemo(() => {
+    void sessionTitleBump;
+    const id = conversationId;
+    if (!id) return false;
+    return isAutomationTaskSessionRecord(getSession(id));
+  }, [conversationId, sessionTitleBump]);
+
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -1866,6 +1876,26 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     };
   }, [paramC]);
 
+  /** Automation task runs append turns in-place; refresh the open thread from persistence. */
+  useEffect(() => {
+    if (!paramC) return undefined;
+
+    const mergeAutomationThreadFromStore = () => {
+      const rec = getSession(paramC);
+      if (!isAutomationTaskSessionRecord(rec)) return;
+      const liveSlices = gatewaySlicesRef.current.filter((s) => s.active && s.conversationId === paramC);
+      setMessages(mapSessionRecordToUiMessages(rec, liveSlices.length ? liveSlices : null));
+      autoScrollRef.current = true;
+    };
+
+    window.addEventListener("openstudio-chat-sessions-changed", mergeAutomationThreadFromStore);
+    window.addEventListener("openstudio-automation-turn-started", mergeAutomationThreadFromStore);
+    return () => {
+      window.removeEventListener("openstudio-chat-sessions-changed", mergeAutomationThreadFromStore);
+      window.removeEventListener("openstudio-automation-turn-started", mergeAutomationThreadFromStore);
+    };
+  }, [paramC]);
+
   /** Gateway stream may start before the pending WeChat assistant row is in React state. */
   useEffect(() => {
     if (!paramC || !gatewaySlicesForConv.some((s) => s.active)) return;
@@ -1925,6 +1955,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       channelPeerId: rec.channelPeerId,
       gatewayConversationId: rec.gatewayConversationId,
       participantIds: rec.participantIds,
+      automationCronJobId: rec.automationCronJobId,
+      automationTaskSession: rec.automationTaskSession,
       threadContext: rec.threadContext,
       workflowState: {
         selectedWorkflowId: selectedNext || null,
@@ -2613,6 +2645,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     !chatApiBlocked;
 
   const canQueue =
+    !automationTaskSession &&
     gatewayStreaming &&
     queuedMessages.length < 3 &&
     composerHasPayload &&
@@ -2620,6 +2653,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     composerGatewayReady;
 
   const canSend =
+    !automationTaskSession &&
     !gatewayStreaming &&
     queuedMessages.length === 0 &&
     !queuedSendingId &&
@@ -2628,15 +2662,17 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     composerGatewayReady;
 
   const composerInputLocked =
+    automationTaskSession ||
     !isElectron ||
     !configLoaded ||
     (!configIssueKey && (gatewayPhase !== "online" || chatApiBlocked)) ||
     (gatewayStreaming && queuedMessages.length >= 3);  // 流式时如果排队消息达到上限才锁定
 
   /** Skill UI is local; keep it usable while waiting on gateway (matches `/` picker). Only lock while a reply streams. */
-  const composerSkillUiLocked = gatewayStreaming;
+  const composerSkillUiLocked = gatewayStreaming || automationTaskSession;
 
   const composerPlaceholder = useMemo(() => {
+    if (automationTaskSession) return t("chatLab.automationTaskComposerLocked");
     if (!isElectron) return t("chatLab.heroInputPlaceholder");
     if (!configLoaded) return t("chatLab.configLoadingPlaceholder");
     if (
@@ -2646,10 +2682,11 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       return t("chatLab.gatewayConnectingPlaceholder");
     }
     return t("chatLab.heroInputPlaceholder");
-  }, [chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
+  }, [automationTaskSession, chatApiBlocked, configIssueKey, configLoaded, gatewayPhase, isElectron, t]);
 
   const commitUserMessageEdit = useCallback(
     async (messageId, nextRaw) => {
+      if (automationTaskSession) return false;
       const trimmed = String(nextRaw ?? "").trim();
       const prev = messagesRef.current;
       const idx = prev.findIndex((m) => m.id === messageId && m.role === "user");
@@ -2924,6 +2961,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       abortAllActiveStreams,
       agentById,
       agents,
+      automationTaskSession,
       beginGatewayStream,
       bridge,
       chatApiBlocked,
@@ -3983,6 +4021,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   }, [maybeWorkflowHandoffAfterAgentReply]);
 
   const send = useCallback(async () => {
+    if (automationTaskSession) return;
     const trimmed = input.trim();
     const attachmentSnap =
       composerAttachments.length > 0
@@ -4094,6 +4133,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       },
     });
   }, [
+    automationTaskSession,
     bridge,
     chatApiBlocked,
     commitUserMessageEdit,
@@ -4124,6 +4164,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
   const quickReplySend = useCallback(
     async (text) => {
+      if (automationTaskSession) return;
       if (pendingEditMessageIdRef.current) return;
       if (messagesRef.current.some((m) => m.role === "assistant" && m.streaming)) return;
       if (gatewayStreaming) return;
@@ -4142,6 +4183,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       });
     },
     [
+      automationTaskSession,
       bridge,
       chatApiBlocked,
       configIssueKey,
@@ -4626,6 +4668,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   }, []);
 
   const beginComposerEdit = useCallback((messageId, payload) => {
+    if (automationTaskSession) return;
     setPendingEditMessageId(messageId);
     const content = typeof payload === "string" ? payload : String(payload?.content ?? "");
     const skillMeta = typeof payload === "object" && payload && "skillMeta" in payload ? payload.skillMeta : undefined;
@@ -4646,7 +4689,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     );
     setInput(content);
     autoScrollRef.current = true;
-  }, [skillPickList]);
+  }, [automationTaskSession, skillPickList]);
 
   const prefillComposerFollowUp = useCallback(
     /** @param {{ quoteText: string; sourceMessageId: string; sourceRole: "user" | "assistant"; sourceAgentId?: string | null }} payload */
@@ -5177,7 +5220,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                     onBeginUserEdit={beginComposerEdit}
                     onFollowUpNavigate={navigateFollowUpRef}
                     onQuickReply={quickReplySend}
-                    quickReplyDisabled={streamLocked || Boolean(pendingEditMessageId)}
+                    quickReplyDisabled={streamLocked || Boolean(pendingEditMessageId) || automationTaskSession}
                     remeasureKey={location.key}
                     t={t}
                     locale={locale}
@@ -7722,8 +7765,14 @@ const MessageBubble = memo(function MessageBubble({
         : {})}
       onAnimationEnd={shouldEnterAnim ? handleUserEnterAnimEnd : undefined}
     >
-      {isUser && (message.followUpRef || message.skillMeta || fileRefs.length > 0 || message.workflowName) ?
+      {isUser && (message.followUpRef || message.skillMeta || fileRefs.length > 0 || message.workflowName || message.messageKind === "automation_run") ?
         <div className="chat-lab__msg-meta-tags">
+          {message.messageKind === "automation_run" ?
+            <div className="chat-lab__msg-skill-pill chat-lab__msg-workflow-pill" title={t("chatLab.automationRunBadge")}>
+              <Timer className="chat-lab__msg-workflow-icon" aria-hidden size={13} strokeWidth={2.2} />
+              <span className="chat-lab__msg-skill-label">{t("chatLab.automationRunBadge")}</span>
+            </div>
+          : null}
           {message.workflowName ?
             <div
               className="chat-lab__msg-skill-pill chat-lab__msg-workflow-pill"

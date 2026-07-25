@@ -516,15 +516,21 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
       setGroupCollapsed((prev) => ({ ...prev, [CHAT_SESSION_CHANNEL_WECHAT]: false }));
       reload();
     };
+    const onAutomationSessionStarted = () => {
+      setGroupCollapsed((prev) => ({ ...prev, [CHAT_SESSION_CHANNEL_INTERNAL]: false }));
+      reload();
+    };
     window.addEventListener("storage", onStorage);
     window.addEventListener("openstudio-chat-sessions-changed", onCustom);
     window.addEventListener("openstudio-wechat-session-inbound", onWechatInbound);
     window.addEventListener("openstudio-wechat-session-created", onWechatSessionCreated);
+    window.addEventListener("openstudio-automation-session-started", onAutomationSessionStarted);
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("openstudio-chat-sessions-changed", onCustom);
       window.removeEventListener("openstudio-wechat-session-inbound", onWechatInbound);
       window.removeEventListener("openstudio-wechat-session-created", onWechatSessionCreated);
+      window.removeEventListener("openstudio-automation-session-started", onAutomationSessionStarted);
     };
   }, [reload]);
 

@@ -32,15 +32,24 @@ export function composeWebExploreUserTurnAutomationHint(t) {
 }
 
 /**
+ * Scheduled Open Studio automation task execution (not a new user request).
+ * @param {(key: string) => string} t
+ */
+export function composeAutomationExecutionSystemPrompt(t) {
+  return String(t("chatLab.automationExecutionSystemPrompt") ?? "").trim();
+}
+
+/**
  * Base + image/chart display rules sent to the gateway as the Chat Lab system row.
  * @param {(key: string, vars?: Record<string, string | number>) => string} t
- * @param {{ linkOpenMode?: "sidebar" | "external"; workspaceContext?: string; previewContext?: string }} [opts]
+ * @param {{ linkOpenMode?: "sidebar" | "external"; workspaceContext?: string; previewContext?: string; automationExecution?: boolean }} [opts]
  */
 export function composeChatLabSystemPrompt(t, opts = {}) {
   const parts = [
     String(t("chatLab.systemPrompt") ?? "").trim(),
     String(opts.workspaceContext ?? "").trim(),
     String(opts.previewContext ?? "").trim(),
+    opts.automationExecution ? composeAutomationExecutionSystemPrompt(t) : "",
     composeChatLabStudioSuffix(t, opts),
   ].filter(Boolean);
   return parts.join("\n\n");

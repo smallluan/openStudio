@@ -1,7 +1,7 @@
 import { Button } from "@open-studio/udesign";
 import { Tag, Tooltip } from "tdesign-react";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
-import { useCallback } from "react";
+import { Fragment, useCallback } from "react";
 import { cn } from "../../ui/cn.js";
 
 /**
@@ -87,12 +87,16 @@ export default function PrimaryRailMenu({ collapsed = false, items }) {
           </Button>
         );
 
-        if (!collapsed) return button;
-
         return (
-          <Tooltip key={item.id} content={item.label} placement="right" destroyOnClose>
-            {button}
-          </Tooltip>
+          <Fragment key={item.id}>
+            {collapsed ? (
+              <Tooltip content={item.label} placement="right" destroyOnClose>
+                {button}
+              </Tooltip>
+            ) : (
+              button
+            )}
+          </Fragment>
         );
       })}
     </nav>
