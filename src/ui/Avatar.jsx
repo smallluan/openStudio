@@ -188,24 +188,18 @@ function EditOverlay({ size, onUpload, uploading, visible }) {
       {uploading ?
         <div className="os-image__spinner" />
       : showActions ?
-      <Button
-        type="button"
-        variant="text"
-        ghost
-        shape="square"
-        size="small"
-        onClick={(e) => {
-          e.stopPropagation();
-          onUpload();
-        }}
-        className="os-avatar__overlay-upload"
-        aria-label="Upload avatar"
-      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onUpload();
+          }}
+          className="os-avatar__overlay-upload"
+          aria-label="Upload avatar"
+        >
           <Camera size={iconSize * 0.6} className="text-white" />
-        </Button>
-      : (
-        <Camera size={iconSize * 0.6} className="text-white" />
-      )}
+        </button>
+      : <Camera size={iconSize * 0.6} className="text-white" />}
     </div>
   );
 }
@@ -224,28 +218,23 @@ function DeleteButton({ size, onDelete }) {
   const offset = containerSize * 0.05;
 
   return (
-    <Button
+    <button
       type="button"
-      theme="danger"
-      variant="text"
-      shape="circle"
-      size="small"
       onClick={(e) => {
         e.stopPropagation();
         onDelete();
       }}
-      className="os-avatar__delete-btn absolute z-20"
+      className="os-avatar__delete-btn"
       style={{
         width: buttonSize,
         height: buttonSize,
         top: -offset,
         right: -offset,
-        fontSize: buttonSize * 0.5,
       }}
       aria-label="Delete avatar"
     >
       <X size={buttonSize * 0.6} />
-    </Button>
+    </button>
   );
 }
 

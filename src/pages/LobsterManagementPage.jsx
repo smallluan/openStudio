@@ -148,6 +148,24 @@ export default function LobsterManagementPage() {
     return [...builtins, ...users];
   }, [lib.userSkills, openclawById, skillEnv]);
 
+  const selectableUserSkills = useMemo(
+    () => selectableSkills.filter((s) => s.source === "user"),
+    [selectableSkills],
+  );
+
+  const skillsForMainAgent = selectableSkills;
+  const skillsForSubAgent = selectableUserSkills;
+
+  /** @param {boolean} isMain */
+  const selectableSkillsForAgent = (isMain) => (isMain ? skillsForMainAgent : skillsForSubAgent);
+
+  /** @param {string[]} skillIds @param {boolean} isMain */
+  const filterSkillIdsForAgent = (skillIds, isMain) => {
+    if (isMain) return skillIds;
+    const allowed = new Set(skillsForSubAgent.map((s) => s.id));
+    return skillIds.filter((id) => allowed.has(id));
+  };
+
   const normalizedQuery = query.trim().toLowerCase();
   const filteredAgents = useMemo(() => {
     if (!normalizedQuery) return agents;
@@ -1013,11 +1031,13 @@ export default function LobsterManagementPage() {
         open={skillDialogOpen}
         onOpenChange={setSkillDialogOpen}
         title={t("lobsterPage.skillsDialogTitle")}
-        items={selectableSkills.map(s => ({ key: s.id, label: s.title }))}
-        targetKeys={detailAgent?.skillIds ?? []}
+        items={selectableSkillsForAgent(Boolean(detailAgent?.isMain)).map((s) => ({ key: s.id, label: s.title }))}
+        targetKeys={filterSkillIdsForAgent(detailAgent?.skillIds ?? [], Boolean(detailAgent?.isMain))}
         onConfirm={(targetKeys) => {
           if (detailAgent) {
-            patchAgentMeta(detailAgent.id, { skillIds: targetKeys });
+            patchAgentMeta(detailAgent.id, {
+              skillIds: filterSkillIdsForAgent(targetKeys, Boolean(detailAgent.isMain)),
+            });
           }
           setSkillDialogOpen(false);
         }}
@@ -1036,10 +1056,10 @@ export default function LobsterManagementPage() {
         open={createSkillDialogOpen}
         onOpenChange={setCreateSkillDialogOpen}
         title={t("lobsterPage.skillsDialogTitle")}
-        items={selectableSkills.map(s => ({ key: s.id, label: s.title }))}
-        targetKeys={createForm.skillIds}
+        items={skillsForSubAgent.map((s) => ({ key: s.id, label: s.title }))}
+        targetKeys={filterSkillIdsForAgent(createForm.skillIds, false)}
         onConfirm={(targetKeys) => {
-          setCreateForm(prev => ({ ...prev, skillIds: targetKeys }));
+          setCreateForm((prev) => ({ ...prev, skillIds: filterSkillIdsForAgent(targetKeys, false) }));
           setCreateSkillDialogOpen(false);
         }}
         sourceTitle={t("lobsterPage.skillsSource")}
