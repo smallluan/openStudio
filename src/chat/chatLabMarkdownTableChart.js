@@ -1,5 +1,14 @@
 /** @typedef {{ title?: string; x: string[]; values: number[]; yLabel?: string }} TableChartSpec */
 
+import {
+  isMarkdownTableRowLine,
+  isMarkdownTableSeparatorLine,
+  repairGfmMarkdownTables,
+  repairTableBlockLines,
+} from "./chatLabMarkdownTableRepair.js";
+
+export { repairGfmMarkdownTables } from "./chatLabMarkdownTableRepair.js";
+
 const CHART_FENCE_RE = /```(?:chart|echarts)\b/i;
 const VISUALIZATION_INTENT_RE =
   /(?:柱状图|折线图|饼图|散点图|图表|可视化|趋势图|对比图|占比图|条形图|统计图|bar chart|line chart|pie chart|plot|graph|visuali[sz])/i;
@@ -82,8 +91,8 @@ function chartSpecFromTableRows(header, body) {
  * @param {string} block
  * @returns {TableChartSpec | null}
  */
-function chartSpecFromMarkdownTableBlock(block) {
-  const lines = String(block ?? "").split(/\r?\n/);
+export function chartSpecFromMarkdownTableBlock(block) {
+  const lines = repairTableBlockLines(String(block ?? "").split(/\r?\n/));
   /** @type {string[][]} */
   const rows = [];
   let sawSep = false;
@@ -106,6 +115,50 @@ function chartSpecFromMarkdownTableBlock(block) {
   const header = rows[0];
   const body = rows.slice(1);
   return chartSpecFromTableRows(header, body);
+}
+
+/**
+ * True when the block is only markdown table lines (with or without a separator row).
+ * @param {string} block
+ */
+export function looksLikeMarkdownTableBlock(block) {
+  const lines = repairTableBlockLines(String(block ?? "").split(/\r?\n/));
+  let pipeRows = 0;
+  let sawSep = false;
+  let nonTableLines = 0;
+
+  for (const line of lines) {
+    const trimmed = String(line ?? "").trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (isMarkdownTableSeparatorLine(line)) {
+      sawSep = true;
+      continue;
+    }
+    if (isMarkdownTableRowLine(line)) {
+      pipeRows++;
+      continue;
+    }
+    nonTableLines++;
+  }
+
+  if (pipeRows < 2 || nonTableLines > 0) return false;
+  return sawSep || pipeRows >= 2;
+}
+
+/**
+ * @param {string} block
+ * @returns {Record<string, unknown> | null}
+ */
+export function chartDslSpecFromMarkdownTable(block) {
+  const tableSpec = chartSpecFromMarkdownTableBlock(block);
+  if (!tableSpec) return null;
+  return {
+    type: "bar",
+    title: tableSpec.title,
+    x: tableSpec.x,
+    values: tableSpec.values,
+    ...(tableSpec.yLabel ? { y: tableSpec.yLabel } : {}),
+  };
 }
 
 /**

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Transfer } from "tdesign-react";
 import { useI18n } from "../context/I18nContext.jsx";
+import Avatar from "./Avatar.jsx";
 import FluidConfirmDialog from "./FluidConfirmDialog.jsx";
 
 /**
@@ -14,25 +15,24 @@ import FluidConfirmDialog from "./FluidConfirmDialog.jsx";
  * @property {boolean} [locked]
  */
 
-function TransferRowIcon({ icon }) {
-  if (!icon) return null;
-  const isUrl =
-    typeof icon === "string" &&
-    (icon.startsWith("data:") ||
-      icon.startsWith("http://") ||
-      icon.startsWith("https://") ||
-      icon.startsWith("file:") ||
-      (icon.startsWith("/") && !icon.startsWith("//")));
-  if (isUrl) {
-    return (
-      <img
-        src={icon}
-        alt=""
-        draggable={false}
-        style={{ width: 20, height: 20, borderRadius: 6, objectFit: "cover", flexShrink: 0 }}
-      />
-    );
+/**
+ * @param {{ icon?: import("react").ReactNode | string; name?: string }} props
+ */
+function TransferRowIcon({ icon, name }) {
+  // Explicit string icons (URL or "") use Avatar so empty glyphs fall back to text initials.
+  if (typeof icon === "string") {
+    const isUrl =
+      Boolean(icon) &&
+      (icon.startsWith("data:") ||
+        icon.startsWith("http://") ||
+        icon.startsWith("https://") ||
+        icon.startsWith("file:") ||
+        (icon.startsWith("/") && !icon.startsWith("//")));
+    if (!isUrl && !name) return null;
+    return <Avatar src={isUrl ? icon : ""} name={name} size="xs" shape="rounded" />;
   }
+
+  if (!icon) return null;
   return <span style={{ display: "inline-flex", flexShrink: 0 }}>{icon}</span>;
 }
 
@@ -133,21 +133,29 @@ export default function TransferDialog({
             : false
         }
         keys={{ value: "value", label: "label" }}
-        transferItem={({ data }) => (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            <TransferRowIcon icon={data.icon} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, lineHeight: "18px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {data.label}
-              </div>
-              {data.description ? (
-                <div style={{ fontSize: 12, lineHeight: "16px", opacity: 0.72, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {data.description}
+        transferItem={({ data }) => {
+          const name =
+            typeof data.label === "string"
+              ? data.label
+              : typeof data.searchText === "string"
+                ? data.searchText
+                : undefined;
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <TransferRowIcon icon={data.icon} name={name} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, lineHeight: "18px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {data.label}
                 </div>
-              ) : null}
+                {data.description ? (
+                  <div style={{ fontSize: 12, lineHeight: "16px", opacity: 0.72, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {data.description}
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        }}
         onChange={handleDraftChange}
       />
       </div>

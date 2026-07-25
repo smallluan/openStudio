@@ -4,9 +4,15 @@ import { getChatLabEchartsTheme, resolveChartBackgroundColor } from "./chatLabEc
 import { validateBuiltInMapSupport } from "./chatLabEchartsMaps.js";
 import { parseLenientEchartsJson, parseStreamingEchartsJson } from "./chatLabEchartsJson.js";
 import { unsupportedSeriesTypes } from "./chatLabEchartsChartRegistry.js";
+import {
+  chartDslSpecFromMarkdownTable,
+  looksLikeMarkdownTableBlock,
+} from "./chatLabMarkdownTableChart.js";
+import { isMarkdownTableRowLine, repairGfmMarkdownTables } from "./chatLabMarkdownTableRepair.js";
+import { sanitizeChartFenceCode } from "./chatLabMarkdownChartFenceRepair.js";
 
 /** @typedef {{ ok: true; option: Record<string, unknown>; partial?: boolean }} ChartParseOk */
-/** @typedef {{ ok: false; error: string; pending?: boolean }} ChartParseErr */
+/** @typedef {{ ok: false; error: string; pending?: boolean; markdownTable?: boolean }} ChartParseErr */
 
 const CHART_TYPES = new Set(["bar", "line", "pie", "scatter"]);
 
@@ -260,6 +266,24 @@ function seriesFromTopLevelData(raw, specName) {
  * @param {string} source
  * @returns {{ ok: true; spec: Record<string, unknown> } | ChartParseErr}
  */
+function tryParseChartDslFromMarkdownTable(source) {
+  const repaired = repairGfmMarkdownTables(String(source ?? "").trim());
+  const chartSpec = chartDslSpecFromMarkdownTable(repaired);
+  if (chartSpec) return { ok: true, spec: chartSpec };
+  if (looksLikeMarkdownTableBlock(repaired)) {
+    return {
+      ok: false,
+      error: "Chart block contains a markdown table",
+      markdownTable: true,
+    };
+  }
+  return { ok: false, error: "" };
+}
+
+/**
+ * @param {string} source
+ * @returns {{ ok: true; spec: Record<string, unknown> } | ChartParseErr}
+ */
 export function parseChartDsl(source) {
   const trimmedSource = String(source ?? "").trim();
   if (trimmedSource.startsWith("{")) {
@@ -269,6 +293,10 @@ export function parseChartDsl(source) {
     }
     return json;
   }
+
+  const tableAttempt = tryParseChartDslFromMarkdownTable(trimmedSource);
+  if (tableAttempt.ok) return tableAttempt;
+  if (tableAttempt.markdownTable) return tableAttempt;
 
   const lines = String(source ?? "").split(/\r?\n/);
   /** @type {Record<string, unknown>} */
@@ -302,6 +330,11 @@ export function parseChartDsl(source) {
 
     const topKv = parseKeyValueLine(trimmed);
     if (!topKv) {
+      if (isMarkdownTableRowLine(trimmed)) {
+        const tableAttempt = tryParseChartDslFromMarkdownTable(trimmedSource);
+        if (tableAttempt.ok) return tableAttempt;
+        if (tableAttempt.markdownTable) return tableAttempt;
+      }
       if (isBareKeyName(trimmed)) {
         const key = trimmed;
         i++;
@@ -601,9 +634,12 @@ export function resolveChartFenceOption(code, label, theme, opts = {}) {
     };
   }
   if (lang === "chart") {
-    const parsed = parseChartDsl(code);
+    const sanitized = sanitizeChartFenceCode(code);
+    const parsed = parseChartDsl(sanitized);
     if (!parsed.ok) {
-      return streaming ? { ok: false, pending: true, error: parsed.error } : parsed;
+      return streaming
+        ? { ok: false, pending: true, error: parsed.error, ...(parsed.markdownTable ? { markdownTable: true } : {}) }
+        : parsed;
     }
     const option = chartSpecToEchartsOption(parsed.spec, theme);
     const mapErr = validateBuiltInMapSupport(option);

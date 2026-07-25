@@ -9542,6 +9542,13 @@ button.os-image {
   vertical-align: middle;
 }
 
+.chat-lab__echarts-render-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
 .chat-lab__echarts-render {
   position: relative;
   width: 100%;
@@ -9624,6 +9631,11 @@ button.os-image {
   padding: 0.62rem 0.75rem;
   font-size: 0.875rem;
   line-height: 1.55;
+}
+
+.chat-lab__chart-table-fallback {
+  width: 100%;
+  min-width: 0;
 }
 
 .chat-lab__code-render-error {

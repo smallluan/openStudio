@@ -2,6 +2,8 @@
 /** @typedef {import("./chatLabAsciiTree.js").AsciiTreeNode} AsciiTreeNode */
 
 import { normalizeLatexMathDelimitersForRemark } from "./normalizeLatexMathDelimitersForRemark.js";
+import { repairChartCodeFences } from "./chatLabMarkdownChartFenceRepair.js";
+import { repairGfmMarkdownTables } from "./chatLabMarkdownTableRepair.js";
 import {
   isAsciiTreeLine,
   isBlankOrBlockquoteSeparator,
@@ -392,7 +394,10 @@ export function prepareChatLabMarkdownSource(source) {
  * @param {string} source
  */
 export function prepareChatLabMarkdownForRender(source) {
-  return normalizeLatexMathDelimitersForRemark(prepareChatLabMarkdownSource(source));
+  let text = prepareChatLabMarkdownSource(source);
+  text = repairChartCodeFences(text);
+  text = repairGfmMarkdownTables(text);
+  return normalizeLatexMathDelimitersForRemark(text);
 }
 
 /**

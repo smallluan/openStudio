@@ -1,11 +1,18 @@
+import { useMemo } from "react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { resolveChartFenceOption } from "../../chat/chatLabChartDsl.js";
 import { getChatLabChartBackgroundColor } from "../../chat/chatLabEchartsTheme.js";
 import { ensureBuiltInMapsRegistered } from "../../chat/chatLabEchartsMaps.js";
 import { ensureChartsRegistered } from "../../chat/chatLabEchartsChartRegistry.js";
+import {
+  chartFenceTailMarkdown,
+  sanitizeChartFenceCode,
+} from "../../chat/chatLabMarkdownChartFenceRepair.js";
+import { repairGfmMarkdownTables } from "../../chat/chatLabMarkdownTableRepair.js";
 import { cn } from "../../ui/cn.js";
 import { useDebouncedValue } from "../../ui/useDebouncedValue.js";
+import ChatLabChartMarkdownFallback from "./ChatLabChartMarkdownFallback.jsx";
 
 const STREAM_DEBOUNCE_MS = 320;
 const MIN_RESIZE_HEIGHT_PX = 200;
@@ -44,6 +51,11 @@ function ChatLabEchartsFenceView(
 ) {
   const { t } = useI18n();
   const debouncedCode = useDebouncedValue(code, streaming ? STREAM_DEBOUNCE_MS : 0);
+  const sanitizedCode = useMemo(() => sanitizeChartFenceCode(debouncedCode), [debouncedCode]);
+  const tailMarkdown = useMemo(() => {
+    const tail = chartFenceTailMarkdown(debouncedCode);
+    return tail ? repairGfmMarkdownTables(tail) : "";
+  }, [debouncedCode]);
   const containerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const chartRef = useRef(/** @type {import("echarts").ECharts | null} */ (null));
   const echartsModuleRef = useRef(/** @type {import("echarts/core").EChartsType | null} */ (null));
@@ -51,6 +63,7 @@ function ChatLabEchartsFenceView(
   const [error, setError] = useState("");
   const [hasChart, setHasChart] = useState(false);
   const [busy, setBusy] = useState(true);
+  const [markdownTableFallback, setMarkdownTableFallback] = useState(false);
 
   const handleDownload = useCallback(() => {
     const instance = chartRef.current;
@@ -86,9 +99,16 @@ function ChatLabEchartsFenceView(
     const render = async () => {
       setBusy(true);
 
-      const resolved = resolveChartFenceOption(debouncedCode, label, theme, { streaming });
+      const resolved = resolveChartFenceOption(sanitizedCode, label, theme, { streaming });
 
       if (!resolved.ok) {
+        if (resolved.markdownTable) {
+          setMarkdownTableFallback(true);
+          setError("");
+          setBusy(false);
+          return;
+        }
+        setMarkdownTableFallback(false);
         if (resolved.pending) {
           setError("");
           setBusy(false);
@@ -98,6 +118,8 @@ function ChatLabEchartsFenceView(
         setBusy(false);
         return;
       }
+
+      setMarkdownTableFallback(false);
 
       setError("");
 
@@ -144,7 +166,7 @@ function ChatLabEchartsFenceView(
     return () => {
       cancelled = true;
     };
-  }, [active, debouncedCode, label, streaming, theme]);
+  }, [active, sanitizedCode, label, streaming, theme]);
 
   useEffect(() => {
     return () => {
@@ -170,29 +192,38 @@ function ChatLabEchartsFenceView(
     onStatusChange?.({ canDownload });
   }, [canDownload, onStatusChange]);
 
+  if (markdownTableFallback) {
+    return <ChatLabChartMarkdownFallback source={debouncedCode} />;
+  }
+
   if (error) {
     return <p className="chat-lab__code-render-error">{error}</p>;
   }
 
   return (
-    <div className="chat-lab__echarts-render">
-      <div className="chat-lab__echarts-render__stage">
-        <div ref={containerRef} className="chat-lab__echarts-render__canvas" aria-hidden={false} />
-      </div>
-      {showMask ?
-        <div
-          className={cn(
-            "chat-lab__echarts-render__mask",
-            hasChart && "chat-lab__echarts-render__mask--overlay",
-          )}
-          role="status"
-          aria-live="polite"
-        >
-          <span className="chat-lab__echarts-render__spinner" aria-hidden />
-          <span className="chat-lab__echarts-render__mask-label">
-            {hasChart ? t("chart.updating") : t("chart.generating")}
-          </span>
+    <div className="chat-lab__echarts-render-wrap">
+      <div className="chat-lab__echarts-render">
+        <div className="chat-lab__echarts-render__stage">
+          <div ref={containerRef} className="chat-lab__echarts-render__canvas" aria-hidden={false} />
         </div>
+        {showMask ?
+          <div
+            className={cn(
+              "chat-lab__echarts-render__mask",
+              hasChart && "chat-lab__echarts-render__mask--overlay",
+            )}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="chat-lab__echarts-render__spinner" aria-hidden />
+            <span className="chat-lab__echarts-render__mask-label">
+              {hasChart ? t("chart.updating") : t("chart.generating")}
+            </span>
+          </div>
+        : null}
+      </div>
+      {tailMarkdown ?
+        <ChatLabChartMarkdownFallback source={tailMarkdown} />
       : null}
     </div>
   );
