@@ -11,6 +11,8 @@ import {
   useState,
 } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import chatIcon from "../../assets/images/chat.png";
+import clockIcon from "../../assets/images/clock.png";
 import heroAvatarLight from "../../assets/images/hero-avatar-light.png";
 import heroAvatarDark from "../../assets/images/hero-avatar-dark.png";
 import WechatIcon from "../../assets/svg/WechatIcon.jsx";
@@ -19,6 +21,7 @@ import {
   CHAT_SESSION_CHANNEL_WECHAT,
   deleteSession,
   deleteSessionsByIds,
+  isAutomationTaskSessionRecord,
   loadAllSessions,
   renameSession,
 } from "../../chat/chatSessionsStore.js";
@@ -46,27 +49,35 @@ function HistorySessionSpinner({ label }) {
   );
 }
 
-function HistorySessionGlyph({ active }) {
+function HistorySessionChatIcon({ active }) {
   return (
-    <svg
+    <img
       className={cn(
-        "chat-history-card__glyph shrink-0 transition-[opacity,color,filter] duration-[450ms] ease-[cubic-bezier(0.34,1.2,0.52,1)]",
+        "chat-history-card__chat-icon shrink-0 size-4 object-contain transition-[opacity,filter] duration-[450ms] ease-[cubic-bezier(0.34,1.2,0.52,1)]",
         active ? "chat-history-card__glyph--row-active" : "opacity-[0.88]",
       )}
-      width="16"
-      height="16"
-      viewBox="0 0 18 18"
-      fill="none"
+      src={chatIcon}
+      alt=""
+      width={16}
+      height={16}
       aria-hidden
-    >
-      <path
-        d="M4.5 14.5 2.5 15.5V5.5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7l-2.5 1.5Z"
-        fill="#fef2f2"
-        stroke="#ef4444"
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-    </svg>
+    />
+  );
+}
+
+function HistorySessionAutomationIcon({ active }) {
+  return (
+    <img
+      className={cn(
+        "chat-history-card__automation-icon shrink-0 size-4 object-contain transition-[opacity,filter] duration-[450ms] ease-[cubic-bezier(0.34,1.2,0.52,1)]",
+        active ? "chat-history-card__glyph--row-active" : "opacity-[0.88]",
+      )}
+      src={clockIcon}
+      alt=""
+      width={16}
+      height={16}
+      aria-hidden
+    />
   );
 }
 
@@ -262,6 +273,7 @@ function ChatHistoryGroupHead({
  *   onRenamed: () => void;
  *   onAfterDelete: () => void;
  *   isStreaming?: boolean;
+ *   isAutomationSession?: boolean;
  *   selectMode?: boolean;
  *   selected?: boolean;
  *   selectDisabled?: boolean;
@@ -279,6 +291,7 @@ function HistorySessionRow({
   onRenamed,
   onAfterDelete,
   isStreaming = false,
+  isAutomationSession = false,
   selectMode = false,
   selected = false,
   selectDisabled = false,
@@ -322,7 +335,7 @@ function HistorySessionRow({
     </span>
   );
 
-  /** Same footprint as HistorySessionGlyph (16×16) so checkbox replaces icon in-place. */
+  /** Same footprint as session icons (16×16) so checkbox replaces icon in-place. */
   const leftSlot = selectMode ? (
     isStreaming ? (
       <HistorySessionSpinner label={t("nav.chatHistoryGenerating")} />
@@ -349,8 +362,10 @@ function HistorySessionRow({
     )
   ) : isStreaming ? (
     <HistorySessionSpinner label={t("nav.chatHistoryGenerating")} />
+  ) : isAutomationSession ? (
+    <HistorySessionAutomationIcon active={rowActive} />
   ) : (
-    <HistorySessionGlyph active={rowActive} />
+    <HistorySessionChatIcon active={rowActive} />
   );
 
   const menuContent = (
@@ -773,6 +788,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     const inDeleteMode = deleteModeChannel === rowChannel;
     const isStreaming =
       streamingSessionIds.has(s.id) || wechatReplyingSessionId === s.id;
+    const isAutomationSession = isAutomationTaskSessionRecord(s);
     return (
       <HistorySessionRow
         key={s.id}
@@ -786,6 +802,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
         onRenamed={reload}
         onAfterDelete={reload}
         isStreaming={isStreaming}
+        isAutomationSession={isAutomationSession}
         selectMode={inDeleteMode}
         selected={selectedIds.has(s.id)}
         selectDisabled={isStreaming}

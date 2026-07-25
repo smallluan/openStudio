@@ -149,10 +149,7 @@ export default function WorkflowPage() {
                       {w.description}
                     </p>
                   ) : null}
-                  <div className="mt-auto flex items-center justify-between pt-2">
-                    <span className="text-[0.68rem] text-[var(--os-text-muted)]">
-                      {t("workflowPage.nodeCount", { n: w.nodes?.length ?? 0 })}
-                    </span>
+                  <div className="mt-auto flex items-center justify-end pt-2">
                     <button
                       type="button"
                       className="rounded-md px-2 py-0.5 text-[0.68rem] text-[var(--os-text-muted)] opacity-0 transition-opacity hover:bg-[color-mix(in_srgb,var(--os-danger,#ef4444)_12%,transparent)] hover:text-[var(--os-danger,#ef4444)] group-hover:opacity-100"
