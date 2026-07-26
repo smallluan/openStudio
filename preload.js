@@ -89,6 +89,7 @@ contextBridge.exposeInMainWorld("studioBridge", {
   chatSessionsImportLegacy: (sessions) => ipcRenderer.invoke("studio:chatSessionsImportLegacy", sessions),
   automationTasksList: () => ipcRenderer.invoke("studio:automationTasksList"),
   automationTaskCreate: (payload) => ipcRenderer.invoke("studio:automationTaskCreate", payload),
+  automationTaskUpdate: (payload) => ipcRenderer.invoke("studio:automationTaskUpdate", payload),
   automationTaskRemove: (cronJobId) => ipcRenderer.invoke("studio:automationTaskRemove", cronJobId),
   automationTaskRunNow: (cronJobId) => ipcRenderer.invoke("studio:automationTaskRunNow", cronJobId),
   automationTaskReportRun: (payload) => ipcRenderer.invoke("studio:automationTaskReportRun", payload),

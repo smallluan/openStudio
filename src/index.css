@@ -171,6 +171,10 @@ code {
   width: 100%;
 }
 
+.automation-task-dialog__control {
+  width: 100%;
+}
+
 .automation-task-dialog__form .t-form__label {
   padding-bottom: 0.35rem;
   font-size: 0.8125rem;
@@ -228,6 +232,25 @@ code {
   font-size: 0.75rem;
   line-height: 1.35;
   color: var(--td-error-color, #d54941);
+}
+
+.automation-task-dialog__field-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--os-text-muted);
+}
+
+.automation-task-dialog__channel-readonly {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--os-border) 72%, transparent);
+  background: color-mix(in srgb, var(--os-bg-subtle) 88%, var(--os-bg-panel));
+  font-size: 0.875rem;
+  color: var(--os-text);
 }
 
 .automation-task-dialog__prompt-toolbar {

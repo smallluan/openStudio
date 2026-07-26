@@ -20,9 +20,10 @@ import { useI18n } from "../../context/I18nContext.jsx";
 import { useStudio } from "../../context/StudioContext.jsx";
 import { ComposerAgentToolbarPicker } from "../chat-lab/ChatLabComposerAgents.jsx";
 import { ComposerSkillToolbarPicker } from "../chat-lab/ChatLabComposerSkills.jsx";
-import { listSkillsForPicker } from "../../skills/skillRegistry.js";
+import { listSkillsForPicker, pickRowFromSkillMeta } from "../../skills/skillRegistry.js";
 import { useSkillEnvironment } from "../../skills/useSkillEnvironment.js";
 import { listWorkflowsForPicker } from "../../workflow/workflowRuntimeRegistry.js";
+import { automationTaskSkillMeta } from "../../automation/automationTaskToDraft.js";
 import { osPopupAttach } from "../../ui/osPopupShared.js";
 
 const { FormItem } = Form;
@@ -35,8 +36,29 @@ const DIALOG_POPUP = {
     strategy: "fixed",
     modifiers: [
       { name: "offset", options: { offset: [0, 4] } },
-      { name: "flip", enabled: false },
+      { name: "flip", options: { padding: 8 } },
       { name: "preventOverflow", options: { padding: 8 } },
+    ],
+  },
+};
+
+/** Date pickers near dialog bottom need flip enabled (default DIALOG_POPUP disables it). */
+const DIALOG_DATE_POPUP = {
+  attach: osPopupAttach,
+  placement: "top-start",
+  zIndex: 6500,
+  popperOptions: {
+    strategy: "fixed",
+    modifiers: [
+      { name: "offset", options: { offset: [0, 4] } },
+      {
+        name: "flip",
+        options: {
+          padding: 8,
+          fallbackPlacements: ["bottom-start", "top-end", "bottom-end"],
+        },
+      },
+      { name: "preventOverflow", options: { padding: 8, altBoundary: true } },
     ],
   },
 };
@@ -85,36 +107,39 @@ const INTERVAL_UNIT_OPTIONS = [
  *   effectiveRange: string[];
  * }} AutomationTaskDraft */
 
-/** @returns {AutomationTaskDraft} */
-function emptyDraft() {
-  return {
-    name: "",
-    prompt: "",
-    modelId: "",
-    agentId: "",
-    skillRow: null,
-    workflowId: "",
-    channel: "",
-    frequencyMode: "period",
-    periodCycle: "daily",
-    periodTime: "09:00",
-    intervalValue: 1,
-    intervalUnit: "hour",
-    onceDate: "",
-    onceTime: "09:00",
-    effectiveRange: [],
-  };
-}
-
 /**
  * @param {{
- *   open: boolean;
+ *   open?: boolean;
  *   onOpenChange: (open: boolean) => void;
  *   onSubmit?: (draft: AutomationTaskDraft) => void | Promise<void>;
  *   submitting?: boolean;
+ *   editingTask?: import("../../automation/useAutomationTasks.js").AutomationTaskCard | null;
+ *   initialDraft: AutomationTaskDraft;
  * }} props
  */
-export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, submitting = false }) {
+export default function AutomationTaskDialog({
+  open = true,
+  onOpenChange,
+  onSubmit,
+  submitting = false,
+  editingTask = null,
+  initialDraft,
+}) {
+  const pickFirstNonEmptyText = useCallback((values) => {
+    for (const value of values) {
+      const text = String(value ?? "").trim();
+      if (text) return text;
+    }
+    return "";
+  }, []);
+  const normalizeChannelValue = useCallback((value) => {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (!raw) return "";
+    if (raw === "internal" || raw === "studio" || raw === "openstudio") return "open-studio";
+    if (raw === "weixin") return "wechat";
+    return raw;
+  }, []);
+
   const { t } = useI18n();
   const { agents, mainAgent } = useStudio();
   const { status: wechatStatus } = useWechatChannelAuth({ active: open });
@@ -125,7 +150,7 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
   );
   const [config, setConfig] = useState(/** @type {* | null} */ (null));
   const [workflowPickerBump, setWorkflowPickerBump] = useState(0);
-  const [draft, setDraft] = useState(emptyDraft);
+  const [draft, setDraft] = useState(initialDraft);
   const [fieldErrors, setFieldErrors] = useState(
     /** @type {{ name: string; prompt: string; channel: string }} */ ({
       name: "",
@@ -133,10 +158,44 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
       channel: "",
     }),
   );
+  const isEditMode = Boolean(editingTask);
+  const editingMeta = editingTask?.meta && typeof editingTask.meta === "object" ? editingTask.meta : {};
+  const editingCronJob =
+    editingTask?.cronJob && typeof editingTask.cronJob === "object"
+      ? /** @type {Record<string, unknown>} */ (editingTask.cronJob)
+      : null;
+  const editingFallbackName = pickFirstNonEmptyText([
+    editingTask?.name,
+    editingMeta.name,
+    editingCronJob?.name,
+    editingTask?.prompt,
+    editingMeta.prompt,
+    editingMeta.message,
+    initialDraft?.prompt,
+  ]);
+  const editingFallbackChannel = normalizeChannelValue(
+    pickFirstNonEmptyText([editingTask?.channel, editingMeta.channel, "open-studio"]),
+  );
+  const resolvedName =
+    String(draft.name ?? "").trim() || (isEditMode ? editingFallbackName : "");
+  const resolvedChannel =
+    normalizeChannelValue(draft.channel) ||
+    (isEditMode ? editingFallbackChannel : "") ||
+    "open-studio";
 
   useEffect(() => {
     if (!open) return;
-    setDraft(emptyDraft());
+    setDraft((prev) => {
+      const base = initialDraft && typeof initialDraft === "object" ? initialDraft : prev;
+      return {
+        ...base,
+        name: String(base.name ?? "").trim() || (isEditMode ? editingFallbackName : ""),
+        channel:
+          normalizeChannelValue(base.channel) ||
+          (isEditMode ? editingFallbackChannel : "") ||
+          "open-studio",
+      };
+    });
     setFieldErrors({ name: "", prompt: "", channel: "" });
     let cancelled = false;
     (async () => {
@@ -150,7 +209,7 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [editingFallbackChannel, editingFallbackName, initialDraft, isEditMode, normalizeChannelValue, open]);
 
   useEffect(() => {
     const onWorkflowLibChange = () => setWorkflowPickerBump((n) => n + 1);
@@ -159,6 +218,16 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
   }, []);
 
   const skillPickList = useMemo(() => listSkillsForPicker(skillPickEnv), [skillPickEnv]);
+
+  useEffect(() => {
+    if (!open || !editingTask) return;
+    const skillMeta = automationTaskSkillMeta(editingTask);
+    if (!skillMeta) return;
+    const row = pickRowFromSkillMeta(skillMeta, skillPickList);
+    if (!row) return;
+    setDraft((prev) => (prev.skillRow ? prev : { ...prev, skillRow: row }));
+  }, [editingTask, open, skillPickList]);
+
   const workflowPickList = useMemo(() => {
     void workflowPickerBump;
     return listWorkflowsForPicker();
@@ -210,9 +279,32 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
     ],
     [t, wechatStatus.connected, wechatStatus.enabled],
   );
+  const channelSelectOptions = useMemo(() => {
+    const normalizedCurrent = normalizeChannelValue(resolvedChannel);
+    if (!normalizedCurrent) return channelOptions;
+    const hasCurrent = channelOptions.some((o) => String(o.value) === normalizedCurrent);
+    if (hasCurrent) {
+      return channelOptions.map((o) =>
+        String(o.value) === normalizedCurrent ? { ...o, disabled: false } : o,
+      );
+    }
+    return [
+      ...channelOptions,
+      {
+        value: normalizedCurrent,
+        label:
+          normalizedCurrent === "open-studio"
+            ? t("automationPage.taskChannelOpenStudio")
+            : normalizedCurrent === "wechat"
+              ? t("automationPage.taskChannelWechat")
+              : normalizedCurrent,
+        disabled: false,
+      },
+    ];
+  }, [channelOptions, normalizeChannelValue, resolvedChannel, t]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || isEditMode) return;
     setDraft((prev) => {
       const allowed = new Set(
         channelOptions.filter((o) => !o.disabled).map((o) => String(o.value)),
@@ -220,23 +312,23 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
       if (!prev.channel || allowed.has(prev.channel)) return prev;
       return { ...prev, channel: "" };
     });
-  }, [channelOptions, open]);
+  }, [channelOptions, isEditMode, open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || isEditMode) return;
     const globalActiveId = typeof config?.activeModelProfileId === "string" ? config.activeModelProfileId.trim() : "";
     const next =
       enabledModelOptions.some((o) => o.value === globalActiveId)
         ? globalActiveId
         : (enabledModelOptions[0]?.value ?? "");
     setDraft((prev) => (prev.modelId ? prev : { ...prev, modelId: next }));
-  }, [open, config?.activeModelProfileId, enabledModelOptions]);
+  }, [config?.activeModelProfileId, enabledModelOptions, isEditMode, open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || isEditMode) return;
     const defaultAgentId = mainAgent?.id ?? agents[0]?.id ?? "";
     setDraft((prev) => (prev.agentId ? prev : { ...prev, agentId: defaultAgentId }));
-  }, [agents, mainAgent?.id, open]);
+  }, [agents, isEditMode, mainAgent?.id, open]);
 
   const patchDraft = useCallback((patch) => {
     setDraft((prev) => ({ ...prev, ...patch }));
@@ -251,17 +343,17 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
 
   const collectFieldErrors = useCallback(() => {
     const allowedChannels = new Set(
-      channelOptions.filter((o) => !o.disabled).map((o) => String(o.value)),
+      channelSelectOptions.filter((o) => !o.disabled).map((o) => String(o.value)),
     );
     return {
-      name: draft.name.trim() ? "" : t("automationPage.taskNameRequired"),
+      name: resolvedName.trim() ? "" : t("automationPage.taskNameRequired"),
       prompt: draft.prompt.trim() ? "" : t("automationPage.taskPromptRequired"),
       channel:
-        draft.channel.trim() && allowedChannels.has(draft.channel.trim())
+        resolvedChannel.trim() && allowedChannels.has(resolvedChannel.trim())
           ? ""
           : t("automationPage.taskChannelRequired"),
     };
-  }, [channelOptions, draft.channel, draft.name, draft.prompt, t]);
+  }, [channelSelectOptions, draft.prompt, resolvedChannel, resolvedName, t]);
 
   const showValidationError = useCallback((content) => {
     MessagePlugin.error({
@@ -274,6 +366,11 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
   }, []);
 
   const handleConfirm = () => {
+    const submitDraft = {
+      ...draft,
+      name: resolvedName,
+      channel: resolvedChannel,
+    };
     const nextErrors = collectFieldErrors();
     setFieldErrors(nextErrors);
     const message = nextErrors.name || nextErrors.prompt || nextErrors.channel;
@@ -281,7 +378,7 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
       showValidationError(message);
       return;
     }
-    onSubmit?.(draft);
+    onSubmit?.(submitDraft);
   };
 
   const handleCancel = () => {
@@ -293,10 +390,10 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
       visible={open}
       attach="body"
       placement="center"
-      header={t("automationPage.taskDialogTitle")}
+      header={isEditMode ? t("automationPage.taskDialogEditTitle") : t("automationPage.taskDialogTitle")}
       width={560}
       zIndex={6000}
-      destroyOnClose={false}
+      destroyOnClose
       closeOnOverlayClick
       closeOnEscKeydown
       dialogClassName="os-tdesign-dialog os-tdesign-dialog--automation-task"
@@ -307,20 +404,23 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
             {t("automationPage.taskCancel")}
           </Button>
           <Button theme="primary" loading={submitting} disabled={submitting} onClick={handleConfirm}>
-            {t("automationPage.taskAdd")}
+            {isEditMode ? t("automationPage.taskSave") : t("automationPage.taskAdd")}
           </Button>
         </Space>
       }
     >
       <Form layout="vertical" labelAlign="top" className="automation-task-dialog__form">
         <FormItem label={<RequiredLabel>{t("automationPage.taskName")}</RequiredLabel>}>
-          <Input
-            value={draft.name}
-            placeholder={t("automationPage.taskNamePlaceholder")}
-            status={fieldErrors.name ? "error" : "default"}
-            tips={fieldErrors.name || undefined}
-            onChange={(value) => patchDraft({ name: String(value ?? "") })}
-          />
+          {/* Avoid FormItem overriding controlled value with its empty internal formValue. */}
+          <div className="automation-task-dialog__control">
+            <Input
+              value={resolvedName}
+              placeholder={t("automationPage.taskNamePlaceholder")}
+              status={fieldErrors.name ? "error" : "default"}
+              tips={fieldErrors.name || undefined}
+              onChange={(value) => patchDraft({ name: String(value ?? "") })}
+            />
+          </div>
         </FormItem>
 
         <FormItem label={<RequiredLabel>{t("automationPage.taskPrompt")}</RequiredLabel>}>
@@ -395,15 +495,17 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
         </FormItem>
 
         <FormItem label={<RequiredLabel>{t("automationPage.taskChannel")}</RequiredLabel>}>
-          <TSelect
-            value={draft.channel}
-            options={channelOptions}
-            placeholder={t("automationPage.taskChannelPlaceholder")}
-            status={fieldErrors.channel ? "error" : "default"}
-            tips={fieldErrors.channel || undefined}
-            popupProps={DIALOG_POPUP}
-            onChange={(value) => patchDraft({ channel: String(value ?? "") })}
-          />
+          <div className="automation-task-dialog__control">
+            <TSelect
+              value={resolvedChannel}
+              options={channelSelectOptions}
+              placeholder={t("automationPage.taskChannelPlaceholder")}
+              status={fieldErrors.channel ? "error" : "default"}
+              tips={fieldErrors.channel || undefined}
+              popupProps={DIALOG_POPUP}
+              onChange={(value) => patchDraft({ channel: String(value ?? "") })}
+            />
+          </div>
         </FormItem>
 
         <FormItem label={t("automationPage.taskFrequency")}>
@@ -465,7 +567,7 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
                 <DatePicker
                   value={draft.onceDate}
                   placeholder={t("automationPage.taskOnceDatePlaceholder")}
-                  popupProps={DIALOG_POPUP}
+                  popupProps={DIALOG_DATE_POPUP}
                   onChange={(value) => patchDraft({ onceDate: String(value ?? "") })}
                 />
                 <TimePicker
@@ -488,13 +590,15 @@ export default function AutomationTaskDialog({ open, onOpenChange, onSubmit, sub
             </span>
           }
         >
-          <DateRangePicker
-            clearable
-            value={draft.effectiveRange}
-            placeholder={[t("automationPage.taskEffectiveRangePlaceholder"), t("automationPage.taskEffectiveRangePlaceholder")]}
-            popupProps={DIALOG_POPUP}
-            onChange={(value) => patchDraft({ effectiveRange: Array.isArray(value) ? value.map(String) : [] })}
-          />
+          <div className="automation-task-dialog__control">
+            <DateRangePicker
+              clearable
+              value={draft.effectiveRange}
+              placeholder={[t("automationPage.taskEffectiveRangePlaceholder"), t("automationPage.taskEffectiveRangePlaceholder")]}
+              popupProps={DIALOG_DATE_POPUP}
+              onChange={(value) => patchDraft({ effectiveRange: Array.isArray(value) ? value.map(String) : [] })}
+            />
+          </div>
         </FormItem>
       </Form>
     </Dialog>

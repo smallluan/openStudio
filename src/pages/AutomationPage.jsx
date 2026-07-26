@@ -1,25 +1,32 @@
 import { useCallback, useMemo, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
-import { MessagePlugin } from "tdesign-react";
+import { DeleteIcon, EditIcon, MoreIcon, PlayCircleIcon } from "tdesign-icons-react";
+import { MessagePlugin, Popup } from "tdesign-react";
 import "tdesign-react/es/message/style/index.css";
-import { Bot, Clock, Plus, Radio } from "lucide-react";
+import { Bot, Clock, Plus } from "lucide-react";
 import OsEmpty from "../ui/OsEmpty.jsx";
 import AutomationTaskDialog from "../components/automation/AutomationTaskDialog.jsx";
 import FluidConfirmDialog from "../ui/FluidConfirmDialog.jsx";
 import taskHero from "../assets/images/task-hero.png";
+import heroAvatarLight from "../assets/images/hero-avatar-light.png";
+import heroAvatarDark from "../assets/images/hero-avatar-dark.png";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
+import WechatIcon from "../assets/svg/WechatIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { useStudio } from "../context/StudioContext.jsx";
+import { useTheme } from "../context/ThemeContext.jsx";
 import { cn } from "../ui/cn.js";
+import { OS_POPUP_INNER_CLASS, OS_POPUP_OVERLAY_CLASS, osPopupPopperOptions } from "../ui/osPopupShared.js";
 import { buildAutomationCronMessage } from "../automation/buildAutomationCronMessage.js";
 import {
-  formatAutomationChannelLabel,
-  formatAutomationScheduleLabel,
-} from "../automation/formatAutomationScheduleLabel.js";
+  automationTaskToDraft,
+  emptyAutomationTaskDraft,
+} from "../automation/automationTaskToDraft.js";
+import { formatAutomationScheduleLabel } from "../automation/formatAutomationScheduleLabel.js";
 import {
   automationTaskStatusTone,
+  formatAutomationRemainingLabel,
   formatAutomationTaskErrorDetail,
-  formatAutomationTaskStatusLabel,
 } from "../automation/formatAutomationTaskStatus.js";
 import { useAutomationTasks } from "../automation/useAutomationTasks.js";
 import { useNowMs } from "../automation/useNowMs.js";
@@ -39,17 +46,217 @@ function AutomationCardShell({ className, children }) {
   );
 }
 
+/** @param {{ channel: string; className?: string }} props */
+function AutomationChannelIcon({ channel, className }) {
+  const { theme } = useTheme();
+  if (channel === "wechat") {
+    return <WechatIcon className={cn("shrink-0", className)} />;
+  }
+  return (
+    <img
+      className={cn("shrink-0 rounded object-cover", className)}
+      src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
+      alt=""
+      width={16}
+      height={16}
+      aria-hidden
+    />
+  );
+}
+
+/**
+ * @param {{
+ *   task: import("../automation/useAutomationTasks.js").AutomationTaskCard;
+ *   nowMs: number;
+ *   isRunningNow: boolean;
+ *   onRunNow: (e: import("react").MouseEvent, cronJobId: string) => void;
+ *   onEdit: (e: import("react").MouseEvent, task: import("../automation/useAutomationTasks.js").AutomationTaskCard) => void;
+ *   onDelete: (e: import("react").MouseEvent, cronJobId: string) => void;
+ * }} props
+ */
+function AutomationTaskCard({ task, nowMs, isRunningNow, onRunNow, onEdit, onDelete }) {
+  const { t } = useI18n();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const meta = task.meta && typeof task.meta === "object" ? task.meta : {};
+  const scheduleLabel = formatAutomationScheduleLabel(meta, t);
+  const remainingLabel = formatAutomationRemainingLabel(task, nowMs, t);
+  const statusTone = automationTaskStatusTone(task, nowMs);
+  const errorDetail = formatAutomationTaskErrorDetail(task);
+  const isJobRunning = task.lastRunStatus === "running" || isRunningNow;
+  const statusClass =
+    statusTone === "danger"
+      ? "text-[var(--os-danger,#ef4444)]"
+      : statusTone === "success"
+        ? "text-[color-mix(in_srgb,var(--os-success,#22c55e)_88%,var(--os-text))]"
+        : statusTone === "accent"
+          ? "text-[var(--os-accent,#6366f1)]"
+          : "text-[var(--os-text-muted)]";
+
+  const menuContent = (
+    <div className="chat-history-card__menu" role="menu">
+      <div className="chat-history-card__menu-row">
+        <button
+          type="button"
+          role="menuitem"
+          className="chat-history-card__menu-item"
+          disabled={isJobRunning || !task.enabled}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen(false);
+            onRunNow(e, task.cronJobId);
+          }}
+        >
+          <span className="chat-history-card__menu-item-icon">
+            <PlayCircleIcon size="14px" />
+          </span>
+          <span className="chat-history-card__menu-item-label">
+            {isRunningNow ? t("automationPage.runStatusRunning") : t("automationPage.runNow")}
+          </span>
+        </button>
+      </div>
+      <div className="chat-history-card__menu-row chat-history-card__menu-row--with-divider">
+        <button
+          type="button"
+          role="menuitem"
+          className="chat-history-card__menu-item"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen(false);
+            onEdit(e, task);
+          }}
+        >
+          <span className="chat-history-card__menu-item-icon">
+            <EditIcon size="14px" />
+          </span>
+          <span className="chat-history-card__menu-item-label">{t("automationPage.edit")}</span>
+        </button>
+      </div>
+      <div className="chat-history-card__menu-row chat-history-card__menu-row--with-divider">
+        <button
+          type="button"
+          role="menuitem"
+          className="chat-history-card__menu-item chat-history-card__menu-item--danger"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen(false);
+            onDelete(e, task.cronJobId);
+          }}
+        >
+          <span className="chat-history-card__menu-item-icon">
+            <DeleteIcon size="14px" />
+          </span>
+          <span className="chat-history-card__menu-item-label">{t("automationPage.delete")}</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <AutomationCardShell>
+      <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-3.5 py-3">
+        <span
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--os-accent,#6366f1)_14%,transparent)] text-[var(--os-accent,#6366f1)]"
+          aria-hidden
+        >
+          <Bot size={16} strokeWidth={2} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-[0.88rem] font-semibold text-[var(--os-text)]">
+            {task.name || t("automationPage.unnamed")}
+          </h3>
+        </div>
+        {!task.enabled ? (
+          <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--os-text-muted)_12%,transparent)] px-2 py-0.5 text-[0.62rem] text-[var(--os-text-muted)]">
+            {t("automationPage.disabledBadge")}
+          </span>
+        ) : null}
+        <Popup
+          visible={menuOpen}
+          trigger="click"
+          placement="bottom-end"
+          attach="body"
+          zIndex={5000}
+          destroyOnClose={false}
+          overlayClassName={OS_POPUP_OVERLAY_CLASS}
+          overlayInnerClassName={OS_POPUP_INNER_CLASS}
+          popperOptions={osPopupPopperOptions(6, 8)}
+          content={menuContent}
+          onVisibleChange={setMenuOpen}
+        >
+          <Button
+            type="button"
+            variant="text"
+            shape="square"
+            size="small"
+            className={cn(
+              "shrink-0 text-[var(--os-text-muted)] opacity-0 transition-opacity group-hover:opacity-100",
+              menuOpen && "opacity-100",
+            )}
+            aria-label={t("automationPage.taskMoreActions")}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <MoreIcon size="16px" />
+          </Button>
+        </Popup>
+      </div>
+      <div className="flex flex-1 flex-col gap-2 p-3.5">
+        {task.prompt ? (
+          <p className="line-clamp-3 text-[0.74rem] leading-relaxed text-[var(--os-text-muted)]">{task.prompt}</p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2 text-[0.68rem] text-[var(--os-text-muted)]">
+          <span className="inline-flex items-center gap-1">
+            <Clock size={12} aria-hidden />
+            {scheduleLabel}
+          </span>
+        </div>
+        {errorDetail ? (
+          <p
+            className="line-clamp-2 text-[0.66rem] leading-relaxed text-[var(--os-danger,#ef4444)]"
+            title={errorDetail}
+          >
+            {errorDetail}
+          </p>
+        ) : null}
+        <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+          <AutomationChannelIcon channel={task.channel} className="size-4" />
+          <span className={cn("truncate text-[0.68rem]", statusClass)}>{remainingLabel}</span>
+        </div>
+      </div>
+    </AutomationCardShell>
+  );
+}
+
 export default function AutomationPage() {
   const { t } = useI18n();
   const { agentById } = useStudio();
   const [query, setQuery] = useState("");
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState(
+    /** @type {import("../automation/useAutomationTasks.js").AutomationTaskCard | null} */ (null),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState(/** @type {string | null} */ (null));
   const [runningNowIds, setRunningNowIds] = useState(/** @type {Set<string>} */ (() => new Set()));
-  const { tasks, loading, createTask, removeTask, runTaskNow } = useAutomationTasks();
+  const { tasks, loading, createTask, updateTask, removeTask, runTaskNow } = useAutomationTasks();
   const nowMs = useNowMs();
+  const editingTaskId = useMemo(
+    () =>
+      String(
+        editingTask?.cronJobId ??
+          (editingTask?.meta && typeof editingTask.meta === "object" ? editingTask.meta.cronJobId : "") ??
+          (editingTask?.cronJob && typeof editingTask.cronJob === "object" ? editingTask.cronJob.id : "") ??
+          "",
+      ).trim(),
+    [editingTask],
+  );
+
+  const taskDialogInitialDraft = useMemo(() => {
+    if (!taskDialogOpen) return emptyAutomationTaskDraft();
+    return editingTask ? automationTaskToDraft(editingTask) : emptyAutomationTaskDraft();
+  }, [editingTask, taskDialogOpen]);
 
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -86,24 +293,46 @@ export default function AutomationPage() {
       setSubmitting(true);
       try {
         const message = buildAutomationCronMessage(draft, { agentById });
-        const result = await createTask(draft, message);
-        if (result?.ok) {
-          setTaskDialogOpen(false);
-          showCreateSuccess(t("automationPage.taskCreateSuccess"));
+        const isEdit = Boolean(editingTask);
+        if (isEdit && !editingTaskId) {
+          showCreateError(t("automationPage.taskUpdateFailed", { detail: "missing_job_id" }));
           return;
         }
-        const err = String(result?.error ?? "create_failed");
+        const result = isEdit
+          ? await updateTask(editingTaskId, draft, message)
+          : await createTask(draft, message);
+        if (result?.ok) {
+          setTaskDialogOpen(false);
+          setEditingTask(null);
+          showCreateSuccess(
+            isEdit ? t("automationPage.taskUpdateSuccess") : t("automationPage.taskCreateSuccess"),
+          );
+          return;
+        }
+        const err = String(result?.error ?? (isEdit ? "update_failed" : "create_failed"));
         if (err === "missing_gateway_url") {
           showCreateError(t("chatLab.gatewayUrlMissing"));
+        } else if (err === "channel_change_not_supported") {
+          showCreateError(t("automationPage.taskChannelChangeNotSupported"));
         } else {
-          showCreateError(t("automationPage.taskCreateFailed", { detail: err }));
+          showCreateError(
+            isEdit
+              ? t("automationPage.taskUpdateFailed", { detail: err })
+              : t("automationPage.taskCreateFailed", { detail: err }),
+          );
         }
       } finally {
         setSubmitting(false);
       }
     },
-    [agentById, createTask, showCreateError, showCreateSuccess, t],
+    [agentById, createTask, editingTask, editingTaskId, showCreateError, showCreateSuccess, t, updateTask],
   );
+
+  const handleEdit = useCallback((e, task) => {
+    e.stopPropagation();
+    setEditingTask(task);
+    setTaskDialogOpen(true);
+  }, []);
 
   const handleDelete = useCallback((e, cronJobId) => {
     e.stopPropagation();
@@ -158,7 +387,10 @@ export default function AutomationPage() {
               type="button"
               theme="primary"
               icon={<Plus size={16} />}
-              onClick={() => setTaskDialogOpen(true)}
+              onClick={() => {
+                setEditingTask(null);
+                setTaskDialogOpen(true);
+              }}
             >
               {t("automationPage.heroCreate")}
             </Button>
@@ -200,105 +432,37 @@ export default function AutomationPage() {
           <OsEmpty description={t("automationPage.emptyList")} />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-            {filtered.map((task) => {
-              const meta = task.meta && typeof task.meta === "object" ? task.meta : {};
-              const scheduleLabel = formatAutomationScheduleLabel(meta, t);
-              const channelLabel = formatAutomationChannelLabel(task.channel, t);
-              const statusLabel = formatAutomationTaskStatusLabel(task, nowMs, t);
-              const statusTone = automationTaskStatusTone(task, nowMs);
-              const errorDetail = formatAutomationTaskErrorDetail(task);
-              const isRunningNow = runningNowIds.has(task.cronJobId);
-              const isJobRunning = task.lastRunStatus === "running" || isRunningNow;
-              const statusClass =
-                statusTone === "danger"
-                  ? "text-[var(--os-danger,#ef4444)]"
-                  : statusTone === "success"
-                    ? "text-[color-mix(in_srgb,var(--os-success,#22c55e)_88%,var(--os-text))]"
-                    : statusTone === "accent"
-                      ? "text-[var(--os-accent,#6366f1)]"
-                      : "text-[var(--os-text-muted)]";
-              return (
-                <AutomationCardShell key={task.cronJobId}>
-                  <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-3.5 py-3">
-                    <span
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--os-accent,#6366f1)_14%,transparent)] text-[var(--os-accent,#6366f1)]"
-                      aria-hidden
-                    >
-                      <Bot size={16} strokeWidth={2} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-[0.88rem] font-semibold text-[var(--os-text)]">
-                        {task.name || t("automationPage.unnamed")}
-                      </h3>
-                      <p className="truncate text-[0.68rem] text-[var(--os-text-muted)]">{channelLabel}</p>
-                    </div>
-                    {!task.enabled ? (
-                      <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--os-text-muted)_12%,transparent)] px-2 py-0.5 text-[0.62rem] text-[var(--os-text-muted)]">
-                        {t("automationPage.disabledBadge")}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-1 flex-col gap-2 p-3.5">
-                    {task.prompt ? (
-                      <p className="line-clamp-3 text-[0.74rem] leading-relaxed text-[var(--os-text-muted)]">
-                        {task.prompt}
-                      </p>
-                    ) : null}
-                    <div className="flex flex-wrap items-center gap-2 text-[0.68rem] text-[var(--os-text-muted)]">
-                      <span className="inline-flex items-center gap-1">
-                        <Clock size={12} aria-hidden />
-                        {scheduleLabel}
-                      </span>
-                      <span className={cn("inline-flex items-center gap-1", statusClass)}>
-                        <Radio size={12} aria-hidden />
-                        {statusLabel}
-                      </span>
-                    </div>
-                    {errorDetail ? (
-                      <p
-                        className="line-clamp-2 text-[0.66rem] leading-relaxed text-[var(--os-danger,#ef4444)]"
-                        title={errorDetail}
-                      >
-                        {errorDetail}
-                      </p>
-                    ) : null}
-                    <div className="mt-auto flex items-center justify-end gap-1 pt-2">
-                      <button
-                        type="button"
-                        disabled={isJobRunning || !task.enabled}
-                        className={cn(
-                          "rounded-md px-2 py-0.5 text-[0.68rem] text-[var(--os-text-muted)] opacity-0 transition-opacity group-hover:opacity-100",
-                          "hover:bg-[color-mix(in_srgb,var(--os-accent,#6366f1)_12%,transparent)] hover:text-[var(--os-accent,#6366f1)]",
-                          isJobRunning && "cursor-wait opacity-60",
-                        )}
-                        onClick={(e) => handleRunNow(e, task.cronJobId)}
-                      >
-                        {isRunningNow ? t("automationPage.runStatusRunning") : t("automationPage.runNow")}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md px-2 py-0.5 text-[0.68rem] text-[var(--os-text-muted)] opacity-0 transition-opacity hover:bg-[color-mix(in_srgb,var(--os-danger,#ef4444)_12%,transparent)] hover:text-[var(--os-danger,#ef4444)] group-hover:opacity-100"
-                        onClick={(e) => handleDelete(e, task.cronJobId)}
-                      >
-                        {t("automationPage.delete")}
-                      </button>
-                    </div>
-                  </div>
-                </AutomationCardShell>
-              );
-            })}
+            {filtered.map((task) => (
+              <AutomationTaskCard
+                key={task.cronJobId}
+                task={task}
+                nowMs={nowMs}
+                isRunningNow={runningNowIds.has(task.cronJobId)}
+                onRunNow={handleRunNow}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            ))}
           </div>
         )}
       </div>
 
-      <AutomationTaskDialog
-        open={taskDialogOpen}
-        submitting={submitting}
-        onOpenChange={(open) => {
-          if (!submitting) setTaskDialogOpen(open);
-        }}
-        onSubmit={handleTaskSubmit}
-      />
+      {taskDialogOpen ? (
+        <AutomationTaskDialog
+          key={editingTask ? `__edit__${editingTaskId || "__missing_id__"}` : "__create__"}
+          open
+          submitting={submitting}
+          editingTask={editingTask}
+          initialDraft={taskDialogInitialDraft}
+          onOpenChange={(open) => {
+            if (!submitting) {
+              setTaskDialogOpen(open);
+              if (!open) setEditingTask(null);
+            }
+          }}
+          onSubmit={handleTaskSubmit}
+        />
+      ) : null}
 
       <FluidConfirmDialog
         open={deleteConfirmOpen}

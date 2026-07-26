@@ -12,16 +12,34 @@ export function formatAutomationCountdown(remainingMs, t) {
   if (ms <= 0) return t("automationPage.runStartsNow");
   const totalSec = Math.ceil(ms / 1000);
   if (totalSec < 60) return t("automationPage.runStartsInSeconds", { n: totalSec });
-  const minutes = Math.floor(totalSec / 60);
-  const seconds = totalSec % 60;
-  if (minutes < 60) {
-    if (seconds === 0) return t("automationPage.runStartsInMinutes", { n: minutes });
-    return t("automationPage.runStartsInMinutesSeconds", { min: minutes, sec: seconds });
+  const totalMinutes = Math.ceil(totalSec / 60);
+  if (totalMinutes < 60) return t("automationPage.runStartsInMinutes", { n: totalMinutes });
+  const totalHours = Math.floor(totalMinutes / 60);
+  return t("automationPage.runStartsInHours", { n: Math.max(1, totalHours) });
+}
+
+/**
+ * @param {{
+ *   lastRunStatus?: string;
+ *   nextRunAtMs?: number;
+ *   schedule?: { kind?: string; everyMs?: number; anchorMs?: number };
+ * }} task
+ * @param {number} nowMs
+ * @param {(key: string, vars?: Record<string, unknown>) => string} t
+ */
+export function formatAutomationRemainingLabel(task, nowMs, t) {
+  const status = String(task.lastRunStatus ?? "").trim();
+  if (status === "running") return t("automationPage.runStatusRunning");
+
+  const displayNext = resolveAutomationEffectiveNextRunAtMs(task, nowMs);
+  if (displayNext != null && displayNext > nowMs) {
+    return formatAutomationCountdown(displayNext - nowMs, t);
   }
-  const hours = Math.floor(minutes / 60);
-  const remMinutes = minutes % 60;
-  if (remMinutes === 0) return t("automationPage.runStartsInHours", { n: hours });
-  return t("automationPage.runStartsInHoursMinutes", { hr: hours, min: remMinutes });
+
+  if (status === "error") return t("automationPage.runStatusError");
+  if (status === "skipped") return t("automationPage.runStatusSkipped");
+  if (status === "ok") return t("automationPage.runStatusOk");
+  return t("automationPage.runStatusUnknown");
 }
 
 /**

@@ -85,6 +85,24 @@ export function useAutomationTasks() {
     [refresh],
   );
 
+  const updateTask = useCallback(
+    async (cronJobId, draft, message) => {
+      const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+      if (!bridge?.automationTaskUpdate) return { ok: false, error: "bridge_unavailable" };
+      const id = String(cronJobId ?? "").trim();
+      if (!id) return { ok: false, error: "missing_job_id" };
+      const result = await bridge.automationTaskUpdate({
+        cronJobId: id,
+        draft,
+        message: String(message ?? "").trim(),
+        studioMeta: automationDraftToStudioMeta(draft),
+      });
+      if (result?.ok) await refresh();
+      return result ?? { ok: false, error: "update_failed" };
+    },
+    [refresh],
+  );
+
   const removeTask = useCallback(
     async (cronJobId) => {
       const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
@@ -113,6 +131,7 @@ export function useAutomationTasks() {
     error,
     refresh,
     createTask,
+    updateTask,
     removeTask,
     runTaskNow,
   };
