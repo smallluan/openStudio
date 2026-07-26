@@ -39,10 +39,13 @@ const { createChatSessionsStore } = require("./lib/chat-sessions-store.cjs");
 const { createAutomationTasksStore } = require("./lib/automation-tasks-store.cjs");
 const { buildCronAddParams, buildCronUpdatePatch, resolveCronModelFromProfile, draftToCronSchedule } = require("./lib/automation-cron-bridge.cjs");
 const { resolveAutomationTaskChannel, isStudioOnlyAutomationTaskId } = require("./lib/automation-channel.cjs");
+const { computeNextRunAtMs } = require("./lib/automation-schedule-due.cjs");
 const {
-  computeNextRunAtMs,
-  resolveAutomationDueSlotMs,
-} = require("./lib/automation-schedule-due.cjs");
+  migrateStudioOnlyAutomationTask,
+  syncOpenStudioCronFires,
+} = require("./lib/automation-openstudio-cron.cjs");
+const { syncGatewayCronJobsToAutomationStore } = require("./lib/automation-cron-store-sync.cjs");
+const { resolveAutomationStudioMetaDefaults } = require("./lib/automation-defaults.cjs");
 const {
   listCronJobs,
   addCronJob,
@@ -579,59 +582,13 @@ function buildStudioAutomationTaskCard(meta, nowMs) {
  */
 async function tickOpenStudioAutomationJobs(cfg, wc) {
   if (!automationTasksStore) return;
-
-  const cronJobs = await listCronJobs(cfg).catch(() => []);
-  const cronById = new Map(
-    cronJobs
-      .filter((job) => job && typeof job === "object" && typeof job.id === "string")
-      .map((job) => [job.id, job]),
+  await syncOpenStudioCronFires(
+    cfg,
+    wc,
+    automationTasksStore,
+    emitAutomationStatus,
+    buildAutomationChatPayload,
   );
-
-  const nowMs = Date.now();
-  for (const meta of automationTasksStore.list()) {
-    const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
-    if (!cronJobId) continue;
-    if (resolveAutomationTaskChannel(typeof meta.channel === "string" ? meta.channel : "open-studio") !== "open-studio") {
-      continue;
-    }
-    if (meta.enabled === false) continue;
-
-    const job = cronById.get(cronJobId);
-    if (job && job.enabled) {
-      try {
-        await updateCronJob(cfg, cronJobId, { patch: { enabled: false } });
-      } catch (e) {
-        getStudioLog().warn(
-          "[automation] disable legacy open-studio cron failed",
-          cronJobId,
-          String(e?.message ?? e),
-        );
-      }
-    }
-
-    const schedule =
-      meta.schedule && typeof meta.schedule === "object"
-        ? /** @type {{ kind?: string; everyMs?: number; anchorMs?: number }} */ (meta.schedule)
-        : job?.schedule && typeof job.schedule === "object"
-          ? /** @type {{ kind?: string; everyMs?: number; anchorMs?: number }} */ (job.schedule)
-          : null;
-    const dueSlot = resolveAutomationDueSlotMs(meta, schedule, nowMs);
-    if (!dueSlot) continue;
-
-    const message = String(meta.message ?? meta.prompt ?? "").trim();
-    if (!message) continue;
-
-    emitAutomationStatus(wc, buildAutomationChatPayload({ ...meta, cronJobId, message }));
-    automationTasksStore.upsert({
-      ...meta,
-      cronJobId,
-      message,
-      ...(schedule ? { schedule } : {}),
-      lastStudioFiredAtMs: dueSlot,
-      lastRunStatus: "running",
-      lastRunAtMs: nowMs,
-    });
-  }
 }
 
 /**
@@ -2472,20 +2429,31 @@ app.whenReady().then(async () => {
     try {
       const cfg = userConfigStore.readRaw();
       const cronJobs = await listCronJobs(cfg);
+      syncGatewayCronJobsToAutomationStore(cfg, automationTasksStore, cronJobs);
       const cronById = new Map(
         cronJobs
           .filter((job) => job && typeof job === "object" && typeof job.id === "string")
           .map((job) => [job.id, job]),
       );
       const metaRows = automationTasksStore.list();
-      const keepIds = [...cronById.keys()];
       for (const meta of metaRows) {
         const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
-        if (cronJobId && isStudioOnlyAutomationTaskId(cronJobId)) keepIds.push(cronJobId);
+        if (!cronJobId || !isStudioOnlyAutomationTaskId(cronJobId)) continue;
+        try {
+          await migrateStudioOnlyAutomationTask(cfg, automationTasksStore, meta);
+        } catch (e) {
+          getStudioLog().warn(
+            "[automation] studio-only migration during list failed",
+            cronJobId,
+            String(e?.message ?? e),
+          );
+        }
       }
+      const refreshedMetaRows = automationTasksStore.list();
+      const keepIds = [...cronById.keys()];
       automationTasksStore.pruneMissing(keepIds);
 
-      for (const meta of metaRows) {
+      for (const meta of refreshedMetaRows) {
         const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
         if (!cronJobId) continue;
         const job = cronById.get(cronJobId);
@@ -2535,7 +2503,7 @@ app.whenReady().then(async () => {
       }
 
       const nowMs = Date.now();
-      const tasks = metaRows
+      const tasks = refreshedMetaRows
         .map((meta) => {
           const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
           if (!cronJobId) return null;
@@ -2646,40 +2614,30 @@ app.whenReady().then(async () => {
             : "open-studio",
       );
 
-      if (channel === "open-studio") {
-        const cronJobId = `studio:${randomUUID()}`;
-        const createdAtMs = Date.now();
-        const schedule = draftToCronSchedule(draft);
-        /** @type {Record<string, unknown>} */
-        const storedSchedule = { ...schedule };
-        if (schedule.kind === "every") {
-          const everyMs = Number(schedule.everyMs);
-          if (Number.isFinite(everyMs) && everyMs > 0) {
-            storedSchedule.anchorMs = createdAtMs + everyMs;
-          }
-        }
-        automationTasksStore.upsert({
-          cronJobId,
-          ...studioMeta,
-          channel: "open-studio",
-          message,
-          schedule: storedSchedule,
-          createdAtMs,
-          enabled: true,
-          name: typeof studioMeta.name === "string" ? studioMeta.name : String(draft.name ?? ""),
-          prompt: typeof studioMeta.prompt === "string" ? studioMeta.prompt : String(draft.prompt ?? ""),
-        });
-        return { ok: true, cronJobId };
-      }
-
-      const jobCreate = buildCronAddParams(cfg, draft, message);
+      const jobCreate = buildCronAddParams(cfg, { ...draft, channel }, message);
       const job = await addCronJob(cfg, jobCreate);
       const cronJobId = typeof job?.id === "string" ? job.id.trim() : "";
       if (!cronJobId) return { ok: false, error: "missing_job_id" };
+      const createdAtMs = Date.now();
+      const schedule = draftToCronSchedule(draft);
+      /** @type {Record<string, unknown>} */
+      const storedSchedule = { ...schedule };
+      if (schedule.kind === "every") {
+        const everyMs = Number(schedule.everyMs);
+        if (Number.isFinite(everyMs) && everyMs > 0) {
+          storedSchedule.anchorMs = createdAtMs + everyMs;
+        }
+      }
       automationTasksStore.upsert({
         cronJobId,
         ...studioMeta,
+        ...resolveAutomationStudioMetaDefaults(cfg, studioMeta),
+        channel,
         message,
+        schedule: storedSchedule,
+        createdAtMs,
+        enabled: true,
+        importedFromGateway: false,
         name: typeof studioMeta.name === "string" ? studioMeta.name : String(draft.name ?? ""),
         prompt: typeof studioMeta.prompt === "string" ? studioMeta.prompt : String(draft.prompt ?? ""),
       });
@@ -2718,6 +2676,17 @@ app.whenReady().then(async () => {
       const name = typeof studioMeta.name === "string" ? studioMeta.name : String(draft.name ?? "");
       const prompt = typeof studioMeta.prompt === "string" ? studioMeta.prompt : String(draft.prompt ?? "");
 
+      let effectiveCronJobId = cronJobId;
+      let effectiveExisting = existing;
+
+      if (isStudioOnlyAutomationTaskId(cronJobId)) {
+        const migrated = await migrateStudioOnlyAutomationTask(cfg, automationTasksStore, existing);
+        if (!migrated) return { ok: false, error: "not_found" };
+        effectiveCronJobId = String(migrated.cronJobId ?? "").trim();
+        effectiveExisting = migrated;
+        if (!effectiveCronJobId) return { ok: false, error: "missing_job_id" };
+      }
+
       const buildStoredSchedule = (existingSchedule) => {
         const schedule = draftToCronSchedule(draft);
         /** @type {Record<string, unknown>} */
@@ -2739,97 +2708,22 @@ app.whenReady().then(async () => {
         return storedSchedule;
       };
 
-      if (nextChannel !== prevChannel) {
-        const wasStudioOnly = isStudioOnlyAutomationTaskId(cronJobId);
-
-        if (wasStudioOnly && nextChannel === "wechat") {
-          const jobCreate = buildCronAddParams(cfg, draft, message);
-          const job = await addCronJob(cfg, jobCreate);
-          const newCronJobId = typeof job?.id === "string" ? job.id.trim() : "";
-          if (!newCronJobId) return { ok: false, error: "missing_job_id" };
-          automationTasksStore.deleteOne(cronJobId);
-          automationTasksStore.upsert({
-            ...existing,
-            cronJobId: newCronJobId,
-            ...studioMeta,
-            channel: "wechat",
-            message,
-            name,
-            prompt,
-          });
-          return { ok: true, cronJobId: newCronJobId };
-        }
-
-        if (!wasStudioOnly && nextChannel === "open-studio") {
-          const newCronJobId = `studio:${randomUUID()}`;
-          const storedSchedule = buildStoredSchedule(existing.schedule);
-          try {
-            await removeCronJob(cfg, cronJobId);
-          } catch (e) {
-            getStudioLog().warn(
-              "[automation] remove cron on channel migrate failed",
-              cronJobId,
-              String(e?.message ?? e),
-            );
-          }
-          automationTasksStore.deleteOne(cronJobId);
-          automationTasksStore.upsert({
-            ...existing,
-            cronJobId: newCronJobId,
-            ...studioMeta,
-            channel: "open-studio",
-            message,
-            schedule: storedSchedule,
-            name,
-            prompt,
-          });
-          return { ok: true, cronJobId: newCronJobId };
-        }
-
-        if (!wasStudioOnly) {
-          const patch = buildCronUpdatePatch(cfg, draft, message);
-          await updateCronJob(cfg, cronJobId, { patch });
-          automationTasksStore.upsert({
-            ...existing,
-            cronJobId,
-            ...studioMeta,
-            channel: nextChannel,
-            message,
-            name,
-            prompt,
-          });
-          return { ok: true, cronJobId };
-        }
-
-        return { ok: false, error: "channel_change_not_supported" };
-      }
-
-      if (nextChannel === "open-studio" || isStudioOnlyAutomationTaskId(cronJobId)) {
-        const storedSchedule = buildStoredSchedule(existing.schedule);
-        automationTasksStore.upsert({
-          ...existing,
-          cronJobId,
-          ...studioMeta,
-          channel: "open-studio",
-          message,
-          schedule: storedSchedule,
-          name,
-          prompt,
-        });
-        return { ok: true, cronJobId };
-      }
-
-      const patch = buildCronUpdatePatch(cfg, draft, message);
-      await updateCronJob(cfg, cronJobId, { patch });
+      const storedSchedule = buildStoredSchedule(effectiveExisting.schedule);
+      const patch = buildCronUpdatePatch(cfg, { ...draft, channel: nextChannel }, message);
+      await updateCronJob(cfg, effectiveCronJobId, { patch });
       automationTasksStore.upsert({
-        ...existing,
-        cronJobId,
+        ...effectiveExisting,
+        cronJobId: effectiveCronJobId,
         ...studioMeta,
+        ...resolveAutomationStudioMetaDefaults(cfg, { ...effectiveExisting, ...studioMeta }),
+        channel: nextChannel,
         message,
+        schedule: storedSchedule,
+        importedFromGateway: false,
         name,
         prompt,
       });
-      return { ok: true, cronJobId };
+      return { ok: true, cronJobId: effectiveCronJobId };
     } catch (e) {
       return { ok: false, error: formatGatewayCronError(e) };
     }

@@ -1,3 +1,5 @@
+import { MAIN_AGENT_STUDIO_ID } from "../studio/agents.js";
+
 /**
  * @param {number} everyMs
  */
@@ -172,7 +174,7 @@ export function automationTaskToDraft(task) {
   const prompt = pickFirstNonEmptyText([task.prompt, meta.prompt, storedMessage, payloadMessage]);
   const channel = resolveDraftChannel([task.channel, meta.channel, "open-studio"]);
   const modelId = pickFirstNonEmptyText([meta.modelProfileId]);
-  const agentId = pickFirstNonEmptyText([meta.agentId]);
+  const agentId = pickFirstNonEmptyText([meta.agentId, MAIN_AGENT_STUDIO_ID]);
   const workflowId = pickFirstNonEmptyText([meta.workflowId]);
 
   return {

@@ -315,20 +315,20 @@ export default function AutomationTaskDialog({
   }, [channelOptions, isEditMode, open]);
 
   useEffect(() => {
-    if (!open || isEditMode) return;
+    if (!open) return;
     const globalActiveId = typeof config?.activeModelProfileId === "string" ? config.activeModelProfileId.trim() : "";
     const next =
       enabledModelOptions.some((o) => o.value === globalActiveId)
         ? globalActiveId
         : (enabledModelOptions[0]?.value ?? "");
     setDraft((prev) => (prev.modelId ? prev : { ...prev, modelId: next }));
-  }, [config?.activeModelProfileId, enabledModelOptions, isEditMode, open]);
+  }, [config?.activeModelProfileId, enabledModelOptions, open]);
 
   useEffect(() => {
-    if (!open || isEditMode) return;
+    if (!open) return;
     const defaultAgentId = mainAgent?.id ?? agents[0]?.id ?? "";
     setDraft((prev) => (prev.agentId ? prev : { ...prev, agentId: defaultAgentId }));
-  }, [agents, isEditMode, mainAgent?.id, open]);
+  }, [agents, mainAgent?.id, open]);
 
   const patchDraft = useCallback((patch) => {
     setDraft((prev) => ({ ...prev, ...patch }));
