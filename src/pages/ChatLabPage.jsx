@@ -1787,15 +1787,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     return () => window.removeEventListener("openstudio-chat-sessions-changed", bump);
   }, []);
 
-  const headerTitle = useMemo(() => {
-    void sessionTitleBump;
-    const id = conversationId;
-    if (!id) return "";
-    const rec = getSession(id);
-    if (rec?.title) return rec.title;
-    return deriveTitleFromMessages(messages, { imageFallback: t("chatLab.chatUntitledImage") });
-  }, [conversationId, messages, sessionTitleBump, t]);
-
   const automationTaskSession = useMemo(() => {
     void sessionTitleBump;
     const id = conversationId;
@@ -5263,7 +5254,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
             {isLanding ? (
               <>
                 <ChatLabConvHeader
-                  headerTitle={headerTitle}
                   conversationId={conversationId}
                   messages={messages}
                   messagesScrollRef={messagesScrollRef}
@@ -5292,7 +5282,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
             ) : (
               <div className="chat-lab__thread-stack">
                 <ChatLabThreadNav
-                  headerTitle={headerTitle}
                   conversationId={conversationId}
                   messages={messages}
                   messagesScrollRef={messagesScrollRef}

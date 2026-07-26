@@ -12,7 +12,6 @@ import ChatLabParticipantBar from "./ChatLabParticipantBar.jsx";
  * Conversation title bar with group members and turn-navigation icons.
  * Always visible so users can pull agents in before the first message.
  * @param {{
- *   headerTitle: string;
  *   conversationId?: string | null;
  *   messages: unknown[];
  *   messagesScrollRef?: import("react").RefObject<HTMLDivElement | null>;
@@ -31,7 +30,6 @@ import ChatLabParticipantBar from "./ChatLabParticipantBar.jsx";
  * }} props
  */
 export default function ChatLabConvHeader({
-  headerTitle,
   conversationId = null,
   messages,
   messagesScrollRef,
@@ -150,11 +148,6 @@ export default function ChatLabConvHeader({
 
   return (
     <header className="chat-lab__conv-header" onPointerDown={handleHeaderPointerDown}>
-      {headerTitle ? (
-        <h2 className="chat-lab__conv-title">{headerTitle}</h2>
-      ) : (
-        <div className="chat-lab__conv-title chat-lab__conv-title--empty" aria-hidden />
-      )}
       <div className="chat-lab__header-actions" onPointerDown={(e) => e.stopPropagation()}>
         {showParticipants ? (
           <ChatLabParticipantBar

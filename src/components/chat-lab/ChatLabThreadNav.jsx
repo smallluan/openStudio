@@ -12,7 +12,6 @@ import ChatLabConvHeader from "./ChatLabConvHeader.jsx";
 
 /**
  * @param {{
- *   headerTitle: string;
  *   conversationId?: string | null;
  *   messages: unknown[];
  *   messagesScrollRef: import("react").RefObject<HTMLDivElement | null>;
@@ -30,7 +29,6 @@ import ChatLabConvHeader from "./ChatLabConvHeader.jsx";
  * }} props
  */
 export default function ChatLabThreadNav({
-  headerTitle,
   conversationId = null,
   messages,
   messagesScrollRef,
@@ -112,7 +110,6 @@ export default function ChatLabThreadNav({
   }, [autoScrollRef, messagesScrollRef, syncScrollUi, threadScrollApiRef]);
 
   const convHeaderProps = {
-    headerTitle,
     conversationId,
     messages,
     messagesScrollRef,

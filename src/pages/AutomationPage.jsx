@@ -1,13 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
 import { DeleteIcon, EditIcon, MoreIcon, PlayCircleIcon } from "tdesign-icons-react";
-import { MessagePlugin, Popup } from "tdesign-react";
+import { MessagePlugin, Popup, Tabs } from "tdesign-react";
 import "tdesign-react/es/message/style/index.css";
-import { Bot, Clock, Plus } from "lucide-react";
+import { Clock, History, LayoutGrid, Plus, Archive } from "lucide-react";
 import OsEmpty from "../ui/OsEmpty.jsx";
 import AutomationTaskDialog from "../components/automation/AutomationTaskDialog.jsx";
 import FluidConfirmDialog from "../ui/FluidConfirmDialog.jsx";
 import taskHero from "../assets/images/task-hero.png";
+import clockIcon from "../assets/images/clock.png";
 import heroAvatarLight from "../assets/images/hero-avatar-light.png";
 import heroAvatarDark from "../assets/images/hero-avatar-dark.png";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
@@ -30,6 +31,23 @@ import {
 } from "../automation/formatAutomationTaskStatus.js";
 import { useAutomationTasks } from "../automation/useAutomationTasks.js";
 import { useNowMs } from "../automation/useNowMs.js";
+import {
+  AUTOMATION_TASK_TAB_ALL,
+  AUTOMATION_TASK_TAB_EXPIRED,
+  AUTOMATION_TASK_TAB_RECENT,
+  AUTOMATION_TASK_TAB_UPCOMING,
+  matchesAutomationTaskTab,
+} from "../automation/automationTaskFilters.js";
+
+/** @param {{ icon: import("lucide-react").LucideIcon; label: string }} props */
+function AutomationTaskTabLabel({ icon: Icon, label }) {
+  return (
+    <span className="automation-page__task-tab-label">
+      <Icon size={14} strokeWidth={2} aria-hidden />
+      <span>{label}</span>
+    </span>
+  );
+}
 
 /** @param {{ className?: string; children: React.ReactNode }} props */
 function AutomationCardShell({ className, children }) {
@@ -154,12 +172,14 @@ function AutomationTaskCard({ task, nowMs, isRunningNow, onRunNow, onEdit, onDel
   return (
     <AutomationCardShell>
       <div className="flex items-center gap-2 border-b border-[color-mix(in_srgb,var(--os-border)_45%,transparent)] px-3.5 py-3">
-        <span
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--os-accent,#6366f1)_14%,transparent)] text-[var(--os-accent,#6366f1)]"
+        <img
+          src={clockIcon}
+          alt=""
+          className="h-6 w-6 shrink-0 object-contain"
+          width={24}
+          height={24}
           aria-hidden
-        >
-          <Bot size={16} strokeWidth={2} />
-        </span>
+        />
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-[0.88rem] font-semibold text-[var(--os-text)]">
             {task.name || t("automationPage.unnamed")}
@@ -202,9 +222,12 @@ function AutomationTaskCard({ task, nowMs, isRunningNow, onRunNow, onEdit, onDel
         </Popup>
       </div>
       <div className="flex flex-1 flex-col gap-2 p-3.5">
-        {task.prompt ? (
-          <p className="line-clamp-3 text-[0.74rem] leading-relaxed text-[var(--os-text-muted)]">{task.prompt}</p>
-        ) : null}
+        <p
+          className="line-clamp-2 h-[calc(0.74rem*1.625*2)] shrink-0 text-[0.74rem] leading-relaxed text-[var(--os-text-muted)]"
+          title={task.prompt || undefined}
+        >
+          {task.prompt || "\u00A0"}
+        </p>
         <div className="flex flex-wrap items-center gap-2 text-[0.68rem] text-[var(--os-text-muted)]">
           <span className="inline-flex items-center gap-1">
             <Clock size={12} aria-hidden />
@@ -232,6 +255,7 @@ export default function AutomationPage() {
   const { t } = useI18n();
   const { agentById } = useStudio();
   const [query, setQuery] = useState("");
+  const [taskTab, setTaskTab] = useState(AUTOMATION_TASK_TAB_ALL);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(
     /** @type {import("../automation/useAutomationTasks.js").AutomationTaskCard | null} */ (null),
@@ -260,13 +284,50 @@ export default function AutomationPage() {
 
   const normalizedQuery = query.trim().toLowerCase();
 
+  const taskTabs = useMemo(
+    () => [
+      {
+        value: AUTOMATION_TASK_TAB_ALL,
+        label: <AutomationTaskTabLabel icon={LayoutGrid} label={t("automationPage.tabAll")} />,
+      },
+      {
+        value: AUTOMATION_TASK_TAB_EXPIRED,
+        label: <AutomationTaskTabLabel icon={Archive} label={t("automationPage.tabExpired")} />,
+      },
+      {
+        value: AUTOMATION_TASK_TAB_UPCOMING,
+        label: <AutomationTaskTabLabel icon={Clock} label={t("automationPage.tabUpcoming")} />,
+      },
+      {
+        value: AUTOMATION_TASK_TAB_RECENT,
+        label: <AutomationTaskTabLabel icon={History} label={t("automationPage.tabRecent")} />,
+      },
+    ],
+    [t],
+  );
+
   const filtered = useMemo(() => {
-    if (!normalizedQuery) return tasks;
     return tasks.filter((task) => {
+      if (!matchesAutomationTaskTab(task, taskTab, nowMs)) return false;
+      if (!normalizedQuery) return true;
       const hay = `${task.name} ${task.prompt} ${task.channel}`.toLowerCase();
       return hay.includes(normalizedQuery);
     });
-  }, [tasks, normalizedQuery]);
+  }, [tasks, normalizedQuery, taskTab, nowMs]);
+
+  const emptyDescription = useMemo(() => {
+    if (normalizedQuery) return t("automationPage.emptySearch");
+    switch (taskTab) {
+      case AUTOMATION_TASK_TAB_EXPIRED:
+        return t("automationPage.emptyExpired");
+      case AUTOMATION_TASK_TAB_UPCOMING:
+        return t("automationPage.emptyUpcoming");
+      case AUTOMATION_TASK_TAB_RECENT:
+        return t("automationPage.emptyRecent");
+      default:
+        return t("automationPage.emptyList");
+    }
+  }, [normalizedQuery, taskTab, t]);
 
   const showCreateError = useCallback((content) => {
     MessagePlugin.error({
@@ -406,7 +467,14 @@ export default function AutomationPage() {
       </section>
 
       <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-[1.05rem] font-semibold text-[var(--os-text)]">{t("automationPage.listTitle")}</h2>
+        <div className="min-w-0 shrink-0">
+          <Tabs
+            className="automation-page__task-tabs"
+            value={taskTab}
+            list={taskTabs}
+            onChange={(value) => setTaskTab(String(value))}
+          />
+        </div>
         <div className="w-full min-w-[220px] max-w-md sm:w-72">
           <Input
             type="search"
@@ -429,7 +497,7 @@ export default function AutomationPage() {
         {loading ? (
           <p className="text-[0.82rem] text-[var(--os-text-muted)]">{t("automationPage.loading")}</p>
         ) : filtered.length === 0 ? (
-          <OsEmpty description={t("automationPage.emptyList")} />
+          <OsEmpty description={emptyDescription} />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filtered.map((task) => (

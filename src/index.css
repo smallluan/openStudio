@@ -308,6 +308,47 @@ code {
   min-width: 7.5rem;
 }
 
+.automation-page__task-tabs.t-tabs {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.automation-page__task-tabs .t-tabs__content {
+  display: none;
+}
+
+.automation-page__task-tabs .t-tabs__header {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.automation-page__task-tabs .t-tabs__nav-container {
+  width: fit-content;
+  max-width: 100%;
+  border-bottom: none;
+}
+
+.automation-page__task-tabs .t-tabs__nav-container::after {
+  display: none;
+}
+
+.automation-page__task-tabs .t-tabs__nav-wrap {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.automation-page__task-tabs .t-tabs__nav-item-text {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.automation-page__task-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
 .os-image-view-dialog .t-dialog__mask {
   background: rgba(0, 0, 0, 0.88);
 }
@@ -6816,7 +6857,7 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.75rem;
   min-height: var(--os-titlebar-height);
   margin: 0 -1.25rem 0.65rem;
