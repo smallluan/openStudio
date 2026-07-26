@@ -153,6 +153,7 @@ import Avatar from "../ui/Avatar.jsx";
 import { lastHtmlFenceAsSrcDocDocument } from "../chat/chatLabDocumentPreview.js";
 import { collectSessionArtifacts } from "../chat/chatLabSessionArtifacts.js";
 import ChatLabArtifactsBar from "../components/chat-lab/ChatLabArtifactsBar.jsx";
+import ChatLabMentionAvatarGroup from "../components/chat-lab/ChatLabMentionAvatarGroup.jsx";
 import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
 import {
   ComposerSkillToolbarPicker,
@@ -198,11 +199,66 @@ const CHAT_AUTO_SCROLL_BOTTOM_PX = 96;
 const RAW_TRACE_MAX_ROUNDS = 24;
 const RAW_TRACE_MAX_EVENTS_PER_ROUND = 240;
 
-/** @param {HTMLElement | null} el @param {import("react").MutableRefObject<boolean>} autoScrollRef */
-function syncChatAutoScrollFromEl(el, autoScrollRef) {
+/**
+ * @param {HTMLElement | null} el
+ * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {import("react").MutableRefObject<boolean>} userOptedOutRef
+ * @param {{ streamingActive?: boolean; lastScrollTopRef?: import("react").MutableRefObject<number> }} [opts]
+ */
+function syncChatAutoScrollFromEl(el, autoScrollRef, userOptedOutRef, opts = {}) {
   if (!el) return;
+  if (opts.lastScrollTopRef) {
+    const scrolledUp = el.scrollTop < opts.lastScrollTopRef.current - 2;
+    opts.lastScrollTopRef.current = el.scrollTop;
+    if (opts.streamingActive && scrolledUp) {
+      userOptedOutRef.current = true;
+    }
+  }
   const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-  autoScrollRef.current = distFromBottom < CHAT_AUTO_SCROLL_BOTTOM_PX;
+  const threshold = opts.streamingActive
+    ? CHAT_AUTO_SCROLL_BOTTOM_PX * 3
+    : CHAT_AUTO_SCROLL_BOTTOM_PX;
+  if (distFromBottom < threshold) {
+    userOptedOutRef.current = false;
+    autoScrollRef.current = true;
+    return;
+  }
+  // While streaming, keep pinning unless the user explicitly scrolled away.
+  if (!opts.streamingActive || userOptedOutRef.current) {
+    autoScrollRef.current = false;
+  }
+}
+
+/**
+ * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {boolean} streamingActive
+ */
+function useChatThreadScrollPin(autoScrollRef, streamingActive) {
+  const userOptedOutRef = useRef(false);
+  const lastScrollTopRef = useRef(0);
+
+  const onUserScrollAway = useCallback(() => {
+    userOptedOutRef.current = true;
+    autoScrollRef.current = false;
+  }, [autoScrollRef]);
+
+  const armPin = useCallback(() => {
+    userOptedOutRef.current = false;
+    autoScrollRef.current = true;
+    lastScrollTopRef.current = 0;
+  }, [autoScrollRef]);
+
+  const syncFromScroll = useCallback(
+    (el) => {
+      syncChatAutoScrollFromEl(el, autoScrollRef, userOptedOutRef, {
+        streamingActive,
+        lastScrollTopRef,
+      });
+    },
+    [autoScrollRef, streamingActive, userOptedOutRef],
+  );
+
+  return { userOptedOutRef, onUserScrollAway, armPin, syncFromScroll, lastScrollTopRef };
 }
 
 /**
@@ -232,6 +288,58 @@ function forcePinChatScroll(el) {
     apply();
     requestAnimationFrame(apply);
   });
+}
+
+/**
+ * Re-pin transcript when bubble layout grows (markdown, images, virtual remeasure).
+ * @param {import("react").RefObject<HTMLDivElement | null>} scrollRef
+ * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {unknown} contentDigest
+ * @param {() => void} pinNow
+ */
+function usePinChatOnContentGrowth(scrollRef, autoScrollRef, contentDigest, pinNow) {
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    const pin = () => {
+      if (!autoScrollRef.current) return;
+      pinNow();
+    };
+    pin();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(pin) : null;
+    if (!ro) return undefined;
+    const watch = (node) => {
+      if (node instanceof Element) ro.observe(node);
+    };
+    watch(el);
+    for (const child of el.children) watch(child);
+    el.querySelectorAll(".chat-lab__messages-vtrack, .chat-lab__msg-vrow").forEach(watch);
+    return () => ro.disconnect();
+  }, [scrollRef, autoScrollRef, contentDigest, pinNow]);
+}
+
+/**
+ * While the model is still outputting, keep correcting drift from async layout (charts, mermaid).
+ * @param {boolean} active
+ * @param {import("react").RefObject<HTMLDivElement | null>} scrollRef
+ * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {() => void} pinNow
+ */
+function useStreamingChatPinLoop(active, scrollRef, autoScrollRef, pinNow) {
+  useEffect(() => {
+    if (!active) return undefined;
+    let raf = 0;
+    const tick = () => {
+      const el = scrollRef.current;
+      if (autoScrollRef.current && el) {
+        const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (distFromBottom > 1) pinNow();
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [active, scrollRef, autoScrollRef, pinNow]);
 }
 
 /** Distance from bottom (px) within which nested trace panels stay pinned during streaming. */
@@ -7948,14 +8056,7 @@ const MessageBubble = memo(function MessageBubble({
           )}
           aria-label={t("chatLab.messageMentionsAria")}
         >
-          {mentionAgents.map((a) => (
-            <span key={a.label} className="chat-lab__msg-mention-pill">
-              <span className="chat-lab__msg-mention-glyph" aria-hidden>
-                {a.glyph}
-              </span>
-              <span className="chat-lab__msg-mention-label">@{a.label}</span>
-            </span>
-          ))}
+          <ChatLabMentionAvatarGroup agents={mentionAgents} />
         </div>
       ) : null}
       {isUser || !bubbleStreaming ? (
@@ -8288,36 +8389,47 @@ function ChatLabPlainMessageList({
     return null;
   }, [messages]);
   const messagesMeasureDigest = useMemo(
-    () => `${buildMessagesMeasureDigest(messages)}|${renderItems.length}`,
-    [messages, renderItems.length],
+    () =>
+      `${buildMessagesMeasureDigest(messages)}|${renderItems.length}|${buildGatewaySlicesDigest(gatewayStreamSlices)}`,
+    [messages, renderItems.length, gatewayStreamSlices],
+  );
+  const streamingPinActive = gatewayStreaming || messages.some((m) => Boolean(m.streaming));
+  const { onUserScrollAway, armPin, syncFromScroll } = useChatThreadScrollPin(
+    autoScrollRef,
+    streamingPinActive,
   );
   const scrollPinKey = renderItems.length
-    ? `${conversationId}:${renderItems.length}:${renderItemDomKey(renderItems[renderItems.length - 1])}:${gatewayStreaming ? 1 : 0}`
+    ? `${conversationId}:${renderItems.length}:${renderItemDomKey(renderItems[renderItems.length - 1])}:${streamingPinActive ? 1 : 0}`
     : "";
 
   const handleScroll = useCallback(() => {
-    syncChatAutoScrollFromEl(messagesScrollRef.current, autoScrollRef);
-  }, [messagesScrollRef, autoScrollRef]);
-
-  const onUserScrollIntent = useCallback(() => {
-    autoScrollRef.current = false;
-  }, [autoScrollRef]);
+    syncFromScroll(messagesScrollRef.current);
+  }, [messagesScrollRef, syncFromScroll]);
 
   const pinScrollRafRef = useRef(/** @type {number | null} */ (null));
+  const pinPlainNow = useCallback(() => {
+    const el = messagesScrollRef.current;
+    if (!el || !autoScrollRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [autoScrollRef, messagesScrollRef]);
   const pinScrollToBottom = useCallback(() => {
     if (messages.length === 0) return;
     schedulePinChatScroll(messagesScrollRef.current, autoScrollRef, pinScrollRafRef);
   }, [autoScrollRef, messages.length, messagesScrollRef]);
 
-  useLayoutEffect(() => {
-    if (!conversationId || messages.length === 0) return;
-    autoScrollRef.current = true;
-    forcePinChatScroll(messagesScrollRef.current);
-  }, [autoScrollRef, conversationId, messages.length, messagesScrollRef]);
+  usePinChatOnContentGrowth(messagesScrollRef, autoScrollRef, messagesMeasureDigest, pinPlainNow);
+  useStreamingChatPinLoop(streamingPinActive, messagesScrollRef, autoScrollRef, pinPlainNow);
 
   useLayoutEffect(() => {
+    if (!conversationId || messages.length === 0) return;
+    armPin();
+    forcePinChatScroll(messagesScrollRef.current);
+  }, [armPin, conversationId, messages.length, messagesScrollRef]);
+
+  useLayoutEffect(() => {
+    armPin();
     pinScrollToBottom();
-  }, [scrollPinKey, pinScrollToBottom]);
+  }, [scrollPinKey, armPin, pinScrollToBottom]);
 
   useLayoutEffect(() => {
     pinScrollToBottom();
@@ -8346,11 +8458,11 @@ function ChatLabPlainMessageList({
         });
       },
       pinToBottom: () => {
-        autoScrollRef.current = true;
+        armPin();
         forcePinChatScroll(messagesScrollRef.current);
       },
       scrollToBottom: ({ animated = true } = {}) => {
-        autoScrollRef.current = true;
+        armPin();
         const el = messagesScrollRef.current;
         if (!el) return;
         if (animated) {
@@ -8366,22 +8478,15 @@ function ChatLabPlainMessageList({
         threadScrollApiRef.current = null;
       }
     };
-  }, [messages, messagesScrollRef, threadScrollApiRef]);
+  }, [armPin, messages, messagesScrollRef, threadScrollApiRef]);
 
   return (
     <div
       className="chat-lab__messages"
       ref={messagesScrollRef}
       onScroll={handleScroll}
-      onPointerDown={(e) => {
-        if (e.button !== 0) return;
-        const target = /** @type {HTMLElement} */ (e.target);
-        if (target.closest("a,button,input,textarea,select,[role='button'],[contenteditable='true']")) return;
-        onUserScrollIntent();
-      }}
-      onTouchStart={onUserScrollIntent}
       onWheel={(e) => {
-        if (e.deltaY < 0) onUserScrollIntent();
+        if (e.deltaY < 0) onUserScrollAway();
       }}
       role="log"
       aria-live="polite"
@@ -8482,6 +8587,7 @@ function ChatLabVirtualMessageList({
   autoScrollRef,
   threadScrollApiRef,
   gatewayStreaming,
+  gatewayStreamSlices = [],
   streamLocked,
   userBubbleEnterMessageId,
   onUserBubbleEnterAnimEnd,
@@ -8534,8 +8640,14 @@ function ChatLabVirtualMessageList({
   }, []);
 
   const messagesMeasureDigest = useMemo(
-    () => `${buildMessagesMeasureDigest(messages)}|${renderItems.length}`,
-    [messages, renderItems.length],
+    () =>
+      `${buildMessagesMeasureDigest(messages)}|${renderItems.length}|${buildGatewaySlicesDigest(gatewayStreamSlices)}`,
+    [messages, renderItems.length, gatewayStreamSlices],
+  );
+  const streamingPinActive = gatewayStreaming || messages.some((m) => Boolean(m.streaming));
+  const { onUserScrollAway, armPin, syncFromScroll } = useChatThreadScrollPin(
+    autoScrollRef,
+    streamingPinActive,
   );
   const prevGatewayStreamingRef = useRef(gatewayStreaming);
 
@@ -8612,24 +8724,43 @@ function ChatLabVirtualMessageList({
     }, delayMs);
   }, []);
 
-  const onUserScrollIntent = useCallback(() => {
-    autoScrollRef.current = false;
+  const pinVirtualRafRef = useRef(/** @type {number | null} */ (null));
+  const pinVirtualToBottom = useCallback(() => {
+    if (!autoScrollRef.current || renderItemsRef.current.length === 0) return;
+    const run = () => {
+      if (!autoScrollRef.current) return;
+      const count = renderItemsRef.current.length;
+      if (count === 0) return;
+      vInstRef.current.measure();
+      vInstRef.current.scrollToIndex(count - 1, { align: "end", behavior: "instant" });
+    };
+    run();
+    if (pinVirtualRafRef.current != null) return;
+    pinVirtualRafRef.current = requestAnimationFrame(() => {
+      pinVirtualRafRef.current = null;
+      run();
+      requestAnimationFrame(run);
+    });
   }, [autoScrollRef]);
 
   const handleScroll = useCallback(() => {
-    syncChatAutoScrollFromEl(messagesScrollRef.current, autoScrollRef);
+    syncFromScroll(messagesScrollRef.current);
     syncScrollbarMetrics();
     setScrollbarVisible(true);
     scheduleScrollbarHide();
-  }, [messagesScrollRef, autoScrollRef, scheduleScrollbarHide, syncScrollbarMetrics]);
+  }, [messagesScrollRef, syncFromScroll, scheduleScrollbarHide, syncScrollbarMetrics]);
+
+  usePinChatOnContentGrowth(messagesScrollRef, autoScrollRef, messagesMeasureDigest, pinVirtualToBottom);
+  useStreamingChatPinLoop(streamingPinActive, messagesScrollRef, autoScrollRef, pinVirtualToBottom);
 
   const scrollPinKey = renderItems.length
-    ? `${conversationId}:${renderItems.length}:${renderItemDomKey(renderItems[renderItems.length - 1])}:${gatewayStreaming ? 1 : 0}`
+    ? `${conversationId}:${renderItems.length}:${renderItemDomKey(renderItems[renderItems.length - 1])}:${streamingPinActive ? 1 : 0}`
     : "";
 
   useEffect(
     () => () => {
       if (scrollFadeTimerRef.current != null) window.clearTimeout(scrollFadeTimerRef.current);
+      if (pinVirtualRafRef.current != null) cancelAnimationFrame(pinVirtualRafRef.current);
     },
     [],
   );
@@ -8658,6 +8789,7 @@ function ChatLabVirtualMessageList({
       if (scrollRange <= 0 || thumbTravel <= 0) return;
       e.preventDefault();
       e.stopPropagation();
+      onUserScrollAway();
       scrollbarDraggingRef.current = true;
       setScrollbarVisible(true);
       if (scrollFadeTimerRef.current != null) {
@@ -8680,7 +8812,7 @@ function ChatLabVirtualMessageList({
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [messagesScrollRef, scheduleScrollbarHide, scrollbarMetrics],
+    [messagesScrollRef, onUserScrollAway, scheduleScrollbarHide, scrollbarMetrics],
   );
 
   useLayoutEffect(() => {
@@ -8695,13 +8827,6 @@ function ChatLabVirtualMessageList({
       window.removeEventListener("resize", syncScrollbarMetrics);
     };
   }, [messagesScrollRef, syncScrollbarMetrics]);
-
-  const pinVirtualToBottom = useCallback(() => {
-    const count = renderItemsRef.current.length;
-    if (!autoScrollRef.current || count === 0) return;
-    vInstRef.current.measure();
-    vInstRef.current.scrollToIndex(count - 1, { align: "end", behavior: "instant" });
-  }, [autoScrollRef]);
 
   const forcePinVirtualToBottom = useCallback(() => {
     const count = renderItemsRef.current.length;
@@ -8719,14 +8844,15 @@ function ChatLabVirtualMessageList({
 
   useLayoutEffect(() => {
     if (!conversationId || renderItems.length === 0) return;
-    autoScrollRef.current = true;
+    armPin();
     forcePinVirtualToBottom();
-  }, [autoScrollRef, conversationId, forcePinVirtualToBottom, renderItems.length]);
+  }, [armPin, conversationId, forcePinVirtualToBottom, renderItems.length]);
 
   /** Pin when a new turn starts — not on every streaming token (messages reference churn). */
   useLayoutEffect(() => {
+    armPin();
     pinVirtualToBottom();
-  }, [scrollPinKey, pinVirtualToBottom]);
+  }, [scrollPinKey, armPin, pinVirtualToBottom]);
 
   /** Follow streaming growth only while the reader is already at the bottom. */
   useLayoutEffect(() => {
@@ -8792,11 +8918,11 @@ function ChatLabVirtualMessageList({
         });
       },
       pinToBottom: () => {
-        autoScrollRef.current = true;
+        armPin();
         forcePinVirtualToBottom();
       },
       scrollToBottom: ({ animated = true } = {}) => {
-        autoScrollRef.current = true;
+        armPin();
         const count = renderItemsRef.current.length;
         if (count === 0) return;
         const el = messagesScrollRef.current;
@@ -8819,7 +8945,7 @@ function ChatLabVirtualMessageList({
         threadScrollApiRef.current = null;
       }
     };
-  }, [messages, messagesScrollRef, threadScrollApiRef]);
+  }, [armPin, messages, messagesScrollRef, threadScrollApiRef]);
 
   return (
     <>
@@ -8827,15 +8953,8 @@ function ChatLabVirtualMessageList({
         className="chat-lab__messages chat-lab__messages--virtual"
         ref={messagesScrollRef}
         onScroll={handleScroll}
-        onPointerDown={(e) => {
-          if (e.button !== 0) return;
-          const target = /** @type {HTMLElement} */ (e.target);
-          if (target.closest("a,button,input,textarea,select,[role='button'],[contenteditable='true']")) return;
-          onUserScrollIntent();
-        }}
-        onTouchStart={onUserScrollIntent}
         onWheel={(e) => {
-          if (e.deltaY < 0) onUserScrollIntent();
+          if (e.deltaY < 0) onUserScrollAway();
         }}
         role="log"
         aria-live="polite"

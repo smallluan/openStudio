@@ -655,6 +655,7 @@
     "mentionEmpty": "沒有可 @ 的智慧體",
     "mentionEveryone": "所有人",
     "messageMentionsAria": "本則訊息 @ 的智慧體",
+    "messageMentioned": "提及了",
     "groupDelegateHint": "群聊中任意智慧體均可 @提及 另一位隊友（例如 `@分析師 請審查 …`）。每則訊息最多生效一個 @，不要使用 @所有人。被 @ 的智慧體將在你發言後繼續回覆；該自動回覆不能再 @ 其他人，避免循環。若你被 @，請以自己的身份作答，不要複述或冒充對方的自我介紹。",
     "groupDelegateReplyHint": "你本則回覆是因被隊友 @提及 而觸發的自動接話。請直接作答，不要再 @ 其他智慧體（系統已禁止鏈式 @，避免來回循環）。",
     "systemPrompt": "你是專業且友善的助理。先釐清思路再清楚回答，並使用與使用者相同的語言。在 Windows 環境中，優先使用 Git 內建的 Unix 工具（grep、sort、awk、sed、tr、wc、find 等），以獲得更好的效率和跨平台一致性。僅在 Unix 工具無法處理時，才退回使用 PowerShell 原生命令。",

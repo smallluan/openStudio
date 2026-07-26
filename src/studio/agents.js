@@ -61,11 +61,22 @@ export function agentDisplayLabel(agent) {
   return agent.name?.trim() || agent.gatewayAgentId || "Agent";
 }
 
+/** @param {string | null | undefined} src */
+export function isAgentAvatarImageSrc(src) {
+  const av = String(src ?? "").trim();
+  return (
+    av.startsWith("http") ||
+    av.startsWith("/") ||
+    av.startsWith("data:") ||
+    av.startsWith("file:")
+  );
+}
+
 /** @param {LobsterAgent} agent */
 export function agentAvatarGlyph(agent) {
   const av = String(agent.avatar ?? "").trim();
   // 支持 URL 或图片路径（检测是否是 URL/路径而非 emoji）
-  if (av && (av.startsWith("http") || av.startsWith("/") || av.startsWith("data:") || av.startsWith("file:"))) {
+  if (av && isAgentAvatarImageSrc(av)) {
     return av; // 返回完整 URL/路径
   }
   // 如果是 emoji（长度较短且不含空格），返回空字符串以使用文字头像

@@ -667,6 +667,7 @@
     "mentionEmpty": "没有可 @ 的智能体",
     "mentionEveryone": "所有人",
     "messageMentionsAria": "本条消息 @ 的智能体",
+    "messageMentioned": "提及了",
     "groupDelegateHint": "群聊中任意智能体均可 @提及 另一位队友（例如 `@分析师 请审查 …`）。每条消息最多生效一个 @，不要使用 @所有人。被 @ 的智能体将在你发言后继续回复；该自动回复不能再 @ 其他人，避免循环。若你被 @，请以自己的身份作答，不要复述或冒充对方的自我介绍。",
     "groupDelegateReplyHint": "你本条回复是因被队友 @提及 而触发的自动接话。请直接作答，不要再 @ 其他智能体（系统已禁止链式 @，避免来回循环）。",
     "systemPrompt": "你是一位专业、友好的助手。先理清思路再给清晰回答。使用与用户一致的语言作答。在 Windows 环境下执行命令时，优先使用 Git 自带的 Unix 工具（grep、sort、awk、sed、tr、wc、find 等），这些工具更高效且跨平台一致。只有当 Unix 工具无法满足需求时，再 fallback 到 PowerShell 原生命令。",

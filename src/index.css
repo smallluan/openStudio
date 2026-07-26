@@ -7484,41 +7484,12 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 0.28rem;
-  margin-top: 0.28rem;
+  margin-top: 0.22rem;
   max-width: 100%;
 }
 
 .chat-lab__msg-mentions--assistant {
   justify-content: flex-start;
-}
-
-.chat-lab__msg-mention-pill {
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  gap: 0.22rem;
-  padding: 0.12rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  line-height: 1.2;
-  color: var(--os-text-muted);
-  background: color-mix(in srgb, var(--os-accent-muted) 38%, var(--os-bg-panel));
-  border: 1px solid color-mix(in srgb, var(--os-accent) 16%, var(--border));
-  box-sizing: border-box;
-}
-
-.chat-lab__msg-mention-glyph {
-  flex-shrink: 0;
-  font-size: 0.78rem;
-  line-height: 1;
-}
-
-.chat-lab__msg-mention-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .chat-lab__msg-file-pills {
