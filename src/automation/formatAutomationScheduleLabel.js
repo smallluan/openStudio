@@ -1,3 +1,5 @@
+import { resolveAutomationFrequencyFields } from "./resolveAutomationFrequency.js";
+
 /**
  * @param {{
  *   frequencyMode?: string;
@@ -9,19 +11,21 @@
  *   onceTime?: string;
  * }} meta
  * @param {(key: string, vars?: Record<string, unknown>) => string} t
+ * @param {{ kind?: string; everyMs?: number; expr?: string; at?: string } | null | undefined} [schedule]
  */
-export function formatAutomationScheduleLabel(meta, t) {
-  const mode = String(meta?.frequencyMode ?? "period");
+export function formatAutomationScheduleLabel(meta, t, schedule) {
+  const frequency = resolveAutomationFrequencyFields(meta ?? {}, schedule);
+  const mode = frequency.frequencyMode;
   if (mode === "once") {
-    const date = String(meta.onceDate ?? "").trim();
-    const time = String(meta.onceTime ?? "").trim();
+    const date = String(frequency.onceDate ?? "").trim();
+    const time = String(frequency.onceTime ?? "").trim();
     if (date && time) return t("automationPage.scheduleOnceAt", { date, time });
     if (date) return date;
     return t("automationPage.taskFrequencyOnce");
   }
   if (mode === "interval") {
-    const value = Number(meta.intervalValue) > 0 ? Number(meta.intervalValue) : 1;
-    const unit = String(meta.intervalUnit ?? "hour").trim();
+    const value = Number(frequency.intervalValue) > 0 ? Number(frequency.intervalValue) : 1;
+    const unit = String(frequency.intervalUnit ?? "hour").trim();
     const unitLabelKey =
       unit === "minute"
         ? "automationPage.taskIntervalUnitMinute"
@@ -36,8 +40,8 @@ export function formatAutomationScheduleLabel(meta, t) {
                 : "automationPage.taskIntervalUnitHour";
     return t("automationPage.scheduleEvery", { value, unit: t(unitLabelKey) });
   }
-  const time = String(meta.periodTime ?? "09:00").trim();
-  const cycle = String(meta.periodCycle ?? "daily");
+  const time = String(frequency.periodTime ?? "09:00").trim();
+  const cycle = String(frequency.periodCycle ?? "daily");
   if (cycle === "weekly") return t("automationPage.scheduleWeeklyAt", { time });
   if (cycle === "monthly") return t("automationPage.scheduleMonthlyAt", { time });
   return t("automationPage.scheduleDailyAt", { time });

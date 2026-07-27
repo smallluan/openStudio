@@ -96,7 +96,7 @@ function AutomationTaskCard({ task, nowMs, isRunningNow, onRunNow, onEdit, onDel
   const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const meta = task.meta && typeof task.meta === "object" ? task.meta : {};
-  const scheduleLabel = formatAutomationScheduleLabel(meta, t);
+  const scheduleLabel = formatAutomationScheduleLabel(meta, t, task.schedule);
   const remainingLabel = formatAutomationRemainingLabel(task, nowMs, t);
   const statusTone = automationTaskStatusTone(task, nowMs);
   const errorDetail = formatAutomationTaskErrorDetail(task);

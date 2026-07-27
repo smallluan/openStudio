@@ -38,7 +38,16 @@ const { createTokenUsageStore } = require("./lib/token-usage-store.cjs");
 const { createChatSessionsStore } = require("./lib/chat-sessions-store.cjs");
 const { createAutomationTasksStore } = require("./lib/automation-tasks-store.cjs");
 const { buildCronAddParams, buildCronUpdatePatch, resolveCronModelFromProfile, draftToCronSchedule } = require("./lib/automation-cron-bridge.cjs");
-const { resolveAutomationTaskChannel, isStudioOnlyAutomationTaskId } = require("./lib/automation-channel.cjs");
+const {
+  resolveAutomationTaskChannel,
+  isStudioOnlyAutomationTaskId,
+  cronJobNeedsOpenStudioDeliveryRepair,
+  openStudioTaskNeedsChannelErrorReset,
+  buildOpenStudioCronErrorResetPatch,
+  buildOpenStudioStoreErrorResetFields,
+  stripOpenStudioChannelDeliveryErrors,
+  cronJobDeliveryMode,
+} = require("./lib/automation-channel.cjs");
 const { computeNextRunAtMs } = require("./lib/automation-schedule-due.cjs");
 const {
   migrateStudioOnlyAutomationTask,
@@ -2457,6 +2466,43 @@ app.whenReady().then(async () => {
         const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
         if (!cronJobId) continue;
         const job = cronById.get(cronJobId);
+        if (!job) continue;
+        const channel = resolveAutomationTaskChannel(
+          typeof meta.channel === "string" ? meta.channel : "open-studio",
+        );
+        const needsDeliveryRepair = cronJobNeedsOpenStudioDeliveryRepair(channel, job);
+        const needsErrorReset = openStudioTaskNeedsChannelErrorReset(channel, job, meta);
+        if (!needsDeliveryRepair && !needsErrorReset) continue;
+        /** @type {Record<string, unknown>} */
+        const patch = {};
+        if (needsDeliveryRepair) {
+          patch.delivery = { mode: "none" };
+        }
+        Object.assign(patch, buildOpenStudioCronErrorResetPatch());
+        try {
+          const updated = await updateCronJob(cfg, cronJobId, patch);
+          if (updated && typeof updated === "object" && typeof updated.id === "string") {
+            cronById.set(updated.id, updated);
+          }
+          automationTasksStore.upsert({
+            ...meta,
+            cronJobId,
+            ...buildOpenStudioStoreErrorResetFields(),
+          });
+          getStudioLog().info("[automation] repaired open-studio cron delivery", { cronJobId });
+        } catch (e) {
+          getStudioLog().warn(
+            "[automation] cron delivery repair failed",
+            cronJobId,
+            String(e?.message ?? e),
+          );
+        }
+      }
+
+      for (const meta of refreshedMetaRows) {
+        const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
+        if (!cronJobId) continue;
+        const job = cronById.get(cronJobId);
         if (!job || !job.payload || typeof job.payload !== "object") continue;
         const payload = /** @type {{ kind?: string; model?: string }} */ (job.payload);
         if (payload.kind !== "agentTurn") continue;
@@ -2489,7 +2535,7 @@ app.whenReady().then(async () => {
           };
         }
         try {
-          const updated = await updateCronJob(cfg, cronJobId, { patch });
+          const updated = await updateCronJob(cfg, cronJobId, patch);
           if (updated && typeof updated === "object" && typeof updated.id === "string") {
             cronById.set(updated.id, updated);
           }
@@ -2531,33 +2577,47 @@ app.whenReady().then(async () => {
               if (cronName) return cronName;
               return "";
             })();
-            return buildStudioAutomationTaskCard(
-              {
-                ...meta,
-                name: mergedName,
-                schedule: meta.schedule ?? job.schedule,
-                enabled: meta.enabled !== false,
-                lastRunStatus:
-                  typeof meta.lastRunStatus === "string"
-                    ? meta.lastRunStatus
-                    : typeof state.lastRunStatus === "string"
-                      ? state.lastRunStatus
-                      : undefined,
-                lastRunAtMs:
-                  typeof meta.lastRunAtMs === "number"
-                    ? meta.lastRunAtMs
-                    : typeof state.lastRunAtMs === "number"
-                      ? state.lastRunAtMs
-                      : undefined,
-                lastError:
-                  typeof meta.lastError === "string"
+            const mergedBase = {
+              ...meta,
+              name: mergedName,
+              schedule: meta.schedule ?? job.schedule,
+              enabled: meta.enabled !== false,
+              lastRunStatus:
+                typeof meta.lastRunStatus === "string"
+                  ? meta.lastRunStatus
+                  : typeof state.lastRunStatus === "string"
+                    ? state.lastRunStatus
+                    : undefined,
+              lastRunAtMs:
+                typeof meta.lastRunAtMs === "number"
+                  ? meta.lastRunAtMs
+                  : typeof state.lastRunAtMs === "number"
+                    ? state.lastRunAtMs
+                    : undefined,
+              lastError:
+                typeof state.lastError === "string"
+                  ? state.lastError
+                  : typeof meta.lastError === "string"
                     ? meta.lastError
-                    : typeof state.lastError === "string"
-                      ? state.lastError
-                      : undefined,
-              },
-              nowMs,
-            );
+                    : undefined,
+              lastDiagnosticSummary:
+                typeof state.lastDiagnosticSummary === "string"
+                  ? state.lastDiagnosticSummary
+                  : typeof meta.lastDiagnosticSummary === "string"
+                    ? meta.lastDiagnosticSummary
+                    : undefined,
+              consecutiveErrors:
+                typeof state.consecutiveErrors === "number"
+                  ? state.consecutiveErrors
+                  : typeof meta.consecutiveErrors === "number"
+                    ? meta.consecutiveErrors
+                    : undefined,
+            };
+            const merged =
+              cronJobDeliveryMode(job) === "none"
+                ? stripOpenStudioChannelDeliveryErrors(mergedBase)
+                : mergedBase;
+            return buildStudioAutomationTaskCard(merged, nowMs);
           }
 
           return {
@@ -2710,7 +2770,10 @@ app.whenReady().then(async () => {
 
       const storedSchedule = buildStoredSchedule(effectiveExisting.schedule);
       const patch = buildCronUpdatePatch(cfg, { ...draft, channel: nextChannel }, message);
-      await updateCronJob(cfg, effectiveCronJobId, { patch });
+      if (nextChannel === "open-studio") {
+        Object.assign(patch, buildOpenStudioCronErrorResetPatch());
+      }
+      await updateCronJob(cfg, effectiveCronJobId, patch);
       automationTasksStore.upsert({
         ...effectiveExisting,
         cronJobId: effectiveCronJobId,
@@ -2722,6 +2785,7 @@ app.whenReady().then(async () => {
         importedFromGateway: false,
         name,
         prompt,
+        ...(nextChannel === "open-studio" ? buildOpenStudioStoreErrorResetFields() : {}),
       });
       return { ok: true, cronJobId: effectiveCronJobId };
     } catch (e) {
