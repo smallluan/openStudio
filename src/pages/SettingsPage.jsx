@@ -46,6 +46,7 @@ export default function SettingsPage() {
     SETTINGS_SECTION_IDS.includes(section) ? t(`settings.sections.${section}`) : t("settings.title");
 
   const modelSection = section === "model";
+  const accountsSection = section === "accounts";
 
   return (
     <ModelSettingsProvider>
@@ -79,6 +80,7 @@ export default function SettingsPage() {
             className={cn(
               "settings-sheet__content",
               modelSection && "settings-sheet__content--model",
+              accountsSection && "settings-sheet__content--accounts",
             )}
           >
             {section === "general" ? (
@@ -94,7 +96,7 @@ export default function SettingsPage() {
             ) : null}
 
             {section === "accounts" ? (
-              <div className="settings-sheet__section settings-sheet__section--wide">
+              <div className="settings-sheet__section settings-sheet__section--accounts">
                 <WebAccountSettingsSection />
               </div>
             ) : null}

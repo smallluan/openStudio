@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@open-studio/udesign";
+import { RefreshCw, Trash2 } from "lucide-react";
 import { useI18n } from "../../context/I18nContext.jsx";
 
 /**
@@ -13,6 +14,15 @@ import { useI18n } from "../../context/I18nContext.jsx";
  *   sampleNames: string[];
  * }} PersistedWebAccountRow
  */
+
+/** @param {{ children: import("react").ReactNode }} props */
+function TablePanel({ children }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[color-mix(in_srgb,var(--os-border)_84%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-elevated)_97%,var(--os-bg-subtle))]">
+      {children}
+    </div>
+  );
+}
 
 export default function WebAccountSettingsSection() {
   const { t } = useI18n();
@@ -57,8 +67,6 @@ export default function WebAccountSettingsSection() {
     void loadAccounts();
   }, [loadAccounts]);
 
-  const totalCookies = useMemo(() => rows.reduce((sum, row) => sum + (Number(row.cookieCount) || 0), 0), [rows]);
-
   const handleClearDomain = useCallback(
     async (domain) => {
       if (!domain || !supported || clearing) return;
@@ -100,102 +108,112 @@ export default function WebAccountSettingsSection() {
     await loadAccounts();
   }, [bridge, clearing, loadAccounts, supported, t]);
 
+  const panelMessageClassName =
+    "flex flex-1 items-center justify-center px-4 py-6 text-center text-[0.875rem] text-[var(--os-text-muted)]";
+
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-      <div className="rounded-2xl border border-[color-mix(in_srgb,var(--os-border)_82%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-elevated)_96%,var(--os-bg-subtle))] px-4 py-3.5 sm:px-5">
-        <p className="text-[0.9375rem] font-semibold tracking-tight text-[var(--os-text)]">
-          {t("settings.accounts.title")}
-        </p>
-        <p className="mt-1 text-[0.8125rem] leading-relaxed text-[var(--os-text-muted)]">
-          {t("settings.accounts.hint")}
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.8125rem] text-[var(--os-text-muted)]">
-          <span>
-            {t("settings.accounts.stats", {
-              sites: rows.length,
-              cookies: totalCookies,
-            })}
-          </span>
-          <div className="ml-auto flex items-center gap-2">
-            <Button type="button" variant="text" size="small" disabled={loading || clearing} onClick={() => void loadAccounts()}>
-              {t("settings.accounts.refresh")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="small"
-              disabled={loading || clearing || rows.length === 0}
-              onClick={() => void handleClearAll()}
-            >
-              {t("settings.accounts.clearAll")}
-            </Button>
-          </div>
-        </div>
+    <div className="web-account-settings mx-auto flex h-full min-h-0 w-full flex-col gap-3">
+      <div className="flex shrink-0 items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="text"
+          size="small"
+          icon={<RefreshCw size={14} strokeWidth={1.75} aria-hidden />}
+          disabled={loading || clearing || !supported}
+          onClick={() => void loadAccounts()}
+        >
+          {t("settings.accounts.refresh")}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="small"
+          icon={<Trash2 size={14} strokeWidth={1.75} aria-hidden />}
+          disabled={loading || clearing || rows.length === 0}
+          onClick={() => void handleClearAll()}
+        >
+          {t("settings.accounts.clearAll")}
+        </Button>
       </div>
 
       {!supported ? (
-        <div className="rounded-xl border border-[color-mix(in_srgb,var(--os-border)_75%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-subtle)_70%,transparent)] px-4 py-6 text-[0.875rem] text-[var(--os-text-muted)]">
-          {t("settings.accounts.unsupported")}
-        </div>
+        <TablePanel>
+          <p className={panelMessageClassName}>{t("settings.accounts.unsupported")}</p>
+        </TablePanel>
       ) : loading ? (
-        <div className="rounded-xl border border-[color-mix(in_srgb,var(--os-border)_75%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-subtle)_70%,transparent)] px-4 py-6 text-[0.875rem] text-[var(--os-text-muted)]">
-          {t("settings.accounts.loading")}
-        </div>
+        <TablePanel>
+          <p className={panelMessageClassName}>{t("settings.accounts.loading")}</p>
+        </TablePanel>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-[color-mix(in_srgb,var(--os-border)_75%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-subtle)_70%,transparent)] px-4 py-6 text-[0.875rem] text-[var(--os-text-muted)]">
-          {t("settings.accounts.empty")}
-        </div>
+        <TablePanel>
+          <p className={panelMessageClassName}>{t("settings.accounts.empty")}</p>
+        </TablePanel>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-[color-mix(in_srgb,var(--os-border)_84%,transparent)] bg-[color-mix(in_srgb,var(--os-bg-elevated)_97%,var(--os-bg-subtle))]">
-          <table className="w-full border-collapse text-left text-[0.8125rem]">
-            <thead className="bg-[color-mix(in_srgb,var(--os-bg-subtle)_68%,transparent)] text-[var(--os-text-faint)]">
-              <tr>
-                <th className="px-4 py-2.5 font-medium sm:px-5">{t("settings.accounts.colDomain")}</th>
-                <th className="px-3 py-2.5 font-medium text-right tabular-nums">{t("settings.accounts.colCookieCount")}</th>
-                <th className="px-3 py-2.5 font-medium text-right tabular-nums">{t("settings.accounts.colPersistent")}</th>
-                <th className="px-3 py-2.5 font-medium text-right tabular-nums">{t("settings.accounts.colSession")}</th>
-                <th className="px-4 py-2.5 text-right font-medium sm:px-5">{t("settings.accounts.colActions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const busy = clearing && clearingDomain === row.domain;
-                const sample = Array.isArray(row.sampleNames) && row.sampleNames.length > 0 ? row.sampleNames.join(", ") : "";
-                return (
-                  <tr
-                    key={row.domain}
-                    className="border-t border-[color-mix(in_srgb,var(--os-border)_52%,transparent)]"
-                    title={sample ? `${t("settings.accounts.sampleCookies")}: ${sample}` : undefined}
-                  >
-                    <td className="px-4 py-3 text-[var(--os-text)] sm:px-5">
-                      <div className="truncate font-medium" title={row.domain}>
-                        {row.domain}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-[var(--os-text-muted)]">{row.cookieCount}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-[var(--os-text-muted)]">{row.persistentCookieCount}</td>
-                    <td className="px-3 py-3 text-right tabular-nums text-[var(--os-text-muted)]">{row.sessionCookieCount}</td>
-                    <td className="px-4 py-3 text-right sm:px-5">
-                      <Button
-                        type="button"
-                        variant="text"
-                        size="small"
-                        disabled={clearing || loading}
-                        onClick={() => void handleClearDomain(row.domain)}
-                      >
-                        {busy ? t("settings.accounts.clearing") : t("settings.accounts.clearOne")}
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <TablePanel>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <table className="w-full border-collapse text-left text-[0.8125rem]">
+              <thead className="sticky top-0 z-[1] bg-[color-mix(in_srgb,var(--os-bg-elevated)_98%,var(--os-bg-subtle))] text-[var(--os-text-faint)] shadow-[inset_0_-1px_0_color-mix(in_srgb,var(--os-border)_52%,transparent)]">
+                <tr>
+                  <th className="px-4 py-2.5 font-medium sm:px-5">{t("settings.accounts.colDomain")}</th>
+                  <th className="px-3 py-2.5 font-medium text-right tabular-nums">
+                    {t("settings.accounts.colCookieCount")}
+                  </th>
+                  <th className="px-3 py-2.5 font-medium text-right tabular-nums">
+                    {t("settings.accounts.colPersistent")}
+                  </th>
+                  <th className="px-3 py-2.5 font-medium text-right tabular-nums">
+                    {t("settings.accounts.colSession")}
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium sm:px-5">{t("settings.accounts.colActions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const busy = clearing && clearingDomain === row.domain;
+                  const sample =
+                    Array.isArray(row.sampleNames) && row.sampleNames.length > 0 ? row.sampleNames.join(", ") : "";
+                  return (
+                    <tr
+                      key={row.domain}
+                      className="border-t border-[color-mix(in_srgb,var(--os-border)_52%,transparent)]"
+                      title={sample ? `${t("settings.accounts.sampleCookies")}: ${sample}` : undefined}
+                    >
+                      <td className="px-4 py-3 text-[var(--os-text)] sm:px-5">
+                        <div className="truncate font-medium" title={row.domain}>
+                          {row.domain}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums text-[var(--os-text-muted)]">
+                        {row.cookieCount}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums text-[var(--os-text-muted)]">
+                        {row.persistentCookieCount}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums text-[var(--os-text-muted)]">
+                        {row.sessionCookieCount}
+                      </td>
+                      <td className="px-4 py-3 text-right sm:px-5">
+                        <Button
+                          type="button"
+                          variant="text"
+                          size="small"
+                          disabled={clearing || loading}
+                          onClick={() => void handleClearDomain(row.domain)}
+                        >
+                          {busy ? t("settings.accounts.clearing") : t("settings.accounts.clearOne")}
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </TablePanel>
       )}
 
       {error ? (
-        <p className="text-[0.8125rem] text-[var(--os-danger,#b91c1c)]">
+        <p className="shrink-0 text-[0.8125rem] text-[var(--os-danger,#b91c1c)]">
           {t("settings.accounts.errorPrefix")} {error}
         </p>
       ) : null}

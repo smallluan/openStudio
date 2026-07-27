@@ -1679,16 +1679,6 @@ code {
   outline-offset: 2px;
 }
 
-.token-usage-settings__segment {
-  border-radius: 0.65rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-
-.token-usage-settings__segment--active {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-
 .os-avatar__overlay-upload {
   display: inline-flex;
   align-items: center;
@@ -2022,6 +2012,13 @@ code {
   padding: 0.5rem 1.25rem 1rem;
 }
 
+.settings-sheet__content--accounts {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0.5rem 1.25rem 1rem;
+}
+
 .settings-sheet__section {
   display: flex;
   width: 100%;
@@ -2048,6 +2045,17 @@ code {
   display: flex;
   height: 100%;
   min-height: 0;
+  max-width: min(100%, 52rem);
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: 0;
+}
+
+.settings-sheet__section--accounts {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
   max-width: min(100%, 52rem);
   flex: 1 1 auto;
   flex-direction: column;
