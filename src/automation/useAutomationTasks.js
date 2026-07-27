@@ -125,6 +125,26 @@ export function useAutomationTasks() {
     [refresh],
   );
 
+  const setTaskEnabled = useCallback(
+    async (cronJobId, enabled) => {
+      const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+      if (!bridge?.automationTaskSetEnabled) return { ok: false, error: "bridge_unavailable" };
+      const id = String(cronJobId ?? "").trim();
+      if (!id) return { ok: false, error: "missing_job_id" };
+      const result = await bridge.automationTaskSetEnabled({ cronJobId: id, enabled: Boolean(enabled) });
+      if (result?.ok) {
+        setTasks((prev) =>
+          prev.map((task) =>
+            task.cronJobId === id ? { ...task, enabled: Boolean(enabled) } : task,
+          ),
+        );
+        void refresh({ silent: true });
+      }
+      return result ?? { ok: false, error: "set_enabled_failed" };
+    },
+    [refresh],
+  );
+
   return {
     tasks,
     loading,
@@ -134,5 +154,6 @@ export function useAutomationTasks() {
     updateTask,
     removeTask,
     runTaskNow,
+    setTaskEnabled,
   };
 }

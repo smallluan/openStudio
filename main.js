@@ -2625,7 +2625,7 @@ app.whenReady().then(async () => {
             name: typeof job.name === "string" ? job.name : String(meta.name ?? ""),
             prompt: typeof meta.prompt === "string" ? meta.prompt : "",
             channel,
-            enabled: Boolean(job.enabled),
+            enabled: typeof meta.enabled === "boolean" ? meta.enabled : Boolean(job.enabled),
             lastRunStatus:
               typeof state.lastRunStatus === "string"
                 ? state.lastRunStatus
@@ -2806,6 +2806,59 @@ app.whenReady().then(async () => {
         await removeCronJob(cfg, id);
       }
       return { ok: true };
+    } catch (e) {
+      return { ok: false, error: formatGatewayCronError(e) };
+    }
+  });
+
+  ipcMain.handle("studio:automationTaskSetEnabled", async (_event, payload) => {
+    if (!userConfigStore || !automationTasksStore) {
+      return { ok: false, error: "store_unavailable" };
+    }
+    const cronJobId =
+      typeof payload?.cronJobId === "string"
+        ? payload.cronJobId.trim()
+        : typeof payload === "string"
+          ? payload.trim()
+          : "";
+    if (!cronJobId) return { ok: false, error: "missing_job_id" };
+    if (typeof payload?.enabled !== "boolean") return { ok: false, error: "invalid_payload" };
+
+    const meta = automationTasksStore.get(cronJobId);
+    if (!meta) return { ok: false, error: "not_found" };
+
+    try {
+      const cfg = userConfigStore.readRaw();
+      const enabled = payload.enabled;
+      automationTasksStore.upsert({
+        ...meta,
+        cronJobId,
+        enabled,
+      });
+
+      if (!isStudioOnlyAutomationTaskId(cronJobId)) {
+        try {
+          await updateCronJob(cfg, cronJobId, { enabled });
+        } catch (e) {
+          const channel = resolveAutomationTaskChannel(
+            typeof meta.channel === "string" ? meta.channel : "open-studio",
+          );
+          if (channel !== "open-studio") {
+            automationTasksStore.upsert({
+              ...meta,
+              cronJobId,
+              enabled: meta.enabled !== false,
+            });
+            return { ok: false, error: formatGatewayCronError(e) };
+          }
+          getStudioLog().warn(
+            "[automation] cron enabled update failed; using local pause state",
+            cronJobId,
+            String(e?.message ?? e),
+          );
+        }
+      }
+      return { ok: true, cronJobId, enabled };
     } catch (e) {
       return { ok: false, error: formatGatewayCronError(e) };
     }

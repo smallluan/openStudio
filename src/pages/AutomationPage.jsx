@@ -3,7 +3,7 @@ import { Button, Input } from "@open-studio/udesign";
 import { DeleteIcon, EditIcon, MoreIcon, PlayCircleIcon } from "tdesign-icons-react";
 import { MessagePlugin, Popup, Tabs } from "tdesign-react";
 import "tdesign-react/es/message/style/index.css";
-import { Clock, History, LayoutGrid, Plus, Archive } from "lucide-react";
+import { Clock, History, LayoutGrid, Plus, Archive, Pause, Play } from "lucide-react";
 import OsEmpty from "../ui/OsEmpty.jsx";
 import AutomationTaskDialog from "../components/automation/AutomationTaskDialog.jsx";
 import FluidConfirmDialog from "../ui/FluidConfirmDialog.jsx";
@@ -33,6 +33,7 @@ import { useAutomationTasks } from "../automation/useAutomationTasks.js";
 import { useNowMs } from "../automation/useNowMs.js";
 import {
   AUTOMATION_TASK_TAB_ALL,
+  AUTOMATION_TASK_TAB_PAUSED,
   AUTOMATION_TASK_TAB_EXPIRED,
   AUTOMATION_TASK_TAB_RECENT,
   AUTOMATION_TASK_TAB_UPCOMING,
@@ -89,10 +90,11 @@ function AutomationChannelIcon({ channel, className }) {
  *   isRunningNow: boolean;
  *   onRunNow: (e: import("react").MouseEvent, cronJobId: string) => void;
  *   onEdit: (e: import("react").MouseEvent, task: import("../automation/useAutomationTasks.js").AutomationTaskCard) => void;
+ *   onTogglePause: (e: import("react").MouseEvent, task: import("../automation/useAutomationTasks.js").AutomationTaskCard) => void;
  *   onDelete: (e: import("react").MouseEvent, cronJobId: string) => void;
  * }} props
  */
-function AutomationTaskCard({ task, nowMs, isRunningNow, onRunNow, onEdit, onDelete }) {
+function AutomationTaskCard({ task, nowMs, isRunningNow, onRunNow, onEdit, onTogglePause, onDelete }) {
   const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const meta = task.meta && typeof task.meta === "object" ? task.meta : {};
@@ -101,6 +103,7 @@ function AutomationTaskCard({ task, nowMs, isRunningNow, onRunNow, onEdit, onDel
   const statusTone = automationTaskStatusTone(task, nowMs);
   const errorDetail = formatAutomationTaskErrorDetail(task);
   const isJobRunning = task.lastRunStatus === "running" || isRunningNow;
+  const isPaused = task.enabled === false;
   const statusClass =
     statusTone === "danger"
       ? "text-[var(--os-danger,#ef4444)]"
@@ -129,6 +132,26 @@ function AutomationTaskCard({ task, nowMs, isRunningNow, onRunNow, onEdit, onDel
           </span>
           <span className="chat-history-card__menu-item-label">
             {isRunningNow ? t("automationPage.runStatusRunning") : t("automationPage.runNow")}
+          </span>
+        </button>
+      </div>
+      <div className="chat-history-card__menu-row chat-history-card__menu-row--with-divider">
+        <button
+          type="button"
+          role="menuitem"
+          className="chat-history-card__menu-item"
+          disabled={isJobRunning}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen(false);
+            onTogglePause(e, task);
+          }}
+        >
+          <span className="chat-history-card__menu-item-icon">
+            {isPaused ? <Play size={14} aria-hidden /> : <Pause size={14} aria-hidden />}
+          </span>
+          <span className="chat-history-card__menu-item-label">
+            {isPaused ? t("automationPage.resume") : t("automationPage.pause")}
           </span>
         </button>
       </div>
@@ -187,7 +210,7 @@ function AutomationTaskCard({ task, nowMs, isRunningNow, onRunNow, onEdit, onDel
         </div>
         {!task.enabled ? (
           <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--os-text-muted)_12%,transparent)] px-2 py-0.5 text-[0.62rem] text-[var(--os-text-muted)]">
-            {t("automationPage.disabledBadge")}
+            {t("automationPage.pausedBadge")}
           </span>
         ) : null}
         <Popup
@@ -264,7 +287,7 @@ export default function AutomationPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState(/** @type {string | null} */ (null));
   const [runningNowIds, setRunningNowIds] = useState(/** @type {Set<string>} */ (() => new Set()));
-  const { tasks, loading, createTask, updateTask, removeTask, runTaskNow } = useAutomationTasks();
+  const { tasks, loading, createTask, updateTask, removeTask, runTaskNow, setTaskEnabled } = useAutomationTasks();
   const nowMs = useNowMs();
   const editingTaskId = useMemo(
     () =>
@@ -289,6 +312,10 @@ export default function AutomationPage() {
       {
         value: AUTOMATION_TASK_TAB_ALL,
         label: <AutomationTaskTabLabel icon={LayoutGrid} label={t("automationPage.tabAll")} />,
+      },
+      {
+        value: AUTOMATION_TASK_TAB_PAUSED,
+        label: <AutomationTaskTabLabel icon={Pause} label={t("automationPage.tabPaused")} />,
       },
       {
         value: AUTOMATION_TASK_TAB_EXPIRED,
@@ -318,6 +345,8 @@ export default function AutomationPage() {
   const emptyDescription = useMemo(() => {
     if (normalizedQuery) return t("automationPage.emptySearch");
     switch (taskTab) {
+      case AUTOMATION_TASK_TAB_PAUSED:
+        return t("automationPage.emptyPaused");
       case AUTOMATION_TASK_TAB_EXPIRED:
         return t("automationPage.emptyExpired");
       case AUTOMATION_TASK_TAB_UPCOMING:
@@ -409,6 +438,26 @@ export default function AutomationPage() {
     }
     setPendingDeleteId(null);
   }, [pendingDeleteId, removeTask, showCreateError, t]);
+
+  const handleTogglePause = useCallback(
+    async (e, task) => {
+      e.stopPropagation();
+      const nextEnabled = task.enabled === false;
+      const result = await setTaskEnabled(task.cronJobId, nextEnabled);
+      if (result?.ok) {
+        showCreateSuccess(
+          nextEnabled ? t("automationPage.resumeSuccess") : t("automationPage.pauseSuccess"),
+        );
+      } else {
+        showCreateError(
+          nextEnabled
+            ? t("automationPage.resumeFailed", { detail: String(result?.error ?? "") })
+            : t("automationPage.pauseFailed", { detail: String(result?.error ?? "") }),
+        );
+      }
+    },
+    [setTaskEnabled, showCreateError, showCreateSuccess, t],
+  );
 
   const handleRunNow = useCallback(
     async (e, cronJobId) => {
@@ -508,6 +557,7 @@ export default function AutomationPage() {
                 isRunningNow={runningNowIds.has(task.cronJobId)}
                 onRunNow={handleRunNow}
                 onEdit={handleEdit}
+                onTogglePause={handleTogglePause}
                 onDelete={handleDelete}
               />
             ))}

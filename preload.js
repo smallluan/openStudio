@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld("studioBridge", {
   automationTaskUpdate: (payload) => ipcRenderer.invoke("studio:automationTaskUpdate", payload),
   automationTaskRemove: (cronJobId) => ipcRenderer.invoke("studio:automationTaskRemove", cronJobId),
   automationTaskRunNow: (cronJobId) => ipcRenderer.invoke("studio:automationTaskRunNow", cronJobId),
+  automationTaskSetEnabled: (payload) => ipcRenderer.invoke("studio:automationTaskSetEnabled", payload),
   automationTaskReportRun: (payload) => ipcRenderer.invoke("studio:automationTaskReportRun", payload),
   generateChatTitle: (payload) => ipcRenderer.invoke("studio:generateChatTitle", payload),
   onChatStream: (listener) => {

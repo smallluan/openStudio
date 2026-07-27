@@ -28,6 +28,8 @@ export function formatAutomationCountdown(remainingMs, t) {
  * @param {(key: string, vars?: Record<string, unknown>) => string} t
  */
 export function formatAutomationRemainingLabel(task, nowMs, t) {
+  if (task.enabled === false) return t("automationPage.pausedBadge");
+
   const status = String(task.lastRunStatus ?? "").trim();
   if (status === "running") return t("automationPage.runStatusRunning");
 

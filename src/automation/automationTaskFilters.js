@@ -1,6 +1,7 @@
 import { resolveAutomationEffectiveNextRunAtMs } from "./automationScheduleNext.js";
 
 export const AUTOMATION_TASK_TAB_ALL = "all";
+export const AUTOMATION_TASK_TAB_PAUSED = "paused";
 export const AUTOMATION_TASK_TAB_EXPIRED = "expired";
 export const AUTOMATION_TASK_TAB_UPCOMING = "upcoming";
 export const AUTOMATION_TASK_TAB_RECENT = "recent";
@@ -70,6 +71,13 @@ export function isAutomationTaskExpired(task, nowMs) {
 
 /**
  * @param {import("./useAutomationTasks.js").AutomationTaskCard} task
+ */
+export function isAutomationTaskPaused(task) {
+  return task.enabled === false;
+}
+
+/**
+ * @param {import("./useAutomationTasks.js").AutomationTaskCard} task
  * @param {number} nowMs
  * @param {number} [windowMs]
  */
@@ -103,6 +111,8 @@ export function isAutomationTaskRecentlyExecuted(task, nowMs, windowMs = AUTOMAT
  */
 export function matchesAutomationTaskTab(task, tab, nowMs) {
   switch (tab) {
+    case AUTOMATION_TASK_TAB_PAUSED:
+      return isAutomationTaskPaused(task);
     case AUTOMATION_TASK_TAB_EXPIRED:
       return isAutomationTaskExpired(task, nowMs);
     case AUTOMATION_TASK_TAB_UPCOMING:
