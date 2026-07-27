@@ -88,6 +88,19 @@
       "light": "浅色模式",
       "dark": "深色模式"
     },
+    "themeColorShort": "主题色",
+    "themeColorAria": "选择应用主题色",
+    "themeColorCustom": "自定义",
+    "themeColorPresets": {
+      "blue": "蓝色",
+      "purple": "紫色",
+      "cyan": "青色",
+      "green": "绿色",
+      "orange": "橙色",
+      "red": "红色",
+      "pink": "粉色",
+      "yellow": "黄色"
+    },
     "themeHint": "当前：{{current}}。主题与全局语义色绑定，组件库只依赖这套 token。",
     "language": "界面语言",
     "languageShort": "语言",

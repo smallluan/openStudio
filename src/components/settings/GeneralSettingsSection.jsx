@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { useMotionPreference } from "../../context/MotionPreferenceContext.jsx";
 import { useTheme } from "../../context/ThemeContext.jsx";
@@ -8,25 +8,92 @@ import {
   readLinkOpenModeLocal,
   writeLinkOpenModeLocal,
 } from "../../chat/chatLabLinkOpenPreference.js";
-import { Select as TSelect, Switch, Typography } from "tdesign-react";
+import { BUILTIN_BRAND_PRESETS } from "../../theme/brandColor.js";
+import { ColorPicker, Select as TSelect, Switch, Typography } from "tdesign-react";
+import "tdesign-react/es/color-picker/style/index.css";
+import { cn } from "../../ui/cn.js";
 
 const SETTINGS_SELECT_POPUP = { attach: () => document.body, zIndex: 2600 };
+const SETTINGS_COLOR_PICKER_POPUP = { attach: () => document.body, zIndex: 2600 };
 
 /**
- * @param {{ title: string; children: import("react").ReactNode; last?: boolean }} props
+ * ColorPicker preview updates immediately; theme commits on mouseup or popup close.
+ *
+ * @param {{ value: string; onCommit: (value: string) => void; className?: string }} props
  */
-function GeneralSettingRow({ title, children }) {
+function DeferredThemeColorPicker({ value, onCommit, className }) {
+  const [draft, setDraft] = useState(value);
+  const [open, setOpen] = useState(false);
+  const draftRef = useRef(value);
+  const committedRef = useRef(value);
+
+  useEffect(() => {
+    if (!open) {
+      setDraft(value);
+      draftRef.current = value;
+      committedRef.current = value;
+    }
+  }, [value, open]);
+
+  const commitDraft = useCallback(() => {
+    const next = draftRef.current;
+    if (typeof next !== "string" || !next.trim() || next === committedRef.current) return;
+    committedRef.current = next;
+    onCommit(next);
+  }, [onCommit]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onMouseUp = () => commitDraft();
+    window.addEventListener("mouseup", onMouseUp);
+    return () => window.removeEventListener("mouseup", onMouseUp);
+  }, [open, commitDraft]);
+
   return (
-    <div className="general-setting-row">
+    <ColorPicker
+      borderless
+      format="HEX"
+      colorModes={["monochrome"]}
+      value={draft}
+      onChange={(next) => {
+        if (typeof next !== "string" || !next.trim()) return;
+        setDraft(next);
+        draftRef.current = next;
+      }}
+      popupProps={{
+        ...SETTINGS_COLOR_PICKER_POPUP,
+        onVisibleChange: (visible) => {
+          setOpen(visible);
+          if (!visible) commitDraft();
+        },
+      }}
+      className={className}
+    />
+  );
+}
+
+/**
+ * @param {{ title: string; children: import("react").ReactNode; stacked?: boolean }} props
+ */
+function GeneralSettingRow({ title, children, stacked = false }) {
+  return (
+    <div className={cn("general-setting-row", stacked && "general-setting-row--stacked")}>
       <Typography.Text className="general-setting-row__label">{title}</Typography.Text>
-      <div className="general-setting-row__control">{children}</div>
+      <div
+        className={cn(
+          "general-setting-row__control",
+          stacked && "general-setting-row__control--full",
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }
 
 /** Appearance + language + ChatLab title automation. */
 export default function GeneralSettingsSection() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, brandColor, setBrandColorPreset, setCustomBrandColor, brandPrimary } = useTheme();
   const { t, locale, setLocale } = useI18n();
   const { mode: uiMotion, setMode: setUiMotion } = useMotionPreference();
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
@@ -195,6 +262,35 @@ export default function GeneralSettingsSection() {
             popupProps={SETTINGS_SELECT_POPUP}
             className="settings-select"
           />
+        </GeneralSettingRow>
+
+        <GeneralSettingRow title={t("settings.themeColorShort")} stacked>
+          <div className="theme-color-picker" role="group" aria-label={t("settings.themeColorAria")}>
+            <div className="theme-color-picker__presets">
+              {BUILTIN_BRAND_PRESETS.map((preset) => {
+                const selected = brandColor.type === "preset" && brandColor.id === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={cn("theme-color-card", selected && "theme-color-card--selected")}
+                    style={{ backgroundColor: preset.color }}
+                    aria-label={t(`settings.themeColorPresets.${preset.id}`)}
+                    aria-pressed={selected}
+                    onClick={() => setBrandColorPreset(preset.id)}
+                  />
+                );
+              })}
+            </div>
+            <div className="theme-color-picker__custom">
+              <span className="theme-color-picker__custom-label">{t("settings.themeColorCustom")}</span>
+              <DeferredThemeColorPicker
+                value={brandColor.type === "custom" ? brandColor.color : brandPrimary}
+                onCommit={setCustomBrandColor}
+                className="theme-color-picker__input"
+              />
+            </div>
+          </div>
         </GeneralSettingRow>
 
         <GeneralSettingRow title={t("settings.languageShort")}>

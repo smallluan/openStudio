@@ -88,6 +88,19 @@
       "light": "淺色模式",
       "dark": "深色模式"
     },
+    "themeColorShort": "主題色",
+    "themeColorAria": "選擇應用主題色",
+    "themeColorCustom": "自訂",
+    "themeColorPresets": {
+      "blue": "藍色",
+      "purple": "紫色",
+      "cyan": "青色",
+      "green": "綠色",
+      "orange": "橙色",
+      "red": "紅色",
+      "pink": "粉色",
+      "yellow": "黃色"
+    },
     "themeHint": "目前：{{current}}。主題與全域語意色連動，元件庫僅依賴這套 token。",
     "language": "介面語言",
     "languageShort": "語言",

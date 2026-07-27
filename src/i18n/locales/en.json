@@ -88,6 +88,19 @@
       "light": "Light",
       "dark": "Dark"
     },
+    "themeColorShort": "Theme color",
+    "themeColorAria": "Choose application theme color",
+    "themeColorCustom": "Custom",
+    "themeColorPresets": {
+      "blue": "Blue",
+      "purple": "Purple",
+      "cyan": "Cyan",
+      "green": "Green",
+      "orange": "Orange",
+      "red": "Red",
+      "pink": "Pink",
+      "yellow": "Yellow"
+    },
     "themeHint": "Current: {{current}}. Theme tokens drive global semantic colors; components rely only on this palette.",
     "language": "Language",
     "languageShort": "Language",

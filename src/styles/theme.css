@@ -3,22 +3,22 @@
  * Dark mode keeps the same vocabulary with deeper graphite + glass.
  */
 
-/* TDesign Blue7 scale — shared across light / dark */
+/* TDesign brand scale — overridden at runtime via ThemeContext; blue is the default fallback. */
 :root {
-  --os-blue-1: #f2f3ff;
-  --os-blue-2: #d9e1ff;
-  --os-blue-3: #b5c7ff;
-  --os-blue-4: #8eabff;
-  --os-blue-5: #618dff;
-  --os-blue-6: #366ef4;
-  --os-blue-7: #0052d9;
-  --os-blue-8: #003cab;
-  --os-blue-9: #002a7c;
-  --os-blue-10: #001a57;
+  --os-brand-1: #f2f3ff;
+  --os-brand-2: #d9e1ff;
+  --os-brand-3: #b5c7ff;
+  --os-brand-4: #8eabff;
+  --os-brand-5: #618dff;
+  --os-brand-6: #366ef4;
+  --os-brand-7: #0052d9;
+  --os-brand-8: #003cab;
+  --os-brand-9: #002a7c;
+  --os-brand-10: #001a57;
 
-  /** Near-white cool tints for glass / liquid surfaces (keep blue barely perceptible). */
-  --os-blue-tint-faint: rgba(248, 250, 255, 0.96);
-  --os-blue-tint-whisper: rgba(253, 254, 255, 0.98);
+  /** Near-white cool tints for glass / liquid surfaces (keep brand tint barely perceptible). */
+  --os-brand-tint-faint: rgba(248, 250, 255, 0.96);
+  --os-brand-tint-whisper: rgba(253, 254, 255, 0.98);
 
   /** Landing hero avatar / illustration size (Chat Lab + Web Explore). */
   --os-landing-hero-size: 9rem;
@@ -28,11 +28,11 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --os-accent: var(--os-blue-7);
-  --os-accent-hover: var(--os-blue-6);
+  --os-accent: var(--os-brand-7);
+  --os-accent-hover: var(--os-brand-6);
   --os-accent-muted: rgba(0, 82, 217, 0.14);
   --os-accent-fg: #ffffff;
-  --os-accent-subtle: var(--os-blue-1);
+  --os-accent-subtle: var(--os-brand-1);
 
   /** User message bubble — warm peach, independent of brand accent. */
   --os-chat-user-tint: rgba(255, 218, 205, 0.95);
@@ -133,8 +133,8 @@
     radial-gradient(130% 170% at 28% 0%, rgba(255, 255, 255, 0.96), transparent 58%),
     linear-gradient(
       158deg,
-      color-mix(in srgb, var(--os-blue-1) 58%, var(--os-bg-panel)),
-      color-mix(in srgb, var(--os-blue-2) 34%, var(--os-bg-panel))
+      color-mix(in srgb, var(--os-brand-1) 58%, var(--os-bg-panel)),
+      color-mix(in srgb, var(--os-brand-2) 34%, var(--os-bg-panel))
     );
   --os-liquid-highlight-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.92),
@@ -150,7 +150,7 @@
     radial-gradient(140% 180% at 32% 0%, rgba(255, 255, 255, 0.94), transparent 74%),
     linear-gradient(
       168deg,
-      color-mix(in srgb, var(--os-blue-tint-whisper) 52%, var(--os-bg-modal)),
+      color-mix(in srgb, var(--os-brand-tint-whisper) 52%, var(--os-bg-modal)),
       color-mix(in srgb, #ffffff 98%, var(--os-bg-modal))
     );
   --os-liquid-panel-shadow:
@@ -162,11 +162,11 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --os-accent: var(--os-blue-6);
-  --os-accent-hover: var(--os-blue-5);
+  --os-accent: var(--os-brand-6);
+  --os-accent-hover: var(--os-brand-5);
   --os-accent-muted: rgba(54, 110, 244, 0.22);
   --os-accent-fg: #ffffff;
-  --os-accent-subtle: color-mix(in srgb, var(--os-blue-9) 42%, var(--os-bg-panel));
+  --os-accent-subtle: color-mix(in srgb, var(--os-brand-9) 42%, var(--os-bg-panel));
 
   --os-chat-user-tint: rgba(255, 218, 205, 0.55);
   --os-chat-user-tint-edge: rgba(255, 196, 172, 0.45);

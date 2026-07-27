@@ -88,6 +88,19 @@
       "light": "ライト",
       "dark": "ダーク"
     },
+    "themeColorShort": "テーマカラー",
+    "themeColorAria": "アプリのテーマカラーを選択",
+    "themeColorCustom": "カスタム",
+    "themeColorPresets": {
+      "blue": "ブルー",
+      "purple": "パープル",
+      "cyan": "シアン",
+      "green": "グリーン",
+      "orange": "オレンジ",
+      "red": "レッド",
+      "pink": "ピンク",
+      "yellow": "イエロー"
+    },
     "themeHint": "現在：{{current}}。テーマはグローバルな意味色トークンに紐づき、コンポーネントはこのトークンのみを参照します。",
     "language": "表示言語",
     "languageShort": "言語",
