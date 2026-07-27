@@ -1,10 +1,12 @@
 /**
- * Renderer-side registry for native OpenClaw `sidebar_action` tool requests.
- * ChatLabPreviewProvider hosts register an executor; a single IPC subscription dispatches here.
+ * Renderer-side registry for native OpenClaw browser tool requests.
+ * ChatLabPreviewProvider hosts register executors; IPC subscriptions dispatch here.
  */
 
 /** @type {((args: { steps?: unknown }) => Promise<unknown>) | null} */
-let executor = null;
+let actionExecutor = null;
+/** @type {((args: { url?: string; title?: string }) => Promise<unknown>) | null} */
+let openExecutor = null;
 
 /** @type {boolean} */
 let ipcBound = false;
@@ -13,27 +15,42 @@ let ipcBound = false;
  * @param {(args: { steps?: unknown }) => Promise<unknown>} fn
  * @returns {() => void}
  */
-export function registerSidebarActionToolExecutor(fn) {
-  executor = fn;
-  ensureSidebarActionToolIpcBound();
+export function registerBrowserActionToolExecutor(fn) {
+  actionExecutor = fn;
+  ensureBrowserToolIpcBound();
   return () => {
-    if (executor === fn) executor = null;
+    if (actionExecutor === fn) actionExecutor = null;
+  };
+}
+
+/** @deprecated use registerBrowserActionToolExecutor */
+export const registerSidebarActionToolExecutor = registerBrowserActionToolExecutor;
+
+/**
+ * @param {(args: { url?: string; title?: string }) => Promise<unknown>} fn
+ * @returns {() => void}
+ */
+export function registerBrowserOpenToolExecutor(fn) {
+  openExecutor = fn;
+  ensureBrowserToolIpcBound();
+  return () => {
+    if (openExecutor === fn) openExecutor = null;
   };
 }
 
 /**
  * @param {{ steps?: unknown }} args
  */
-export async function runSidebarActionToolRequest(args) {
-  if (!executor) {
+export async function runBrowserActionToolRequest(args) {
+  if (!actionExecutor) {
     return {
       ok: false,
       error: "no_preview_handler",
-      message: "No Chat Lab / Web Explore preview is ready for sidebar_action",
+      message: "No Chat Lab / Web Explore preview is ready for browser_action",
     };
   }
   try {
-    return await executor(args);
+    return await actionExecutor(args);
   } catch (e) {
     return {
       ok: false,
@@ -43,7 +60,32 @@ export async function runSidebarActionToolRequest(args) {
   }
 }
 
-function ensureSidebarActionToolIpcBound() {
+/** @deprecated use runBrowserActionToolRequest */
+export const runSidebarActionToolRequest = runBrowserActionToolRequest;
+
+/**
+ * @param {{ url?: string; title?: string }} args
+ */
+export async function runBrowserOpenToolRequest(args) {
+  if (!openExecutor) {
+    return {
+      ok: false,
+      error: "no_preview_handler",
+      message: "No Chat Lab / Web Explore preview is ready for browser_open",
+    };
+  }
+  try {
+    return await openExecutor(args);
+  } catch (e) {
+    return {
+      ok: false,
+      error: "executor_threw",
+      message: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+function ensureBrowserToolIpcBound() {
   if (ipcBound) return;
   const bridge = typeof window !== "undefined" ? window.studioBridge : null;
   if (!bridge?.onSidebarActionToolRequest || !bridge?.respondSidebarActionTool) return;
@@ -52,7 +94,7 @@ function ensureSidebarActionToolIpcBound() {
     const id = String(payload?.id ?? "").trim();
     if (!id) return;
     try {
-      const result = await runSidebarActionToolRequest({
+      const result = await runBrowserActionToolRequest({
         steps: payload?.steps ?? payload?.args?.steps,
       });
       await bridge.respondSidebarActionTool({ id, result });
@@ -63,4 +105,22 @@ function ensureSidebarActionToolIpcBound() {
       });
     }
   });
+  if (bridge.onBrowserOpenToolRequest && bridge.respondBrowserOpenTool) {
+    bridge.onBrowserOpenToolRequest(async (payload) => {
+      const id = String(payload?.id ?? "").trim();
+      if (!id) return;
+      try {
+        const result = await runBrowserOpenToolRequest({
+          url: payload?.url,
+          title: payload?.title,
+        });
+        await bridge.respondBrowserOpenTool({ id, result });
+      } catch (e) {
+        await bridge.respondBrowserOpenTool({
+          id,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    });
+  }
 }

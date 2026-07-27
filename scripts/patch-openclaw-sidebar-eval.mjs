@@ -1,5 +1,5 @@
-/**
- * Inject native `sidebar_eval` tool into OpenClaw createOpenClawTools.
+﻿/**
+ * Inject native `browser_eval` tool into OpenClaw createOpenClawTools.
  * Runs after patch-openclaw-sidebar-debugger.mjs (shares HTTP bridge).
  */
 import fs from "node:fs";
@@ -19,19 +19,19 @@ const target = toolsBundle
   ? path.join(distDir, toolsBundle)
   : path.join(openclawRoot, "dist", "openclaw-tools-ChLzmhJi.js");
 
-const MARKER = "OPEN_STUDIO_SIDEBAR_EVAL_TOOL";
+const MARKER = "OPEN_STUDIO_BROWSER_EVAL_TOOL";
 
 const TOOL_FN = `
-function createSidebarEvalTool() {
+function createBrowserEvalTool() {
 	/* ${MARKER} */
 	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\\/$/, "");
 	if (!baseUrl) return null;
 	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
 	return {
-		label: "Sidebar Eval",
-		name: "sidebar_eval",
+		label: "Browser Eval",
+		name: "browser_eval",
 		displaySummary: "Run JS on preview page",
-		description: "Execute arbitrary JavaScript in the active Open Studio preview / Web Explore page context (same as DevTools console). Use for debugging, inspecting globals, or driving page APIs that sidebar_action cannot reach. Params: expression (required). Returns serialized result value. If debugger is paused on a breakpoint, use sidebar_debugger op=evaluate in the paused frame or op=resume first. Pair with sidebar_debugger breakpoints for deep inspection.",
+		description: "Execute arbitrary JavaScript in the active Open Studio preview / Web Explore page context (same as DevTools console). Use for debugging, inspecting globals, or driving page APIs that browser_action cannot reach. Params: expression (required). Returns serialized result value. If debugger is paused on a breakpoint, use browser_debugger op=evaluate in the paused frame or op=resume first. Pair with browser_debugger breakpoints for deep inspection.",
 		parameters: Type.Object({
 			expression: Type.Optional(Type.String({ description: "JavaScript expression or statements to run in page context" })),
 			script: Type.Optional(Type.String({ description: "Alias for expression" })),
@@ -41,7 +41,7 @@ function createSidebarEvalTool() {
 			const params = asToolParamsRecord(args);
 			const expression = String(params.expression || params.script || params.code || "").trim();
 			if (!expression) throw new ToolInputError("expression is required");
-			const url = \`\${baseUrl}/v1/sidebar_eval\`;
+			const url = \`\${baseUrl}/v1/browser_eval\`;
 			const headers = {
 				"content-type": "application/json",
 				accept: "application/json"
@@ -60,7 +60,7 @@ function createSidebarEvalTool() {
 					ok: false,
 					error: "bridge_unreachable",
 					message: formatErrorMessage(error),
-					hint: "Ensure Open Studio is running (sidebar tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
+					hint: "Ensure Open Studio is running (browser tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
 				});
 			}
 			const text = await response.text();
@@ -89,36 +89,36 @@ function createSidebarEvalTool() {
 const FN_NEEDLE = `function createGetGoalTool(options) {`;
 
 function injectCreateCall(src) {
-  if (src.includes("const sidebarEvalTool = createSidebarEvalTool();")) {
+  if (src.includes("const browserEvalTool = createBrowserEvalTool();")) {
     return src;
   }
-  if (src.includes("const sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;")) {
+  if (src.includes("const browserEvalTool = __studioWebExploreSession ? createBrowserEvalTool() : null;")) {
     return src;
   }
-  if (src.includes("const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;")) {
+  if (src.includes("const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;")) {
     return src.replace(
-      "const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;",
-      "const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;\r\n\tconst sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;",
+      "const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;",
+      "const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;\r\n\tconst browserEvalTool = __studioWebExploreSession ? createBrowserEvalTool() : null;",
     ).replace(
-      "const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;\r\n\tconst sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;",
-      "const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;\r\n\tconst sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;",
+      "const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;\r\n\tconst browserEvalTool = __studioWebExploreSession ? createBrowserEvalTool() : null;",
+      "const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;\r\n\tconst browserEvalTool = __studioWebExploreSession ? createBrowserEvalTool() : null;",
     );
   }
-  if (src.includes("const sidebarDebuggerTool = createSidebarDebuggerTool();")) {
+  if (src.includes("const browserDebuggerTool = createBrowserDebuggerTool();")) {
     return src.replace(
-      `const sidebarDebuggerTool = createSidebarDebuggerTool();
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-debugger-tool");`,
-      `const sidebarDebuggerTool = createSidebarDebuggerTool();
-	const sidebarEvalTool = createSidebarEvalTool();
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-debugger-tool");
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-eval-tool");`,
+      `const browserDebuggerTool = createBrowserDebuggerTool();
+	options?.recordToolPrepStage?.("openclaw-tools:browser-debugger-tool");`,
+      `const browserDebuggerTool = createBrowserDebuggerTool();
+	const browserEvalTool = createBrowserEvalTool();
+	options?.recordToolPrepStage?.("openclaw-tools:browser-debugger-tool");
+	options?.recordToolPrepStage?.("openclaw-tools:browser-eval-tool");`,
     );
   }
-  if (src.includes("const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;") && !src.includes("sidebarEvalTool")) {
+  if (src.includes("const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;") && !src.includes("browserEvalTool")) {
     return src.replace(
-      "const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;",
-      `const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;
-	const sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;`,
+      "const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;",
+      `const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;
+	const browserEvalTool = __studioWebExploreSession ? createBrowserEvalTool() : null;`,
     );
   }
   console.warn("[patch-openclaw-sidebar-eval] skip — create call inject point not found");
@@ -126,14 +126,14 @@ function injectCreateCall(src) {
 }
 
 function toolListHasSidebarEval(src) {
-  return /sidebarDebuggerTool,\r?\n[\t ]+sidebarEvalTool\r?\n[\t ]+\]/.test(src);
+  return /browserDebuggerTool,\r?\n[\t ]+browserEvalTool\r?\n[\t ]+\]/.test(src);
 }
 
 function injectToolList(src) {
   if (toolListHasSidebarEval(src)) return src;
   const replaced = src.replace(
-    /(sidebarDebuggerTool)(\r?\n[\t ]+\])/,
-    "$1,\n\t\t\tsidebarEvalTool$2",
+    /(browserDebuggerTool)(\r?\n[\t ]+\])/,
+    "$1,\n\t\t\tbrowserEvalTool$2",
   );
   if (replaced === src) {
     console.warn("[patch-openclaw-sidebar-eval] skip — tool list inject point not found");

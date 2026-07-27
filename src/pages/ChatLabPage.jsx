@@ -90,7 +90,6 @@ import {
   parseAgentDelegateMention,
   resolveReplyTargets,
 } from "../studio/agentMentions.js";
-import { extractFirstWebMarkdownLink, readLinkOpenModeLocal } from "../chat/chatLabLinkOpenPreference.js";
 import {
   isSidebarAutomationCarrierContent,
   isSidebarAutomationCarrierMessage,
@@ -985,7 +984,7 @@ function mergeTerminalAssistantPayload(m, extra) {
   return next;
 }
 
-function isSidebarAutomationToolRow(row) {
+function isBrowserAutomationToolRow(row) {
   const id = String(row?.id ?? "");
   const toolName = String(row?.toolName ?? "")
     .trim()
@@ -993,11 +992,18 @@ function isSidebarAutomationToolRow(row) {
     .replace(/[\s-]+/g, "_");
   return (
     id.startsWith("sidebar-auto:") ||
+    id.startsWith("browser-auto:") ||
+    toolName === "browser_action" ||
     toolName === "sidebar_action" ||
+    toolName.endsWith(".browser_action") ||
+    toolName.endsWith("/browser_action") ||
     toolName.endsWith(".sidebar_action") ||
     toolName.endsWith("/sidebar_action")
   );
 }
+
+/** @deprecated use isBrowserAutomationToolRow */
+const isSidebarAutomationToolRow = isBrowserAutomationToolRow;
 
 /**
  * @param {import("../chat/toolTraceMerge.js").ToolTraceRow[] | undefined} toolRows
@@ -5229,7 +5235,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       {!embedMode?.forceThread ? (
         <>
           <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
-          <ChatLabAutoLinkPreview conversationId={conversationId} messages={messages} />
         </>
       ) : null}
       <ChatLabSidebarActionRunner
@@ -5465,7 +5470,7 @@ function seedPreviewAutoOpenOnConversationSwitch(
 
 /**
  * When the latest assistant reply finishes streaming and includes a ```html … ``` fence,
- * open the preview dock (disk-only artifacts with no fenced body still need manual/open via link).
+ * open the preview dock (disk-only artifacts with no fenced body still need manual open via browser_open).
  * @param {{ conversationId: string; messages: Array<{ id: string; role: string; content?: string; streaming?: boolean; error?: string }> }} props
  */
 function ChatLabAutoHtmlPreview({ conversationId, messages }) {
@@ -5498,47 +5503,6 @@ function ChatLabAutoHtmlPreview({ conversationId, messages }) {
     if (!doc) return;
     preview.openSrcDoc(doc, t("chatLab.previewTitleHtml"));
   }, [conversationId, messages, preview, t]);
-
-  return null;
-}
-
-/**
- * When link open mode is sidebar, auto-load the first https link in a finished assistant reply.
- * @param {{ conversationId: string; messages: Array<{ id: string; role: string; content?: string; streaming?: boolean; error?: string }> }} props
- */
-function ChatLabAutoLinkPreview({ conversationId, messages }) {
-  const preview = useChatLabPreview();
-  const handledTailIdRef = useRef(/** @type {string | null} */ (null));
-  const conversationIdRef = useRef(/** @type {string | null} */ (null));
-  const pendingHydrateRef = useRef(false);
-  const messagesAtSwitchRef = useRef(/** @type {unknown} */ (null));
-
-  useLayoutEffect(() => {
-    if (
-      seedPreviewAutoOpenOnConversationSwitch(
-        conversationId,
-        messages,
-        conversationIdRef,
-        pendingHydrateRef,
-        messagesAtSwitchRef,
-        handledTailIdRef,
-      )
-    ) {
-      return;
-    }
-    if (!preview?.openFromHref) return;
-    if (readLinkOpenModeLocal() === "external") return;
-    const lastAssistant = [...messages]
-      .reverse()
-      .find((m) => m.role === "assistant" && !m.streaming && !m.error);
-    if (!lastAssistant?.id) return;
-    if (handledTailIdRef.current === lastAssistant.id) return;
-    handledTailIdRef.current = lastAssistant.id;
-    if (lastHtmlFenceAsSrcDocDocument(String(lastAssistant.content ?? ""))) return;
-    const url = extractFirstWebMarkdownLink(String(lastAssistant.content ?? ""));
-    if (!url) return;
-    preview.openFromHref(url, url);
-  }, [conversationId, messages, preview]);
 
   return null;
 }
@@ -6380,8 +6344,8 @@ function getToolTracePresentation(row, t) {
     return { kind: "generic", brief: line, aria: line };
   }
 
-  // Native `sidebar_action` rows often have no friendly summary — avoid showing the raw tool id.
-  if (isSidebarAutomationToolRow(row)) {
+  // Native `browser_action` rows often have no friendly summary — avoid showing the raw tool id.
+  if (isBrowserAutomationToolRow(row)) {
     const running = isRunningToolRow(row);
     const line = running
       ? t("chatLab.sidebarAutomationRunning")
@@ -6390,7 +6354,20 @@ function getToolTracePresentation(row, t) {
   }
 
   if (
+    nameLower === "browser_open" ||
+    nameLower.endsWith(".browser_open") ||
+    nameLower.endsWith("/browser_open")
+  ) {
+    const running = isRunningToolRow(row);
+    const line = running ? t("chatLab.browserOpenRunning") : t("chatLab.browserOpenToolLabel");
+    return { kind: "generic", brief: line, aria: line };
+  }
+
+  if (
+    nameLower === "browser_debug" ||
     nameLower === "sidebar_debug" ||
+    nameLower.endsWith(".browser_debug") ||
+    nameLower.endsWith("/browser_debug") ||
     nameLower.endsWith(".sidebar_debug") ||
     nameLower.endsWith("/sidebar_debug")
   ) {
@@ -6402,7 +6379,10 @@ function getToolTracePresentation(row, t) {
   }
 
   if (
+    nameLower === "browser_screenshot" ||
     nameLower === "sidebar_screenshot" ||
+    nameLower.endsWith(".browser_screenshot") ||
+    nameLower.endsWith("/browser_screenshot") ||
     nameLower.endsWith(".sidebar_screenshot") ||
     nameLower.endsWith("/sidebar_screenshot")
   ) {

@@ -1,33 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
-import { extractFirstWebMarkdownLink, readLinkOpenModeLocal } from "../../chat/chatLabLinkOpenPreference.js";
 import {
   extractSidebarActionStepsFromAssistantMessage,
 } from "../../chat/chatLabSidebarActionProtocol.js";
-
-const SIDEBAR_AUTOMATION_WEBVIEW_READY_MS = 600;
-
-/**
- * @param {() => boolean} isReady
- * @param {number} timeoutMs
- */
-function waitUntil(isReady, timeoutMs) {
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const tick = () => {
-      if (isReady()) {
-        resolve(true);
-        return;
-      }
-      if (Date.now() - started >= timeoutMs) {
-        resolve(false);
-        return;
-      }
-      window.setTimeout(tick, 50);
-    };
-    tick();
-  });
-}
 
 /**
  * @param {import("../../chat/chatLabPreviewAutomation.js").SidebarAutomationStep[]} steps
@@ -69,13 +44,11 @@ export default function ChatLabSidebarActionRunner({
     seededRef.current = true;
   }, [conversationId, messages]);
 
-  const automationEnabled =
-    Boolean(preview?.embedPreview) || readLinkOpenModeLocal() !== "external";
+  const automationEnabled = Boolean(preview?.embedPreview);
 
   useEffect(() => {
     if (!seededRef.current) return;
     const runAutomation = preview?.runSidebarAutomation;
-    const openFromHref = preview?.openFromHref;
     if (!runAutomation || !onAutomationApplied) return;
     if (!automationEnabled) return;
     if (runningRef.current) return;
@@ -105,17 +78,6 @@ export default function ChatLabSidebarActionRunner({
           assistantMessageId: candidate.id,
           requestedSteps: resolvedSteps,
         });
-
-        const messageText = String(candidate.content ?? "");
-        const linkedUrl = extractFirstWebMarkdownLink(messageText);
-        const needsNavigate = resolvedSteps.some((step) => step.action === "navigate");
-        if (linkedUrl && openFromHref && !needsNavigate) {
-          openFromHref(linkedUrl, linkedUrl);
-          await waitUntil(
-            () => Boolean(preview?.webviewRef?.current || preview?.session?.kind === "iframe"),
-            SIDEBAR_AUTOMATION_WEBVIEW_READY_MS,
-          );
-        }
 
         const result = await runAutomation(resolvedSteps, {
           stopOnFailure: true,
@@ -154,10 +116,7 @@ export default function ChatLabSidebarActionRunner({
     automationEnabled,
     messages,
     onAutomationApplied,
-    preview?.openFromHref,
     preview?.runSidebarAutomation,
-    preview?.session?.kind,
-    preview?.webviewRef,
   ]);
 
   return null;

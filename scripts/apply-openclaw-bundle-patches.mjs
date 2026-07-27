@@ -26,6 +26,7 @@ for (const script of [
   "patch-openclaw-chat-image-inline.mjs",
   "patch-openclaw-studio-lean-chat.mjs",
   "patch-openclaw-sidebar-action.mjs",
+  "patch-openclaw-browser-open.mjs",
   "patch-openclaw-sidebar-preview-tools.mjs",
   "patch-openclaw-sidebar-debugger.mjs",
   "patch-openclaw-sidebar-eval.mjs",

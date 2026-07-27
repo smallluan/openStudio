@@ -52,7 +52,7 @@ const child = spawn(target.electronExe, [target.cliPath, ...forwardArgs], {
     NO_COLOR: "1",
     /** Skip ~20–30s pdf-tool factory on each chat.send prep (see patch-openclaw-studio-lean-chat.mjs). */
     OPEN_STUDIO_LEAN_CHAT_TOOLS: process.env.OPEN_STUDIO_LEAN_CHAT_TOOLS ?? "1",
-    /** Native sidebar_action tool → Electron loopback bridge (lib/sidebar-action-tool-bridge.cjs). */
+    /** Native browser tools → Electron loopback bridge (lib/sidebar-action-tool-bridge.cjs). */
     OPEN_STUDIO_SIDEBAR_TOOL_URL:
       process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL ?? "http://127.0.0.1:19111",
     OPEN_STUDIO_SIDEBAR_TOOL_TOKEN:

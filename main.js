@@ -54,6 +54,7 @@ const {
   syncOpenStudioCronFires,
 } = require("./lib/automation-openstudio-cron.cjs");
 const { syncGatewayCronJobsToAutomationStore } = require("./lib/automation-cron-store-sync.cjs");
+const { buildAutomationTaskPruneKeepIds } = require("./lib/automation-task-prune.cjs");
 const { resolveAutomationStudioMetaDefaults } = require("./lib/automation-defaults.cjs");
 const {
   listCronJobs,
@@ -126,6 +127,7 @@ const {
   startSidebarActionToolBridge,
   stopSidebarActionToolBridge,
   handleSidebarActionToolRespond,
+  handleBrowserOpenToolRespond,
 } = require("./lib/sidebar-action-tool-bridge.cjs");
 const {
   initPreviewGuestCapture,
@@ -1434,6 +1436,10 @@ app.whenReady().then(async () => {
     return handleSidebarActionToolRespond(payload && typeof payload === "object" ? payload : {});
   });
 
+  ipcMain.handle("studio:browserOpenToolRespond", (_event, payload) => {
+    return handleBrowserOpenToolRespond(payload && typeof payload === "object" ? payload : {});
+  });
+
   ipcMain.handle("studio:setActivePreviewGuest", (_event, payload) => {
     const id = payload && typeof payload === "object" ? payload.webContentsId : payload;
     return setActivePreviewGuest(id);
@@ -2459,8 +2465,13 @@ app.whenReady().then(async () => {
         }
       }
       const refreshedMetaRows = automationTasksStore.list();
-      const keepIds = [...cronById.keys()];
-      automationTasksStore.pruneMissing(keepIds);
+      const keepIds = buildAutomationTaskPruneKeepIds(
+        cronById.keys(),
+        refreshedMetaRows,
+        isStudioOnlyAutomationTaskId,
+      );
+      automationTasksStore.pruneMissing([...keepIds]);
+      const metaRowsForTasks = automationTasksStore.list();
 
       for (const meta of refreshedMetaRows) {
         const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
@@ -2549,7 +2560,7 @@ app.whenReady().then(async () => {
       }
 
       const nowMs = Date.now();
-      const tasks = refreshedMetaRows
+      const tasks = metaRowsForTasks
         .map((meta) => {
           const cronJobId = typeof meta.cronJobId === "string" ? meta.cronJobId.trim() : "";
           if (!cronJobId) return null;
@@ -2562,10 +2573,12 @@ app.whenReady().then(async () => {
             typeof meta.channel === "string" ? meta.channel : "open-studio",
           );
           const job = cronById.get(cronJobId);
-          if (channel === "open-studio" && !job) {
-            return buildStudioAutomationTaskCard(meta, nowMs);
+          if (!job) {
+            if (channel === "open-studio" || meta.enabled === false) {
+              return buildStudioAutomationTaskCard(meta, nowMs);
+            }
+            return null;
           }
-          if (!job) return null;
 
           const state =
             job.state && typeof job.state === "object" ? /** @type {Record<string, unknown>} */ (job.state) : {};

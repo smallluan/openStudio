@@ -1,4 +1,4 @@
-{
+﻿{
   "app": {
     "documentTitle": "Open Studio"
   },
@@ -520,9 +520,9 @@
     "resizeHandle": "調整大小",
     "gatewayUnavailable": "目前環境無法使用對話。",
     "streamError": "回覆流傳輸出錯。",
-    "linkOpenPrompt": "## 網頁漫遊（目前主頁面）\n使用者正在 **網頁漫遊** 中瀏覽，主視口就是目前頁面（不是 Chat Lab 右側邊欄）。\n- **讀取頁面**：系統注入「目前主頁面快照」+ **可互動元素清單**；必須優先使用\n- **控制頁面**：呼叫原生工具 `sidebar_action`（observe→act）：短 steps → 同輪回傳 observation → 再決策\n- **重要**：`sidebar_action` 與 `sidebar_debug` / `sidebar_screenshot` / `sidebar_debugger` / `sidebar_eval` 在網頁漫遊主視口均已註冊；工具名含 sidebar **不代表**僅限右側邊欄 preview，**禁止**以「不是側欄預覽」拒絕呼叫\n- 登入頁請使用者先完成登入",
-    "userTurnAutomationHint": "**網頁漫遊頁面操作**：需要點擊/輸入/捲動/除錯時，直接呼叫 `sidebar_action`（及 `sidebar_debug`、`sidebar_screenshot`、`sidebar_debugger`、`sidebar_eval`）。這些工具在網頁漫遊主視口可用；勿因工具名含 sidebar 或「不是側欄預覽」而拒絕。",
-    "pageAutomationPrompt": "## 網頁漫遊自動化（原生工具 `sidebar_action`）\n需要操作頁面時，**呼叫工具** `sidebar_action`（最多 5 步）。不要輸出 ```sidebar-action``` 代碼塊。每次只傳當前短步驟；工具結果含最新 DOM/`elements[].ref`。定位必須用清單中的 ref/selector；禁止臆造自然语言 target。\n\n## 觀測增強（獨立工具）\n- `sidebar_debug`：使用者問控制台有什麼日誌/報錯 → 直接 `sidebar_debug { op: \"console\" }` 或 `{ op: \"fetch\", fetchLogs: true, onlyErrors: true }`；**不要**先 start、**不要**用斷點。僅抓首屏網路才 `start`+`reload:true`。\n- `sidebar_screenshot`：DOM 不足時截視口\n- `sidebar_debugger`：**僅** JS 斷點除錯；**禁止**用來讀 console、**禁止**對 `console.error` 下斷點\n- `sidebar_eval`：在頁面上下文執行任意 JavaScript（等同 DevTools 控制台）。用於除錯、讀全域變數、呼叫頁面 API；可搭配斷點。若頁面因斷點暫停，先 `sidebar_debugger op=resume` 或在暫停幀內 `op=evaluate`",
+    "linkOpenPrompt": "## 網頁漫遊（目前主頁面）\n使用者正在 **網頁漫遊** 中瀏覽，主視口就是目前頁面（不是 Chat Lab 右側邊欄）。\n- **讀取頁面**：系統注入「目前主頁面快照」+ **可互動元素清單**；必須優先使用\n- **控制頁面**：呼叫原生工具 `browser_action`（observe→act）：短 steps → 同輪回傳 observation → 再決策\n- **重要**：`browser_action` 與 `browser_debug` / `browser_screenshot` / `browser_debugger` / `browser_eval` 在網頁漫遊主視口均已註冊；工具名含 sidebar **不代表**僅限右側邊欄 preview，**禁止**以「不是側欄預覽」拒絕呼叫\n- 登入頁請使用者先完成登入",
+    "userTurnAutomationHint": "**網頁漫遊頁面操作**：需要點擊/輸入/捲動/除錯時，直接呼叫 `browser_action`（及 `browser_debug`、`browser_screenshot`、`browser_debugger`、`browser_eval`）。這些工具在網頁漫遊主視口可用；勿因工具名含 sidebar 或「不是側欄預覽」而拒絕。",
+    "pageAutomationPrompt": "## 網頁漫遊自動化（原生工具 `browser_action`）\n需要操作頁面時，**呼叫工具** `browser_action`（最多 5 步）。不要輸出 ```sidebar-action``` 代碼塊。每次只傳當前短步驟；工具結果含最新 DOM/`elements[].ref`。定位必須用清單中的 ref/selector；禁止臆造自然语言 target。\n\n## 觀測增強（獨立工具）\n- `browser_debug`：使用者問控制台有什麼日誌/報錯 → 直接 `browser_debug { op: \"console\" }` 或 `{ op: \"fetch\", fetchLogs: true, onlyErrors: true }`；**不要**先 start、**不要**用斷點。僅抓首屏網路才 `start`+`reload:true`。\n- `browser_screenshot`：DOM 不足時截視口\n- `browser_debugger`：**僅** JS 斷點除錯；**禁止**用來讀 console、**禁止**對 `console.error` 下斷點\n- `browser_eval`：在頁面上下文執行任意 JavaScript（等同 DevTools 控制台）。用於除錯、讀全域變數、呼叫頁面 API；可搭配斷點。若頁面因斷點暫停，先 `browser_debugger op=resume` 或在暫停幀內 `op=evaluate`",
     "previewContext": {
       "header": "## 網頁漫遊目前頁面快照（使用者正在瀏覽的頁面）",
       "methodNote": "以下內容由用戶端從網頁漫遊主視口讀取：可見文字 + 可互動元素清單（非右側邊欄）。",
@@ -532,7 +532,7 @@
       "partial": "正文未能完整讀取（可能仍在載入或跨域限制），但 URL/標題可用。",
       "canvasHint": "頁面可能含 Canvas/表格等複雜 UI，正文摘錄可能不完整。",
       "loginHint": "快照顯示目前可能是登入/權限頁。請讓使用者在主頁面先完成登入。",
-      "instruction": "回答與頁面相關的問題時，優先使用以上快照與元素清單。需要操作時呼叫 sidebar_action，且只能引用清單中的 ref/selector。",
+      "instruction": "回答與頁面相關的問題時，優先使用以上快照與元素清單。需要操作時呼叫 browser_action，且只能引用清單中的 ref/selector。",
       "elements": "可互動元素清單（用 ref 或 selector 定位，禁止臆造 target）：\n{{inventory}}"
     }
   },
@@ -699,16 +699,18 @@
     "systemPrompt": "你是專業且友善的助理。先釐清思路再清楚回答，並使用與使用者相同的語言。在 Windows 環境中，優先使用 Git 內建的 Unix 工具（grep、sort、awk、sed、tr、wc、find 等），以獲得更好的效率和跨平台一致性。僅在 Unix 工具無法處理時，才退回使用 PowerShell 原生命令。",
     "imageDisplayPrompt": "## 圖片展示\nOpen Studio 聊天介面只能渲染 Markdown 正文裡的圖片，不能單獨「傳送」圖片附件。當使用者要看圖、或你要分享網路/工作區圖片時：\n- 必須在回覆正文中寫出 Markdown 圖片語法：`![簡短描述](https://…圖片直鏈…)`\n- URL 必須是可載入的圖片直鏈（如 .jpg/.png/.webp/.gif 結尾，或回傳 image/* 的 CDN 連結），不要用網頁落地頁連結\n- 每張圖單獨一行；不要只說「找到了/發給你」卻不寫 `![](url)`\n- 若只有網頁連結而無直鏈，說明無法在聊天裡內嵌展示，並給出可點擊的普通連結 `[描述](url)`\n- 禁止空口承諾「發圖/貼圖」卻不附帶任何 Markdown 圖片或連結\n\n### 圖片組格式（必須遵守）\n介面會把**連續的圖片行**合併為朋友圈式網格展示；格式不對會退化為逐張豎排。\n- **嚴禁**在圖片之間穿插介紹、標題、編號或逐張說明（例如：「銀河下的山脈」→ 圖 →「山巔雲海」→ 圖）；這是錯誤格式\n- 每張圖的說明只能寫在 `![alt](url)` 的 alt 裡，**不要**在圖片上方或下方另起一行文字標題\n- 正確順序：先寫**一段**總體說明（可選），然後**連續**輸出所有 `![](url)` 行，組內中間不要空插 prose\n- 多張圖示例：\n```\n以下 10 張山水風景圖（Unsplash CDN 直鏈）：\n\n![銀河下的山脈](url1)\n![山巔雲海](url2)\n![層巒疊嶂](url3)\n```\n- 需要多組圖片時：用**獨立說明段**分隔各組；每組仍是「說明 + 連續圖片行」，組內不得穿插文字\n- 圖片行之間不要插入空行以外的任何文字行",
     "chartDisplayPrompt": "## 圖表展示（高優先級）\nOpen Studio **只能**透過 Markdown 正文裡的 ` ```chart ` / ` ```echarts ` 程式碼區塊渲染互動式圖表（ECharts）。\n\n### 何時必須輸出 chart 程式碼區塊\n使用者提到柱狀圖/折線圖/圓餅圖/圖表/視覺化/趨勢圖/chart/bar chart 等時，**必須**寫 ` ```chart ` 區塊。可另附 Markdown 表格，但**不能**用表格或文字圖代替。\n\n### 嚴禁的替代方式（無效）\n- **禁止** ASCII 文字條形圖、█ 字元塊、手繪座標軸\n- **禁止** 只說「見下圖/已繪製」卻不寫 ` ```chart ` 區塊\n- **禁止** 僅輸出 Markdown 表格代替圖表\n- **禁止** 在使用者只要表格/清單時額外附 chart 區塊；不要「表格 + 預設柱狀圖」成套輸出\n\n### 表格與圖表\n- 僅展示資料、對比、列舉時：**只輸出 Markdown 表格**，不要強行再畫柱狀圖\n- 只有在使用者明確要求圖表/視覺化/趨勢/占比，或你主動寫 ` ```chart ` / ` ```echarts ` 時，才輸出 chart\n- 介面不會對每張表自動補圖；表格本身不等於需要圖表\n\n### chart 簡化語法（推薦）\n```chart\ntype: bar\ntitle: 季度銷售額（萬元）\nx: [Q1, Q2, Q3, Q4]\nseries:\n  - name: 2024\n    data: [120, 200, 150, 180]\n  - name: 2025\n    data: [140, 230, 170, 210]\n```\n- 數值用純數字；單位寫在 title 或 y\n- 支援 type：`bar` `line` `pie` `scatter`\n- **中國地圖**：僅 ` ```echarts ` JSON；`series.type: map` 且 `map: china` 或 `map: 中国`（省級邊界，按需載入）；data 的 name 用完整省名；建議加 visualMap；世界/其他國家地圖暫不支援",
-    "linkOpenSidebarPrompt": "## 開啟網頁（右側邊欄預覽）\n連結在 Open Studio 右側邊欄開啟。讀取快照 + 可互動元素清單；用原生工具 `sidebar_action` 做 observe→act。登入頁請使用者先登入。",
-    "sidebarAutomationPrompt": "## 右側邊欄自動化（原生工具 `sidebar_action`）\n呼叫工具 `sidebar_action`，參數 `{ \"steps\": [...] }`（最多 5 步）。先讀元素清單，用 `ref`（推薦）或 selector 定位。**禁止**臆造自然语言 target。根據工具回傳的 observation 繼續下一步或用自然語言結束。禁止一次輸出超長劇本。\n\n示例：\n```json\n{\"steps\":[{\"action\":\"click\",\"ref\":\"e12\"}]}\n```",
-    "sidebarPreviewCapabilitiesPrompt": "## Chat Lab 側欄預覽能力範圍（非網頁漫遊）\n目前是 **Chat Lab 右側邊欄預覽**，不是 **網頁漫遊** 主視口。\n- **可用**：`sidebar_action` 自動化（**側欄預覽與網頁漫遊均可**）+ 系統注入的快照與元素清單\n- **不可用（僅本模式）**：`sidebar_debug`、`sidebar_debugger`、`sidebar_screenshot`、`sidebar_eval`——僅在 **網頁漫遊** 註冊；勿聲稱可用或編造步驟\n- 用戶要斷點/抓包/深度排查：請切換到 **網頁漫遊**",
+    "linkOpenSidebarPrompt": "## 開啟網頁（右側邊欄預覽）\n連結在 Open Studio 右側邊欄開啟。**開啟網頁**請呼叫原生工具 `browser_open`（`{ \"url\": \"https://...\" }`）；回覆中的 Markdown 連結不會自動開啟。讀取快照 + 可互動元素清單；用 `browser_action` 做 observe→act。登入頁請使用者先登入。",
+    "sidebarAutomationPrompt": "## 右側邊欄自動化（原生工具 `browser_action`）\n呼叫工具 `browser_action`，參數 `{ \"steps\": [...] }`（最多 5 步）。先讀元素清單，用 `ref`（推薦）或 selector 定位。**禁止**臆造自然语言 target。根據工具回傳的 observation 繼續下一步或用自然語言結束。禁止一次輸出超長劇本。\n\n示例：\n```json\n{\"steps\":[{\"action\":\"click\",\"ref\":\"e12\"}]}\n```",
+    "sidebarPreviewCapabilitiesPrompt": "## Chat Lab 側欄預覽能力範圍（非網頁漫遊）\n目前是 **Chat Lab 右側邊欄預覽**，不是 **網頁漫遊** 主視口。\n- **可用**：`browser_action` 自動化（**側欄預覽與網頁漫遊均可**）+ 系統注入的快照與元素清單\n- **不可用（僅本模式）**：`browser_debug`、`browser_debugger`、`browser_screenshot`、`browser_eval`——僅在 **網頁漫遊** 註冊；勿聲稱可用或編造步驟\n- 用戶要斷點/抓包/深度排查：請切換到 **網頁漫遊**",
     "sidebarAutomationRunning": "正在自動化操作頁面",
     "sidebarAutomationToolLabel": "頁面自動化",
+    "browserOpenToolLabel": "開啟網頁",
+    "browserOpenRunning": "正在開啟網頁…",
     "sidebarDebugToolLabel": "頁面除錯（日誌/網路）",
     "sidebarDebugRunning": "正在採集頁面除錯資料…",
     "sidebarScreenshotToolLabel": "頁面截圖",
     "sidebarScreenshotRunning": "正在截取頁面…",
-    "sidebarPreviewToolsPrompt": "## 預覽除錯與截圖（獨立工具）\n- `sidebar_debug`：問「控制台有什麼」→ **`op=console`**（或 `fetch` + `fetchLogs:true`）；console 持續緩衝，無需先 start。抓首屏網路才 `start`+`reload:true`。\n- `sidebar_debugger`：**不是**讀控制台工具；僅 JS 斷點。使用者問日誌/報錯時**禁止** `break_on_text` 搜 console.error。\n- `sidebar_screenshot`：視口截圖；DOM 不足時使用。",
+    "sidebarPreviewToolsPrompt": "## 預覽除錯與截圖（獨立工具）\n- `browser_debug`：問「控制台有什麼」→ **`op=console`**（或 `fetch` + `fetchLogs:true`）；console 持續緩衝，無需先 start。抓首屏網路才 `start`+`reload:true`。\n- `browser_debugger`：**不是**讀控制台工具；僅 JS 斷點。使用者問日誌/報錯時**禁止** `break_on_text` 搜 console.error。\n- `browser_screenshot`：視口截圖；DOM 不足時使用。",
     "automationExecutionSystemPrompt": "## Open Studio 定時任務執行\n目前對話由**已存在的定時任務**自動觸發，不是使用者在聊天裡下達的新指令。\n- 請**直接執行**任務指令並向使用者交付結果（例如發出提醒、回報狀態）\n- **禁止**呼叫 cron / 定時 / 提醒類工具去新建、修改或刪除定時任務\n- **禁止**把任務指令誤解為「使用者要你設定新的提醒/定時器」",
     "automationExecutionTaskNameLine": "任務名稱：{{name}}\n",
     "automationExecutionUserTurn": "這是一條 **Open Studio 定時任務** 的自動觸發（不是使用者在聊天裡新建任務）。\n\n{{taskNameLine}}**請直接執行下方任務指令**，用自然語言向使用者交付結果。\n- **禁止**呼叫 cron / 定時 / 提醒相關工具去新建或修改定時任務\n- **禁止**把本訊息理解成「使用者要你設定提醒」\n\n**任務指令：**\n{{instruction}}",
@@ -726,7 +728,7 @@
       "partial": "未能讀取完整正文，但 URL/標題可用。",
       "loginHint": "快照顯示可能是登入/權限頁。",
       "canvasHint": "偵測到線上表格/Canvas：儲存格內容可能無法以文字快照取得。",
-      "instruction": "當使用者問右側頁面時，優先依快照與元素清單回答。需要操作時呼叫 sidebar_action，且只能引用清單中的 ref/selector。",
+      "instruction": "當使用者問右側頁面時，優先依快照與元素清單回答。需要操作時呼叫 browser_action，且只能引用清單中的 ref/selector。",
       "elements": "可互動元素清單（用 ref 或 selector 定位，禁止臆造 target）：\n{{inventory}}"
     },
     "wechatSystemPrompt": "目前對話來自微信通道，token 成本敏感。使用者要檔案時：只用 cp/mv 複製到工作區，禁止 read_file/cat 讀整份文件、禁止貼正文。禁止用 ![圖片](連結) 或裸圖片 URL——Open Studio 會逐張發到微信。最多兩句話回覆即可。",

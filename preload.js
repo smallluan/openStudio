@@ -133,6 +133,13 @@ contextBridge.exposeInMainWorld("studioBridge", {
   },
   respondSidebarActionTool: (payload) =>
     ipcRenderer.invoke("studio:sidebarActionToolRespond", payload && typeof payload === "object" ? payload : {}),
+  onBrowserOpenToolRequest: (listener) => {
+    const wrapped = (_e, data) => listener(data);
+    ipcRenderer.on("studio:browserOpenToolRequest", wrapped);
+    return () => ipcRenderer.removeListener("studio:browserOpenToolRequest", wrapped);
+  },
+  respondBrowserOpenTool: (payload) =>
+    ipcRenderer.invoke("studio:browserOpenToolRespond", payload && typeof payload === "object" ? payload : {}),
   setActivePreviewGuest: (webContentsId) =>
     ipcRenderer.invoke("studio:setActivePreviewGuest", { webContentsId }),
   setPreviewRequestOverrides: (payload) =>

@@ -1,5 +1,5 @@
-/**
- * Inject native `sidebar_debugger` tool into OpenClaw createOpenClawTools.
+﻿/**
+ * Inject native `browser_debugger` tool into OpenClaw createOpenClawTools.
  * Runs after patch-openclaw-sidebar-preview-tools.mjs (shares HTTP bridge).
  */
 import fs from "node:fs";
@@ -19,19 +19,19 @@ const target = toolsBundle
   ? path.join(distDir, toolsBundle)
   : path.join(openclawRoot, "dist", "openclaw-tools-ChLzmhJi.js");
 
-const MARKER = "OPEN_STUDIO_SIDEBAR_DEBUGGER_TOOL";
+const MARKER = "OPEN_STUDIO_BROWSER_DEBUGGER_TOOL";
 
 const TOOL_FN = `
-function createSidebarDebuggerTool() {
+function createBrowserDebuggerTool() {
 	/* ${MARKER} */
 	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\\/$/, "");
 	if (!baseUrl) return null;
 	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
 	return {
-		label: "Sidebar Debugger",
-		name: "sidebar_debugger",
+		label: "Browser Debugger",
+		name: "browser_debugger",
 		displaySummary: "Preview JS breakpoints",
-		description: "Set breakpoints and inspect paused JavaScript on the Open Studio preview / Web Explore page via CDP Debugger. Workflow: op=enable → op=break_on_text → reproduce with sidebar_action. On hit, sidebar_action returns debuggerPaused:true with inspect (pause bar on preview). After inspect/evaluate you MUST op=resume before any retry or further clicks — leaving the page paused blocks the user. Do not treat freeze/timeout as a miss. No source maps yet. Do not open guest DevTools while using this tool.",
+		description: "Set breakpoints and inspect paused JavaScript on the Open Studio preview / Web Explore page via CDP Debugger. Workflow: op=enable → op=break_on_text → reproduce with browser_action. On hit, browser_action returns debuggerPaused:true with inspect (pause bar on preview). After inspect/evaluate you MUST op=resume before any retry or further clicks — leaving the page paused blocks the user. Do not treat freeze/timeout as a miss. No source maps yet. Do not open guest DevTools while using this tool.",
 		parameters: Type.Object({
 			op: Type.String({
 				description: "enable | disable | status | search | break_on_text | break_on_location | clear_breakpoints | wait_paused | inspect | evaluate | resume | step_over | step_into | step_out"
@@ -53,7 +53,7 @@ function createSidebarDebuggerTool() {
 			const params = asToolParamsRecord(args);
 			const op = String(params.op || "").trim();
 			if (!op) throw new ToolInputError("op is required");
-			const url = \`\${baseUrl}/v1/sidebar_debugger\`;
+			const url = \`\${baseUrl}/v1/browser_debugger\`;
 			const headers = {
 				"content-type": "application/json",
 				accept: "application/json"
@@ -75,7 +75,7 @@ function createSidebarDebuggerTool() {
 					ok: false,
 					error: "bridge_unreachable",
 					message: formatErrorMessage(error),
-					hint: "Ensure Open Studio is running (sidebar tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
+					hint: "Ensure Open Studio is running (browser tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
 				});
 			}
 			const text = await response.text();
@@ -104,27 +104,27 @@ function createSidebarDebuggerTool() {
 const FN_NEEDLE = `function createGetGoalTool(options) {`;
 
 function injectCreateCall(src) {
-  if (src.includes("const sidebarDebuggerTool = createSidebarDebuggerTool();")) {
+  if (src.includes("const browserDebuggerTool = createBrowserDebuggerTool();")) {
     return src;
   }
-  if (src.includes("const sidebarScreenshotTool = createSidebarScreenshotTool();")) {
+  if (src.includes("const browserScreenshotTool = createBrowserScreenshotTool();")) {
     return src.replace(
-      `const sidebarScreenshotTool = createSidebarScreenshotTool();
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-preview-tools");`,
-      `const sidebarScreenshotTool = createSidebarScreenshotTool();
-	const sidebarDebuggerTool = createSidebarDebuggerTool();
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-preview-tools");
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-debugger-tool");`,
+      `const browserScreenshotTool = createBrowserScreenshotTool();
+	options?.recordToolPrepStage?.("openclaw-tools:browser-preview-tools");`,
+      `const browserScreenshotTool = createBrowserScreenshotTool();
+	const browserDebuggerTool = createBrowserDebuggerTool();
+	options?.recordToolPrepStage?.("openclaw-tools:browser-preview-tools");
+	options?.recordToolPrepStage?.("openclaw-tools:browser-debugger-tool");`,
     );
   }
-  if (src.includes("const sidebarActionTool = createSidebarActionTool();")) {
+  if (src.includes("const browserActionTool = createBrowserActionTool();")) {
     return src.replace(
-      `const sidebarActionTool = createSidebarActionTool();
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");`,
-      `const sidebarActionTool = createSidebarActionTool();
-	const sidebarDebuggerTool = createSidebarDebuggerTool();
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-debugger-tool");`,
+      `const browserActionTool = createBrowserActionTool();
+	options?.recordToolPrepStage?.("openclaw-tools:browser-action-tool");`,
+      `const browserActionTool = createBrowserActionTool();
+	const browserDebuggerTool = createBrowserDebuggerTool();
+	options?.recordToolPrepStage?.("openclaw-tools:browser-action-tool");
+	options?.recordToolPrepStage?.("openclaw-tools:browser-debugger-tool");`,
     );
   }
   if (src.includes(`options?.recordToolPrepStage?.("openclaw-tools:web-fetch-tool");`)) {
@@ -132,8 +132,8 @@ function injectCreateCall(src) {
       `\toptions?.recordToolPrepStage?.("openclaw-tools:web-fetch-tool");
 	const messageTool = options?.disableMessageTool ? null : createMessageTool({`,
       `\toptions?.recordToolPrepStage?.("openclaw-tools:web-fetch-tool");
-	const sidebarDebuggerTool = createSidebarDebuggerTool();
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-debugger-tool");
+	const browserDebuggerTool = createBrowserDebuggerTool();
+	options?.recordToolPrepStage?.("openclaw-tools:browser-debugger-tool");
 	const messageTool = options?.disableMessageTool ? null : createMessageTool({`,
     );
   }
@@ -141,26 +141,26 @@ function injectCreateCall(src) {
 }
 
 function injectToolList(src) {
-  if (src.includes("sidebarDebuggerTool")) {
+  if (src.includes("browserDebuggerTool")) {
     return src;
   }
-  if (src.includes(`sidebarScreenshotTool
+  if (src.includes(`browserScreenshotTool
 		])`)) {
     return src.replace(
-      `sidebarScreenshotTool
+      `browserScreenshotTool
 		])`,
-      `sidebarScreenshotTool,
-			sidebarDebuggerTool
+      `browserScreenshotTool,
+			browserDebuggerTool
 		])`,
     );
   }
-  if (src.includes(`sidebarActionTool
+  if (src.includes(`browserActionTool
 		])`)) {
     return src.replace(
-      `sidebarActionTool
+      `browserActionTool
 		])`,
-      `sidebarActionTool,
-			sidebarDebuggerTool
+      `browserActionTool,
+			browserDebuggerTool
 		])`,
     );
   }
@@ -170,7 +170,7 @@ function injectToolList(src) {
       `pdfTool
 		])`,
       `pdfTool,
-			sidebarDebuggerTool
+			browserDebuggerTool
 		])`,
     );
   }

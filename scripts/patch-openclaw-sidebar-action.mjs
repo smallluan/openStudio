@@ -1,5 +1,5 @@
-/**
- * Inject native `sidebar_action` tool into OpenClaw createOpenClawTools.
+﻿/**
+ * Inject native `browser_action` tool into OpenClaw createOpenClawTools.
  * Used to apply the change locally and to refresh patches/openclaw+2026.6.1.patch.
  */
 import fs from "node:fs";
@@ -19,10 +19,10 @@ const target = toolsBundle
   ? path.join(distDir, toolsBundle)
   : path.join(openclawRoot, "dist", "openclaw-tools-ChLzmhJi.js");
 
-const MARKER = "OPEN_STUDIO_SIDEBAR_ACTION_TOOL";
+const MARKER = "OPEN_STUDIO_BROWSER_ACTION_TOOL";
 
 const TOOL_FN = `
-function createSidebarActionTool() {
+function createBrowserActionTool() {
 	/* ${MARKER} */
 	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\\/$/, "");
 	if (!baseUrl) return null;
@@ -43,10 +43,10 @@ function createSidebarActionTool() {
 		parentSelector: Type.Optional(Type.String())
 	}, { additionalProperties: true });
 	return {
-		label: "Sidebar Action",
-		name: "sidebar_action",
+		label: "Browser Action",
+		name: "browser_action",
 		displaySummary: "Control Open Studio preview page",
-		description: "Execute a short UI automation batch (max 5 steps) on the Web Explore main viewport or Chat Lab sidebar preview. The sidebar_ prefix does NOT mean sidebar-only — call this tool in Web Explore when the user asks to click/type/scroll. Prefer ref/selector from the injected page inventory or the previous tool observation. The result includes a fresh observation with elements[].ref — call sidebar_action again for the next batch, or answer the user in natural language when done. Do not invent natural-language targets.",
+		description: "Execute a short UI automation batch (max 5 steps) on the Web Explore main viewport or Chat Lab preview panel. Browser tools target the Open Studio preview panel — call this tool in Web Explore when the user asks to click/type/scroll. Prefer ref/selector from the injected page inventory or the previous tool observation. The result includes a fresh observation with elements[].ref — call browser_action again for the next batch, or answer the user in natural language when done. Do not invent natural-language targets.",
 		parameters: Type.Object({
 			steps: Type.Array(stepSchema, {
 				minItems: 1,
@@ -58,7 +58,7 @@ function createSidebarActionTool() {
 			const params = asToolParamsRecord(args);
 			const steps = Array.isArray(params.steps) ? params.steps : [];
 			if (!steps.length) throw new ToolInputError("steps is required");
-			const url = \`\${baseUrl}/v1/sidebar_action\`;
+			const url = \`\${baseUrl}/v1/browser_action\`;
 			const headers = {
 				"content-type": "application/json",
 				accept: "application/json"
@@ -77,7 +77,7 @@ function createSidebarActionTool() {
 					ok: false,
 					error: "bridge_unreachable",
 					message: formatErrorMessage(error),
-					hint: "Ensure Open Studio is running (sidebar_action bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
+					hint: "Ensure Open Studio is running (browser_action bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
 				});
 			}
 			const text = await response.text();
@@ -107,8 +107,8 @@ const INJECT_CALL_NEEDLE = `\toptions?.recordToolPrepStage?.("openclaw-tools:web
 	const messageTool = options?.disableMessageTool ? null : createMessageTool({`;
 
 const INJECT_CALL_REPLACEMENT = `\toptions?.recordToolPrepStage?.("openclaw-tools:web-fetch-tool");
-	const sidebarActionTool = createSidebarActionTool();
-	options?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");
+	const browserActionTool = createBrowserActionTool();
+	options?.recordToolPrepStage?.("openclaw-tools:browser-action-tool");
 	const messageTool = options?.disableMessageTool ? null : createMessageTool({`;
 
 const INJECT_LIST_NEEDLE = `\t\t...collectPresentOpenClawTools([
@@ -123,7 +123,7 @@ const INJECT_LIST_REPLACEMENT = `\t\t...collectPresentOpenClawTools([
 			webFetchTool,
 			imageTool,
 			pdfTool,
-			sidebarActionTool
+			browserActionTool
 		])`;
 
 const FN_NEEDLE = `function createGetGoalTool(options) {`;

@@ -21,8 +21,13 @@ function isClientSidebarAutomationToolRow(row) {
   const toolName = String(row && typeof row === "object" ? row.toolName : "");
   return (
     id.startsWith("sidebar-auto:") ||
-    toolName === "sidebar-action" ||
-    toolName === "sidebar_action"
+    id.startsWith("browser-auto:") ||
+    toolName === "browser_action" ||
+    toolName === "sidebar_action" ||
+    toolName.endsWith(".browser_action") ||
+    toolName.endsWith("/browser_action") ||
+    toolName.endsWith(".sidebar_action") ||
+    toolName.endsWith("/sidebar_action")
   );
 }
 

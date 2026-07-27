@@ -1,6 +1,6 @@
-/**
- * Scope sidebar debug tools to Web Explore sessions only.
- * Chat Lab sidebar preview keeps `sidebar_action`; debug tools register only when
+﻿/**
+ * Scope Browser Debug tools to Web Explore sessions only.
+ * Chat Lab preview panel keeps `browser_action`; debug tools register only when
  * agentSessionKey contains `#studio:wexplore:` (see newWebExploreConversationId).
  *
  * Runs after patch-openclaw-sidebar-debugger.mjs.
@@ -22,7 +22,7 @@ const target = toolsBundle
   ? path.join(distDir, toolsBundle)
   : path.join(openclawRoot, "dist", "openclaw-tools-ChLzmhJi.js");
 
-const MARKER = "OPEN_STUDIO_SIDEBAR_TOOLS_SCOPE";
+const MARKER = "OPEN_STUDIO_BROWSER_TOOLS_SCOPE";
 
 const HELPER_FN = `
 function isOpenStudioWebExploreSessionKey(agentSessionKey) {
@@ -32,34 +32,34 @@ function isOpenStudioWebExploreSessionKey(agentSessionKey) {
 }
 `;
 
-const CREATE_OLD = `const sidebarDebugTool = createSidebarDebugTool();
-	const sidebarScreenshotTool = createSidebarScreenshotTool();
-	const sidebarDebuggerTool = createSidebarDebuggerTool();
-	const sidebarEvalTool = createSidebarEvalTool();`;
+const CREATE_OLD = `const browserDebugTool = createBrowserDebugTool();
+	const browserScreenshotTool = createBrowserScreenshotTool();
+	const browserDebuggerTool = createBrowserDebuggerTool();
+	const browserEvalTool = createBrowserEvalTool();`;
 
 const CREATE_NEW = `const __studioWebExploreSession = isOpenStudioWebExploreSessionKey(options?.agentSessionKey);
-	const sidebarDebugTool = __studioWebExploreSession ? createSidebarDebugTool() : null;
-	const sidebarScreenshotTool = __studioWebExploreSession ? createSidebarScreenshotTool() : null;
-	const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;
-	const sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;`;
+	const browserDebugTool = __studioWebExploreSession ? createBrowserDebugTool() : null;
+	const browserScreenshotTool = __studioWebExploreSession ? createBrowserScreenshotTool() : null;
+	const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;
+	const browserEvalTool = __studioWebExploreSession ? createBrowserEvalTool() : null;`;
 
-const CREATE_OLD_WITH_ACTION = `\tconst sidebarActionTool = createSidebarActionTool();
-\tconst sidebarDebugTool = createSidebarDebugTool();
-\tconst sidebarScreenshotTool = createSidebarScreenshotTool();
-\tconst sidebarDebuggerTool = createSidebarDebuggerTool();
-\tconst sidebarEvalTool = createSidebarEvalTool();`;
+const CREATE_OLD_WITH_ACTION = `\tconst browserActionTool = createBrowserActionTool();
+\tconst browserDebugTool = createBrowserDebugTool();
+\tconst browserScreenshotTool = createBrowserScreenshotTool();
+\tconst browserDebuggerTool = createBrowserDebuggerTool();
+\tconst browserEvalTool = createBrowserEvalTool();`;
 
-const CREATE_NEW_WITH_ACTION = `\tconst sidebarActionTool = createSidebarActionTool();
+const CREATE_NEW_WITH_ACTION = `\tconst browserActionTool = createBrowserActionTool();
 \tconst __studioWebExploreSession = isOpenStudioWebExploreSessionKey(options?.agentSessionKey);
-\tconst sidebarDebugTool = __studioWebExploreSession ? createSidebarDebugTool() : null;
-\tconst sidebarScreenshotTool = __studioWebExploreSession ? createSidebarScreenshotTool() : null;
-\tconst sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;
-\tconst sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;`;
+\tconst browserDebugTool = __studioWebExploreSession ? createBrowserDebugTool() : null;
+\tconst browserScreenshotTool = __studioWebExploreSession ? createBrowserScreenshotTool() : null;
+\tconst browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;
+\tconst browserEvalTool = __studioWebExploreSession ? createBrowserEvalTool() : null;`;
 
-const CREATE_OLD_DEBUGGER_ONLY = `const sidebarDebuggerTool = createSidebarDebuggerTool();`;
+const CREATE_OLD_DEBUGGER_ONLY = `const browserDebuggerTool = createBrowserDebuggerTool();`;
 
 const CREATE_NEW_DEBUGGER_ONLY = `const __studioWebExploreSession = isOpenStudioWebExploreSessionKey(options?.agentSessionKey);
-	const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;`;
+	const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;`;
 
 /** Match/replace blocks regardless of CRLF vs LF in the bundle. */
 function replaceBlock(src, old, next) {
@@ -80,26 +80,26 @@ function main() {
     return;
   }
   let src = fs.readFileSync(target, "utf8");
-  if (src.includes(MARKER) && includesBlock(src, CREATE_NEW_WITH_ACTION.split("\n")[1]) && src.includes("sidebarEvalTool")) {
+  if (src.includes(MARKER) && includesBlock(src, CREATE_NEW_WITH_ACTION.split("\n")[1]) && src.includes("browserEvalTool")) {
     console.log("[patch-openclaw-sidebar-tools-scope] already applied");
     return;
   }
 
-  if (src.includes(MARKER) && src.includes("__studioWebExploreSession") && !src.includes("sidebarEvalTool")) {
+  if (src.includes(MARKER) && src.includes("__studioWebExploreSession") && !src.includes("browserEvalTool")) {
     src = replaceBlock(
       src,
-      `\tconst sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;`,
-      `\tconst sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;
-\tconst sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;`,
+      `\tconst browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;`,
+      `\tconst browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;
+\tconst browserEvalTool = __studioWebExploreSession ? createBrowserEvalTool() : null;`,
     );
-    if (src.includes("...(sidebarDebuggerTool ? [sidebarDebuggerTool] : []),")) {
+    if (src.includes("...(browserDebuggerTool ? [browserDebuggerTool] : []),")) {
       src = src.replace(
-        "...(sidebarDebuggerTool ? [sidebarDebuggerTool] : []),",
-        "...(sidebarDebuggerTool ? [sidebarDebuggerTool] : []),\n\t\t...(sidebarEvalTool ? [sidebarEvalTool] : []),",
+        "...(browserDebuggerTool ? [browserDebuggerTool] : []),",
+        "...(browserDebuggerTool ? [browserDebuggerTool] : []),\n\t\t...(browserEvalTool ? [browserEvalTool] : []),",
       );
     }
     fs.writeFileSync(target, src, "utf8");
-    console.log("[patch-openclaw-sidebar-tools-scope] upgraded with sidebar_eval →", path.relative(root, target));
+    console.log("[patch-openclaw-sidebar-tools-scope] upgraded with browser_eval →", path.relative(root, target));
     return;
   }
   if (!src.includes("function createOpenClawTools(options)")) {
@@ -121,7 +121,7 @@ function main() {
     src = replaceBlock(src, CREATE_OLD_WITH_ACTION, CREATE_NEW_WITH_ACTION);
   } else if (includesBlock(src, CREATE_OLD)) {
     src = replaceBlock(src, CREATE_OLD, CREATE_NEW);
-  } else if (includesBlock(src, CREATE_OLD_DEBUGGER_ONLY) && !src.includes("sidebarDebugTool")) {
+  } else if (includesBlock(src, CREATE_OLD_DEBUGGER_ONLY) && !src.includes("browserDebugTool")) {
     src = replaceBlock(src, CREATE_OLD_DEBUGGER_ONLY, CREATE_NEW_DEBUGGER_ONLY);
   } else if (!src.includes("__studioWebExploreSession")) {
     console.warn("[patch-openclaw-sidebar-tools-scope] skip — create call inject point not found");

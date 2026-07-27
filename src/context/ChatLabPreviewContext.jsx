@@ -303,6 +303,7 @@ function sessionFromWebTab(tab) {
  *   captureSidebarContextBlock: () => Promise<string>;
  *   runSidebarAutomation: (steps: import("../chat/chatLabPreviewAutomation.js").SidebarAutomationStep[] | unknown) => Promise<unknown>;
  *   executeSidebarActionTool: (args: { steps?: unknown }) => Promise<unknown>;
+ *   executeBrowserOpenTool: (args: { url?: string; title?: string }) => Promise<unknown>;
  * }>} */
 export const ChatLabPreviewContext = createContext(null);
 
@@ -1269,7 +1270,7 @@ export function ChatLabPreviewProvider({
   );
 
   /**
-   * Native OpenClaw `sidebar_action` tool entry: run steps, then return fresh observation.
+   * Native OpenClaw `browser_action` tool entry: run steps, then return fresh observation.
    * @param {{ steps?: unknown }} args
    */
   const executeSidebarActionTool = useCallback(
@@ -1315,7 +1316,7 @@ export function ChatLabPreviewProvider({
         stoppedAt: runResult?.stoppedAt,
         steps: Array.isArray(runResult?.steps) ? runResult.steps : [],
         observation,
-        hint: "Use observation.elements[].ref (or selector) for the next sidebar_action call. For file upload, use set_files with absolute paths — do NOT click buttons that open the native OS file picker. Call again for the next short batch (max 5 steps). When done, answer the user in natural language.",
+        hint: "Use observation.elements[].ref (or selector) for the next browser_action call. For file upload, use set_files with absolute paths — do NOT click buttons that open the native OS file picker. Call again for the next short batch (max 5 steps). When done, answer the user in natural language.",
       };
     },
     [
@@ -1328,6 +1329,22 @@ export function ChatLabPreviewProvider({
       session,
       webviewRef,
     ],
+  );
+
+  const executeBrowserOpenTool = useCallback(
+    async (args = {}) => {
+      const rawUrl = String(args?.url ?? "").trim();
+      if (!rawUrl) {
+        return { ok: false, error: "missing_url", message: "url is required" };
+      }
+      const title = String(args?.title ?? rawUrl).trim() || rawUrl;
+      const opened = openFromHref(rawUrl, title);
+      if (!opened) {
+        return { ok: false, error: "open_failed", url: rawUrl, message: "Could not open URL in preview panel" };
+      }
+      return { ok: true, url: rawUrl, title, message: "URL opened in preview panel" };
+    },
+    [openFromHref],
   );
 
   const closePreviewTab = useCallback(
@@ -1387,6 +1404,7 @@ export function ChatLabPreviewProvider({
       captureSidebarContextBlock,
       runSidebarAutomation,
       executeSidebarActionTool,
+      executeBrowserOpenTool,
     }),
     [
       session,
@@ -1417,6 +1435,7 @@ export function ChatLabPreviewProvider({
       captureSidebarContextBlock,
       runSidebarAutomation,
       executeSidebarActionTool,
+      executeBrowserOpenTool,
     ],
   );
 

@@ -1,4 +1,4 @@
-diff --git a/dist/capability-provider-runtime-kzHPFTZS.js b/dist/capability-provider-runtime-kzHPFTZS.js
+﻿diff --git a/dist/capability-provider-runtime-kzHPFTZS.js b/dist/capability-provider-runtime-kzHPFTZS.js
 index e722bbe00300d29551b33cd1ff8ab2cfc4fcab2f..fad9a2abb844b71e59438cf4e92059dbe92c562d 100644
 --- a/dist/capability-provider-runtime-kzHPFTZS.js
 +++ b/dist/capability-provider-runtime-kzHPFTZS.js
@@ -48,13 +48,13 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  			snapshot,
  			authStore: params.authStore,
  			key: "mediaUnderstandingProviders",
-@@ -2698,6 +2698,375 @@ function resolveGoalSessionScope(options) {
+@@ -2698,6 +2698,437 @@ function resolveGoalSessionScope(options) {
  		storePath: resolveStorePath(options.config?.session?.store, { agentId })
  	};
  }
 +
-+function createSidebarActionTool() {
-+	/* OPEN_STUDIO_SIDEBAR_ACTION_TOOL */
++function createBrowserActionTool() {
++	/* OPEN_STUDIO_BROWSER_ACTION_TOOL */
 +	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\/$/, "");
 +	if (!baseUrl) return null;
 +	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
@@ -74,10 +74,10 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +		parentSelector: Type.Optional(Type.String())
 +	}, { additionalProperties: true });
 +	return {
-+		label: "Sidebar Action",
-+		name: "sidebar_action",
++		label: "Browser Action",
++		name: "browser_action",
 +		displaySummary: "Control Open Studio preview page",
-+		description: "Execute a short UI automation batch (max 5 steps) on the Open Studio sidebar preview or Web Explore page. Prefer ref/selector from the injected page inventory or the previous tool observation. The result includes a fresh observation with elements[].ref — call sidebar_action again for the next batch, or answer the user in natural language when done. Do not invent natural-language targets.",
++		description: "Execute a short UI automation batch (max 5 steps) on the Open Studio preview panel or Web Explore page. Prefer ref/selector from the injected page inventory or the previous tool observation. The result includes a fresh observation with elements[].ref — call browser_action again for the next batch, or answer the user in natural language when done. Do not invent natural-language targets.",
 +		parameters: Type.Object({
 +			steps: Type.Array(stepSchema, {
 +				minItems: 1,
@@ -89,7 +89,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +			const params = asToolParamsRecord(args);
 +			const steps = Array.isArray(params.steps) ? params.steps : [];
 +			if (!steps.length) throw new ToolInputError("steps is required");
-+			const url = `${baseUrl}/v1/sidebar_action`;
++			const url = `${baseUrl}/v1/browser_action`;
 +			const headers = {
 +				"content-type": "application/json",
 +				accept: "application/json"
@@ -108,7 +108,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +					ok: false,
 +					error: "bridge_unreachable",
 +					message: formatErrorMessage(error),
-+					hint: "Ensure Open Studio is running (sidebar_action bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
++					hint: "Ensure Open Studio is running (browser_action bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
 +				});
 +			}
 +			const text = await response.text();
@@ -133,16 +133,78 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +	};
 +}
 +
-+function createSidebarDebuggerTool() {
-+	/* OPEN_STUDIO_SIDEBAR_DEBUGGER_TOOL */
++function createBrowserOpenTool() {
++	/* OPEN_STUDIO_BROWSER_OPEN_TOOL */
 +	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\/$/, "");
 +	if (!baseUrl) return null;
 +	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
 +	return {
-+		label: "Sidebar Debugger",
-+		name: "sidebar_debugger",
++		label: "Browser Open",
++		name: "browser_open",
++		displaySummary: "Open URL in preview",
++		description: "Open an HTTP(S) URL in the Open Studio preview panel (Chat Lab sidebar or Web Explore viewport). Use when the user asks to open, visit, or browse a webpage — markdown links in your reply are NOT auto-opened. After opening, use browser_action to interact or read the injected page snapshot. Params: url (required), title (optional).",
++		parameters: Type.Object({
++			url: Type.String({ description: "HTTP(S) URL to open in the preview panel" }),
++			title: Type.Optional(Type.String({ description: "Optional tab/title label" }))
++		}),
++		execute: async (_toolCallId, args) => {
++			const params = asToolParamsRecord(args);
++			const url = String(params.url || "").trim();
++			if (!url) throw new ToolInputError("url is required");
++			const bridgeUrl = `${baseUrl}/v1/browser_open`;
++			const headers = {
++				"content-type": "application/json",
++				accept: "application/json"
++			};
++			if (token) headers.authorization = `Bearer ${token}`;
++			let response;
++			try {
++				response = await fetch(bridgeUrl, {
++					method: "POST",
++					headers,
++					body: JSON.stringify({ url, title: params.title }),
++					signal: AbortSignal.timeout(3e4)
++				});
++			} catch (error) {
++				return jsonResult({
++					ok: false,
++					error: "bridge_unreachable",
++					message: formatErrorMessage(error),
++					hint: "Ensure Open Studio is running (browser tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
++				});
++			}
++			const text = await response.text();
++			let payload;
++			try {
++				payload = text ? JSON.parse(text) : {};
++			} catch {
++				payload = {
++					ok: false,
++					error: "invalid_bridge_json",
++					raw: text.slice(0, 500)
++				};
++			}
++			if (!response.ok) return jsonResult({
++				ok: false,
++				error: "bridge_http_error",
++				status: response.status,
++				...payload && typeof payload === "object" ? payload : { raw: payload }
++			});
++			return jsonResult(payload);
++		}
++	};
++}
++
++function createBrowserDebuggerTool() {
++	/* OPEN_STUDIO_BROWSER_DEBUGGER_TOOL */
++	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\/$/, "");
++	if (!baseUrl) return null;
++	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
++	return {
++		label: "Browser Debugger",
++		name: "browser_debugger",
 +		displaySummary: "Preview JS breakpoints",
-+		description: "Set breakpoints and inspect paused JavaScript on the Open Studio preview / Web Explore page via CDP Debugger. Workflow: op=enable → op=break_on_text (or break_on_location from console stack) → reproduce with sidebar_action → op=wait_paused → op=inspect / op=evaluate → op=resume. No source maps yet — searches runtime/bundled scripts. Do not open guest DevTools while using this tool.",
++		description: "Set breakpoints and inspect paused JavaScript on the Open Studio preview / Web Explore page via CDP Debugger. Workflow: op=enable → op=break_on_text (or break_on_location from console stack) → reproduce with browser_action → op=wait_paused → op=inspect / op=evaluate → op=resume. No source maps yet — searches runtime/bundled scripts. Do not open guest DevTools while using this tool.",
 +		parameters: Type.Object({
 +			op: Type.String({
 +				description: "enable | disable | status | search | break_on_text | break_on_location | clear_breakpoints | wait_paused | inspect | evaluate | resume | step_over | step_into | step_out"
@@ -164,7 +226,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +			const params = asToolParamsRecord(args);
 +			const op = String(params.op || "").trim();
 +			if (!op) throw new ToolInputError("op is required");
-+			const url = `${baseUrl}/v1/sidebar_debugger`;
++			const url = `${baseUrl}/v1/browser_debugger`;
 +			const headers = {
 +				"content-type": "application/json",
 +				accept: "application/json"
@@ -186,7 +248,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +					ok: false,
 +					error: "bridge_unreachable",
 +					message: formatErrorMessage(error),
-+					hint: "Ensure Open Studio is running (sidebar tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
++					hint: "Ensure Open Studio is running (browser tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
 +				});
 +			}
 +			const text = await response.text();
@@ -212,17 +274,17 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +}
 +
 +
-+function createSidebarDebugTool() {
-+	/* OPEN_STUDIO_SIDEBAR_PREVIEW_TOOLS */
-+	/* OPEN_STUDIO_SIDEBAR_DEBUG_RELOAD */
++function createBrowserDebugTool() {
++	/* OPEN_STUDIO_BROWSER_PREVIEW_TOOLS */
++	/* OPEN_STUDIO_BROWSER_DEBUG_RELOAD */
 +	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\/$/, "");
 +	if (!baseUrl) return null;
 +	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
 +	return {
-+		label: "Sidebar Debug",
-+		name: "sidebar_debug",
++		label: "Browser Debug",
++		name: "browser_debug",
 +		displaySummary: "Preview console/network debug",
-+		description: "Read buffered console logs and record network for Open Studio preview / Web Explore. User asks what is in the console → op=console (or fetch with fetchLogs:true). Console is buffered continuously; no start needed. For first-load network only: op=start with reload=true, then catalog/fetch. Ops: start|stop|clear|status|catalog|console|logs|fetch|reload. Do NOT use sidebar_debugger to read console output. /* OPEN_STUDIO_SIDEBAR_DEBUG_CONSOLE */",
++		description: "Read buffered console logs and record network for Open Studio preview / Web Explore. User asks what is in the console → op=console (or fetch with fetchLogs:true). Console is buffered continuously; no start needed. For first-load network only: op=start with reload=true, then catalog/fetch. Ops: start|stop|clear|status|catalog|console|logs|fetch|reload. Do NOT use browser_debugger to read console output. /* OPEN_STUDIO_BROWSER_DEBUG_CONSOLE */",
 +		parameters: Type.Object({
 +			op: Type.String({
 +				description: "console | logs | start | stop | clear | status | catalog | fetch | reload"
@@ -252,7 +314,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +			const params = asToolParamsRecord(args);
 +			const op = String(params.op || "").trim();
 +			if (!op) throw new ToolInputError("op is required");
-+			const url = `${baseUrl}/v1/sidebar_debug`;
++			const url = `${baseUrl}/v1/browser_debug`;
 +			const headers = {
 +				"content-type": "application/json",
 +				accept: "application/json"
@@ -271,7 +333,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +					ok: false,
 +					error: "bridge_unreachable",
 +					message: formatErrorMessage(error),
-+					hint: "Ensure Open Studio is running (sidebar tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
++					hint: "Ensure Open Studio is running (browser tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
 +				});
 +			}
 +			const text = await response.text();
@@ -296,16 +358,16 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +	};
 +}
 +
-+function createSidebarScreenshotTool() {
-+	/* OPEN_STUDIO_SIDEBAR_PREVIEW_TOOLS_SHOT */
++function createBrowserScreenshotTool() {
++	/* OPEN_STUDIO_BROWSER_PREVIEW_TOOLS_SHOT */
 +	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\/$/, "");
 +	if (!baseUrl) return null;
 +	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
 +	return {
-+		label: "Sidebar Screenshot",
-+		name: "sidebar_screenshot",
++		label: "Browser Screenshot",
++		name: "browser_screenshot",
 +		displaySummary: "Capture preview screenshot",
-+		description: "Capture a viewport screenshot of the Open Studio sidebar preview or Web Explore page. Use when the DOM inventory is insufficient (icon-only controls, canvas, visual layout). Returns a PNG path (and optional base64). Does not replace sidebar_action for clicking — use observation refs after visual inspection when possible.",
++		description: "Capture a viewport screenshot of the Open Studio preview panel or Web Explore page. Use when the DOM inventory is insufficient (icon-only controls, canvas, visual layout). Returns a PNG path (and optional base64). Does not replace browser_action for clicking — use observation refs after visual inspection when possible.",
 +		parameters: Type.Object({
 +			includeBase64: Type.Optional(Type.Boolean({
 +				description: "Include base64 PNG in the tool result when small enough (default false)"
@@ -313,7 +375,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +		}, { additionalProperties: true }),
 +		execute: async (_toolCallId, args) => {
 +			const params = asToolParamsRecord(args);
-+			const url = `${baseUrl}/v1/sidebar_screenshot`;
++			const url = `${baseUrl}/v1/browser_screenshot`;
 +			const headers = {
 +				"content-type": "application/json",
 +				accept: "application/json"
@@ -332,7 +394,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +					ok: false,
 +					error: "bridge_unreachable",
 +					message: formatErrorMessage(error),
-+					hint: "Ensure Open Studio is running (sidebar tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
++					hint: "Ensure Open Studio is running (browser tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
 +				});
 +			}
 +			const text = await response.text();
@@ -358,16 +420,16 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +}
 +
 +
-+function createSidebarEvalTool() {
-+	/* OPEN_STUDIO_SIDEBAR_EVAL_TOOL */
++function createBrowserEvalTool() {
++	/* OPEN_STUDIO_BROWSER_EVAL_TOOL */
 +	const baseUrl = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL || "").trim().replace(/\/$/, "");
 +	if (!baseUrl) return null;
 +	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
 +	return {
-+		label: "Sidebar Eval",
-+		name: "sidebar_eval",
++		label: "Browser Eval",
++		name: "browser_eval",
 +		displaySummary: "Run JS on preview page",
-+		description: "Execute arbitrary JavaScript in the active Open Studio preview / Web Explore page context (same as DevTools console). Use for debugging, inspecting globals, or driving page APIs that sidebar_action cannot reach. Params: expression (required). Returns serialized result value. If debugger is paused on a breakpoint, use sidebar_debugger op=evaluate in the paused frame or op=resume first. Pair with sidebar_debugger breakpoints for deep inspection.",
++		description: "Execute arbitrary JavaScript in the active Open Studio preview / Web Explore page context (same as DevTools console). Use for debugging, inspecting globals, or driving page APIs that browser_action cannot reach. Params: expression (required). Returns serialized result value. If debugger is paused on a breakpoint, use browser_debugger op=evaluate in the paused frame or op=resume first. Pair with browser_debugger breakpoints for deep inspection.",
 +		parameters: Type.Object({
 +			expression: Type.Optional(Type.String({ description: "JavaScript expression or statements to run in page context" })),
 +			script: Type.Optional(Type.String({ description: "Alias for expression" })),
@@ -377,7 +439,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +			const params = asToolParamsRecord(args);
 +			const expression = String(params.expression || params.script || params.code || "").trim();
 +			if (!expression) throw new ToolInputError("expression is required");
-+			const url = `${baseUrl}/v1/sidebar_eval`;
++			const url = `${baseUrl}/v1/browser_eval`;
 +			const headers = {
 +				"content-type": "application/json",
 +				accept: "application/json"
@@ -396,7 +458,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +					ok: false,
 +					error: "bridge_unreachable",
 +					message: formatErrorMessage(error),
-+					hint: "Ensure Open Studio is running (sidebar tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
++					hint: "Ensure Open Studio is running (browser tools bridge on OPEN_STUDIO_SIDEBAR_TOOL_URL)."
 +				});
 +			}
 +			const text = await response.text();
@@ -489,7 +551,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +	const lightContext = !(params && params.lightContext === false);
 +	return { context, lightContext };
 +}
-+const OPEN_STUDIO_SUBAGENT_TOOL_DENY = ["sidebar_action", "sidebar_debug", "sidebar_screenshot", "sidebar_debugger"];
++const OPEN_STUDIO_SUBAGENT_TOOL_DENY = ["browser_open", "browser_action", "browser_debug", "browser_screenshot", "browser_debugger", "browser_eval"];
 +function mergeOpenStudioSubagentToolDenylist(base) {
 +	/* OPEN_STUDIO_SESSIONS_SPAWN_LEAN_CHILD */
 +	const deny = new Set();
@@ -824,41 +886,44 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  }
  let openClawToolsDeps = { callGateway };
 +function isOpenStudioWebExploreSessionKey(agentSessionKey) {
-+	/* OPEN_STUDIO_SIDEBAR_TOOLS_SCOPE */
++	/* OPEN_STUDIO_BROWSER_TOOLS_SCOPE */
 +	const key = String(agentSessionKey ?? "");
 +	return key.includes("#studio:wexplore:");
 +}
  function createOpenClawTools(options) {
  	const resolvedConfig = options?.config ?? openClawToolsDeps.config;
  	const runtimeSnapshot = getActiveSecretsRuntimeConfigSnapshot();
-@@ -13921,6 +14578,16 @@ function createOpenClawTools(options) {
+@@ -13921,6 +14578,18 @@ function createOpenClawTools(options) {
  		lateBindRuntimeConfig: true
  	});
  	options?.recordToolPrepStage?.("openclaw-tools:web-fetch-tool");
-+	const sidebarActionTool = createSidebarActionTool();
++	const browserActionTool = createBrowserActionTool();
++	const browserOpenTool = createBrowserOpenTool();
 +	const __studioWebExploreSession = isOpenStudioWebExploreSessionKey(options?.agentSessionKey);
-+	const sidebarDebugTool = __studioWebExploreSession ? createSidebarDebugTool() : null;
-+	const sidebarScreenshotTool = __studioWebExploreSession ? createSidebarScreenshotTool() : null;
-+	const sidebarDebuggerTool = __studioWebExploreSession ? createSidebarDebuggerTool() : null;
-+	const sidebarEvalTool = __studioWebExploreSession ? createSidebarEvalTool() : null;
-+	options?.recordToolPrepStage?.("openclaw-tools:sidebar-action-tool");
-+	options?.recordToolPrepStage?.("openclaw-tools:sidebar-preview-tools");
-+	options?.recordToolPrepStage?.("openclaw-tools:sidebar-debugger-tool");
-+	options?.recordToolPrepStage?.("openclaw-tools:sidebar-eval-tool");
++	const browserDebugTool = __studioWebExploreSession ? createBrowserDebugTool() : null;
++	const browserScreenshotTool = __studioWebExploreSession ? createBrowserScreenshotTool() : null;
++	const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;
++	const browserEvalTool = __studioWebExploreSession ? createBrowserEvalTool() : null;
++	options?.recordToolPrepStage?.("openclaw-tools:browser-action-tool");
++	options?.recordToolPrepStage?.("openclaw-tools:browser-open-tool");
++	options?.recordToolPrepStage?.("openclaw-tools:browser-preview-tools");
++	options?.recordToolPrepStage?.("openclaw-tools:browser-debugger-tool");
++	options?.recordToolPrepStage?.("openclaw-tools:browser-eval-tool");
  	const messageTool = options?.disableMessageTool ? null : createMessageTool({
  		agentAccountId: options?.agentAccountId,
  		agentSessionKey: options?.agentSessionKey,
-@@ -14104,7 +14771,12 @@ function createOpenClawTools(options) {
+@@ -14104,7 +14771,13 @@ function createOpenClawTools(options) {
  			webSearchTool,
  			webFetchTool,
  			imageTool,
 -			pdfTool
 +			pdfTool,
-+			sidebarActionTool,
-+			sidebarDebugTool,
-+			sidebarScreenshotTool,
-+			sidebarDebuggerTool,
-+			sidebarEvalTool
++			browserActionTool,
++			browserOpenTool,
++			browserDebugTool,
++			browserScreenshotTool,
++			browserDebuggerTool,
++			browserEvalTool
  		])
  	];
  	options?.recordToolPrepStage?.("openclaw-tools:core-tool-list");
