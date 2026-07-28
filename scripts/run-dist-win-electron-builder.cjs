@@ -55,6 +55,7 @@ function openclawBundleInputsHash() {
   markers.push(readJsonTextSafe(path.join(root, "scripts", "apply-openclaw-bundle-patches.mjs")));
   markers.push(readJsonTextSafe(path.join(root, "scripts", "patch-openclaw-chat-image-inline.mjs")));
   markers.push(readJsonTextSafe(path.join(root, "scripts", "patch-openclaw-studio-lean-chat.mjs")));
+  markers.push(readJsonTextSafe(path.join(root, "scripts", "patch-openclaw-compact-tool-descriptions.mjs")));
   markers.push(readJsonTextSafe(path.join(root, "node_modules", "chalk", "package.json")));
   return sha256OfStrings(markers);
 }

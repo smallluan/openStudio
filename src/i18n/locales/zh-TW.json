@@ -186,7 +186,7 @@
       "genderFemale": "女",
       "userMd": "關於我",
       "userMdPlaceholder": "介紹一下你自己，例如職業、興趣、偏好、常用工具等…",
-      "userMdHint": "以上內容會寫入 USER.md，並注入到 Agent 對話上下文中。"
+      "userMdHint": "姓名、性別與「關於我」會寫入 USER.md 並注入對話上下文。頭像僅用於介面展示，不會把圖片像素/Base64 傳給模型。"
     },
     "usage": {
       "today": "今日",
@@ -1062,8 +1062,6 @@
     "sessionKeyPlaceholder": "如 agent:dev:dev",
     "sessionKeyGenerate": "隨機產生",
     "sessionKeyHint": "須與 openclaw.json 中既有代理 id 一致（預設 dev → agent:dev:…）。若日誌中 sessions.json 鎖等待很久，可嘗試新鍵，並將 ~/.openclaw-dev 置於本機 SSD。",
-    "chatLabLeanPlugins": "對話：精簡閘道只載 LLM（加快啟動）",
-    "chatLabLeanPluginsHint": "開啟後，只會向開發設定目錄（~/.openclaw-dev，即預設 19001 閘道）寫入「目前 LLM 廠商外掛」，不再自動加入瀏覽器／手機遠控等大型外掛。**按「儲存」後必須完全結束並重啟 OpenClaw 閘道行程**，否則行程仍將舊外掛表保留在記憶體中，讀寫過的 openclaw.json 也不會變快。需要完整工具時請關閉本項並儲存，再重啟閘道。",
     "gatewayAdvancedHint": "本應用程式會以模型 openclaw/default 向此閘道發起串流請求，因而使用閘道上設定的預設代理及其工具與技能。請在主機啟動閘道（例如 openclaw gateway）；若伺服器需要驗證請填寫權杖。",
     "apiKey": "API Key",
     "apiKeySavedSuffix": "（已儲存）",

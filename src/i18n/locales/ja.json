@@ -186,7 +186,7 @@
       "genderFemale": "女性",
       "userMd": "自己紹介",
       "userMdPlaceholder": "職業、興味、好み、よく使うツールなどを記入…",
-      "userMdHint": "内容は USER.md として保存され、Agent の会話コンテキストに注入されます。"
+      "userMdHint": "名前・性別・自己紹介は USER.md として会話コンテキストに注入されます。アバターは UI 専用で、画像ピクセル/Base64 はモデルに送りません。"
     },
     "usage": {
       "today": "今日",
@@ -1057,8 +1057,6 @@
     "sessionKeyPlaceholder": "例: agent:dev:dev",
     "sessionKeyGenerate": "ランダム生成",
     "sessionKeyHint": "openclaw.json のエージェント id と一致させてください（既定 dev → agent:dev:…）。sessions.json ロックが長い場合は新しいキーを試し、~/.openclaw-dev をローカル SSD に置くとよいです。",
-    "chatLabLeanPlugins": "チャット：LLM 插件のみ（起動短縮）",
-    "chatLabLeanPluginsHint": "オンにすると、開発用状態ディレクトリ（~/.openclaw-dev・既定ポート 19001）へ活動中の LLM プロバイダ插件だけを同期し、ブラウザ／スマホ遠隔など重い插件は自動追加しません。**「保存」のあと OpenClaw ゲートウェイを完全終了して再起動**してください。プロセスは古い插件一覧をメモリに保持したままになります。フルツールが必要ならオフに保存し、ゲートウェイを再起動してください。",
     "gatewayAdvancedHint": "Open Studio はモデル openclaw/default でこのゲートウェイへストリーム送信し、設定済みの既定エージェントとツール／スキルを利用します。ホストでゲートウェイを起動してください（例: openclaw gateway）。認証が必要な場合はトークンを入力してください。",
     "apiKey": "API キー",
     "apiKeySavedSuffix": "（保存済み）",

@@ -99,18 +99,34 @@ export function userProfileAvatarGlyph(profile) {
   return "";
 }
 
+/**
+ * Avatars are for the Studio UI only. Never put `data:` / `file:` image payloads into
+ * LLM-bound USER.md / IDENTITY.md — a JPEG data URL is tens of thousands of tokens of
+ * useless base64 and is a common cause of early context overflow.
+ *
+ * @param {string | undefined | null} avatar
+ * @returns {string} Short http(s) URL suitable for model context, or empty.
+ */
+export function avatarRefForLlmContext(avatar) {
+  const av = String(avatar ?? "").trim();
+  if (!av) return "";
+  if (/^data:/i.test(av) || /^file:/i.test(av) || /^blob:/i.test(av)) return "";
+  if (/^https?:\/\//i.test(av) && av.length <= 512) return av;
+  return "";
+}
+
 /** @param {{ displayName?: string; avatar?: string; gender?: string; userMd?: string } | null | undefined} profile */
 export function buildGlobalUserMd(profile) {
   if (!profile || typeof profile !== "object") return "";
   const displayName = String(profile.displayName ?? "").trim();
   const gender =
     profile.gender === "male" ? "Male" : profile.gender === "female" ? "Female" : "";
-  const avatar = String(profile.avatar ?? "").trim();
+  const avatarRef = avatarRefForLlmContext(profile.avatar);
   const userMd = String(profile.userMd ?? "").trim();
   const metaLines = [];
   if (displayName) metaLines.push(`- **Name:** ${displayName}`);
   if (gender) metaLines.push(`- **Gender:** ${gender}`);
-  if (avatar && isAgentAvatarImageSrc(avatar)) metaLines.push(`- **Avatar:** ${avatar}`);
+  if (avatarRef) metaLines.push(`- **Avatar:** ${avatarRef}`);
   const metaBlock =
     metaLines.length > 0 ? ["# About the user", "", ...metaLines].join("\n") : "";
   if (metaBlock && userMd) return `${metaBlock}\n\n${userMd}`;
@@ -121,11 +137,8 @@ export function buildGlobalUserMd(profile) {
 export function buildIdentityMd(meta) {
   const name = String(meta.name ?? "").trim() || "Agent";
   const vibe = String(meta.description ?? "").trim() || "Helpful specialist";
-  const avatar = String(meta.avatar ?? "").trim();
-  // 如果 avatar 是 URL/路径，添加 Avatar 字段；否则不显示
-  const avatarLine = avatar && (avatar.startsWith("http") || avatar.startsWith("/") || avatar.startsWith("data:"))
-    ? `- **Avatar:** ${avatar}`
-    : "";
+  const avatarRef = avatarRefForLlmContext(meta.avatar);
+  const avatarLine = avatarRef ? `- **Avatar:** ${avatarRef}` : "";
   return [
     "# IDENTITY.md - Who Am I?",
     "",
@@ -168,13 +181,28 @@ export function groupAgentsInSession({ agents, mainAgent, participantIds }) {
 }
 
 /**
- * OpenClaw loads IDENTITY.md (who) and SOUL.md (how) separately — keep both in the system row.
+ * Build the Studio system row for a gateway turn.
+ *
+ * Default (`includeWorkspacePersona: false`): only Studio UI / group-session rules.
+ * OpenClaw already injects SOUL.md / IDENTITY.md / USER.md from the agent workspace —
+ * re-pasting them into every `chat.send` duplicates tens of KB into the gateway transcript.
+ *
+ * Pass `includeWorkspacePersona: true` only for rare offline/debug paths that must
+ * carry persona without relying on OpenClaw bootstrap files.
+ *
  * @param {LobsterAgent} agent
  * @param {string} [fallbackSystemPrompt]
- * @param {{ groupAgents?: LobsterAgent[]; groupDelegateHint?: string; studioSuffix?: string; globalUserProfile?: { displayName?: string; avatar?: string; gender?: string; userMd?: string } }} [opts]
+ * @param {{
+ *   groupAgents?: LobsterAgent[];
+ *   groupDelegateHint?: string;
+ *   studioSuffix?: string;
+ *   globalUserProfile?: { displayName?: string; avatar?: string; gender?: string; userMd?: string };
+ *   includeWorkspacePersona?: boolean;
+ * }} [opts]
  * @returns {{ role: "system"; content: string } | null}
  */
 export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
+  const includeWorkspacePersona = opts.includeWorkspacePersona === true;
   const identity = identityBlockForAgent(agent);
   const agentName = resolvedAgentName(agent);
   const others = (opts.groupAgents ?? []).filter((a) => a.id !== agent.id);
@@ -208,6 +236,27 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
   const studioSuffix = String(opts.studioSuffix ?? "").trim();
   /** @param {string} content */
   const withStudioSuffix = (content) => (studioSuffix ? `${content}\n\n${studioSuffix}` : content);
+  const fallbackBlock = fallbackSystemPrompt?.trim()
+    ? `\n\n# General Instructions\n\n${fallbackSystemPrompt.trim()}`
+    : "";
+
+  if (!includeWorkspacePersona) {
+    const leanHead = [
+      "# Studio UI session",
+      `You are **${agentName}**. Long-form persona (SOUL.md / IDENTITY.md / USER.md) is loaded by OpenClaw from the agent workspace — it is intentionally not re-pasted on every Studio turn.`,
+      groupBlock,
+      delegateBlock,
+      identityLock,
+      fallbackBlock,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return {
+      role: "system",
+      content: withStudioSuffix(leanHead),
+    };
+  }
+
   const soul = String(agent.soulMd ?? "").trim();
   const extraWorkspaceFiles = [];
   const agentsMd = String(agent.agentsMd ?? "").trim();
@@ -224,7 +273,6 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
   const memoryMd = String(agent.memoryMd ?? "").trim();
   if (memoryMd) extraWorkspaceFiles.push(`# MEMORY.md\n\n${memoryMd}`);
   const extraBlock = extraWorkspaceFiles.length ? `\n\n${extraWorkspaceFiles.join("\n\n")}` : "";
-  const fallbackBlock = fallbackSystemPrompt?.trim() ? `\n\n# General Instructions\n\n${fallbackSystemPrompt.trim()}` : "";
   if (soul) {
     return {
       role: "system",
@@ -245,6 +293,17 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
     role: "system",
     content: withStudioSuffix(`${identity}${groupBlock}${delegateBlock}${identityLock}${extraBlock}${fallbackBlock}`),
   };
+}
+
+/** Stable fingerprint for Studio UI system text (re-inject only when this changes). */
+export function fingerprintStudioSystemContent(content) {
+  const s = String(content ?? "");
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
 }
 
 /**

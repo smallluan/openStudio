@@ -188,7 +188,7 @@
       "genderFemale": "女",
       "userMd": "关于我",
       "userMdPlaceholder": "介绍一下你自己，例如职业、兴趣、偏好、常用工具等…",
-      "userMdHint": "以上内容会写入 USER.md，并注入到 Agent 对话上下文中。"
+      "userMdHint": "姓名、性别与「关于我」会写入 USER.md 并注入对话上下文。头像仅用于界面展示，不会把图片像素/Base64 传给模型。"
     },
     "usage": {
       "today": "今日",
@@ -1087,8 +1087,6 @@
     "sessionKeyPlaceholder": "如 agent:dev:dev",
     "sessionKeyGenerate": "随机生成",
     "sessionKeyHint": "须与 openclaw.json 中已有智能体 id 一致（默认 dev，即 agent:dev:…）。若日志里 sessions.json 锁要等待几十秒，可尝试「随机生成」新键，并把 ~/.openclaw-dev 放到本机 SSD、减少同步盘与杀毒实时扫描。",
-    "chatLabLeanPlugins": "对话：精简网关插件（仅 LLM，加快启动）",
-    "chatLabLeanPluginsHint": "开启后，仅向开发配置目录（~/.openclaw-dev，即默认 19001 网关）写入「当前 LLM 厂商插件」，不再自动加入浏览器/手机远控等大型插件，可明显缩短网关 core-plugin-tools 等准备阶段。【重要】点「保存」后必须完全退出并重启 OpenClaw 网关进程，否则进程仍按旧插件表驻留在内存里，磁盘上的 openclaw.json 虽已变也不会快。需要整桌工具时请关闭本项并保存，再重启网关。",
     "gatewayAdvancedHint": "本应用会以模型 openclaw/default 向该网关发起流式请求，从而使用网关上配置的默认智能体及其工具与技能。请在主机启动网关（例如 openclaw gateway），若服务端要求鉴权请填写令牌。",
     "apiKey": "API Key",
     "apiKeySavedSuffix": "（已保存）",

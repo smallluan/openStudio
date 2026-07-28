@@ -30,6 +30,8 @@ export const GATEWAY_HANDOFF_PRIOR_MAX_CHARS = 16000;
  * @property {GatewayContextEmbedMode} contextEmbedMode
  * @property {string | null} syncThroughMessageId Message id to record after a successful turn
  * @property {string} [threadSummaryPrefix] Prepended to prior rows on bootstrap
+ * @property {boolean} includeStudioSystem Whether to attach Studio UI system rules this turn
+ * @property {string} [studioUiFingerprint] Fingerprint of the Studio UI system text for this turn
  */
 
 /**
@@ -244,6 +246,7 @@ export function buildWorkflowHandoffGatewayPriorRows({
  *   mainAgentStudioId?: string;
  *   excludeMessageIds?: string[];
  *   forceBootstrap?: boolean;
+ *   studioUiFingerprint?: string;
  * }} args
  * @returns {GatewayOutgoingContext}
  */
@@ -256,6 +259,7 @@ export function resolveAgentGatewayContext(args) {
     mainAgentStudioId = "",
     excludeMessageIds = [],
     forceBootstrap = false,
+    studioUiFingerprint = "",
   } = args;
 
   const exclude = new Set(excludeMessageIds.filter(Boolean));
@@ -264,6 +268,15 @@ export function resolveAgentGatewayContext(args) {
   const rec = getSession(conversationId);
   const sync = rec?.threadContext?.agentSync?.[agentId];
   const lastSyncedId = typeof sync?.lastMessageId === "string" ? sync.lastMessageId : "";
+  const prevStudioUiFingerprint =
+    typeof sync?.studioUiFingerprint === "string" ? sync.studioUiFingerprint : "";
+  const fp = typeof studioUiFingerprint === "string" ? studioUiFingerprint.trim() : "";
+  const includeStudioSystem =
+    forceBootstrap ||
+    !lastSyncedId ||
+    !fp ||
+    !prevStudioUiFingerprint ||
+    fp !== prevStudioUiFingerprint;
 
   const chatMessages = filterMessagesForGatewayContext(rawHistory);
   const syncAnchor = findSyncAnchorMessageId(rawHistory);
@@ -282,6 +295,8 @@ export function resolveAgentGatewayContext(args) {
       contextEmbedMode: priorRows.length ? "bootstrap" : "none",
       syncThroughMessageId: syncAnchor,
       threadSummaryPrefix: summary || undefined,
+      includeStudioSystem,
+      studioUiFingerprint: fp || undefined,
     };
   }
 
@@ -291,6 +306,8 @@ export function resolveAgentGatewayContext(args) {
       priorRows: [],
       contextEmbedMode: "none",
       syncThroughMessageId: syncAnchor,
+      includeStudioSystem,
+      studioUiFingerprint: fp || undefined,
     };
   }
 
@@ -302,6 +319,8 @@ export function resolveAgentGatewayContext(args) {
     }),
     contextEmbedMode: "incremental",
     syncThroughMessageId: syncAnchor,
+    includeStudioSystem,
+    studioUiFingerprint: fp || undefined,
   };
 }
 
@@ -323,12 +342,26 @@ export function findSyncAnchorMessageId(messages) {
  * @param {string} agentId
  * @param {string | null} lastMessageId
  * @param {Array<Record<string, unknown>>} [allMessages]
+ * @param {{ studioUiFingerprint?: string }} [opts]
  */
-export function recordAgentGatewaySync(conversationId, agentId, lastMessageId, allMessages) {
+export function recordAgentGatewaySync(conversationId, agentId, lastMessageId, allMessages, opts = {}) {
   if (!conversationId || !agentId || !lastMessageId) return;
   const rec = getSession(conversationId);
   const prev = rec?.threadContext ?? {};
-  const agentSync = { ...(prev.agentSync ?? {}), [agentId]: { lastMessageId } };
+  const prevSync = prev.agentSync?.[agentId];
+  const studioUiFingerprint =
+    typeof opts.studioUiFingerprint === "string" && opts.studioUiFingerprint.trim()
+      ? opts.studioUiFingerprint.trim().slice(0, 64)
+      : typeof prevSync?.studioUiFingerprint === "string"
+        ? prevSync.studioUiFingerprint
+        : "";
+  const agentSync = {
+    ...(prev.agentSync ?? {}),
+    [agentId]: {
+      lastMessageId,
+      ...(studioUiFingerprint ? { studioUiFingerprint } : {}),
+    },
+  };
 
   let summary = prev.summary;
   let summaryThroughMessageId = prev.summaryThroughMessageId;

@@ -47,6 +47,7 @@ export function composeAutomationExecutionSystemPrompt(t) {
 export function composeChatLabSystemPrompt(t, opts = {}) {
   const parts = [
     String(t("chatLab.systemPrompt") ?? "").trim(),
+    // Prefer volatile workspace/preview on the user turn; keep optional for legacy callers.
     String(opts.workspaceContext ?? "").trim(),
     String(opts.previewContext ?? "").trim(),
     opts.automationExecution ? composeAutomationExecutionSystemPrompt(t) : "",

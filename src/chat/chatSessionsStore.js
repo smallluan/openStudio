@@ -78,6 +78,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * Per-agent gateway sync cursor — tracks what history was already delivered to that agent's session.
  * @typedef {object} AgentGatewaySyncState
  * @property {string} lastMessageId
+ * @property {string} [studioUiFingerprint] Hash of last Studio UI system rules injected for this agent
  */
 
 /**
@@ -421,7 +422,14 @@ function sanitizeThreadContext(raw) {
         ? /** @type {{ lastMessageId?: unknown }} */ (state).lastMessageId.trim().slice(0, 96)
         : "";
       if (!lastMessageId) continue;
-      agentSync[agentId.slice(0, 96)] = { lastMessageId };
+      const studioUiFingerprint =
+        typeof /** @type {{ studioUiFingerprint?: unknown }} */ (state).studioUiFingerprint === "string"
+          ? /** @type {{ studioUiFingerprint?: unknown }} */ (state).studioUiFingerprint.trim().slice(0, 64)
+          : "";
+      agentSync[agentId.slice(0, 96)] = {
+        lastMessageId,
+        ...(studioUiFingerprint ? { studioUiFingerprint } : {}),
+      };
     }
     if (Object.keys(agentSync).length) out.agentSync = agentSync;
   }

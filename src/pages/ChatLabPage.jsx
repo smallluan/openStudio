@@ -110,6 +110,7 @@ import {
 import {
   agentAvatarGlyph,
   agentDisplayLabel,
+  fingerprintStudioSystemContent,
   groupAgentsInSession,
   sessionKeyForAgent,
   systemMessageForAgent,
@@ -491,6 +492,26 @@ function formatMessageTimestamp(ts, locale) {
  * @param {{ mentionDelegateReply?: boolean; workspaceContext?: string; previewContext?: string; webExploreMode?: boolean; workflowFlowPrompt?: string; workflowFogPrompt?: string }} [extra]
  */
 /**
+ * Prepend a block onto the last user row (volatile context must not live in system).
+ * @param {Array<{ role: string; content: string; attachments?: unknown[] }>} outgoing
+ * @param {string} block
+ * @param {(body: string) => boolean} [alreadyPresent]
+ */
+function prependBlockOnLastUserTurn(outgoing, block, alreadyPresent) {
+  const text = String(block ?? "").trim();
+  if (!text || !Array.isArray(outgoing)) return outgoing;
+  const rows = outgoing.map((row) => ({ ...row }));
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i]?.role !== "user") continue;
+    const body = String(rows[i].content ?? "");
+    if (alreadyPresent?.(body) || body.includes(text.slice(0, Math.min(48, text.length)))) break;
+    rows[i] = { ...rows[i], content: `${text}\n\n---\n\n${body}` };
+    break;
+  }
+  return rows;
+}
+
+/**
  * Ensure page snapshot reaches the model even if system prompt is truncated by the gateway.
  * @param {Array<{ role: string; content: string; attachments?: unknown[] }>} outgoing
  * @param {string} previewContext
@@ -498,16 +519,7 @@ function formatMessageTimestamp(ts, locale) {
 function withWebExplorePreviewOnUserTurn(outgoing, previewContext, t) {
   const automationHint = t ? composeWebExploreUserTurnAutomationHint(t) : "";
   const block = [String(previewContext ?? "").trim(), automationHint].filter(Boolean).join("\n\n");
-  if (!block || !Array.isArray(outgoing)) return outgoing;
-  const rows = outgoing.map((row) => ({ ...row }));
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i]?.role !== "user") continue;
-    const body = String(rows[i].content ?? "");
-    if (body.includes(block.slice(0, 48))) break;
-    rows[i] = { ...rows[i], content: `${block}\n\n---\n\n${body}` };
-    break;
-  }
-  return rows;
+  return prependBlockOnLastUserTurn(outgoing, block);
 }
 
 /**
@@ -516,17 +528,37 @@ function withWebExplorePreviewOnUserTurn(outgoing, previewContext, t) {
  * @param {import("../workflow/workflowRuntimeRegistry.js").WorkflowOrchestrationPlan | null | undefined} workflowPlan
  */
 function withWorkflowContextOnUserTurn(outgoing, workflowPlan) {
-  const block = buildWorkflowUserTurnContext(workflowPlan);
-  if (!block || !Array.isArray(outgoing)) return outgoing;
-  const rows = outgoing.map((row) => ({ ...row }));
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i]?.role !== "user") continue;
-    const body = String(rows[i].content ?? "");
-    if (body.includes("工作流执行模式（用户已选择")) break;
-    rows[i] = { ...rows[i], content: `${block}\n\n---\n\n${body}` };
-    break;
+  return prependBlockOnLastUserTurn(outgoing, buildWorkflowUserTurnContext(workflowPlan), (body) =>
+    body.includes("工作流执行模式（用户已选择"),
+  );
+}
+
+/**
+ * Volatile per-turn context belongs on the user message so Studio UI system rules stay a
+ * stable, once-per-session prefix (OpenClaw already loads SOUL/IDENTITY/USER from disk).
+ * @param {Array<{ role: string; content: string; attachments?: unknown[] }>} outgoing
+ * @param {{
+ *   workspaceContext?: string;
+ *   previewContext?: string;
+ *   webExploreMode?: boolean;
+ *   workflowPlan?: import("../workflow/workflowRuntimeRegistry.js").WorkflowOrchestrationPlan | null;
+ *   subagentModeContent?: string;
+ *   t?: (key: string) => string;
+ * }} opts
+ */
+function withVolatileStudioContextOnUserTurn(outgoing, opts = {}) {
+  const workspace = String(opts.workspaceContext ?? "").trim();
+  const preview = String(opts.previewContext ?? "").trim();
+  const subagent = String(opts.subagentModeContent ?? "").trim();
+  let rows = outgoing;
+  if (workspace) rows = prependBlockOnLastUserTurn(rows, workspace);
+  if (opts.webExploreMode) {
+    rows = withWebExplorePreviewOnUserTurn(rows, preview, opts.t);
+  } else if (preview) {
+    rows = prependBlockOnLastUserTurn(rows, preview);
   }
-  return rows;
+  if (subagent) rows = prependBlockOnLastUserTurn(rows, subagent);
+  return withWorkflowContextOnUserTurn(rows, opts.workflowPlan);
 }
 
 /**
@@ -575,23 +607,14 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
         ? t("chatLab.groupDelegateReplyHint")
         : t("chatLab.groupDelegateHint")
       : "";
-  const contextBlocks = [
-    String(extra.workspaceContext ?? "").trim(),
-    String(extra.previewContext ?? "").trim(),
-    String(extra.workflowFlowPrompt ?? "").trim(),
-    String(extra.workflowFogPrompt ?? "").trim(),
-  ].filter(Boolean);
-  const studioSuffix = [
-    ...contextBlocks,
-    composeChatLabStudioSuffix(t, { webExploreMode: extra.webExploreMode }),
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  // Stable UI rules only — workspace / preview / workflow fog go on the user turn.
+  const studioSuffix = composeChatLabStudioSuffix(t, { webExploreMode: extra.webExploreMode });
   return systemMessageForAgent(agent, t("chatLab.systemPrompt"), {
     groupAgents,
     groupDelegateHint,
     studioSuffix,
-    ...extra,
+    mentionDelegateReply: extra.mentionDelegateReply,
+    // Persona stays on disk (OpenClaw bootstrap); do not re-paste via includeWorkspacePersona.
   });
 }
 
@@ -602,25 +625,6 @@ function systemRowForGroupAgent(agent, t, groupAgents, extra = {}) {
 function subagentModeSystemRow(t) {
   const content = String(t("chatLab.subagentForcePrompt") ?? "").trim();
   if (!content) return null;
-  return { role: "system", content };
-}
-
-/**
- * Hard workflow execution guard to avoid silently falling back to plain chat.
- * @param {import("../workflow/workflowRuntimeRegistry.js").WorkflowOrchestrationPlan | null} workflowPlan
- */
-function workflowExecutionSystemRow(workflowPlan) {
-  if (!workflowPlan) return null;
-  const content = [
-    "## 工作流执行模式（强约束）",
-    "- 当前对话已选择工作流，必须按工作流节点执行，不要直接忽略流程给最终答案。",
-    "- 禁止跳过流程直接回答；禁止用 web_search 等工具代替流程节点。",
-    "- 仅执行当前待执行节点；完成后做明确handoff，再继续到下一节点。",
-    "- 禁止创建流程图未定义的额外子智能体；若节点无子智能体则不得召唤。",
-    workflowPlan.flowFogPrompt,
-  ]
-    .filter(Boolean)
-    .join("\n");
   return { role: "system", content };
 }
 
@@ -2140,10 +2144,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   const globalUserProfile = config?.userProfile;
   const userDisplayName = userProfileDisplayLabel(globalUserProfile, t("settings.profile.defaultName"));
   const userAvatarGlyph = userProfileAvatarGlyph(globalUserProfile);
-  const withUserProfileExtra = useCallback(
-    (extra = {}) => ({ ...extra, globalUserProfile }),
-    [globalUserProfile],
-  );
 
   // Listen for user config changes from other components (e.g. ModelSettingsContext)
   useEffect(() => {
@@ -2581,6 +2581,12 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           syncSkillCreatorResultToLibrary(merged, conversationId, d.assistantMessageId);
           const agentId = merged.find((m) => m.id === d.assistantMessageId)?.agentId;
           if (conversationId && typeof agentId === "string" && agentId) {
+            const groupAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
+            const agent = agentById.get(agentId);
+            const sysRow = agent
+              ? systemRowForGroupAgent(agent, t, groupAgents, { webExploreMode: webExploreEmbed })
+              : null;
+            const studioUiFingerprint = fingerprintStudioSystemContent(sysRow?.content);
             const ctx = resolveAgentGatewayContext({
               conversationId,
               agentId,
@@ -2588,9 +2594,12 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               mode: "thread",
               agentById,
               mainAgentStudioId: mainAgent?.id,
+              studioUiFingerprint,
             });
             if (ctx.syncThroughMessageId) {
-              recordAgentGatewaySync(conversationId, agentId, ctx.syncThroughMessageId, merged);
+              recordAgentGatewaySync(conversationId, agentId, ctx.syncThroughMessageId, merged, {
+                studioUiFingerprint,
+              });
             }
           }
           if (composerWorkflowIdRef.current) {
@@ -2626,6 +2635,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     mentionEveryoneLabel,
     participantIds,
     t,
+    webExploreEmbed,
   ]);
 
 // Listen for notification click and navigate to the corresponding conversation
@@ -2886,18 +2896,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               ? [mainAgent]
               : [];
       const editTarget = editReplyTargets[0] ?? mainAgent ?? null;
-      const editCtx =
-        editTarget ?
-          resolveAgentGatewayContext({
-            conversationId,
-            agentId: editTarget.id,
-            historyMessages: base.slice(0, -1),
-            mode: "thread",
-            agentById,
-            mainAgentStudioId: mainAgent?.id,
-          })
-        : { priorRows: buildGatewayPayloadRows(base.slice(0, -1), { agentById }), contextEmbedMode: "full", syncThroughMessageId: null };
-      const priorRows = editCtx.priorRows;
 
       if (!paramC && !ephemeralSession) {
         setSearchParams({ c: conversationId }, { replace: true });
@@ -2975,37 +2973,49 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       const editGroupAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
       const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
       const sysRow = editTarget
-        ? systemRowForGroupAgent(editTarget, t, editGroupAgents, withUserProfileExtra({
-            workspaceContext,
-            previewContext,
+        ? systemRowForGroupAgent(editTarget, t, editGroupAgents, {
             webExploreMode: webExploreEmbed,
-            workflowFlowPrompt: workflowPlan?.flowFogPrompt,
-            workflowFogPrompt:
-              workflowPlan?.fogByAgentId?.[editTarget.id] ??
-              Object.values(workflowPlan?.fogByAgentId ?? {})[0] ??
-              "",
-          }))
+          })
         : {
             role: "system",
             content: composeChatLabSystemPrompt(t, {
-              workspaceContext,
-              previewContext,
               webExploreMode: webExploreEmbed,
             }),
           };
+      const studioUiFingerprint = fingerprintStudioSystemContent(sysRow?.content);
+      const editCtx =
+        editTarget ?
+          resolveAgentGatewayContext({
+            conversationId,
+            agentId: editTarget.id,
+            historyMessages: base.slice(0, -1),
+            mode: "thread",
+            agentById,
+            mainAgentStudioId: mainAgent?.id,
+            studioUiFingerprint,
+          })
+        : {
+            priorRows: buildGatewayPayloadRows(base.slice(0, -1), { agentById }),
+            contextEmbedMode: "full",
+            syncThroughMessageId: null,
+            includeStudioSystem: true,
+            studioUiFingerprint,
+          };
+      const priorRows = editCtx.priorRows;
       const subagentModeRow = resolveSubagentModeRow(workflowPlan, false, t);
-      const workflowModeRow = workflowExecutionSystemRow(workflowPlan);
       const baseOutgoing = [
-        ...(sysRow ? [sysRow] : []),
-        ...(workflowModeRow ? [workflowModeRow] : []),
-        ...(subagentModeRow ? [subagentModeRow] : []),
+        ...(editCtx.includeStudioSystem && sysRow ? [sysRow] : []),
         ...priorRows,
         ...tailUserRows,
       ];
-      const outgoing = withWorkflowContextOnUserTurn(
-        webExploreEmbed ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext, t) : baseOutgoing,
+      const outgoing = withVolatileStudioContextOnUserTurn(baseOutgoing, {
+        workspaceContext,
+        previewContext,
+        webExploreMode: webExploreEmbed,
         workflowPlan,
-      );
+        subagentModeContent: subagentModeRow?.content,
+        t,
+      });
       const composerSkill = skillPickRowToPayload(composerSkillRow);
       setComposerSkillRow(null);
       if (workflowPlan?.runtime) {
@@ -3271,11 +3281,15 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
       const stopWechatTyping = maybeStartWechatTypingPulse(conversationId);
       const groupAgents = groupAgentsInSession({ agents, mainAgent, participantIds: sessionParticipantIds });
-      const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
+      // Start context I/O now, but do not hide the assistant placeholder behind it.
+      // Workspace git/fs inspection and preview capture can take noticeable time.
+      const contextBlocksPromise = resolveAgentContextBlocks().catch(() => ({
+        workspaceContext: "",
+        previewContext: "",
+      }));
 
       const parallelReply = replyTargets.length > 1;
       const subagentModeRow = resolveSubagentModeRow(workflowPlan, preferSubagent, t);
-      const workflowModeRow = workflowExecutionSystemRow(workflowPlan);
       const historyBeforeUser = messagesRef.current.filter((m) => m.id !== userMsg.id);
       const tailUserRows = buildGatewayPayloadRows([userMsg], {
         includeImageAttachments: true,
@@ -3292,10 +3306,9 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
        *   target: import("../studio/agents.js").LobsterAgent;
        *   assistantMsg: { id: string; role: "assistant"; content: string; thinking: string; streaming: boolean; createdAt: number; agentId: string; sidebarAutomationContinueSession?: boolean };
        *   streamId: string;
-       *   outgoing: Array<{ role: string; content: string; attachments?: unknown[] }>;
        *   foldReuse?: boolean;
        * }>} */
-      const launchJobs = replyTargets.map((target, i) => {
+      const launchShells = replyTargets.map((target, i) => {
         const reuse = Boolean(foldTarget && i === 0);
         const assistantMsg = withWorkflowAssistantNodeMeta(
           reuse
@@ -3330,16 +3343,44 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           workflowPlan?.runtime?.activeNodeIds ?? [],
           agentById,
         );
-        const sysRow = systemRowForGroupAgent(target, t, groupAgents, withUserProfileExtra({
-          workspaceContext,
-          previewContext,
+        return {
+          target,
+          assistantMsg,
+          streamId: newId(),
+          foldReuse: reuse,
+        };
+      });
+
+      // Make the assistant's in-flight state visible immediately. The actual
+      // gateway send still waits for context below, so no prompt data is lost.
+      setMessages((prev) => {
+        let next = prev;
+        for (const job of launchShells) {
+          if (job.foldReuse) {
+            next = next.map((m) => (m.id === job.assistantMsg.id ? { ...m, ...job.assistantMsg } : m));
+          } else {
+            next = [...next, job.assistantMsg];
+          }
+        }
+        return next;
+      });
+      for (const job of launchShells) {
+        beginGatewayStream({
+          conversationId,
+          streamId: job.streamId,
+          assistantMessageId: job.assistantMsg.id,
+        });
+        activeStreamIdsRef.current.add(job.streamId);
+        assistantStreamIdsRef.current.set(job.assistantMsg.id, job.streamId);
+      }
+
+      const { workspaceContext, previewContext } = await contextBlocksPromise;
+      const launchJobs = launchShells.map((job) => {
+        const { target } = job;
+        const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
           webExploreMode: webExploreEmbed,
-          workflowFlowPrompt: workflowPlan?.flowFogPrompt,
-          workflowFogPrompt:
-            workflowPlan?.fogByAgentId?.[target.id] ??
-            Object.values(workflowPlan?.fogByAgentId ?? {})[0] ??
-            "",
-        }));
+        });
+        const studioUiFingerprint = fingerprintStudioSystemContent(sysRow?.content);
         const ctx = resolveAgentGatewayContext({
           conversationId,
           agentId: target.id,
@@ -3347,27 +3388,28 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           mode: "thread",
           agentById,
           mainAgentStudioId: mainAgent?.id,
+          studioUiFingerprint,
         });
         const baseOutgoing = [
-          ...(sysRow ? [sysRow] : []),
-          ...(workflowModeRow ? [workflowModeRow] : []),
-          ...(subagentModeRow ? [subagentModeRow] : []),
+          ...(ctx.includeStudioSystem && sysRow ? [sysRow] : []),
           ...ctx.priorRows,
           ...tailUserRows,
         ];
-        const outgoing = withWorkflowContextOnUserTurn(
-          webExploreEmbed ? withWebExplorePreviewOnUserTurn(baseOutgoing, previewContext, t) : baseOutgoing,
+        const outgoing = withVolatileStudioContextOnUserTurn(baseOutgoing, {
+          workspaceContext,
+          previewContext,
+          webExploreMode: webExploreEmbed,
           workflowPlan,
-        );
+          subagentModeContent: subagentModeRow?.content,
+          t,
+        });
         return {
-          target,
-          assistantMsg,
-          streamId: newId(),
+          ...job,
           outgoing,
           contextEmbedMode: ctx.contextEmbedMode,
           threadSummaryPrefix: ctx.threadSummaryPrefix,
           syncThroughMessageId: ctx.syncThroughMessageId,
-          foldReuse: reuse,
+          studioUiFingerprint,
         };
       });
 
@@ -3420,28 +3462,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       }
       if (workflowPlan?.runtime) {
         setWorkflowRuntimeState(workflowPlan.runtime);
-      }
-
-      setMessages((prev) => {
-        let next = prev;
-        for (const job of launchJobs) {
-          if (job.foldReuse) {
-            next = next.map((m) => (m.id === job.assistantMsg.id ? { ...m, ...job.assistantMsg } : m));
-          } else {
-            next = [...next, job.assistantMsg];
-          }
-        }
-        return next;
-      });
-
-      for (const job of launchJobs) {
-        beginGatewayStream({
-          conversationId,
-          streamId: job.streamId,
-          assistantMessageId: job.assistantMsg.id,
-        });
-        activeStreamIdsRef.current.add(job.streamId);
-        assistantStreamIdsRef.current.set(job.assistantMsg.id, job.streamId);
       }
 
       const runFanoutJob = async (job, composerSkillForJob) => {
@@ -3631,12 +3651,11 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         participantIds: sessionParticipantIds,
       });
       const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
-      const sysRow = systemRowForGroupAgent(target, t, groupAgents, withUserProfileExtra({
+      const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
         mentionDelegateReply: true,
-        workspaceContext,
-        previewContext,
         webExploreMode: webExploreEmbed,
-      }));
+      });
+      const studioUiFingerprint = fingerprintStudioSystemContent(sysRow?.content);
       const ctx = resolveAgentGatewayContext({
         conversationId,
         agentId: target.id,
@@ -3645,8 +3664,17 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         agentById,
         mainAgentStudioId: mainAgent.id,
         forceBootstrap: true,
+        studioUiFingerprint,
       });
-      const outgoing = [...(sysRow ? [sysRow] : []), ...ctx.priorRows];
+      const outgoing = withVolatileStudioContextOnUserTurn(
+        [...(ctx.includeStudioSystem && sysRow ? [sysRow] : []), ...ctx.priorRows],
+        {
+          workspaceContext,
+          previewContext,
+          webExploreMode: webExploreEmbed,
+          t,
+        },
+      );
 
       const persistablePrior = historyMessages
         .filter((m) => !m.error && (m.role === "user" || m.role === "assistant"))
@@ -3793,7 +3821,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         participantIds: sessionParticipantIds,
       });
       const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
-      const workflowModeRow = workflowExecutionSystemRow(workflowPlan);
       const subagentModeRow = resolveSubagentModeRow(workflowPlan, false, t);
       const triggerName = triggerAgentId ? agentDisplayLabel(agentById.get(triggerAgentId)) : "";
       const handoffUserRow = {
@@ -3825,16 +3852,10 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           runtime.activeNodeIds ?? [],
           agentById,
         );
-        const sysRow = systemRowForGroupAgent(target, t, groupAgents, withUserProfileExtra({
-          workspaceContext,
-          previewContext,
+        const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
           webExploreMode: webExploreEmbed,
-          workflowFlowPrompt: workflowPlan?.flowFogPrompt,
-          workflowFogPrompt:
-            workflowPlan?.fogByAgentId?.[target.id] ??
-            Object.values(workflowPlan?.fogByAgentId ?? {})[0] ??
-            "",
-        }));
+        });
+        const studioUiFingerprint = fingerprintStudioSystemContent(sysRow?.content);
         const handoffPriorRows = buildWorkflowHandoffGatewayPriorRows({
           historyMessages,
           triggerAgentId: triggerAgentId ?? "",
@@ -3848,20 +3869,27 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           computeThreadSummary(filterMessagesForGatewayContext(historyMessages)) ||
           undefined;
         const contextEmbedMode = handoffPriorRows.length ? "bootstrap" : "none";
+        // Handoff always re-injects Studio UI rules (new agent turn / bootstrap-like).
         const baseOutgoing = [
           ...(sysRow ? [sysRow] : []),
-          ...(workflowModeRow ? [workflowModeRow] : []),
-          ...(subagentModeRow ? [subagentModeRow] : []),
           ...handoffPriorRows,
           handoffUserRow,
         ];
-        const outgoing = withWorkflowContextOnUserTurn(baseOutgoing, workflowPlan);
+        const outgoing = withVolatileStudioContextOnUserTurn(baseOutgoing, {
+          workspaceContext,
+          previewContext,
+          webExploreMode: webExploreEmbed,
+          workflowPlan,
+          subagentModeContent: subagentModeRow?.content,
+          t,
+        });
         return {
           target,
           assistantMsg,
           streamId: newId(),
           outgoing,
           contextEmbedMode,
+          studioUiFingerprint,
           ...(threadSummaryPrefix ? { threadSummaryPrefix } : {}),
         };
       });

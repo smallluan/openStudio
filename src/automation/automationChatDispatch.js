@@ -20,23 +20,6 @@ import {
 import { formatAutomationExecutionUserMessage } from "./formatAutomationExecutionMessage.js";
 
 /**
- * @param {import("../workflow/workflowRuntimeRegistry.js").WorkflowOrchestrationPlan | null | undefined} workflowPlan
- */
-function workflowExecutionSystemRow(workflowPlan) {
-  if (!workflowPlan) return null;
-  const content = [
-    "## 工作流执行模式（强约束）",
-    "- 当前对话已选择工作流，必须按工作流节点执行，不要直接忽略流程给最终答案。",
-    "- 禁止跳过流程直接回答；禁止用 web_search 等工具代替流程节点。",
-    "- 仅执行当前待执行节点；完成后做明确 handoff，再继续到下一节点。",
-    workflowPlan.flowFogPrompt,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  return { role: "system", content };
-}
-
-/**
  * @param {Array<{ role: string; content: string }>} outgoing
  * @param {import("../workflow/workflowRuntimeRegistry.js").WorkflowOrchestrationPlan | null | undefined} workflowPlan
  */
@@ -61,18 +44,13 @@ function withWorkflowContextOnUserTurn(outgoing, workflowPlan) {
  * @param {{ workflowFlowPrompt?: string; workflowFogPrompt?: string }} [extra]
  */
 function systemRowForAutomationAgent(agent, t, groupAgents, extra = {}) {
-  const studioSuffix = [
-    composeAutomationExecutionSystemPrompt(t),
-    String(extra.workflowFlowPrompt ?? "").trim(),
-    String(extra.workflowFogPrompt ?? "").trim(),
-    composeChatLabStudioSuffix(t),
-  ]
+  // Stable UI + automation rules only; workflow fog goes on the user turn.
+  const studioSuffix = [composeAutomationExecutionSystemPrompt(t), composeChatLabStudioSuffix(t)]
     .filter(Boolean)
     .join("\n\n");
   return systemMessageForAgent(agent, t("chatLab.systemPrompt"), {
     groupAgents,
     studioSuffix,
-    ...extra,
   });
 }
 /**
@@ -154,18 +132,9 @@ export function buildAutomationOutgoingMessages(input) {
     message: input.gatewayMessage,
   });
 
-  const sysRow = systemRowForAutomationAgent(input.target, input.t, input.groupAgents, {
-    workflowFlowPrompt: input.workflowPlan?.flowFogPrompt,
-    workflowFogPrompt:
-      input.workflowPlan?.fogByAgentId?.[input.target.id] ??
-      Object.values(input.workflowPlan?.fogByAgentId ?? {})[0] ??
-      "",
-    globalUserProfile: input.globalUserProfile,
-  });
-  const workflowModeRow = workflowExecutionSystemRow(input.workflowPlan);
+  const sysRow = systemRowForAutomationAgent(input.target, input.t, input.groupAgents);
   const baseOutgoing = [
     ...(sysRow ? [sysRow] : []),
-    ...(workflowModeRow ? [workflowModeRow] : []),
     { role: "user", content: executionUserTurn },
   ];
   return withWorkflowContextOnUserTurn(baseOutgoing, input.workflowPlan);

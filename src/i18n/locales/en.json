@@ -188,7 +188,7 @@
       "genderFemale": "Female",
       "userMd": "About me",
       "userMdPlaceholder": "Tell the agent about yourself — role, interests, preferences, tools you use…",
-      "userMdHint": "Saved as USER.md and injected into agent conversation context."
+      "userMdHint": "Name, gender, and About me are saved as USER.md and injected into agent context. Avatars are UI-only — image pixels / Base64 are never sent to the model."
     },
     "usage": {
       "today": "Today",
@@ -1086,8 +1086,6 @@
     "sessionKeyPlaceholder": "e.g. agent:dev:dev",
     "sessionKeyGenerate": "Randomize",
     "sessionKeyHint": "Must match an agent id in openclaw.json (default dev → agent:dev:…). If logs show sessions.json locks for tens of seconds, try a new key and move ~/.openclaw-dev to a local SSD; exclude the folder from aggressive real-time AV if you can.",
-    "chatLabLeanPlugins": "Chat: lean gateway plugins (LLM-only, faster startup)",
-    "chatLabLeanPluginsHint": "When enabled, Studio syncs only your active LLM provider plugin into the dev state dir (~/.openclaw-dev / port 19001) and omits heavy plugins (browser, phone control, etc.). **After Save, fully quit and restart the OpenClaw gateway** — otherwise the process keeps the old plugin list in memory and stays slow. Turn off and save if you need the full tool surface, then restart the gateway.",
     "gatewayAdvancedHint": "Open Studio streams to this gateway using model openclaw/default so the configured agent can use tools and skills. Start the gateway on the host (e.g. openclaw gateway) and set a token if your server requires it.",
     "apiKey": "API key",
     "apiKeySavedSuffix": "(saved)",
