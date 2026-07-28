@@ -72,6 +72,7 @@ function systemRowForAutomationAgent(agent, t, groupAgents, extra = {}) {
   return systemMessageForAgent(agent, t("chatLab.systemPrompt"), {
     groupAgents,
     studioSuffix,
+    ...extra,
   });
 }
 /**
@@ -143,6 +144,7 @@ function withWorkflowAssistantNodeMeta(assistantRow, workflowId, activeNodeIds, 
  *   displayPrompt: string;
  *   gatewayMessage: string;
  *   workflowPlan?: import("../workflow/workflowRuntimeRegistry.js").WorkflowOrchestrationPlan | null;
+ *   globalUserProfile?: { displayName?: string; avatar?: string; gender?: string; userMd?: string };
  * }} input
  */
 export function buildAutomationOutgoingMessages(input) {
@@ -158,6 +160,7 @@ export function buildAutomationOutgoingMessages(input) {
       input.workflowPlan?.fogByAgentId?.[input.target.id] ??
       Object.values(input.workflowPlan?.fogByAgentId ?? {})[0] ??
       "",
+    globalUserProfile: input.globalUserProfile,
   });
   const workflowModeRow = workflowExecutionSystemRow(input.workflowPlan);
   const baseOutgoing = [
@@ -180,6 +183,7 @@ export function buildAutomationOutgoingMessages(input) {
  *   agentId?: string;
  *   workflowId?: string;
  *   nowMs?: number;
+ *   globalUserProfile?: { displayName?: string; avatar?: string; gender?: string; userMd?: string };
  * }} input
  */
 export function buildAutomationChatSession(input) {
@@ -259,6 +263,7 @@ export function buildAutomationChatSession(input) {
       displayPrompt: input.displayPrompt,
       gatewayMessage: input.gatewayMessage,
       workflowPlan,
+      globalUserProfile: input.globalUserProfile,
     }),
   }));
 

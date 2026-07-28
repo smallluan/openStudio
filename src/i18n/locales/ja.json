@@ -136,6 +136,7 @@
       "ja": "日本語"
     },
     "sections": {
+      "profile": "ユーザー情報",
       "general": "一般",
       "accounts": "アカウント管理",
       "channels": "チャネル",
@@ -175,6 +176,18 @@
     },
     "advancedFeatures": "高度な機能",
     "sectionBuilding": "「{{label}}」は準備中です。",
+    "profile": {
+      "avatar": "アバター",
+      "defaultName": "ユーザー",
+      "displayName": "表示名",
+      "displayNamePlaceholder": "名前を入力",
+      "gender": "性別",
+      "genderMale": "男性",
+      "genderFemale": "女性",
+      "userMd": "自己紹介",
+      "userMdPlaceholder": "職業、興味、好み、よく使うツールなどを記入…",
+      "userMdHint": "内容は USER.md として保存され、Agent の会話コンテキストに注入されます。"
+    },
     "usage": {
       "today": "今日",
       "month": "今月",

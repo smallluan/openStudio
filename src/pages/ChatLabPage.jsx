@@ -2135,6 +2135,12 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [reloadConfig]);
 
+  const globalUserProfile = config?.userProfile;
+  const withUserProfileExtra = useCallback(
+    (extra = {}) => ({ ...extra, globalUserProfile }),
+    [globalUserProfile],
+  );
+
   // Listen for user config changes from other components (e.g. ModelSettingsContext)
   useEffect(() => {
     const onUserConfigChanged = () => {
@@ -2965,7 +2971,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       const editGroupAgents = groupAgentsInSession({ agents, mainAgent, participantIds });
       const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
       const sysRow = editTarget
-        ? systemRowForGroupAgent(editTarget, t, editGroupAgents, {
+        ? systemRowForGroupAgent(editTarget, t, editGroupAgents, withUserProfileExtra({
             workspaceContext,
             previewContext,
             webExploreMode: webExploreEmbed,
@@ -2974,7 +2980,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
               workflowPlan?.fogByAgentId?.[editTarget.id] ??
               Object.values(workflowPlan?.fogByAgentId ?? {})[0] ??
               "",
-          })
+          }))
         : {
             role: "system",
             content: composeChatLabSystemPrompt(t, {
@@ -3320,7 +3326,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           workflowPlan?.runtime?.activeNodeIds ?? [],
           agentById,
         );
-        const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
+        const sysRow = systemRowForGroupAgent(target, t, groupAgents, withUserProfileExtra({
           workspaceContext,
           previewContext,
           webExploreMode: webExploreEmbed,
@@ -3329,7 +3335,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
             workflowPlan?.fogByAgentId?.[target.id] ??
             Object.values(workflowPlan?.fogByAgentId ?? {})[0] ??
             "",
-        });
+        }));
         const ctx = resolveAgentGatewayContext({
           conversationId,
           agentId: target.id,
@@ -3621,12 +3627,12 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         participantIds: sessionParticipantIds,
       });
       const { workspaceContext, previewContext } = await resolveAgentContextBlocks();
-      const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
+      const sysRow = systemRowForGroupAgent(target, t, groupAgents, withUserProfileExtra({
         mentionDelegateReply: true,
         workspaceContext,
         previewContext,
         webExploreMode: webExploreEmbed,
-      });
+      }));
       const ctx = resolveAgentGatewayContext({
         conversationId,
         agentId: target.id,
@@ -3815,7 +3821,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           runtime.activeNodeIds ?? [],
           agentById,
         );
-        const sysRow = systemRowForGroupAgent(target, t, groupAgents, {
+        const sysRow = systemRowForGroupAgent(target, t, groupAgents, withUserProfileExtra({
           workspaceContext,
           previewContext,
           webExploreMode: webExploreEmbed,
@@ -3824,7 +3830,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
             workflowPlan?.fogByAgentId?.[target.id] ??
             Object.values(workflowPlan?.fogByAgentId ?? {})[0] ??
             "",
-        });
+        }));
         const handoffPriorRows = buildWorkflowHandoffGatewayPriorRows({
           historyMessages,
           triggerAgentId: triggerAgentId ?? "",

@@ -1,10 +1,11 @@
-import { BarChart3, Bug, Cpu, KeyRound, Radio, Settings } from "lucide-react";
+import { BarChart3, Bug, Cpu, KeyRound, Radio, Settings, User } from "lucide-react";
 import { Menu } from "@open-studio/udesign";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import ChannelSettingsSection from "../components/settings/ChannelSettingsSection.jsx";
 import DebugToolsSettingsSection from "../components/settings/DebugToolsSettingsSection.jsx";
 import GeneralSettingsSection from "../components/settings/GeneralSettingsSection.jsx";
+import UserProfileSettingsSection from "../components/settings/UserProfileSettingsSection.jsx";
 import TokenUsageSettingsSection from "../components/settings/TokenUsageSettingsSection.jsx";
 import WebAccountSettingsSection from "../components/settings/WebAccountSettingsSection.jsx";
 import ModelProfilesPanel from "../components/shell/ModelProfilesPanel.jsx";
@@ -17,6 +18,7 @@ import NavIcon from "../ui/NavIcon.jsx";
 import { cn } from "../ui/cn.js";
 
 const SETTINGS_SECTION_ICONS = {
+  profile: User,
   general: Settings,
   accounts: KeyRound,
   channels: Radio,
@@ -29,7 +31,7 @@ export default function SettingsPage() {
   const { onClose } = useOutletContext() ?? {};
   const { t } = useI18n();
   const { theme } = useTheme();
-  const [section, setSection] = useState(/** @type {(typeof SETTINGS_SECTION_IDS)[number]} */ ("general"));
+  const [section, setSection] = useState(/** @type {(typeof SETTINGS_SECTION_IDS)[number]} */ ("profile"));
 
   const settingsNavItems = useMemo(
     () =>
@@ -85,6 +87,10 @@ export default function SettingsPage() {
               accountsSection && "settings-sheet__content--accounts",
             )}
           >
+            <div className="settings-sheet__section" hidden={section !== "profile"}>
+              <UserProfileSettingsSection />
+            </div>
+
             {section === "general" ? (
               <div className="settings-sheet__section">
                 <GeneralSettingsSection />

@@ -87,6 +87,24 @@ export function agentAvatarGlyph(agent) {
   return "";
 }
 
+/** @param {{ displayName?: string; avatar?: string; gender?: string; userMd?: string } | null | undefined} profile */
+export function buildGlobalUserMd(profile) {
+  if (!profile || typeof profile !== "object") return "";
+  const displayName = String(profile.displayName ?? "").trim();
+  const gender =
+    profile.gender === "male" ? "Male" : profile.gender === "female" ? "Female" : "";
+  const avatar = String(profile.avatar ?? "").trim();
+  const userMd = String(profile.userMd ?? "").trim();
+  const metaLines = [];
+  if (displayName) metaLines.push(`- **Name:** ${displayName}`);
+  if (gender) metaLines.push(`- **Gender:** ${gender}`);
+  if (avatar && isAgentAvatarImageSrc(avatar)) metaLines.push(`- **Avatar:** ${avatar}`);
+  const metaBlock =
+    metaLines.length > 0 ? ["# About the user", "", ...metaLines].join("\n") : "";
+  if (metaBlock && userMd) return `${metaBlock}\n\n${userMd}`;
+  return metaBlock || userMd;
+}
+
 /** @param {{ name?: string; description?: string; avatar?: string }} meta */
 export function buildIdentityMd(meta) {
   const name = String(meta.name ?? "").trim() || "Agent";
@@ -141,7 +159,7 @@ export function groupAgentsInSession({ agents, mainAgent, participantIds }) {
  * OpenClaw loads IDENTITY.md (who) and SOUL.md (how) separately — keep both in the system row.
  * @param {LobsterAgent} agent
  * @param {string} [fallbackSystemPrompt]
- * @param {{ groupAgents?: LobsterAgent[]; groupDelegateHint?: string; studioSuffix?: string }} [opts]
+ * @param {{ groupAgents?: LobsterAgent[]; groupDelegateHint?: string; studioSuffix?: string; globalUserProfile?: { displayName?: string; avatar?: string; gender?: string; userMd?: string } }} [opts]
  * @returns {{ role: "system"; content: string } | null}
  */
 export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
@@ -182,8 +200,13 @@ export function systemMessageForAgent(agent, fallbackSystemPrompt, opts = {}) {
   const extraWorkspaceFiles = [];
   const agentsMd = String(agent.agentsMd ?? "").trim();
   if (agentsMd) extraWorkspaceFiles.push(`# AGENTS.md\n\n${agentsMd}`);
-  const userMd = String(agent.userMd ?? "").trim();
-  if (userMd) extraWorkspaceFiles.push(`# USER.md\n\n${userMd}`);
+  const globalUserMd = buildGlobalUserMd(opts.globalUserProfile);
+  const agentUserMd = String(agent.userMd ?? "").trim();
+  const combinedUserMd =
+    globalUserMd && agentUserMd
+      ? `${globalUserMd}\n\n${agentUserMd}`
+      : globalUserMd || agentUserMd;
+  if (combinedUserMd) extraWorkspaceFiles.push(`# USER.md\n\n${combinedUserMd}`);
   const toolsMd = String(agent.toolsMd ?? "").trim();
   if (toolsMd) extraWorkspaceFiles.push(`# TOOLS.md\n\n${toolsMd}`);
   const memoryMd = String(agent.memoryMd ?? "").trim();

@@ -1935,6 +1935,20 @@ code {
   background: transparent;
 }
 
+.settings-profile-input {
+  min-width: 12rem;
+  max-width: 20rem;
+}
+
+.settings-profile-textarea {
+  width: 100%;
+}
+
+.settings-profile-hint {
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
 .general-setting-row {
   display: flex;
   width: 100%;

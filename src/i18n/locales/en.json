@@ -138,6 +138,7 @@
       "ja": "日本語"
     },
     "sections": {
+      "profile": "Profile",
       "general": "General",
       "accounts": "Accounts",
       "channels": "Channels",
@@ -177,6 +178,18 @@
     },
     "advancedFeatures": "Advanced",
     "sectionBuilding": "The “{{label}}” section is under construction.",
+    "profile": {
+      "avatar": "Avatar",
+      "defaultName": "User",
+      "displayName": "Display name",
+      "displayNamePlaceholder": "Enter your name",
+      "gender": "Gender",
+      "genderMale": "Male",
+      "genderFemale": "Female",
+      "userMd": "About me",
+      "userMdPlaceholder": "Tell the agent about yourself — role, interests, preferences, tools you use…",
+      "userMdHint": "Saved as USER.md and injected into agent conversation context."
+    },
     "usage": {
       "today": "Today",
       "month": "This month",

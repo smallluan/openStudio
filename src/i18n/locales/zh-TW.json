@@ -136,6 +136,7 @@
       "ja": "日本語"
     },
     "sections": {
+      "profile": "使用者資訊",
       "general": "一般設定",
       "accounts": "帳號管理",
       "channels": "通道設定",
@@ -175,6 +176,18 @@
     },
     "advancedFeatures": "進階功能設定",
     "sectionBuilding": "「{{label}}」頁面建置中。",
+    "profile": {
+      "avatar": "頭像",
+      "defaultName": "使用者",
+      "displayName": "使用者名稱",
+      "displayNamePlaceholder": "輸入你的名稱",
+      "gender": "性別",
+      "genderMale": "男",
+      "genderFemale": "女",
+      "userMd": "關於我",
+      "userMdPlaceholder": "介紹一下你自己，例如職業、興趣、偏好、常用工具等…",
+      "userMdHint": "以上內容會寫入 USER.md，並注入到 Agent 對話上下文中。"
+    },
     "usage": {
       "today": "今日",
       "month": "本月",
