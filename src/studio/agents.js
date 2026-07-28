@@ -87,6 +87,18 @@ export function agentAvatarGlyph(agent) {
   return "";
 }
 
+/** @param {{ displayName?: string; avatar?: string } | null | undefined} profile */
+export function userProfileDisplayLabel(profile, fallback = "User") {
+  return String(profile?.displayName ?? "").trim() || fallback;
+}
+
+/** @param {{ avatar?: string } | null | undefined} profile */
+export function userProfileAvatarGlyph(profile) {
+  const av = String(profile?.avatar ?? "").trim();
+  if (av && isAgentAvatarImageSrc(av)) return av;
+  return "";
+}
+
 /** @param {{ displayName?: string; avatar?: string; gender?: string; userMd?: string } | null | undefined} profile */
 export function buildGlobalUserMd(profile) {
   if (!profile || typeof profile !== "object") return "";

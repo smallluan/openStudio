@@ -5598,6 +5598,11 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   color: var(--os-text);
 }
 
+.chat-lab__msg-user-head {
+  flex-shrink: 0;
+  align-self: start;
+}
+
 .chat-lab__composer-outer {
   flex-shrink: 0;
   transition:
@@ -7430,9 +7435,31 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
 
 .chat-lab__msg--user {
   align-self: flex-end;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.5rem;
+  align-items: start;
   max-width: min(70%, 36rem);
   width: fit-content;
+}
+
+.chat-lab__msg--user > .chat-lab__msg-meta-tags {
+  grid-column: 1 / -1;
+}
+
+.chat-lab__msg--user > .chat-lab__bubble--user {
+  grid-column: 1;
+  justify-self: end;
+}
+
+.chat-lab__msg--user > .chat-lab__msg-user-head {
+  grid-column: 2;
+}
+
+.chat-lab__msg--user > .chat-lab__msg-mentions,
+.chat-lab__msg--user > .chat-lab__msg-footer {
+  grid-column: 1;
+  justify-self: end;
 }
 
 .chat-lab__msg--group-event {
@@ -7748,6 +7775,7 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   width: fit-content;
   max-width: 100%;
   border-radius: 16px;
+  border-top-right-radius: 0;
   padding: 0.58rem 0.82rem;
   border: none;
   background: var(--chat-lab-user-fade);
@@ -7861,6 +7889,7 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
 
 :root[data-theme="dark"] .chat-lab__bubble--user {
   border-radius: 16px;
+  border-top-right-radius: 0;
   background: var(--chat-lab-user-fade);
   border-color: color-mix(in srgb, var(--os-accent) 24%, var(--border));
 }

@@ -113,6 +113,8 @@ import {
   groupAgentsInSession,
   sessionKeyForAgent,
   systemMessageForAgent,
+  userProfileAvatarGlyph,
+  userProfileDisplayLabel,
 } from "../studio/agents.js";
 import { useStudio } from "../context/StudioContext.jsx";
 import ChatLabToolbarScroll from "../components/chat-lab/ChatLabToolbarScroll.jsx";
@@ -2136,6 +2138,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   }, [reloadConfig]);
 
   const globalUserProfile = config?.userProfile;
+  const userDisplayName = userProfileDisplayLabel(globalUserProfile, t("settings.profile.defaultName"));
+  const userAvatarGlyph = userProfileAvatarGlyph(globalUserProfile);
   const withUserProfileExtra = useCallback(
     (extra = {}) => ({ ...extra, globalUserProfile }),
     [globalUserProfile],
@@ -5338,6 +5342,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                     mainAgent={mainAgent}
                     participantIds={participantIds}
                     collapseTracePanels={parallelReplyActive}
+                    userDisplayName={userDisplayName}
+                    userAvatarGlyph={userAvatarGlyph}
                   />
                 </ChatLabThreadNav>
                 <ChatLabSelectionToolbar
@@ -7517,6 +7523,8 @@ function isLegacyDagMessageKind(kind) {
  *   onUserEnterAnimEnd?: (messageId: string) => void;
  *   agentGlyph?: string;
  *   agentName?: string;
+ *   userGlyph?: string;
+ *   userName?: string;
  *   hideAgentHead?: boolean;
  *   embedded?: boolean;
  *   onBeginUserEdit: (
@@ -7544,6 +7552,8 @@ const MessageBubble = memo(function MessageBubble({
   onFollowUpNavigate,
   agentGlyph,
   agentName,
+  userGlyph,
+  userName,
   hideAgentHead = false,
   embedded = false,
   mentionAgents = [],
@@ -8023,6 +8033,16 @@ const MessageBubble = memo(function MessageBubble({
           </div>
         )}
       </article>
+      {isUser && userName ? (
+        <div className="chat-lab__msg-user-head">
+          <Avatar
+            src={userGlyph}
+            name={userName}
+            size="sm"
+            shape="rounded"
+          />
+        </div>
+      ) : null}
       {mentionAgents.length > 0 ? (
         <div
           className={cn(
@@ -8351,6 +8371,8 @@ function ChatLabPlainMessageList({
   mainAgent,
   participantIds,
   collapseTracePanels = false,
+  userDisplayName,
+  userAvatarGlyph,
 }) {
   const mentionDisplayOpts = useMemo(
     () => ({ everyoneLabel: mentionEveryoneLabel, mainAgent, participantIds }),
@@ -8488,6 +8510,8 @@ function ChatLabPlainMessageList({
               onFollowUpNavigate={onFollowUpNavigate}
               agentGlyph={agent ? agentAvatarGlyph(agent) : undefined}
               agentName={agent ? agentDisplayLabel(agent) : undefined}
+              userGlyph={userAvatarGlyph}
+              userName={userDisplayName}
               mentionAgents={mentionAgentsForMessage(message, agentById, mainAgentLabel, mentionDisplayOpts)}
               collapseTracePanels={collapseTracePanels}
               agents={agents}
@@ -8579,6 +8603,8 @@ function ChatLabVirtualMessageList({
   mainAgent,
   participantIds,
   collapseTracePanels = false,
+  userDisplayName,
+  userAvatarGlyph,
 }) {
   const mentionDisplayOpts = useMemo(
     () => ({ everyoneLabel: mentionEveryoneLabel, mainAgent, participantIds }),
@@ -8966,6 +8992,8 @@ function ChatLabVirtualMessageList({
                   onFollowUpNavigate={onFollowUpNavigate}
                   agentGlyph={agent ? agentAvatarGlyph(agent) : undefined}
                   agentName={agent ? agentDisplayLabel(agent) : undefined}
+                  userGlyph={userAvatarGlyph}
+                  userName={userDisplayName}
                   mentionAgents={mentionAgentsForMessage(message, agentById, mainAgentLabel, mentionDisplayOpts)}
                   collapseTracePanels={collapseTracePanels}
                   agents={agents}
