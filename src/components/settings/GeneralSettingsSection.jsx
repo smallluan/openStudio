@@ -99,9 +99,7 @@ export default function GeneralSettingsSection() {
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
 
   const [chatLabAutoTitle, setChatLabAutoTitle] = useState(false);
-  const [rawTraceEnabled, setRawTraceEnabled] = useState(false);
   const [chatLabGroupContinuousConversation, setChatLabGroupContinuousConversation] = useState(true);
-  const [showAutomationDebugInput, setShowAutomationDebugInput] = useState(false);
   const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
 
   useEffect(() => {
@@ -111,13 +109,11 @@ export default function GeneralSettingsSection() {
         const c = await bridge?.getUserConfig?.();
         if (!cancelled && c && typeof c === "object") {
           setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
-          setRawTraceEnabled(Boolean(c.chatLabRawTraceEnabled));
           setChatLabGroupContinuousConversation(
             typeof c.chatLabGroupContinuousConversation === "boolean"
               ? c.chatLabGroupContinuousConversation
               : true,
           );
-          setShowAutomationDebugInput(Boolean(c.chatLabShowAutomationDebugInput));
           if (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar") {
             const mode = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
             setLinkOpenMode(mode);
@@ -147,20 +143,6 @@ export default function GeneralSettingsSection() {
     }
   };
 
-  const persistRawTraceEnabled = async (next) => {
-    setRawTraceEnabled(next);
-    try {
-      await bridge?.setUserConfig?.({ chatLabRawTraceEnabled: next });
-    } catch {
-      try {
-        const c = await bridge?.getUserConfig?.();
-        if (c && typeof c === "object") setRawTraceEnabled(Boolean(c.chatLabRawTraceEnabled));
-      } catch {
-        setRawTraceEnabled(false);
-      }
-    }
-  };
-
   const persistChatLabGroupContinuousConversation = async (next) => {
     setChatLabGroupContinuousConversation(next);
     try {
@@ -177,20 +159,6 @@ export default function GeneralSettingsSection() {
         }
       } catch {
         setChatLabGroupContinuousConversation(true);
-      }
-    }
-  };
-
-  const persistShowAutomationDebugInput = async (next) => {
-    setShowAutomationDebugInput(next);
-    try {
-      await bridge?.setUserConfig?.({ chatLabShowAutomationDebugInput: next });
-    } catch {
-      try {
-        const c = await bridge?.getUserConfig?.();
-        if (c && typeof c === "object") setShowAutomationDebugInput(Boolean(c.chatLabShowAutomationDebugInput));
-      } catch {
-        setShowAutomationDebugInput(false);
       }
     }
   };
@@ -331,15 +299,6 @@ export default function GeneralSettingsSection() {
           />
         </GeneralSettingRow>
 
-        <GeneralSettingRow title={t("settings.rawTraceEnabled")}>
-          <Switch
-            id="settings-raw-trace"
-            aria-label={t("settings.rawTraceEnabledTitle")}
-            value={rawTraceEnabled}
-            onChange={(v) => void persistRawTraceEnabled(Boolean(v))}
-          />
-        </GeneralSettingRow>
-
         <GeneralSettingRow title={t("settings.autoSummarize")}>
           <Switch
             id="settings-auto-summarize"
@@ -355,15 +314,6 @@ export default function GeneralSettingsSection() {
             aria-label={t("settings.groupContinuousConversationAria")}
             value={chatLabGroupContinuousConversation}
             onChange={(v) => void persistChatLabGroupContinuousConversation(Boolean(v))}
-          />
-        </GeneralSettingRow>
-
-        <GeneralSettingRow title={t("settings.showAutomationDebugInput")}>
-          <Switch
-            id="settings-show-automation-debug-input"
-            aria-label={t("settings.showAutomationDebugInputTitle")}
-            value={showAutomationDebugInput}
-            onChange={(v) => void persistShowAutomationDebugInput(Boolean(v))}
           />
         </GeneralSettingRow>
     </div>

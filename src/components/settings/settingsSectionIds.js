@@ -4,6 +4,7 @@ export const SETTINGS_SECTION_IDS = /** @type {const} */ ([
   "accounts",
   "channels",
   "usage",
+  "debug",
   "model",
 ]);
 

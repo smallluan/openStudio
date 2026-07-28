@@ -1,8 +1,9 @@
-import { BarChart3, Cpu, KeyRound, Radio, Settings } from "lucide-react";
+import { BarChart3, Bug, Cpu, KeyRound, Radio, Settings } from "lucide-react";
 import { Menu } from "@open-studio/udesign";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import ChannelSettingsSection from "../components/settings/ChannelSettingsSection.jsx";
+import DebugToolsSettingsSection from "../components/settings/DebugToolsSettingsSection.jsx";
 import GeneralSettingsSection from "../components/settings/GeneralSettingsSection.jsx";
 import TokenUsageSettingsSection from "../components/settings/TokenUsageSettingsSection.jsx";
 import WebAccountSettingsSection from "../components/settings/WebAccountSettingsSection.jsx";
@@ -20,6 +21,7 @@ const SETTINGS_SECTION_ICONS = {
   accounts: KeyRound,
   channels: Radio,
   usage: BarChart3,
+  debug: Bug,
   model: Cpu,
 };
 
@@ -104,6 +106,12 @@ export default function SettingsPage() {
             {section === "usage" ? (
               <div className="settings-sheet__section settings-sheet__section--wide">
                 <TokenUsageSettingsSection />
+              </div>
+            ) : null}
+
+            {section === "debug" ? (
+              <div className="settings-sheet__section">
+                <DebugToolsSettingsSection />
               </div>
             ) : null}
 

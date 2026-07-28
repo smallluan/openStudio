@@ -44,8 +44,8 @@ function buildChartOption(mode, stats, t, theme) {
   const { base } = getChatLabEchartsTheme(theme);
   const text = base.textStyle?.color ?? (theme === "dark" ? "#e6edf3" : "#2a2a2a");
   const grid = {
-    left: 36,
-    right: 16,
+    left: 12,
+    right: 12,
     top: 28,
     bottom: 28,
     containLabel: true,
@@ -68,7 +68,7 @@ function buildChartOption(mode, stats, t, theme) {
         itemWidth: 10,
         itemHeight: 8,
       },
-      xAxis: { type: "category", data: stats.daily.labels, ...axis, splitLine: { show: false } },
+      xAxis: { type: "category", data: stats.daily.labels, boundaryGap: false, ...axis, splitLine: { show: false } },
       yAxis: { type: "value", ...axis },
       series: [
         {
@@ -256,7 +256,7 @@ export default function TokenUsageSettingsSection() {
   };
 
   return (
-    <div className="token-usage-settings mx-auto flex w-full max-w-3xl flex-col gap-5">
+    <div className="token-usage-settings flex w-full flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Radio.Group
           theme="button"

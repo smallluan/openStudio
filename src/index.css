@@ -2107,7 +2107,8 @@ code {
 }
 
 .settings-sheet__section--wide {
-  max-width: 48rem;
+  width: 100%;
+  max-width: 100%;
 }
 
 .settings-sheet__section--model {

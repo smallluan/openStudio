@@ -137,6 +137,7 @@
       "accounts": "帳號管理",
       "channels": "通道設定",
       "usage": "用量統計",
+      "debug": "偵錯工具",
       "skills": "技能管理",
       "remote": "遠端控制通道",
       "model": "模型",
