@@ -8,6 +8,13 @@ const { normWin, rmWithRetry, sleepSync } = require("./win-fs-retry.cjs");
 
 const OPENCLAW_ASAR_UNPACK_FILES = "**/*.{node,dll}";
 const OPENCLAW_ASAR_UNPACK_DIR = "dist/extensions";
+const MEMORY_FS_MARKER = "openclaw-memory-fs.json";
+const MEMORY_FS_ONLY_ENTRIES = [
+  "node_modules",
+  "node_modules.zip",
+  "node_modules.unpacked",
+  ".openstudio-memoryfs-meta.json",
+];
 
 function isWindowsOpenClawAsarEnabled() {
   const raw = process.env.OPEN_STUDIO_WINDOWS_OPENCLAW_ASAR ?? process.env.YONCLAW_WINDOWS_OPENCLAW_ASAR;
@@ -20,9 +27,23 @@ async function applyWindowsPackLayout(resourcesDir) {
   if (!isWindowsOpenClawAsarEnabled()) {
     return { openclaw: keepOpenClawLoose(resourcesDir) };
   }
+  verifyMemoryFsResources(resourcesDir);
   const openclaw = await packOpenClawHybridAsar(resourcesDir);
   verifyWindowsBundledExtensionsIntegrity(resourcesDir);
   return { openclaw };
+}
+
+function verifyMemoryFsResources(resourcesDir) {
+  const required = [
+    "node_modules.zip",
+    path.join("gateway", "memory-fs", "register.mjs"),
+  ];
+  const missing = required.filter((rel) => !fs.existsSync(normWin(path.join(resourcesDir, rel))));
+  if (missing.length > 0) {
+    throw new Error(
+      `[win-pack-layout] memory-fs-only package is missing required resource(s): ${missing.join(", ")}`,
+    );
+  }
 }
 
 function verifyWindowsBundledExtensionsIntegrity(resourcesDir) {
@@ -65,6 +86,12 @@ async function packOpenClawHybridAsar(resourcesDir) {
   removeIfExists(unpackedDest, { recursive: true });
   removeIfExists(asarDest);
 
+  for (const entry of MEMORY_FS_ONLY_ENTRIES) {
+    removeIfExists(path.join(loose, entry), {
+      recursive: entry === "node_modules" || entry === "node_modules.unpacked",
+    });
+  }
+
   const unpackOptions = { unpack: OPENCLAW_ASAR_UNPACK_FILES };
   const extensionsDir = path.join(loose, "dist", "extensions");
   if (fs.existsSync(normWin(extensionsDir))) {
@@ -83,6 +110,11 @@ async function packOpenClawHybridAsar(resourcesDir) {
   }
 
   refreshWindowsBundledExtensionsMirror(resourcesDir);
+  fs.writeFileSync(
+    normWin(path.join(resourcesDir, MEMORY_FS_MARKER)),
+    `${JSON.stringify({ version: 1, dependencyLayout: "memory-fs-only" })}\n`,
+    "utf8",
+  );
   removeIfExists(loose, { recursive: true });
   return "packed-hybrid-asar";
 }
@@ -102,12 +134,14 @@ function keepOpenClawLoose(resourcesDir) {
   removeIfExists(unpackedDest, { recursive: true });
   const mirrorDir = path.join(resourcesDir, "openclaw-extensions-mirror");
   removeIfExists(mirrorDir, { recursive: true });
+  removeIfExists(path.join(resourcesDir, MEMORY_FS_MARKER));
   return "kept-loose";
 }
 
 module.exports = {
   OPENCLAW_ASAR_UNPACK_FILES,
   OPENCLAW_ASAR_UNPACK_DIR,
+  MEMORY_FS_MARKER,
   applyWindowsPackLayout,
   isWindowsOpenClawAsarEnabled,
   packOpenClawHybridAsar,

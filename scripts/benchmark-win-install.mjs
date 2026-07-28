@@ -9,9 +9,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
+const require = createRequire(import.meta.url);
+const asar = require("@electron/asar");
+const MAX_RESOURCES_MIB = 320;
+const MAX_INSTALL_MIB = 600;
 
 function findWinResourcesDir(startDir) {
   const direct = path.join(startDir, "win-unpacked", "resources");
@@ -97,6 +102,7 @@ function formatMib(bytes) {
 
 const args = process.argv.slice(2);
 const jsonMode = args.includes("--json");
+const checkMode = args.includes("--check");
 const releaseDir = path.resolve(ROOT, args.find((a) => !a.startsWith("--")) || "release");
 const resourcesDir = findWinResourcesDir(releaseDir);
 
@@ -111,14 +117,43 @@ if (!resourcesDir) {
 }
 
 const summary = summarizeResources(resourcesDir);
+const installSummary = walkFiles(path.dirname(resourcesDir));
 const layout = detectOpenClawLayout(resourcesDir);
 const memoryFsZip = fs.existsSync(path.join(resourcesDir, "node_modules.zip"));
+const memoryFsOnly = fs.existsSync(path.join(resourcesDir, "openclaw-memory-fs.json"));
+const openClawAsar = path.join(resourcesDir, "openclaw.asar");
+let forbiddenOpenClawEntries = [];
+if (fs.existsSync(openClawAsar)) {
+  forbiddenOpenClawEntries = asar
+    .listPackage(openClawAsar)
+    .filter((entry) =>
+      /^\\(?:node_modules(?:\\|$)|node_modules\.zip$|node_modules\.unpacked(?:\\|$))/.test(entry),
+    )
+    .slice(0, 20);
+}
+const totalMibNumber = Number(summary.totalBytes) / (1024 * 1024);
+const installMibNumber = Number(installSummary.bytes) / (1024 * 1024);
+const checks = {
+  hybridAsar: layout === "hybrid-asar",
+  memoryFsZip,
+  memoryFsOnly,
+  noBundledDependencyCopies: forbiddenOpenClawEntries.length === 0,
+  withinResourceBudget: totalMibNumber <= MAX_RESOURCES_MIB,
+  withinInstallBudget: installMibNumber <= MAX_INSTALL_MIB,
+};
+const checksOk = Object.values(checks).every(Boolean);
 
 const report = {
-  ok: true,
+  ok: !checkMode || checksOk,
   resourcesDir,
   layout,
   memoryFsZip,
+  memoryFsOnly,
+  checks,
+  resourceBudgetMib: MAX_RESOURCES_MIB,
+  installBudgetMib: MAX_INSTALL_MIB,
+  installMib: formatMib(installSummary.bytes),
+  forbiddenOpenClawEntries,
   totalFiles: summary.totalFiles,
   totalBytes: summary.totalBytes.toString(),
   totalMib: formatMib(summary.totalBytes),
@@ -135,8 +170,15 @@ if (jsonMode) {
   console.log("[benchmark-win-install] resources:", resourcesDir);
   console.log("[benchmark-win-install] openclaw layout:", layout);
   console.log("[benchmark-win-install] memory-fs zip:", memoryFsZip ? "yes" : "no");
+  console.log("[benchmark-win-install] memory-fs-only:", memoryFsOnly ? "yes" : "no");
   console.log(`[benchmark-win-install] total: ${summary.totalFiles} files, ${formatMib(summary.totalBytes)} MiB`);
+  console.log(`[benchmark-win-install] install surface: ${formatMib(installSummary.bytes)} MiB`);
   for (const row of summary.rows.slice(0, 12)) {
     console.log(`  ${row.name.padEnd(28)} ${String(row.files).padStart(7)} files  ${formatMib(row.bytes).padStart(8)} MiB`);
   }
+  if (checkMode) {
+    console.log("[benchmark-win-install] checks:", checksOk ? "passed" : JSON.stringify(checks));
+  }
 }
+
+if (checkMode && !checksOk) process.exit(1);

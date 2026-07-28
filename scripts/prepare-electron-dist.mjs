@@ -40,7 +40,16 @@ function hasValidCache() {
   if (!fs.existsSync(dest) || !fs.existsSync(destExe) || !fs.existsSync(cacheMetaPath)) return false;
   try {
     const cacheMeta = JSON.parse(fs.readFileSync(cacheMetaPath, "utf8"));
-    return cacheMeta?.electronVersion === electronPkg.version;
+    if (cacheMeta?.electronVersion !== electronPkg.version) return false;
+    const sourceEntries = fs.readdirSync(src).sort();
+    const cachedEntries = fs
+      .readdirSync(dest)
+      .filter((name) => name !== path.basename(cacheMetaPath))
+      .sort();
+    return (
+      sourceEntries.length === cachedEntries.length &&
+      sourceEntries.every((name, index) => name === cachedEntries[index])
+    );
   } catch {
     return false;
   }

@@ -24,6 +24,7 @@ const PNPM_STORE = path.join(ROOT_NM, ".pnpm");
 const SKIP_PACKAGES = new Set(["typescript", "@playwright/test", "@discordjs/opus"]);
 const SKIP_SCOPES = ["@cloudflare/", "@types/"];
 const FORCE_INCLUDE_PACKAGES = ["kysely", "chalk"];
+const SKIP_OPENCLAW_ROOT_DIRS = new Set(["docs", "src"]);
 
 function normWin(p) {
   if (process.platform !== "win32") return p;
@@ -157,6 +158,12 @@ function copyOpenClawRoot() {
     filter: (srcPath) => {
       const rel = path.relative(src, srcPath);
       if (rel === "node_modules" || rel.startsWith(`node_modules${path.sep}`)) return false;
+      const first = rel.split(path.sep)[0];
+      if (SKIP_OPENCLAW_ROOT_DIRS.has(first)) return false;
+      if (srcPath.endsWith(".ts") && !srcPath.endsWith(".d.ts")) {
+        const compiledSibling = srcPath.slice(0, -3) + ".js";
+        if (fs.existsSync(compiledSibling)) return false;
+      }
       return true;
     },
   });

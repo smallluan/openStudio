@@ -127,8 +127,7 @@ function ensurePythonRuntimeReady() {
 function ensureElectronDistCache() {
   const cachedElectronDist = path.join(root, "build", "electron-dist", "win32-x64");
   const electronExe = path.join(cachedElectronDist, "electron.exe");
-  if (fs.existsSync(electronExe)) return cachedElectronDist;
-  console.log("[dist:win] preparing cached electron dist...");
+  console.log("[dist:win] validating cached electron dist...");
   runNodeScript("scripts/prepare-electron-dist.mjs");
   return fs.existsSync(electronExe) ? cachedElectronDist : "";
 }
@@ -213,6 +212,16 @@ const eb = spawnSync(process.execPath, ebArgs, {
 
 if (eb.status !== 0) {
   process.exit(typeof eb.status === "number" && eb.status !== 0 ? eb.status : 1);
+}
+
+const packageCheck = spawnSync(
+  process.execPath,
+  [path.join(root, "scripts", "benchmark-win-install.mjs"), "--check", stagingAbs],
+  { cwd: root, stdio: "inherit", env: process.env },
+);
+if (packageCheck.status !== 0) {
+  console.error("[dist:win] packaged resource validation failed");
+  process.exit(typeof packageCheck.status === "number" && packageCheck.status !== 0 ? packageCheck.status : 1);
 }
 
 const expectedSetupName = expandArtifact(artifactTemplate);
