@@ -33,6 +33,11 @@ import EmptyState from "../../ui/EmptyState.jsx";
 import FluidConfirmDialog from "../../ui/FluidConfirmDialog.jsx";
 import { OS_POPUP_INNER_CLASS, OS_POPUP_OVERLAY_CLASS, osPopupPopperOptions } from "../../ui/osPopupShared.js";
 import { cn } from "../../ui/cn.js";
+import ChatHistoryMorePopup from "./ChatHistoryMorePopup.jsx";
+import {
+  getOverflowSessionRows,
+  getSidebarVisibleSessionRows,
+} from "./chatHistorySidebarVisible.js";
 import {
   CHAT_HISTORY_ROW_COLLAPSE_MS,
   CHAT_HISTORY_ROW_LEAVE_MS,
@@ -238,25 +243,11 @@ function ChatHistoryGroupHead({
           </>
         )}
       </div>
-      <Button
-        type="button"
-        variant="text"
-        shape="square"
-        size="small"
-        className="chat-history-group__caret-btn"
-        onClick={() => {
-          if (!deleteMode) onToggleCollapsed();
-        }}
-        aria-expanded={!collapsed}
-        aria-label={collapsed ? t("nav.chatHistoryGroupExpandList") : t("nav.chatHistoryGroupCollapseList")}
-        disabled={deleteMode}
-      >
-        <ChevronDown
-          className={cn("chat-history-group__caret", collapsed && "chat-history-group__caret--collapsed")}
-          strokeWidth={2.25}
-          aria-hidden
-        />
-      </Button>
+      <ChevronDown
+        className={cn("chat-history-group__caret", collapsed && "chat-history-group__caret--collapsed")}
+        strokeWidth={2.25}
+        aria-hidden
+      />
     </div>
   );
 }
@@ -278,6 +269,9 @@ function ChatHistoryGroupHead({
  *   selected?: boolean;
  *   selectDisabled?: boolean;
  *   onToggleSelect?: () => void;
+ *   onNavigate?: () => void;
+ *   menuAttach?: string | (() => HTMLElement);
+ *   menuZIndex?: number;
  * }} props
  */
 function HistorySessionRow({
@@ -296,6 +290,9 @@ function HistorySessionRow({
   selected = false,
   selectDisabled = false,
   onToggleSelect,
+  onNavigate,
+  menuAttach = "body",
+  menuZIndex = 400,
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -435,6 +432,7 @@ function HistorySessionRow({
             title={displayTitle}
             className={rowLinkClass}
             aria-current={rowActive ? "page" : undefined}
+            onClick={() => onNavigate?.()}
           >
             {leftSlot}
             {rowText}
@@ -445,8 +443,8 @@ function HistorySessionRow({
             visible={open}
             trigger="click"
             placement="bottom-end"
-            attach="body"
-            zIndex={400}
+            attach={menuAttach}
+            zIndex={menuZIndex}
             destroyOnClose={false}
             overlayClassName={OS_POPUP_OVERLAY_CLASS}
             overlayInnerClassName={OS_POPUP_INNER_CLASS}
@@ -500,6 +498,9 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   );
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [moreDialogChannel, setMoreDialogChannel] = useState(
+    /** @type {null | typeof CHAT_SESSION_CHANNEL_INTERNAL | typeof CHAT_SESSION_CHANNEL_WECHAT} */ (null),
+  );
   const [groupCollapsed, setGroupCollapsed] = useState(() => {
     try {
       const raw = window.localStorage.getItem("openstudio_chat_history_fold_v1");
@@ -699,6 +700,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
   }, [activeC, handleCancelDeleteMode, navigate, reload, selectedDeleteIds]);
 
   const handleEnterDeleteMode = useCallback((channel) => {
+    setMoreDialogChannel(null);
     setDeleteModeChannel(channel);
     setSelectedIds(new Set());
     setDeleteConfirmOpen(false);
@@ -779,7 +781,7 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     [deleteModeChannel, focusedChannel, searchFiltered],
   );
 
-  const renderHistoryRow = (s) => {
+  const renderHistoryRow = (s, { onNavigate, menuAttach, menuZIndex } = {}) => {
     const to = `/chat?c=${encodeURIComponent(s.id)}`;
     const rowActive = (location.pathname === "/chat" || location.pathname === "/") && activeC === s.id;
     const displayTitle = s.title || t("nav.chatHistoryUntitled");
@@ -807,9 +809,16 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
         selected={selectedIds.has(s.id)}
         selectDisabled={isStreaming}
         onToggleSelect={() => handleToggleSelect(s.id)}
+        onNavigate={onNavigate}
+        menuAttach={menuAttach}
+        menuZIndex={menuZIndex}
       />
     );
   };
+
+  const closeMorePopup = useCallback(() => {
+    setMoreDialogChannel(null);
+  }, []);
 
   if (narrow) {
     return null;
@@ -831,6 +840,12 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
               <ul className="relative z-[1] m-0 flex list-none flex-col gap-0.5 p-0 px-1">
                 {renderChannelGroups.map((group) => {
                   const groupRows = getGroupRows(group.channel, group.rows);
+                  const inDeleteMode = deleteModeChannel === group.channel;
+                  const limitSidebar = !inDeleteMode && !filterQuery.trim();
+                  const sidebarRows = limitSidebar
+                    ? getSidebarVisibleSessionRows(groupRows, activeC)
+                    : groupRows;
+                  const overflowRows = limitSidebar ? getOverflowSessionRows(groupRows, sidebarRows) : [];
                   const channelSelectedCount = groupRows.filter(
                     (row) =>
                       selectedIds.has(row.id) &&
@@ -867,7 +882,34 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
                           }}
                         />
                       </li>
-                      {isGroupExpanded(group.channel) ? groupRows.map(renderHistoryRow) : null}
+                      {isGroupExpanded(group.channel) ? (
+                        <>
+                          {sidebarRows.map((row) => renderHistoryRow(row))}
+                          {overflowRows.length > 0 ? (
+                            <li className="chat-history-more-trigger">
+                              <ChatHistoryMorePopup
+                                open={moreDialogChannel === group.channel}
+                                onOpenChange={(visible) => {
+                                  if (visible) setMoreDialogChannel(group.channel);
+                                  else closeMorePopup();
+                                }}
+                                title={t("nav.chatHistoryMoreDialogTitle", { channel: group.label })}
+                                rows={overflowRows}
+                                renderRow={(row, context) => renderHistoryRow(row, context)}
+                              >
+                                <Button
+                                  type="button"
+                                  variant="text"
+                                  block
+                                  className="chat-history-more-trigger__btn"
+                                >
+                                  {t("nav.chatHistoryShowMore", { n: overflowRows.length })}
+                                </Button>
+                              </ChatHistoryMorePopup>
+                            </li>
+                          ) : null}
+                        </>
+                      ) : null}
                     </Fragment>
                   );
                 })}
