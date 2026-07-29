@@ -111,6 +111,7 @@ const {
   restartOwnedGateway,
   resolveBundledOpenClawPackageMetaSync,
 } = require("./lib/openclaw-gateway-supervisor.cjs");
+const { migratePackagedOpenClawStateFromLegacyDev } = require("./lib/openclaw-runtime-profile.cjs");
 const { repairWindowsOpenClawUnpackedLayout, repairWindowsBundledExtensionsFromMirror } = require("./lib/win-bundled-resources.cjs");
 const {
   registerRendererSchemePrivileges,
@@ -1023,6 +1024,8 @@ app.whenReady().then(async () => {
     }
   }
 
+  process.env.OPEN_STUDIO_USER_DATA = app.getPath("userData");
+
   initStudioLogger(app, { isDev });
   attachProcessDiagnostics();
 
@@ -1049,6 +1052,13 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
   userConfigStore = createConfigStore(app.getPath("userData"));
+  if (!isDev) {
+    try {
+      migratePackagedOpenClawStateFromLegacyDev(app.getPath("userData"), getStudioLog());
+    } catch (e) {
+      getStudioLog().warn("[startup] openclaw state migration threw", String(e?.message ?? e));
+    }
+  }
   tokenUsageStore = createTokenUsageStore(app.getPath("userData"));
   chatSessionsStore = createChatSessionsStore(app.getPath("userData"));
   automationTasksStore = createAutomationTasksStore(app.getPath("userData"));
