@@ -2158,11 +2158,19 @@ app.whenReady().then(async () => {
         }
       } catch (e) {
         if (!wc.isDestroyed()) {
-          if (ac.signal.aborted || e?.name === "AbortError") {
+          // Only treat as user/stream abort when THIS turn's controller aborted.
+          // Shared-connect races used to throw AbortError while ac.signal stayed open,
+          // which rendered as an empty assistant bubble instead of an error.
+          if (ac.signal.aborted) {
             wc.send(CHAT_STREAM_CHAN, { streamId, type: "aborted" });
             terminalSent = true;
           } else {
-            wc.send(CHAT_STREAM_CHAN, { streamId, type: "error", message: String(e?.message ?? e) });
+            const msg = String(e?.message ?? e);
+            wc.send(CHAT_STREAM_CHAN, {
+              streamId,
+              type: "error",
+              message: e?.name === "AbortError" ? `gateway_session_interrupted: ${msg}` : msg,
+            });
             terminalSent = true;
           }
         }
