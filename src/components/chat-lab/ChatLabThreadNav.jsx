@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "reac
 import {
   buildUserTurnAnchors,
   getThreadScrollMetrics,
+  pauseChatThreadPin,
   scrollThreadToBottom,
   scrollThreadToTop,
 } from "../../chat/chatLabThreadScroll.js";
@@ -16,6 +17,7 @@ import ChatLabConvHeader from "./ChatLabConvHeader.jsx";
  *   messages: unknown[];
  *   messagesScrollRef: import("react").RefObject<HTMLDivElement | null>;
  *   autoScrollRef: import("react").MutableRefObject<boolean>;
+ *   userScrollPausedRef?: import("react").MutableRefObject<boolean>;
  *   threadScrollApiRef: import("react").MutableRefObject<import("../../chat/chatLabThreadScroll.js").ChatLabThreadScrollApi | null>;
  *   agents?: import("../../studio/agents.js").LobsterAgent[];
  *   participantIds?: string[];
@@ -33,6 +35,7 @@ export default function ChatLabThreadNav({
   messages,
   messagesScrollRef,
   autoScrollRef,
+  userScrollPausedRef,
   threadScrollApiRef,
   agents = [],
   participantIds = [],
@@ -96,10 +99,10 @@ export default function ChatLabThreadNav({
   }, [userTurns.length, syncScrollUi]);
 
   const handleScrollTop = useCallback(() => {
-    autoScrollRef.current = false;
+    pauseChatThreadPin(autoScrollRef, userScrollPausedRef);
     scrollThreadToTop(messagesScrollRef.current, threadScrollApiRef.current);
     requestAnimationFrame(syncScrollUi);
-  }, [autoScrollRef, messagesScrollRef, syncScrollUi, threadScrollApiRef]);
+  }, [autoScrollRef, messagesScrollRef, syncScrollUi, threadScrollApiRef, userScrollPausedRef]);
 
   const handleScrollBottom = useCallback(() => {
     scrollThreadToBottom(messagesScrollRef.current, threadScrollApiRef.current, autoScrollRef);
@@ -114,6 +117,7 @@ export default function ChatLabThreadNav({
     messages,
     messagesScrollRef,
     autoScrollRef,
+    userScrollPausedRef,
     threadScrollApiRef,
     activeTurnId,
     onActiveTurnIdChange: setActiveTurnId,

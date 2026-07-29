@@ -1,7 +1,7 @@
 import { Maximize2, Minimize2, PanelRight, Route } from "lucide-react";
 import { Button, Popup } from "tdesign-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { buildUserTurnAnchors, scrollThreadToMessage } from "../../chat/chatLabThreadScroll.js";
+import { buildUserTurnAnchors, pauseChatThreadPin, scrollThreadToMessage } from "../../chat/chatLabThreadScroll.js";
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { OS_POPUP_INNER_CLASS, OS_POPUP_OVERLAY_CLASS, osPopupPopperOptions } from "../../ui/osPopupShared.js";
@@ -16,6 +16,7 @@ import ChatLabParticipantBar from "./ChatLabParticipantBar.jsx";
  *   messages: unknown[];
  *   messagesScrollRef?: import("react").RefObject<HTMLDivElement | null>;
  *   autoScrollRef?: import("react").MutableRefObject<boolean>;
+  userScrollPausedRef?: import("react").MutableRefObject<boolean>;
  *   threadScrollApiRef?: import("react").MutableRefObject<import("../../chat/chatLabThreadScroll.js").ChatLabThreadScrollApi | null>;
  *   activeTurnId?: string | null;
  *   onActiveTurnIdChange?: (id: string | null) => void;
@@ -34,6 +35,7 @@ export default function ChatLabConvHeader({
   messages,
   messagesScrollRef,
   autoScrollRef,
+  userScrollPausedRef,
   threadScrollApiRef,
   activeTurnId = null,
   onActiveTurnIdChange,
@@ -72,7 +74,7 @@ export default function ChatLabConvHeader({
     /** @param {{ id: string; index: number }} turn */
     (turn) => {
       onActiveTurnIdChange?.(turn.id);
-      if (autoScrollRef) autoScrollRef.current = false;
+      if (autoScrollRef) pauseChatThreadPin(autoScrollRef, userScrollPausedRef);
       scrollThreadToMessage({
         messageId: turn.id,
         messageIndex: turn.index,
@@ -81,7 +83,7 @@ export default function ChatLabConvHeader({
       });
       setNavOpen(false);
     },
-    [autoScrollRef, messagesScrollRef, onActiveTurnIdChange, threadScrollApiRef],
+    [autoScrollRef, messagesScrollRef, onActiveTurnIdChange, threadScrollApiRef, userScrollPausedRef],
   );
 
   const handleHeaderPointerDown = useCallback(

@@ -199,84 +199,180 @@ import { cn } from "../ui/cn.js";
 const CHAT_LAB_PLAIN_MESSAGE_MAX = 48;
 /** Distance from bottom (px) within which the transcript stays pinned during streaming. */
 const CHAT_AUTO_SCROLL_BOTTOM_PX = 96;
+/** After manual scroll stops, wait this long before re-evaluating bottom proximity. */
+const CHAT_AUTO_SCROLL_END_DEBOUNCE_MS = 150;
 const RAW_TRACE_MAX_ROUNDS = 24;
 const RAW_TRACE_MAX_EVENTS_PER_ROUND = 240;
+
+/**
+ * @param {HTMLElement} el
+ * @param {boolean} streamingActive
+ */
+function chatAutoScrollBottomThresholdPx(streamingActive) {
+  return streamingActive ? CHAT_AUTO_SCROLL_BOTTOM_PX * 3 : CHAT_AUTO_SCROLL_BOTTOM_PX;
+}
+
+/**
+ * @param {HTMLElement} el
+ */
+function chatDistanceFromBottomPx(el) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight;
+}
+
+/**
+ * @param {HTMLElement | null} el
+ * @param {boolean} streamingActive
+ * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {import("react").MutableRefObject<boolean>} userScrollPausedRef
+ */
+function shouldFollowChatThreadOutput(el, streamingActive, autoScrollRef, userScrollPausedRef) {
+  if (!el || !autoScrollRef.current || userScrollPausedRef.current) return false;
+  return chatDistanceFromBottomPx(el) < chatAutoScrollBottomThresholdPx(streamingActive);
+}
+
+/**
+ * @param {HTMLElement | null} el
+ * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {import("react").MutableRefObject<boolean>} userScrollPausedRef
+ * @param {{ streamingActive?: boolean; lastScrollTopRef?: import("react").MutableRefObject<number> }} [opts]
+ */
+function syncChatAutoScrollFromEl(el, autoScrollRef, userScrollPausedRef, opts = {}) {
+  if (!el) return;
+  const streamingActive = Boolean(opts.streamingActive);
+  const threshold = chatAutoScrollBottomThresholdPx(streamingActive);
+  const distFromBottom = chatDistanceFromBottomPx(el);
+  if (opts.lastScrollTopRef) {
+    const scrolledUp = el.scrollTop < opts.lastScrollTopRef.current - 2;
+    opts.lastScrollTopRef.current = el.scrollTop;
+    if (streamingActive && scrolledUp) {
+      userScrollPausedRef.current = true;
+      autoScrollRef.current = false;
+    }
+  }
+  if (!streamingActive) {
+    if (distFromBottom < threshold) {
+      userScrollPausedRef.current = false;
+      autoScrollRef.current = true;
+      return;
+    }
+    autoScrollRef.current = false;
+    return;
+  }
+  if (distFromBottom >= threshold) {
+    userScrollPausedRef.current = true;
+    autoScrollRef.current = false;
+    return;
+  }
+  if (userScrollPausedRef.current) {
+    autoScrollRef.current = false;
+    return;
+  }
+  autoScrollRef.current = true;
+}
 
 /**
  * @param {HTMLElement | null} el
  * @param {import("react").MutableRefObject<boolean>} autoScrollRef
  * @param {import("react").MutableRefObject<boolean>} userOptedOutRef
- * @param {{ streamingActive?: boolean; lastScrollTopRef?: import("react").MutableRefObject<number> }} [opts]
+ * @param {boolean} streamingActive
  */
-function syncChatAutoScrollFromEl(el, autoScrollRef, userOptedOutRef, opts = {}) {
+function resumeChatAutoScrollIfNearBottom(el, autoScrollRef, userScrollPausedRef, streamingActive) {
   if (!el) return;
-  if (opts.lastScrollTopRef) {
-    const scrolledUp = el.scrollTop < opts.lastScrollTopRef.current - 2;
-    opts.lastScrollTopRef.current = el.scrollTop;
-    if (opts.streamingActive && scrolledUp) {
-      userOptedOutRef.current = true;
-    }
-  }
-  const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-  const threshold = opts.streamingActive
-    ? CHAT_AUTO_SCROLL_BOTTOM_PX * 3
-    : CHAT_AUTO_SCROLL_BOTTOM_PX;
+  const distFromBottom = chatDistanceFromBottomPx(el);
+  const threshold = chatAutoScrollBottomThresholdPx(streamingActive);
   if (distFromBottom < threshold) {
-    userOptedOutRef.current = false;
+    userScrollPausedRef.current = false;
     autoScrollRef.current = true;
     return;
   }
-  // While streaming, keep pinning unless the user explicitly scrolled away.
-  if (!opts.streamingActive || userOptedOutRef.current) {
-    autoScrollRef.current = false;
-  }
+  autoScrollRef.current = false;
 }
 
 /**
  * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {import("react").MutableRefObject<boolean>} userScrollPausedRef
+ * @param {import("react").MutableRefObject<boolean>} programmaticPinRef
  * @param {boolean} streamingActive
  */
-function useChatThreadScrollPin(autoScrollRef, streamingActive) {
-  const userOptedOutRef = useRef(false);
+function useChatThreadScrollPin(autoScrollRef, userScrollPausedRef, programmaticPinRef, streamingActive) {
   const lastScrollTopRef = useRef(0);
+  const scrollEndTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
 
   const onUserScrollAway = useCallback(() => {
-    userOptedOutRef.current = true;
+    userScrollPausedRef.current = true;
     autoScrollRef.current = false;
-  }, [autoScrollRef]);
+  }, [autoScrollRef, userScrollPausedRef]);
 
   const armPin = useCallback(() => {
-    userOptedOutRef.current = false;
+    userScrollPausedRef.current = false;
     autoScrollRef.current = true;
     lastScrollTopRef.current = 0;
-  }, [autoScrollRef]);
+  }, [autoScrollRef, userScrollPausedRef]);
 
   const syncFromScroll = useCallback(
     (el) => {
-      syncChatAutoScrollFromEl(el, autoScrollRef, userOptedOutRef, {
+      if (programmaticPinRef.current) return;
+      syncChatAutoScrollFromEl(el, autoScrollRef, userScrollPausedRef, {
         streamingActive,
         lastScrollTopRef,
       });
+      if (!streamingActive || !userScrollPausedRef.current || !el) return;
+      if (scrollEndTimerRef.current != null) clearTimeout(scrollEndTimerRef.current);
+      scrollEndTimerRef.current = setTimeout(() => {
+        scrollEndTimerRef.current = null;
+        if (programmaticPinRef.current) return;
+        resumeChatAutoScrollIfNearBottom(el, autoScrollRef, userScrollPausedRef, streamingActive);
+      }, CHAT_AUTO_SCROLL_END_DEBOUNCE_MS);
     },
-    [autoScrollRef, streamingActive, userOptedOutRef],
+    [autoScrollRef, programmaticPinRef, streamingActive, userScrollPausedRef],
   );
 
-  return { userOptedOutRef, onUserScrollAway, armPin, syncFromScroll, lastScrollTopRef };
+  const onManualScrollEnd = useCallback(
+    (el) => {
+      if (scrollEndTimerRef.current != null) {
+        clearTimeout(scrollEndTimerRef.current);
+        scrollEndTimerRef.current = null;
+      }
+      if (programmaticPinRef.current) return;
+      resumeChatAutoScrollIfNearBottom(el, autoScrollRef, userScrollPausedRef, streamingActive);
+    },
+    [autoScrollRef, programmaticPinRef, streamingActive, userScrollPausedRef],
+  );
+
+  const onUserScrollIntent = useCallback(() => {
+    if (!streamingActive) return;
+    onUserScrollAway();
+  }, [onUserScrollAway, streamingActive]);
+
+  useEffect(
+    () => () => {
+      if (scrollEndTimerRef.current != null) clearTimeout(scrollEndTimerRef.current);
+    },
+    [],
+  );
+
+  return { onUserScrollAway, onUserScrollIntent, armPin, syncFromScroll, onManualScrollEnd, lastScrollTopRef };
 }
 
 /**
  * Pin transcript scroll without stacking layout work on every streaming token.
  * @param {HTMLElement | null} el
- * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {() => boolean} canPin
+ * @param {import("react").MutableRefObject<boolean>} programmaticPinRef
  * @param {import("react").MutableRefObject<number | null>} rafRef
+ * @param {() => void} applyPin
  */
-function schedulePinChatScroll(el, autoScrollRef, rafRef) {
-  if (!el || !autoScrollRef.current) return;
+function schedulePinChatScroll(el, canPin, programmaticPinRef, rafRef, applyPin) {
+  if (!el || !canPin()) return;
   if (rafRef.current != null) return;
   rafRef.current = requestAnimationFrame(() => {
     rafRef.current = null;
-    if (!autoScrollRef.current || !el) return;
-    el.scrollTop = el.scrollHeight;
+    if (!el || !canPin()) return;
+    programmaticPinRef.current = true;
+    applyPin();
+    requestAnimationFrame(() => {
+      programmaticPinRef.current = false;
+    });
   });
 }
 
@@ -296,16 +392,16 @@ function forcePinChatScroll(el) {
 /**
  * Re-pin transcript when bubble layout grows (markdown, images, virtual remeasure).
  * @param {import("react").RefObject<HTMLDivElement | null>} scrollRef
- * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {() => boolean} canPin
  * @param {unknown} contentDigest
  * @param {() => void} pinNow
  */
-function usePinChatOnContentGrowth(scrollRef, autoScrollRef, contentDigest, pinNow) {
+function usePinChatOnContentGrowth(scrollRef, canPin, contentDigest, pinNow) {
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return undefined;
     const pin = () => {
-      if (!autoScrollRef.current) return;
+      if (!canPin()) return;
       pinNow();
     };
     pin();
@@ -318,31 +414,26 @@ function usePinChatOnContentGrowth(scrollRef, autoScrollRef, contentDigest, pinN
     for (const child of el.children) watch(child);
     el.querySelectorAll(".chat-lab__messages-vtrack, .chat-lab__msg-vrow").forEach(watch);
     return () => ro.disconnect();
-  }, [scrollRef, autoScrollRef, contentDigest, pinNow]);
+  }, [scrollRef, canPin, contentDigest, pinNow]);
 }
 
 /**
  * While the model is still outputting, keep correcting drift from async layout (charts, mermaid).
  * @param {boolean} active
- * @param {import("react").RefObject<HTMLDivElement | null>} scrollRef
- * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {() => boolean} canPin
  * @param {() => void} pinNow
  */
-function useStreamingChatPinLoop(active, scrollRef, autoScrollRef, pinNow) {
+function useStreamingChatPinLoop(active, canPin, pinNow) {
   useEffect(() => {
     if (!active) return undefined;
     let raf = 0;
     const tick = () => {
-      const el = scrollRef.current;
-      if (autoScrollRef.current && el) {
-        const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-        if (distFromBottom > 1) pinNow();
-      }
+      if (canPin()) pinNow();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [active, scrollRef, autoScrollRef, pinNow]);
+  }, [active, canPin, pinNow]);
 }
 
 /** Distance from bottom (px) within which nested trace panels stay pinned during streaming. */
@@ -1612,6 +1703,12 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     /** @type {import("../chat/chatLabThreadScroll.js").ChatLabThreadScrollApi | null} */ (null),
   );
   const autoScrollRef = useRef(true);
+  const userScrollPausedRef = useRef(false);
+  const programmaticPinRef = useRef(false);
+  const armChatThreadPin = useCallback(() => {
+    userScrollPausedRef.current = false;
+    autoScrollRef.current = true;
+  }, []);
 
   const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
   const gatewaySlicesForConv = useGatewayStreamSlices(conversationId);
@@ -1863,7 +1960,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
     if (!paramC) {
       if (prev != null) {
-        autoScrollRef.current = true;
+        armChatThreadPin();
         setMessages([]);
         setParticipantIds([]);
         setComposerWorkflowId("");
@@ -1878,7 +1975,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
     const rec = getSession(paramC);
     if (rec) {
-      autoScrollRef.current = true;
+      armChatThreadPin();
       const liveSlices = gatewaySlicesRef.current.filter((s) => s.active && s.conversationId === paramC);
       setMessages(mapSessionRecordToUiMessages(rec, liveSlices.length ? liveSlices : null));
       const stored = Array.isArray(rec.participantIds) ? rec.participantIds : [];
@@ -1921,7 +2018,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       if (memberEvents.length > 0) {
         const uiEvents = memberEvents.map((m) => mapSessionMessageRow(m));
         setMessages((prev) => [...prev, ...uiEvents]);
-        autoScrollRef.current = true;
+        armChatThreadPin();
       }
 
       const sid = paramC || conversationId;
@@ -1999,7 +2096,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       if (!isAutomationTaskSessionRecord(rec)) return;
       const liveSlices = gatewaySlicesRef.current.filter((s) => s.active && s.conversationId === paramC);
       setMessages(mapSessionRecordToUiMessages(rec, liveSlices.length ? liveSlices : null));
-      autoScrollRef.current = true;
+      armChatThreadPin();
     };
 
     window.addEventListener("openstudio-chat-sessions-changed", mergeAutomationThreadFromStore);
@@ -2444,7 +2541,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     const prev = prevConversationIdRef.current;
     if (prev && prev !== conversationId) {
       void abortAllActiveStreams();
-      autoScrollRef.current = true;
+      armChatThreadPin();
       const rec = getSession(conversationId);
       if (!rec) {
         setParticipantIds([]);
@@ -2968,7 +3065,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       setInput("");
       setComposerAttachments([]);
       setComposerFileRefs([]);
-      autoScrollRef.current = true;
+      armChatThreadPin();
 
       activeStreamIdsRef.current.add(streamId);
       assistantStreamIdsRef.current.set(assistantMsg.id, streamId);
@@ -3264,7 +3361,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       ]);
       setUserBubbleEnterMessageId(userMsg.id);
       onCommitted?.();
-      autoScrollRef.current = true;
+      armChatThreadPin();
 
       const isFirstTurn = priorHistory.length === 0;
       if (
@@ -3712,7 +3809,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       }
 
       setMessages((prev) => (prev.some((m) => m.id === assistantMsg.id) ? prev : [...prev, assistantMsg]));
-      autoScrollRef.current = true;
+      armChatThreadPin();
 
       beginGatewayStream({
         conversationId,
@@ -3951,7 +4048,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         }
         return next;
       });
-      autoScrollRef.current = true;
+      armChatThreadPin();
 
       for (const job of jobs) {
         beginGatewayStream({
@@ -4834,8 +4931,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       typeof payload === "object" && payload && payload.followUpRef ? payload.followUpRef : null,
     );
     setInput(content);
-    autoScrollRef.current = true;
-  }, [automationTaskSession, skillPickList]);
+    armChatThreadPin();
+  }, [armChatThreadPin, automationTaskSession, skillPickList]);
 
   const prefillComposerFollowUp = useCallback(
     /** @param {{ quoteText: string; sourceMessageId: string; sourceRole: "user" | "assistant"; sourceAgentId?: string | null }} payload */
@@ -4858,7 +4955,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
         agentName,
         quoteText,
       });
-      autoScrollRef.current = true;
+      armChatThreadPin();
       requestAnimationFrame(() => textareaRef.current?.focus());
     },
     [agentById, mainAgent, mainAgentLabel, t],
@@ -5189,7 +5286,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                   setParticipantIds(nextNonMain);
                   if (memberEvents.length) {
                     setMessages((prev) => [...prev, ...memberEvents.map((m) => mapSessionMessageRow(m))]);
-                    autoScrollRef.current = true;
+                    armChatThreadPin();
                   }
                   if (!ephemeralSession && paramC) {
                     const rec = getSession(conversationId);
@@ -5304,6 +5401,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                   messages={messages}
                   messagesScrollRef={messagesScrollRef}
                   autoScrollRef={autoScrollRef}
+                  userScrollPausedRef={userScrollPausedRef}
                   threadScrollApiRef={threadScrollApiRef}
                   agents={agents}
                   participantIds={[
@@ -5332,6 +5430,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                   messages={messages}
                   messagesScrollRef={messagesScrollRef}
                   autoScrollRef={autoScrollRef}
+                  userScrollPausedRef={userScrollPausedRef}
                   threadScrollApiRef={threadScrollApiRef}
                   agents={agents}
                   participantIds={[
@@ -5354,6 +5453,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                     agents={agents}
                     messagesScrollRef={messagesScrollRef}
                     autoScrollRef={autoScrollRef}
+                    userScrollPausedRef={userScrollPausedRef}
+                    programmaticPinRef={programmaticPinRef}
                     threadScrollApiRef={threadScrollApiRef}
                     gatewayStreaming={gatewayStreaming}
                     gatewayStreamSlices={gatewaySlicesForConv}
@@ -8384,6 +8485,8 @@ function ChatLabPlainMessageList({
   agents = [],
   messagesScrollRef,
   autoScrollRef,
+  userScrollPausedRef,
+  programmaticPinRef,
   threadScrollApiRef,
   gatewayStreaming,
   gatewayStreamSlices = [],
@@ -8422,13 +8525,20 @@ function ChatLabPlainMessageList({
     [messages, renderItems.length, gatewayStreamSlices],
   );
   const streamingPinActive = gatewayStreaming || messages.some((m) => Boolean(m.streaming));
-  const { onUserScrollAway, armPin, syncFromScroll } = useChatThreadScrollPin(
-    autoScrollRef,
-    streamingPinActive,
-  );
+  const { onUserScrollAway, onUserScrollIntent, armPin, syncFromScroll, onManualScrollEnd } =
+    useChatThreadScrollPin(autoScrollRef, userScrollPausedRef, programmaticPinRef, streamingPinActive);
   const scrollPinKey = renderItems.length
-    ? `${conversationId}:${renderItems.length}:${renderItemDomKey(renderItems[renderItems.length - 1])}:${streamingPinActive ? 1 : 0}`
+    ? `${conversationId}:${renderItems.length}:${renderItemDomKey(renderItems[renderItems.length - 1])}`
     : "";
+
+  const canFollowPin = useCallback(() => {
+    return shouldFollowChatThreadOutput(
+      messagesScrollRef.current,
+      streamingPinActive,
+      autoScrollRef,
+      userScrollPausedRef,
+    );
+  }, [autoScrollRef, messagesScrollRef, streamingPinActive, userScrollPausedRef]);
 
   const handleScroll = useCallback(() => {
     syncFromScroll(messagesScrollRef.current);
@@ -8437,16 +8547,29 @@ function ChatLabPlainMessageList({
   const pinScrollRafRef = useRef(/** @type {number | null} */ (null));
   const pinPlainNow = useCallback(() => {
     const el = messagesScrollRef.current;
-    if (!el || !autoScrollRef.current) return;
+    if (!el || !canFollowPin()) return;
+    programmaticPinRef.current = true;
     el.scrollTop = el.scrollHeight;
-  }, [autoScrollRef, messagesScrollRef]);
+    requestAnimationFrame(() => {
+      programmaticPinRef.current = false;
+    });
+  }, [canFollowPin, messagesScrollRef, programmaticPinRef]);
   const pinScrollToBottom = useCallback(() => {
     if (messages.length === 0) return;
-    schedulePinChatScroll(messagesScrollRef.current, autoScrollRef, pinScrollRafRef);
-  }, [autoScrollRef, messages.length, messagesScrollRef]);
+    schedulePinChatScroll(
+      messagesScrollRef.current,
+      canFollowPin,
+      programmaticPinRef,
+      pinScrollRafRef,
+      () => {
+        const el = messagesScrollRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      },
+    );
+  }, [canFollowPin, messages.length, messagesScrollRef, programmaticPinRef]);
 
-  usePinChatOnContentGrowth(messagesScrollRef, autoScrollRef, messagesMeasureDigest, pinPlainNow);
-  useStreamingChatPinLoop(streamingPinActive, messagesScrollRef, autoScrollRef, pinPlainNow);
+  usePinChatOnContentGrowth(messagesScrollRef, canFollowPin, messagesMeasureDigest, pinPlainNow);
+  useStreamingChatPinLoop(streamingPinActive, canFollowPin, pinPlainNow);
 
   useLayoutEffect(() => {
     if (!conversationId || messages.length === 0) return;
@@ -8513,9 +8636,8 @@ function ChatLabPlainMessageList({
       className="chat-lab__messages"
       ref={messagesScrollRef}
       onScroll={handleScroll}
-      onWheel={(e) => {
-        if (e.deltaY < 0) onUserScrollAway();
-      }}
+      onWheel={() => onUserScrollIntent()}
+      onTouchStart={() => onUserScrollIntent()}
       role="log"
       aria-live="polite"
       aria-label={threadLabel}
@@ -8615,6 +8737,8 @@ function ChatLabVirtualMessageList({
   agents = [],
   messagesScrollRef,
   autoScrollRef,
+  userScrollPausedRef,
+  programmaticPinRef,
   threadScrollApiRef,
   gatewayStreaming,
   gatewayStreamSlices = [],
@@ -8677,11 +8801,18 @@ function ChatLabVirtualMessageList({
     [messages, renderItems.length, gatewayStreamSlices],
   );
   const streamingPinActive = gatewayStreaming || messages.some((m) => Boolean(m.streaming));
-  const { onUserScrollAway, armPin, syncFromScroll } = useChatThreadScrollPin(
-    autoScrollRef,
-    streamingPinActive,
-  );
+  const { onUserScrollAway, onUserScrollIntent, armPin, syncFromScroll, onManualScrollEnd } =
+    useChatThreadScrollPin(autoScrollRef, userScrollPausedRef, programmaticPinRef, streamingPinActive);
   const prevGatewayStreamingRef = useRef(gatewayStreaming);
+
+  const canFollowPin = useCallback(() => {
+    return shouldFollowChatThreadOutput(
+      messagesScrollRef.current,
+      streamingPinActive,
+      autoScrollRef,
+      userScrollPausedRef,
+    );
+  }, [autoScrollRef, messagesScrollRef, streamingPinActive, userScrollPausedRef]);
 
   const getItemKey = useCallback((index) => renderItemDomKey(renderItemsRef.current[index] ?? { kind: "message", message: { id: index }, messageIndex: index }), []);
 
@@ -8758,13 +8889,17 @@ function ChatLabVirtualMessageList({
 
   const pinVirtualRafRef = useRef(/** @type {number | null} */ (null));
   const pinVirtualToBottom = useCallback(() => {
-    if (!autoScrollRef.current || renderItemsRef.current.length === 0) return;
+    if (!canFollowPin() || renderItemsRef.current.length === 0) return;
     const run = () => {
-      if (!autoScrollRef.current) return;
+      if (!canFollowPin()) return;
       const count = renderItemsRef.current.length;
       if (count === 0) return;
+      programmaticPinRef.current = true;
       vInstRef.current.measure();
       vInstRef.current.scrollToIndex(count - 1, { align: "end", behavior: "instant" });
+      requestAnimationFrame(() => {
+        programmaticPinRef.current = false;
+      });
     };
     run();
     if (pinVirtualRafRef.current != null) return;
@@ -8773,7 +8908,7 @@ function ChatLabVirtualMessageList({
       run();
       requestAnimationFrame(run);
     });
-  }, [autoScrollRef]);
+  }, [canFollowPin, programmaticPinRef]);
 
   const handleScroll = useCallback(() => {
     syncFromScroll(messagesScrollRef.current);
@@ -8782,11 +8917,11 @@ function ChatLabVirtualMessageList({
     scheduleScrollbarHide();
   }, [messagesScrollRef, syncFromScroll, scheduleScrollbarHide, syncScrollbarMetrics]);
 
-  usePinChatOnContentGrowth(messagesScrollRef, autoScrollRef, messagesMeasureDigest, pinVirtualToBottom);
-  useStreamingChatPinLoop(streamingPinActive, messagesScrollRef, autoScrollRef, pinVirtualToBottom);
+  usePinChatOnContentGrowth(messagesScrollRef, canFollowPin, messagesMeasureDigest, pinVirtualToBottom);
+  useStreamingChatPinLoop(streamingPinActive, canFollowPin, pinVirtualToBottom);
 
   const scrollPinKey = renderItems.length
-    ? `${conversationId}:${renderItems.length}:${renderItemDomKey(renderItems[renderItems.length - 1])}:${streamingPinActive ? 1 : 0}`
+    ? `${conversationId}:${renderItems.length}:${renderItemDomKey(renderItems[renderItems.length - 1])}`
     : "";
 
   useEffect(
@@ -8839,12 +8974,13 @@ function ChatLabVirtualMessageList({
         scrollbarDraggingRef.current = false;
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        onManualScrollEnd(messagesScrollRef.current);
         scheduleScrollbarHide();
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [messagesScrollRef, onUserScrollAway, scheduleScrollbarHide, scrollbarMetrics],
+    [messagesScrollRef, onManualScrollEnd, onUserScrollAway, scheduleScrollbarHide, scrollbarMetrics],
   );
 
   useLayoutEffect(() => {
@@ -8910,12 +9046,15 @@ function ChatLabVirtualMessageList({
     vInstRef.current.measure();
     const raf = requestAnimationFrame(() => {
       vInstRef.current.measure();
-      if (autoScrollRef.current && renderItemsRef.current.length > 0) {
+      if (
+        canFollowPin() &&
+        renderItemsRef.current.length > 0
+      ) {
         vInstRef.current.scrollToIndex(renderItemsRef.current.length - 1, { align: "end", behavior: "instant" });
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [gatewayStreaming, autoScrollRef]);
+  }, [gatewayStreaming, canFollowPin]);
 
   useLayoutEffect(() => {
     if (!remeasureKey || renderItems.length === 0) return;
@@ -8985,9 +9124,8 @@ function ChatLabVirtualMessageList({
         className="chat-lab__messages chat-lab__messages--virtual"
         ref={messagesScrollRef}
         onScroll={handleScroll}
-        onWheel={(e) => {
-          if (e.deltaY < 0) onUserScrollAway();
-        }}
+        onWheel={() => onUserScrollIntent()}
+        onTouchStart={() => onUserScrollIntent()}
         role="log"
         aria-live="polite"
         aria-label={threadLabel}

@@ -149,6 +149,15 @@ export function scrollThreadToMessage({ messageId, messageIndex, scrollContainer
 }
 
 /**
+ * @param {import("react").MutableRefObject<boolean> | undefined} autoScrollRef
+ * @param {import("react").MutableRefObject<boolean> | undefined} userScrollPausedRef
+ */
+export function pauseChatThreadPin(autoScrollRef, userScrollPausedRef) {
+  if (userScrollPausedRef) userScrollPausedRef.current = true;
+  if (autoScrollRef) autoScrollRef.current = false;
+}
+
+/**
  * @param {HTMLElement | null} scrollContainer
  * @param {ChatLabThreadScrollApi | null | undefined} scrollApi
  * @param {import("react").MutableRefObject<boolean> | undefined} autoScrollRef
