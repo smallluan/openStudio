@@ -67,9 +67,11 @@ function previewUrlsMatch(a, b) {
  *   sandbox?: string;
  *   useWebview?: boolean;
  *   deviceMode: "desktop" | "mobile";
+ *   isActiveFrame?: boolean;
  *   iframeRef?: import("react").RefObject<HTMLIFrameElement | null>;
  *   webviewRefFromContext?: import("react").RefObject<HTMLElement | null>;
  *   onNavigate?: (url: string) => void;
+ *   onWebviewHostChange?: (node: HTMLElement | null) => void;
  *   preLoadScript?: string;
  *   className?: string;
  * }} props
@@ -81,9 +83,11 @@ export default function ChatLabPreviewWebFrame({
   sandbox,
   useWebview = false,
   deviceMode,
+  isActiveFrame = true,
   iframeRef,
   webviewRefFromContext,
   onNavigate,
+  onWebviewHostChange,
   preLoadScript = "",
   className,
 }) {
@@ -93,11 +97,15 @@ export default function ChatLabPreviewWebFrame({
   const webviewRef = useRef(/** @type {HTMLElement | null} */ (null));
   const shellRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const onNavigateRef = useRef(onNavigate);
+  const onWebviewHostChangeRef = useRef(onWebviewHostChange);
+  const isActiveFrameRef = useRef(isActiveFrame);
   const lastRequestedHttpUrlRef = useRef("");
   const failRecoverRef = useRef(
     /** @type {{ url: string; count: number; remounted: boolean }} */ ({ url: "", count: 0, remounted: false }),
   );
   onNavigateRef.current = onNavigate;
+  onWebviewHostChangeRef.current = onWebviewHostChange;
+  isActiveFrameRef.current = isActiveFrame;
   const [recoverNonce, setRecoverNonce] = useState(0);
   const [debuggerPaused, setDebuggerPaused] = useState(false);
   const [debuggerResuming, setDebuggerResuming] = useState(false);
@@ -140,6 +148,19 @@ export default function ChatLabPreviewWebFrame({
   const [failed, setFailed] = useState(false);
   const [failDetail, setFailDetail] = useState("");
   const [canGoBack, setCanGoBack] = useState(false);
+
+  // When a background Web Explore tab becomes visible, reclaim main-process activeGuest.
+  useEffect(() => {
+    if (!isActiveFrame || !electronWebview || !webviewNode) return;
+    try {
+      /** @type {import("electron").WebviewTag} */
+      const wv = /** @type {import("electron").WebviewTag} */ (/** @type {unknown} */ (webviewNode));
+      const id = typeof wv.getWebContentsId === "function" ? wv.getWebContentsId() : 0;
+      if (id) window.studioBridge?.setActivePreviewGuest?.(id);
+    } catch {
+      /* ignore */
+    }
+  }, [electronWebview, isActiveFrame, webviewNode]);
 
   useEffect(() => {
     const next = String(src ?? "").trim();
@@ -284,8 +305,9 @@ export default function ChatLabPreviewWebFrame({
       if (url) onNavigateRef.current?.(url);
     };
 
-    /** Notify main which guest is active for sidebar_debug / sidebar_screenshot. */
+    /** Notify main which guest is active for browser_debug / browser_screenshot. */
     const publishActiveGuest = () => {
+      if (!isActiveFrameRef.current) return;
       try {
         const id = typeof wv.getWebContentsId === "function" ? wv.getWebContentsId() : 0;
         if (id) window.studioBridge?.setActivePreviewGuest?.(id);
@@ -412,6 +434,7 @@ export default function ChatLabPreviewWebFrame({
       if (webviewRefFromContext) {
         webviewRefFromContext.current = null;
       }
+      onWebviewHostChangeRef.current?.(null);
     };
   }, [effectiveMountKey, webviewRefFromContext]);
 
@@ -532,6 +555,7 @@ export default function ChatLabPreviewWebFrame({
               if (webviewRefFromContext) {
                 webviewRefFromContext.current = node;
               }
+              onWebviewHostChangeRef.current?.(node);
             }}
             key={effectiveMountKey}
             src={mountSrcRef.current}

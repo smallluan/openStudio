@@ -3,11 +3,13 @@ import { readLinkOpenModeLocal } from "./chatLabLinkOpenPreference.js";
 /**
  * Image + chart display rules appended to agent system rows (Open Studio UI rendering).
  * @param {(key: string) => string} t
- * @param {{ linkOpenMode?: "sidebar" | "external" }} [opts]
+ * @param {{ linkOpenMode?: "sidebar" | "external"; webExploreMode?: boolean }} [opts]
  */
 export function composeChatLabStudioSuffix(t, opts = {}) {
   const linkOpenMode = opts.linkOpenMode ?? readLinkOpenModeLocal();
   const parts = [
+    // Tool Search first: models must discover Studio tools via search→describe→call.
+    String(t("chatLab.toolSearchPrompt") ?? "").trim(),
     String(t("chatLab.imageDisplayPrompt") ?? "").trim(),
     String(t("chatLab.chartDisplayPrompt") ?? "").trim(),
     String(t("chatLab.subagentSpawnPrompt") ?? "").trim(),
@@ -21,6 +23,14 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
     parts.push(String(t("chatLab.sidebarPreviewCapabilitiesPrompt") ?? "").trim());
   }
   return parts.filter(Boolean).join("\n\n");
+}
+
+/**
+ * Short reminder on user turns: Tool Search must be used (survives system truncation).
+ * @param {(key: string) => string} t
+ */
+export function composeToolSearchUserTurnHint(t) {
+  return String(t("chatLab.toolSearchUserTurnHint") ?? "").trim();
 }
 
 /**

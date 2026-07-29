@@ -156,11 +156,30 @@ export default function WebExplorePage() {
   }, []);
 
   // Point chat/automation hosts at the visible live frame.
-  useLayoutEffect(() => {
-    const refs = tabHostRefsRef.current.get(activeTabId);
+  const syncSharedHostRefs = useCallback((tabId = activeTabIdRef.current) => {
+    const refs = tabHostRefsRef.current.get(String(tabId ?? "").trim());
     iframeRef.current = refs?.iframe.current ?? null;
     webviewRef.current = refs?.webview.current ?? null;
-  }, [activeTabId, tabs]);
+  }, []);
+
+  useLayoutEffect(() => {
+    syncSharedHostRefs(activeTabId);
+  }, [activeTabId, syncSharedHostRefs, tabs]);
+
+  /** @param {string} tabId */
+  const handleTabWebviewHostChange = useCallback(
+    (tabId, node) => {
+      const id = String(tabId ?? "").trim();
+      if (!id) return;
+      const refs = ensureTabHostRefs(id);
+      refs.webview.current = node;
+      // Mount can land after the layout sync — mirror active tab into shared refs immediately.
+      if (id === activeTabIdRef.current) {
+        webviewRef.current = node;
+      }
+    },
+    [ensureTabHostRefs],
+  );
 
   useEffect(() => {
     const live = new Set(tabs.map((tab) => tab.id));
@@ -447,6 +466,21 @@ export default function WebExplorePage() {
     setDraft(tab.url);
     // Wake hibernated tabs and rebalance the warm cache (LRU discard).
     setTabs((prev) => withLifecycle(touchExploreTab(prev, id), id));
+    // Sync shared automation refs + main-process active guest before paint settles.
+    const refs = tabHostRefsRef.current.get(id);
+    iframeRef.current = refs?.iframe.current ?? null;
+    webviewRef.current = refs?.webview.current ?? null;
+    const node = webviewRef.current;
+    if (node) {
+      try {
+        /** @type {import("electron").WebviewTag} */
+        const wv = /** @type {import("electron").WebviewTag} */ (/** @type {unknown} */ (node));
+        const guestId = typeof wv.getWebContentsId === "function" ? wv.getWebContentsId() : 0;
+        if (guestId) window.studioBridge?.setActivePreviewGuest?.(guestId);
+      } catch {
+        /* ignore */
+      }
+    }
   }, []);
 
   const handleNavigate = useCallback((tabId, url) => {
@@ -1027,9 +1061,11 @@ export default function WebExplorePage() {
                   frameKey={tab.frameKey}
                   useWebview={inElectron}
                   deviceMode={deviceMode}
+                  isActiveFrame={active}
                   preLoadScript={preLoadScript}
                   iframeRef={hostRefs.iframe}
                   webviewRefFromContext={hostRefs.webview}
+                  onWebviewHostChange={(node) => handleTabWebviewHostChange(tab.id, node)}
                   onNavigate={(url) => handleNavigate(tab.id, url)}
                   className="web-explore-page__frame"
                 />

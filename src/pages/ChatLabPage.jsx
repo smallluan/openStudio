@@ -100,6 +100,7 @@ import {
 import {
   composeChatLabSystemPrompt,
   composeChatLabStudioSuffix,
+  composeToolSearchUserTurnHint,
   composeWebExploreUserTurnAutomationHint,
   fetchChatLabWorkspaceContextBlock,
 } from "../chat/chatLabSystemPrompt.js";
@@ -550,7 +551,9 @@ function withVolatileStudioContextOnUserTurn(outgoing, opts = {}) {
   const workspace = String(opts.workspaceContext ?? "").trim();
   const preview = String(opts.previewContext ?? "").trim();
   const subagent = String(opts.subagentModeContent ?? "").trim();
+  const toolSearchHint = opts.t ? composeToolSearchUserTurnHint(opts.t) : "";
   let rows = outgoing;
+  if (toolSearchHint) rows = prependBlockOnLastUserTurn(rows, toolSearchHint);
   if (workspace) rows = prependBlockOnLastUserTurn(rows, workspace);
   if (opts.webExploreMode) {
     rows = withWebExplorePreviewOnUserTurn(rows, preview, opts.t);

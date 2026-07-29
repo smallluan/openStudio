@@ -4,13 +4,15 @@ import { ChatLabWorkspaceContext } from "../../context/ChatLabWorkspaceContext.j
 import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
 
 /**
- * Reset preview state when conversation changes to avoid cross-session leakage.
- * Preview panel content should not persist across different conversations.
+ * Reset preview visibility when conversation changes to avoid cross-session leakage.
+ * Tab URLs may still persist on disk; the dock itself must not auto-open on switch.
  *
  * @param {{ conversationId: string; isEmptySession: boolean }} props
  */
 export default function ChatLabSessionScopeReset({ conversationId, isEmptySession }) {
   const preview = useChatLabPreview();
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
   const workspace = useContext(ChatLabWorkspaceContext);
   const location = useLocation();
   const prevConversationIdRef = useRef(conversationId);
@@ -20,18 +22,18 @@ export default function ChatLabSessionScopeReset({ conversationId, isEmptySessio
 
   useEffect(() => {
     if (prevConversationIdRef.current !== conversationId) {
-      preview?.close?.();
+      previewRef.current?.close?.();
     }
     prevConversationIdRef.current = conversationId;
-  }, [conversationId, preview]);
+  }, [conversationId]);
 
   useEffect(() => {
     if (!isEmptySession) return;
     if (!onChatRoute) {
-      preview?.close?.();
+      previewRef.current?.close?.();
       workspace?.resetSelection?.();
     }
-  }, [isEmptySession, onChatRoute, preview, workspace]);
+  }, [isEmptySession, onChatRoute, workspace]);
 
   useEffect(() => {
     if (!isEmptySession || !onChatRoute || hasSessionParam) {
@@ -39,11 +41,11 @@ export default function ChatLabSessionScopeReset({ conversationId, isEmptySessio
       return;
     }
     if (prevRouteKeyRef.current !== location.key) {
-      preview?.close?.();
+      previewRef.current?.close?.();
       workspace?.resetSelection?.();
     }
     prevRouteKeyRef.current = location.key;
-  }, [hasSessionParam, isEmptySession, location.key, onChatRoute, preview, workspace]);
+  }, [hasSessionParam, isEmptySession, location.key, onChatRoute, workspace]);
 
   return null;
 }

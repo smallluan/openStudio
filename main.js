@@ -1059,7 +1059,8 @@ app.whenReady().then(async () => {
     initPreviewGuestCapture(getStudioLog());
     initPreviewRequestOverride(getStudioLog());
     initPreviewGuestFileInput(getStudioLog());
-    startSidebarActionToolBridge({
+    // Must finish binding (and publish OPEN_STUDIO_SIDEBAR_TOOL_URL) before gateway spawn.
+    await startSidebarActionToolBridge({
       getMainWindow: () => mainWindow,
       log: getStudioLog(),
     });

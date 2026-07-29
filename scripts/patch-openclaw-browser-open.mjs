@@ -89,8 +89,26 @@ function createBrowserOpenTool() {
 const FN_NEEDLE = `function createGetGoalTool(options) {`;
 
 function injectCreateCall(src) {
-  if (src.includes("const browserOpenTool = createBrowserOpenTool();")) return src;
+  // Prefer Chat Lab-only registration when Web Explore session scoping is present.
+  if (src.includes("OPEN_STUDIO_BROWSER_OPEN_CHAT_LAB_ONLY")) return src;
+  if (src.includes("const browserOpenTool = __studioWebExploreSession ? null : createBrowserOpenTool();")) {
+    return src;
+  }
+  if (src.includes("const browserOpenTool = createBrowserOpenTool();")) {
+    // Will be narrowed by patch-openclaw-sidebar-tools-scope.mjs when session helper exists.
+    return src;
+  }
   if (src.includes("const browserActionTool = createBrowserActionTool();")) {
+    if (src.includes("const __studioWebExploreSession = isOpenStudioWebExploreSessionKey")) {
+      return src.replace(
+        `const browserActionTool = createBrowserActionTool();
+	options?.recordToolPrepStage?.("openclaw-tools:browser-action-tool");`,
+        `const browserActionTool = createBrowserActionTool();
+	const browserOpenTool = __studioWebExploreSession ? null : createBrowserOpenTool();
+	options?.recordToolPrepStage?.("openclaw-tools:browser-action-tool");
+	options?.recordToolPrepStage?.("openclaw-tools:browser-open-tool");`,
+      );
+    }
     return src.replace(
       `const browserActionTool = createBrowserActionTool();
 	options?.recordToolPrepStage?.("openclaw-tools:browser-action-tool");`,

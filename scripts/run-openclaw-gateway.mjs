@@ -54,9 +54,15 @@ const child = spawn(target.electronExe, [target.cliPath, ...forwardArgs], {
     OPEN_STUDIO_LEAN_CHAT_TOOLS: process.env.OPEN_STUDIO_LEAN_CHAT_TOOLS ?? "1",
     /** Native browser tools → Electron loopback bridge (lib/sidebar-action-tool-bridge.cjs). */
     OPEN_STUDIO_SIDEBAR_TOOL_URL:
-      process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL ?? "http://127.0.0.1:19111",
+      process.env.OPEN_STUDIO_SIDEBAR_TOOL_URL ??
+      (process.env.NODE_ENV === "development"
+        ? "http://127.0.0.1:19112"
+        : "http://127.0.0.1:19111"),
     OPEN_STUDIO_SIDEBAR_TOOL_TOKEN:
-      process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN ?? "open-studio-local-sidebar-action",
+      process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN ??
+      (process.env.NODE_ENV === "development"
+        ? "open-studio-local-sidebar-action-dev"
+        : "open-studio-local-sidebar-action"),
     /** Parallel spawn + sessions_yield barrier (see patch-openclaw-sessions-spawn-await.mjs). */
     OPEN_STUDIO_SUBAGENT_AWAIT: process.env.OPEN_STUDIO_SUBAGENT_AWAIT ?? "1",
   },

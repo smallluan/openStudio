@@ -63,7 +63,12 @@ export default function ChatLabPreviewDock({ extension = null }) {
   const api = useChatLabPreview();
   const session = api?.session ?? null;
   const artifactsPanel = api?.artifactsPanel ?? null;
-  const wantsOpen = Boolean(session || artifactsPanel || extension);
+  // `dockOpen === undefined` = older provider / HMR skew — fall back to session visibility
+  // so agent open paths that set session still show the panel.
+  const dockOpenRaw = api?.dockOpen;
+  const hasContent = Boolean(session || artifactsPanel || extension);
+  const dockOpen = dockOpenRaw === undefined ? hasContent : Boolean(dockOpenRaw);
+  const wantsOpen = Boolean(dockOpen && hasContent);
 
   const snapshotRef = useRef(
     /** @type {{ session: typeof session; artifactsPanel: typeof artifactsPanel; extension: typeof extension } | null} */ (
@@ -77,8 +82,10 @@ export default function ChatLabPreviewDock({ extension = null }) {
   const [present, setPresent] = useState(wantsOpen);
   const [expanded, setExpanded] = useState(wantsOpen);
   const [contentReady, setContentReady] = useState(() => wantsOpen && previewDockAnimMs() === 0);
+  const asideRef = useRef(/** @type {HTMLElement | null} */ (null));
+  const treeRef = useRef(/** @type {HTMLElement | null} */ (null));
 
-  // Open synchronously so link clicks show the dock immediately (rAF open left expanded=false / present=false).
+  // Open synchronously so link clicks / browser_open show the dock immediately.
   useLayoutEffect(() => {
     if (wantsOpen) {
       setPresent(true);
@@ -90,6 +97,21 @@ export default function ChatLabPreviewDock({ extension = null }) {
     setContentReady(false);
     return undefined;
   }, [wantsOpen]);
+
+  useEffect(() => {
+    const onFocusDock = () => {
+      setPresent(true);
+      setExpanded(true);
+      setContentReady(true);
+      try {
+        asideRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("openstudio-preview-dock-focus", onFocusDock);
+    return () => window.removeEventListener("openstudio-preview-dock-focus", onFocusDock);
+  }, []);
 
   useEffect(() => {
     if (!expanded) return undefined;
@@ -117,9 +139,6 @@ export default function ChatLabPreviewDock({ extension = null }) {
   const viewSession = wantsOpen ? session : snap?.session ?? null;
   const viewArtifacts = wantsOpen ? artifactsPanel : snap?.artifactsPanel ?? null;
   const viewExtension = wantsOpen ? extension : snap?.extension ?? null;
-
-  const asideRef = useRef(/** @type {HTMLElement | null} */ (null));
-  const treeRef = useRef(/** @type {HTMLElement | null} */ (null));
 
   const [panelWidth, setPanelWidth] = useState(() =>
     readStoredWidth(PREVIEW_W_KEY, PREVIEW_W_DEFAULT, PREVIEW_W_MIN, PREVIEW_W_MAX),

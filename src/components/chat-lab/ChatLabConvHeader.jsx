@@ -215,10 +215,22 @@ export default function ChatLabConvHeader({
             shape="square"
             size="small"
             type="button"
-            className="chat-lab__turn-nav-icon-btn"
-            aria-label="打开侧边栏"
-            title="打开侧边栏"
-            onClick={() => preview?.openIframe?.("https://www.baidu.com", "百度")}
+            className={cn(
+              "chat-lab__turn-nav-icon-btn",
+              preview?.dockOpen && (preview?.session || preview?.artifactsPanel) && "chat-lab__turn-nav-icon-btn--open",
+            )}
+            aria-label={
+              preview?.dockOpen
+                ? t("chatLab.previewClose")
+                : t("chatLab.previewDockToggleOpen")
+            }
+            title={
+              preview?.dockOpen
+                ? t("chatLab.previewClose")
+                : t("chatLab.previewDockToggleOpen")
+            }
+            aria-pressed={Boolean(preview?.dockOpen && (preview?.session || preview?.artifactsPanel))}
+            onClick={() => preview?.toggleDock?.()}
           >
             <PanelRight size={16} strokeWidth={2.1} aria-hidden />
           </Button>

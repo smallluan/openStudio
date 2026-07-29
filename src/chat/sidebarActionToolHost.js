@@ -9,7 +9,9 @@ let actionExecutor = null;
 let openExecutor = null;
 
 /** @type {boolean} */
-let ipcBound = false;
+let actionIpcBound = false;
+/** @type {boolean} */
+let openIpcBound = false;
 
 /**
  * @param {(args: { steps?: unknown }) => Promise<unknown>} fn
@@ -86,26 +88,38 @@ export async function runBrowserOpenToolRequest(args) {
 }
 
 function ensureBrowserToolIpcBound() {
-  if (ipcBound) return;
   const bridge = typeof window !== "undefined" ? window.studioBridge : null;
-  if (!bridge?.onSidebarActionToolRequest || !bridge?.respondSidebarActionTool) return;
-  ipcBound = true;
-  bridge.onSidebarActionToolRequest(async (payload) => {
-    const id = String(payload?.id ?? "").trim();
-    if (!id) return;
-    try {
-      const result = await runBrowserActionToolRequest({
-        steps: payload?.steps ?? payload?.args?.steps,
-      });
-      await bridge.respondSidebarActionTool({ id, result });
-    } catch (e) {
-      await bridge.respondSidebarActionTool({
-        id,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-  });
-  if (bridge.onBrowserOpenToolRequest && bridge.respondBrowserOpenTool) {
+  if (!bridge) return;
+
+  // Bind action + open independently. A single `ipcBound` flag previously could
+  // mark the module "ready" after only sidebar_action was wired (older preload /
+  // HMR), so later browser_open IPC was never subscribed — tool returned timeout
+  // / nothing happened in UI or system browser.
+  if (
+    !actionIpcBound &&
+    bridge.onSidebarActionToolRequest &&
+    bridge.respondSidebarActionTool
+  ) {
+    actionIpcBound = true;
+    bridge.onSidebarActionToolRequest(async (payload) => {
+      const id = String(payload?.id ?? "").trim();
+      if (!id) return;
+      try {
+        const result = await runBrowserActionToolRequest({
+          steps: payload?.steps ?? payload?.args?.steps,
+        });
+        await bridge.respondSidebarActionTool({ id, result });
+      } catch (e) {
+        await bridge.respondSidebarActionTool({
+          id,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    });
+  }
+
+  if (!openIpcBound && bridge.onBrowserOpenToolRequest && bridge.respondBrowserOpenTool) {
+    openIpcBound = true;
     bridge.onBrowserOpenToolRequest(async (payload) => {
       const id = String(payload?.id ?? "").trim();
       if (!id) return;

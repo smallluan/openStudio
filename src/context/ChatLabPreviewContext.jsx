@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   CHAT_LAB_PREVIEW_MESSAGE_CHANNEL,
   newPreviewFrameKey,
@@ -281,7 +282,10 @@ function sessionFromWebTab(tab) {
  *   artifactsPanel: ArtifactsPanelState | null;
  *   iframeRef: import("react").RefObject<HTMLIFrameElement | null>;
  *   webviewRef: import("react").RefObject<HTMLElement | null>;
+ *   dockOpen: boolean;
  *   close: () => void;
+ *   openDock: () => boolean;
+ *   toggleDock: () => void;
  *   openIframe: (src: string, title: string, opts?: { externalUrl?: string | null; sandbox?: string; useWebview?: boolean }) => void;
  *   openSrcDoc: (html: string, title: string, opts?: { sandbox?: string }) => void;
  *   openBlob: (blob: Blob, title: string) => void;
@@ -351,18 +355,23 @@ export function ChatLabPreviewProvider({
   /** @type {import("react").MutableRefObject<Set<(data: unknown) => void>>} */
   const subscribedRef = useRef(new Set());
 
+  // Tabs may restore per conversation; the dock must NOT auto-open on switch.
+  // Visibility is only for: user toggle (header) or agent/tool open paths.
   const [session, setSession] = useState(
-    /** @type {ChatLabPreviewSession | null} */ (
-      embedPreview && externalSession ? externalSession : null
-    ),
+    /** @type {ChatLabPreviewSession | null} */ (embedPreview && externalSession ? externalSession : null),
   );
+  const [dockOpen, setDockOpen] = useState(Boolean(embedPreview && externalSession));
   const [artifactsPanel, setArtifactsPanel] = useState(/** @type {ArtifactsPanelState | null} */ (null));
   const [previewTabs, setPreviewTabs] = useState(restoredWebState.tabs);
   const [activePreviewTabId, setActivePreviewTabId] = useState(restoredWebState.activeTabId);
   const previewTabsRef = useRef(previewTabs);
+  const activePreviewTabIdRef = useRef(activePreviewTabId);
+  const dockOpenRef = useRef(dockOpen);
   /** @type {import("react").MutableRefObject<import("../chat/chatLabPreviewSnapshot.js").SidebarPreviewInteractiveElement[]>} */
   const lastInventoryRef = useRef([]);
   previewTabsRef.current = previewTabs;
+  activePreviewTabIdRef.current = activePreviewTabId;
+  dockOpenRef.current = dockOpen;
   const [deviceMode, setDeviceModeState] = useState(readPreviewDeviceMode);
   const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
 
@@ -371,11 +380,15 @@ export function ChatLabPreviewProvider({
     const next = readStoredPreviewWebState(conversationId);
     setPreviewTabs(next.tabs);
     setActivePreviewTabId(next.activeTabId);
+    setSession(null);
+    setArtifactsPanel(null);
+    setDockOpen(false);
   }, [conversationId, embedPreview]);
 
   useEffect(() => {
     if (!embedPreview || !externalSession) return;
     setSession(externalSession);
+    setDockOpen(true);
   }, [embedPreview, externalSession]);
 
   useEffect(() => {
@@ -442,6 +455,26 @@ export function ChatLabPreviewProvider({
     artifactBlobUrlsRef.current.clear();
   }, []);
 
+  const dispatchDockFocus = useCallback((detail = {}) => {
+    try {
+      window.dispatchEvent(
+        new CustomEvent("openstudio-preview-dock-focus", {
+          detail: detail && typeof detail === "object" ? detail : {},
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const revealDock = useCallback(
+    (detail = {}) => {
+      setDockOpen(true);
+      dispatchDockFocus(detail);
+    },
+    [dispatchDockFocus],
+  );
+
   const showWebPreviewAtUrl = useCallback(
     /**
      * @param {string} url
@@ -453,6 +486,25 @@ export function ChatLabPreviewProvider({
       const nextUrl = String(url ?? "").trim();
       if (!nextUrl) return false;
       const label = String(title ?? nextUrl).trim() || nextUrl;
+      // Web Explore: navigate the visible tab — never create a hidden Chat Lab sidebar session.
+      if (embedPreview && externalNavigatePreviewTo) {
+        externalNavigatePreviewTo(nextUrl);
+        const base = externalSessionRef.current;
+        setSession(
+          base
+            ? { ...base, src: nextUrl, externalUrl: nextUrl, title: label || base.title }
+            : {
+                kind: "iframe",
+                src: nextUrl,
+                title: label,
+                frameKey: "web-explore-active",
+                externalUrl: nextUrl,
+                useWebview: true,
+              },
+        );
+        setDockOpen(true);
+        return true;
+      }
       const now = Date.now();
       const inElectron = typeof window !== "undefined" && Boolean(window.studioBridge);
       const plan = planWebPreviewTabUpdate(
@@ -471,9 +523,10 @@ export function ChatLabPreviewProvider({
       revokeBlob();
       setActivePreviewTabId(plan.targetTab.id);
       setSession(sessionFromWebTab(plan.targetTab));
+      revealDock({ url: nextUrl, title: label, source: "showWebPreviewAtUrl" });
       return true;
     },
-    [revokeArtifactBlobs, revokeBlob],
+    [embedPreview, externalNavigatePreviewTo, revealDock, revokeArtifactBlobs, revokeBlob],
   );
 
   const upsertWebPreviewTab = useCallback(
@@ -557,7 +610,8 @@ export function ChatLabPreviewProvider({
     setArtifactsPanel(null);
     revokeBlob();
     setSession(sessionFromWebTab(targetTab));
-  }, [revokeBlob]);
+    revealDock({ source: "activate_tab", url: targetTab.src, title: targetTab.title });
+  }, [revealDock, revokeBlob]);
 
   useEffect(() => {
     if (embedPreview) return;
@@ -577,7 +631,38 @@ export function ChatLabPreviewProvider({
     revokeArtifactBlobs();
     setSession(null);
     setArtifactsPanel(null);
+    setDockOpen(false);
   }, [revokeArtifactBlobs, revokeBlob]);
+
+  /**
+   * Manually open the right preview dock (header toggle). Restores the last tab if any.
+   * @returns {boolean}
+   */
+  const openDock = useCallback(() => {
+    const tabs = previewTabsRef.current;
+    const activeId = String(activePreviewTabIdRef.current ?? "").trim();
+    const active = tabs.find((tab) => tab.id === activeId) ?? tabs[0] ?? null;
+    if (active) {
+      setActivePreviewTabId(active.id);
+      setArtifactsPanel(null);
+      revokeBlob();
+      setSession(sessionFromWebTab(active));
+      revealDock({ source: "user_toggle", url: active.src, title: active.title });
+      return true;
+    }
+    return showWebPreviewAtUrl("about:blank", "New tab", {
+      externalUrl: "about:blank",
+      useWebview: true,
+    });
+  }, [revealDock, revokeBlob, showWebPreviewAtUrl]);
+
+  const toggleDock = useCallback(() => {
+    if (dockOpenRef.current) {
+      close();
+      return;
+    }
+    openDock();
+  }, [close, openDock]);
 
   const fetchPreviewTree = useCallback(async (anchorPath, files) => {
     const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
@@ -629,6 +714,7 @@ export function ChatLabPreviewProvider({
         treeMode,
       });
       setSession(null);
+      setDockOpen(true);
       revokeBlob();
 
       const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
@@ -839,9 +925,10 @@ export function ChatLabPreviewProvider({
           lastVisitedAt: Date.now(),
         }),
       );
+      revealDock({ source: "openIframe", url: nextSrc, title: label });
       return true;
     },
-    [revokeArtifactBlobs, revokeBlob, upsertWebPreviewTab],
+    [revealDock, revokeArtifactBlobs, revokeBlob, upsertWebPreviewTab],
   );
 
   const openSrcDoc = useCallback(
@@ -861,8 +948,9 @@ export function ChatLabPreviewProvider({
         frameKey: newPreviewFrameKey(),
         sandbox: opts.sandbox ?? "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals",
       });
+      revealDock({ source: "openSrcDoc", title });
     },
-    [revokeArtifactBlobs, revokeBlob],
+    [revealDock, revokeArtifactBlobs, revokeBlob],
   );
 
   const openBlob = useCallback(
@@ -885,8 +973,9 @@ export function ChatLabPreviewProvider({
         sandbox,
         externalUrl: null,
       });
+      revealDock({ source: "openBlob", title });
     },
-    [revokeArtifactBlobs, revokeBlob],
+    [revealDock, revokeArtifactBlobs, revokeBlob],
   );
 
   const openPlaceholder = useCallback(
@@ -900,8 +989,9 @@ export function ChatLabPreviewProvider({
         body,
         frameKey: newPreviewFrameKey(),
       });
+      revealDock({ source: "openPlaceholder", title });
     },
-    [revokeArtifactBlobs, revokeBlob],
+    [revealDock, revokeArtifactBlobs, revokeBlob],
   );
 
   const navigatePreviewToInternal = useCallback(
@@ -943,11 +1033,12 @@ export function ChatLabPreviewProvider({
         revokeBlob();
         setActivePreviewTabId(activeId);
         setSession(sessionFromWebTab(updated));
+        revealDock({ source: "navigate", url: nextUrl, title: label });
         return;
       }
       showWebPreviewAtUrl(nextUrl, label, { useWebview: true });
     },
-    [activePreviewTabId, previewTabs, revokeArtifactBlobs, revokeBlob, showWebPreviewAtUrl],
+    [activePreviewTabId, previewTabs, revealDock, revokeArtifactBlobs, revokeBlob, showWebPreviewAtUrl],
   );
 
   const navigatePreviewTo = useCallback(
@@ -1247,7 +1338,13 @@ export function ChatLabPreviewProvider({
         previewTabs,
         activePreviewTabId,
         artifactsPanel,
-        navigatePreviewTo,
+        navigatePreviewTo: (url, title) => {
+          // Commit dock/session before the automation delay so the sidebar is visible
+          // for the user and webview can mount before click/type steps.
+          flushSync(() => {
+            navigatePreviewTo(url, title);
+          });
+        },
         t,
         forceSidebar: embedPreview,
         elements,
@@ -1275,6 +1372,26 @@ export function ChatLabPreviewProvider({
    */
   const executeSidebarActionTool = useCallback(
     async (args = {}) => {
+      // Agent browser tools should make the dock visible when acting on a page.
+      // Web Explore embeds the live viewport — skip Chat Lab tab restore there.
+      if (!embedPreview) {
+        flushSync(() => {
+          if (dockOpenRef.current && session) return;
+          const tabs = previewTabsRef.current;
+          const activeId = String(activePreviewTabIdRef.current ?? "").trim();
+          const active = tabs.find((tab) => tab.id === activeId) ?? tabs[0] ?? null;
+          if (active) {
+            setActivePreviewTabId(active.id);
+            setArtifactsPanel(null);
+            revokeBlob();
+            setSession(sessionFromWebTab(active));
+            revealDock({ source: "browser_action", url: active.src, title: active.title });
+          }
+        });
+        if (!dockOpenRef.current) {
+          await new Promise((r) => window.setTimeout(r, 0));
+        }
+      }
       const steps = args?.steps;
       const runResult = await runSidebarAutomation(steps, { stopOnFailure: true });
       let observation = null;
@@ -1325,6 +1442,8 @@ export function ChatLabPreviewProvider({
       embedPreview,
       iframeRef,
       previewTabs,
+      revealDock,
+      revokeBlob,
       runSidebarAutomation,
       session,
       webviewRef,
@@ -1333,18 +1452,53 @@ export function ChatLabPreviewProvider({
 
   const executeBrowserOpenTool = useCallback(
     async (args = {}) => {
+      // Web Explore: do not open a hidden/new preview — agent must use the visible tab
+      // (`browser_action` navigate) or ask the user to change the address bar.
+      if (embedPreview) {
+        return {
+          ok: false,
+          error: "web_explore_no_browser_open",
+          message:
+            "browser_open is not available in Web Explore. Stay on the current main-viewport tab: use browser_action with a navigate step to change URL, or ask the user to open/switch tabs in the address bar.",
+        };
+      }
       const rawUrl = String(args?.url ?? "").trim();
       if (!rawUrl) {
         return { ok: false, error: "missing_url", message: "url is required" };
       }
       const title = String(args?.title ?? rawUrl).trim() || rawUrl;
-      const opened = openFromHref(rawUrl, title);
-      if (!opened) {
-        return { ok: false, error: "open_failed", url: rawUrl, message: "Could not open URL in preview panel" };
+      // Agent tool must always open the Chat Lab preview panel.
+      // Do not honor the markdown "open links externally" preference here.
+      let resolved;
+      try {
+        resolved = new URL(rawUrl, typeof window !== "undefined" ? window.location.href : "https://local.invalid/").href;
+      } catch {
+        return { ok: false, error: "invalid_url", url: rawUrl, message: "Could not parse URL" };
       }
-      return { ok: true, url: rawUrl, title, message: "URL opened in preview panel" };
+      if (!/^https?:\/\//i.test(resolved)) {
+        return { ok: false, error: "unsupported_url", url: rawUrl, message: "Only http(s) URLs can open in the preview panel" };
+      }
+      let opened = false;
+      flushSync(() => {
+        opened = showWebPreviewAtUrl(resolved, title, {
+          externalUrl: resolved,
+          sandbox: WEB_PREVIEW_SANDBOX,
+          useWebview: true,
+        });
+      });
+      if (!opened) {
+        return { ok: false, error: "open_failed", url: resolved, message: "Could not open URL in preview panel" };
+      }
+      dispatchDockFocus({ url: resolved, title, source: "browser_open" });
+      return {
+        ok: true,
+        url: resolved,
+        title,
+        dockOpen: true,
+        message: "URL opened in the Open Studio right preview panel (sidebar). The panel should be visible now.",
+      };
     },
-    [openFromHref],
+    [dispatchDockFocus, embedPreview, showWebPreviewAtUrl],
   );
 
   const closePreviewTab = useCallback(
@@ -1358,6 +1512,7 @@ export function ChatLabPreviewProvider({
         if (!next.length) {
           setActivePreviewTabId("");
           setSession(null);
+          setDockOpen(false);
           return next;
         }
         const currentActiveId = String(activePreviewTabId ?? "").trim();
@@ -1378,7 +1533,10 @@ export function ChatLabPreviewProvider({
       artifactsPanel,
       iframeRef,
       webviewRef,
+      dockOpen,
       close,
+      openDock,
+      toggleDock,
       openIframe,
       openSrcDoc,
       openBlob,
@@ -1409,7 +1567,10 @@ export function ChatLabPreviewProvider({
     [
       session,
       artifactsPanel,
+      dockOpen,
       close,
+      openDock,
+      toggleDock,
       openIframe,
       openSrcDoc,
       openBlob,
