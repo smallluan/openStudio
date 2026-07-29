@@ -18,7 +18,7 @@ import { cn } from "../../ui/cn.js";
 import Image from "../../ui/Image.jsx";
 import FluidTabBar from "../../ui/FluidTabBar.jsx";
 import { ChatLabPreviewContext } from "../../context/ChatLabPreviewContext.jsx";
-import { csvToHtmlDocument, svgToHtmlDocument, wrapLooseHtmlFragmentForSrcDoc } from "../../chat/chatLabDocumentPreview.js";
+import { csvToHtmlDocument, svgToHtmlDocument } from "../../chat/chatLabDocumentPreview.js";
 import {
   getChatLabMermaidConfig,
   stylizeFlowchartSvg,
@@ -33,6 +33,7 @@ import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light.j
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus.js";
 import ChatLabEchartsFenceView from "./ChatLabEchartsFenceView.jsx";
 import ChatLabChartBlock from "./ChatLabChartBlock.jsx";
+import ChatLabHtmlBlock from "./ChatLabHtmlBlock.jsx";
 import ChatLabDirectoryTree from "./ChatLabDirectoryTree.jsx";
 import { looksLikeAsciiTreeText, normalizeAsciiTreeLine, parseAsciiTree } from "../../chat/chatLabAsciiTree.js";
 
@@ -42,10 +43,11 @@ const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
 const RENDERABLE_FENCE_LANGS = new Set(["mermaid", "markdown", "md", "chart", "echarts"]);
 
 /** Charts and flowcharts: render-only (no source pane or view toggle). */
-const VISUAL_ONLY_FENCE_LANGS = new Set(["mermaid", "chart", "echarts"]);
+const VISUAL_ONLY_FENCE_LANGS = new Set(["mermaid", "chart", "echarts", "html"]);
 
 /** Chart fences need a taller pane — do not lock body height to source scrollHeight. */
 const CHART_FENCE_LANGS = new Set(["chart", "echarts"]);
+const HTML_FENCE_LANGS = new Set(["html"]);
 
 /** @type {Map<string, string>} */
 const MERMAID_SVG_CACHE = new Map();
@@ -440,7 +442,7 @@ function CodeFenceSource({ code, prism, syntaxStyle, codeFont }) {
   );
 }
 
-function ChatMdVisualBlock({ code, label, displayLang, isChartFence, streaming, t }) {
+function ChatMdVisualBlock({ code, label, displayLang, isChartFence, isHtmlFence, streaming, t }) {
   const theme = useDocTheme();
 
   if (isChartFence) {
@@ -449,6 +451,17 @@ function ChatMdVisualBlock({ code, label, displayLang, isChartFence, streaming, 
         code={code}
         label={label}
         displayLang={displayLang}
+        theme={theme}
+        streaming={streaming}
+        t={t}
+      />
+    );
+  }
+
+  if (isHtmlFence) {
+    return (
+      <ChatLabHtmlBlock
+        code={code}
         theme={theme}
         streaming={streaming}
         t={t}
@@ -552,14 +565,10 @@ function ChatMdToggleableCodeBlock({ code, label, prism, displayLang, streaming,
   }, [canRender, code, heightFrozen, lockSourceBodyHeight]);
 
   const canPreview =
-    Boolean(preview) && (label === "html" || label === "csv" || label === "svg");
+    Boolean(preview) && (label === "csv" || label === "svg");
   const onPreview = useCallback(() => {
     if (!preview) return;
-    if (label === "html") {
-      const doc = wrapLooseHtmlFragmentForSrcDoc(code);
-      if (!doc) return;
-      preview.openSrcDoc(doc, t("chatLab.previewTitleHtml"));
-    } else if (label === "csv") {
+    if (label === "csv") {
       preview.openSrcDoc(csvToHtmlDocument(code), t("chatLab.previewTitleCsv"));
     } else if (label === "svg") {
       preview.openSrcDoc(svgToHtmlDocument(code), t("chatLab.previewTitleSvg"));
@@ -663,6 +672,7 @@ function ChatMdCodeBlock({ code, fenceClassName, streaming = false, t }) {
         label={label}
         displayLang={displayLang}
         isChartFence={CHART_FENCE_LANGS.has(label)}
+        isHtmlFence={HTML_FENCE_LANGS.has(label)}
         streaming={streaming}
         t={t}
       />

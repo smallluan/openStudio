@@ -153,7 +153,6 @@ import {
 import { ImageViewProvider } from "../context/ImageViewContext.jsx";
 import Image from "../ui/Image.jsx";
 import Avatar from "../ui/Avatar.jsx";
-import { lastHtmlFenceAsSrcDocDocument } from "../chat/chatLabDocumentPreview.js";
 import { collectSessionArtifacts } from "../chat/chatLabSessionArtifacts.js";
 import ChatLabArtifactsBar from "../components/chat-lab/ChatLabArtifactsBar.jsx";
 import ChatLabMentionAvatarGroup from "../components/chat-lab/ChatLabMentionAvatarGroup.jsx";
@@ -5370,11 +5369,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     <ImageViewProvider>
       <ChatLabWorkspaceActiveRootBridge activeRootRef={activeRootRef} />
       <ChatLabPreviewContextBridge previewSnapshotRef={previewSnapshotRef} />
-      {!embedMode?.forceThread ? (
-        <>
-          <ChatLabAutoHtmlPreview conversationId={conversationId} messages={messages} />
-        </>
-      ) : null}
       <ChatLabSidebarActionRunner
         conversationId={conversationId}
         messages={messages}
@@ -5559,96 +5553,6 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       {chatLabShell}
     </ChatLabPreviewProvider>
   );
-}
-
-/**
- * Mark existing assistant replies as already handled when switching conversations so
- * hydrate / remount does not auto-open the preview dock.
- *
- * Parent loads messages in useLayoutEffect after children, so the first commit after a
- * conversation change may still carry the previous thread. Absorb that pass, then absorb
- * the following messages swap for the new conversation.
- *
- * @param {string} conversationId
- * @param {Array<{ id: string; role: string; streaming?: boolean; error?: string }>} messages
- * @param {import("react").MutableRefObject<string | null>} conversationIdRef
- * @param {import("react").MutableRefObject<boolean>} pendingHydrateRef
- * @param {import("react").MutableRefObject<unknown>} messagesAtSwitchRef
- * @param {import("react").MutableRefObject<string | null>} handledTailIdRef
- * @returns {boolean} true when this pass should skip auto-open
- */
-function seedPreviewAutoOpenOnConversationSwitch(
-  conversationId,
-  messages,
-  conversationIdRef,
-  pendingHydrateRef,
-  messagesAtSwitchRef,
-  handledTailIdRef,
-) {
-  const lastFinishedAssistantId = () => {
-    const lastAssistant = [...messages]
-      .reverse()
-      .find((m) => m.role === "assistant" && !m.streaming && !m.error);
-    return lastAssistant?.id ?? null;
-  };
-
-  if (conversationIdRef.current !== conversationId) {
-    conversationIdRef.current = conversationId;
-    pendingHydrateRef.current = true;
-    messagesAtSwitchRef.current = messages;
-    handledTailIdRef.current = lastFinishedAssistantId();
-    return true;
-  }
-
-  if (pendingHydrateRef.current) {
-    if (messagesAtSwitchRef.current !== messages) {
-      handledTailIdRef.current = lastFinishedAssistantId();
-      messagesAtSwitchRef.current = messages;
-      pendingHydrateRef.current = false;
-    }
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * When the latest assistant reply finishes streaming and includes a ```html … ``` fence,
- * open the preview dock (disk-only artifacts with no fenced body still need manual open via browser_open).
- * @param {{ conversationId: string; messages: Array<{ id: string; role: string; content?: string; streaming?: boolean; error?: string }> }} props
- */
-function ChatLabAutoHtmlPreview({ conversationId, messages }) {
-  const { t } = useI18n();
-  const preview = useChatLabPreview();
-  const handledTailIdRef = useRef(/** @type {string | null} */ (null));
-  const conversationIdRef = useRef(/** @type {string | null} */ (null));
-  const pendingHydrateRef = useRef(false);
-  const messagesAtSwitchRef = useRef(/** @type {unknown} */ (null));
-
-  useLayoutEffect(() => {
-    if (
-      seedPreviewAutoOpenOnConversationSwitch(
-        conversationId,
-        messages,
-        conversationIdRef,
-        pendingHydrateRef,
-        messagesAtSwitchRef,
-        handledTailIdRef,
-      )
-    ) {
-      return;
-    }
-    if (!preview) return;
-    const last = messages[messages.length - 1];
-    if (!last || last.role !== "assistant" || last.streaming || last.error) return;
-    if (handledTailIdRef.current === last.id) return;
-    const doc = lastHtmlFenceAsSrcDocDocument(String(last.content ?? ""));
-    handledTailIdRef.current = last.id;
-    if (!doc) return;
-    preview.openSrcDoc(doc, t("chatLab.previewTitleHtml"));
-  }, [conversationId, messages, preview, t]);
-
-  return null;
 }
 
 /** Pause bars — shown on the red “stop stream” control (icon only; label via aria on the button). */
@@ -6311,7 +6215,7 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
           }
           return (
             <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--text chat-lab__md">
-              <ChatLabMarkdownContent source={body} components={mdComponents} />
+              <ChatLabMarkdownContent source={body} components={mdComponents} streaming={streaming} />
             </div>
           );
         }
@@ -8145,6 +8049,7 @@ const MessageBubble = memo(function MessageBubble({
               <ChatLabMarkdownContent
                 source={stripSidebarActionFences(String(message.content ?? ""))}
                 components={mdComponents}
+                streaming={bubbleStreaming}
               />
             ) : showTyping ? (
               <ChatStreamingIndicator label={streamingBusyLabel} />

@@ -8,8 +8,11 @@ import {
   segmentMarkdownContentBlocks,
 } from "../../chat/chatLabMarkdownImageGrid.js";
 import { cn } from "../../ui/cn.js";
+import { useI18n } from "../../context/I18nContext.jsx";
+import { useDocTheme } from "./chatLabMarkdown.jsx";
 import { ChatLabImageGrid } from "./ChatLabImageGrid.jsx";
 import ChatLabDirectoryTree from "./ChatLabDirectoryTree.jsx";
+import ChatLabHtmlBlock from "./ChatLabHtmlBlock.jsx";
 
 const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
 
@@ -20,10 +23,13 @@ export { ChatLabImageGrid };
  *   source: string;
  *   className?: string;
  *   components?: import("react-markdown").Components;
+ *   streaming?: boolean;
  * }} props
  */
-export default function ChatLabMarkdownContent({ source, className, components }) {
-  const blocks = useMemo(() => segmentMarkdownContentBlocks(source), [source]);
+export default function ChatLabMarkdownContent({ source, className, components, streaming = false }) {
+  const { t } = useI18n();
+  const theme = useDocTheme();
+  const blocks = useMemo(() => segmentMarkdownContentBlocks(source, { streaming }), [source, streaming]);
 
   const mergedComponents = useMemo(
     () => ({
@@ -42,6 +48,17 @@ export default function ChatLabMarkdownContent({ source, className, components }
         }
         if (block.kind === "tree") {
           return <ChatLabDirectoryTree key={`tree-${idx}`} root={block.tree} />;
+        }
+        if (block.kind === "html") {
+          return (
+            <ChatLabHtmlBlock
+              key={`html-${idx}`}
+              code={block.body}
+              theme={theme}
+              streaming={streaming}
+              t={t}
+            />
+          );
         }
         const md = prepareChatLabMarkdownForRender(block.body);
         if (!String(md ?? "").trim()) return null;

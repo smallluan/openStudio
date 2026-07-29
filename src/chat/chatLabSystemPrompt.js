@@ -12,6 +12,7 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
     String(t("chatLab.toolSearchPrompt") ?? "").trim(),
     String(t("chatLab.imageDisplayPrompt") ?? "").trim(),
     String(t("chatLab.chartDisplayPrompt") ?? "").trim(),
+    String(t("chatLab.htmlDisplayPrompt") ?? "").trim(),
     String(t("chatLab.subagentSpawnPrompt") ?? "").trim(),
   ];
   if (opts.webExploreMode) {

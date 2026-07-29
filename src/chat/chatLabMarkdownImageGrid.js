@@ -3,6 +3,7 @@
 
 import { normalizeLatexMathDelimitersForRemark } from "./normalizeLatexMathDelimitersForRemark.js";
 import { repairChartCodeFences } from "./chatLabMarkdownChartFenceRepair.js";
+import { repairHtmlMarkdownForRender } from "./chatLabMarkdownHtmlFenceRepair.js";
 import { repairGfmMarkdownTables } from "./chatLabMarkdownTableRepair.js";
 import {
   isAsciiTreeLine,
@@ -94,6 +95,9 @@ export function stripMarkdownImages(source) {
  *   kind: "tree";
  *   body: string;
  *   tree: AsciiTreeNode;
+ * } | {
+ *   kind: "html";
+ *   body: string;
  * }} MarkdownContentBlock
  */
 
@@ -273,8 +277,9 @@ function postProcessMarkdownBlocks(blocks) {
   return blocks;
 }
 
-export function segmentMarkdownContentBlocks(source) {
-  const lines = String(source ?? "").split(/\r?\n/);
+export function segmentMarkdownContentBlocks(source, options = {}) {
+  const repaired = repairHtmlMarkdownForRender(String(source ?? ""), options);
+  const lines = repaired.split(/\r?\n/);
   /** @type {MarkdownContentBlock[]} */
   const blocks = [];
   /** @type {string[]} */
@@ -285,6 +290,12 @@ export function segmentMarkdownContentBlocks(source) {
   let treeBuf = [];
   /** @type {string | null} */
   let fenceDelim = null;
+  let inHtmlFence = false;
+  /** @type {string[]} */
+  let htmlBuf = [];
+
+  const HTML_FENCE_OPEN_RE = /^```html\b/i;
+  const FENCE_CLOSE_RE = /^```\s*$/;
 
   /** @param {string} line */
   const pushProseLine = (line) => {
@@ -295,6 +306,13 @@ export function segmentMarkdownContentBlocks(source) {
     const body = proseBuf.join("\n").trim();
     if (body) blocks.push({ kind: "prose", body: proseBuf.join("\n") });
     proseBuf = [];
+  };
+  const flushHtml = () => {
+    if (!inHtmlFence) return;
+    const body = htmlBuf.join("\n").trim();
+    if (body) blocks.push({ kind: "html", body: htmlBuf.join("\n") });
+    htmlBuf = [];
+    inHtmlFence = false;
   };
   const flushImages = () => {
     if (imageBuf.length) blocks.push({ kind: "gallery", images: [...imageBuf] });
@@ -317,6 +335,26 @@ export function segmentMarkdownContentBlocks(source) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const trimmed = String(line ?? "").trim();
+
+    if (inHtmlFence) {
+      if (FENCE_CLOSE_RE.test(trimmed)) {
+        flushHtml();
+        continue;
+      }
+      htmlBuf.push(line);
+      continue;
+    }
+
+    if (!fenceDelim && HTML_FENCE_OPEN_RE.test(trimmed)) {
+      if (treeBuf.length) flushTree();
+      flushProse();
+      flushImages();
+      inHtmlFence = true;
+      htmlBuf = [];
+      continue;
+    }
+
     const fenceStep = stepFenceState(line, fenceDelim);
     if (fenceStep.isFenceLine) {
       if (treeBuf.length) flushTree();
@@ -371,6 +409,7 @@ export function segmentMarkdownContentBlocks(source) {
   }
 
   flushProse();
+  flushHtml();
   flushImages();
   flushTree();
   return mergeAdjacentGalleryBlocks(postProcessMarkdownBlocks(blocks));

@@ -10,6 +10,7 @@ const EN = {
   "chatLab.toolSearchUserTurnHint": "**Tool Search**: use tool_search first",
   "chatLab.imageDisplayPrompt": "## images",
   "chatLab.chartDisplayPrompt": "## charts",
+  "chatLab.htmlDisplayPrompt": "## html embed",
   "chatLab.subagentSpawnPrompt": "## subagents",
   "chatLab.linkOpenSidebarPrompt": "## open via search browser_open",
   "chatLab.sidebarAutomationPrompt": "## automate via search browser_action",

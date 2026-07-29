@@ -1,5 +1,7 @@
 /** Shared helpers + protocol constants for the Chat Lab document preview iframe. */
 
+import { buildInlineHtmlThemeStyleTag } from "./chatLabInlineHtmlTheme.js";
+
 export const CHAT_LAB_PREVIEW_MESSAGE_CHANNEL = "openstudio-preview";
 
 /** @returns {string} */
@@ -155,6 +157,58 @@ export function wrapLooseHtmlFragmentForSrcDoc(htmlInner) {
   if (!t) return "";
   if (/<!DOCTYPE|<\s*html[\s>]/i.test(t) || /<\s*body[\s>]/i.test(t)) return t;
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body>${t}</body></html>`;
+}
+
+/** postMessage channel for inline ```html``` fence iframe height reports. */
+export const INLINE_HTML_FENCE_MESSAGE_CHANNEL = "openstudio-inline-html";
+
+/** Sandbox for interactive HTML embedded in chat replies (isolated origin; scripts allowed). */
+export const INLINE_HTML_FENCE_SANDBOX =
+  "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals";
+
+const INLINE_HTML_RESIZE_BOOTSTRAP = `(function(){
+  var CH="${INLINE_HTML_FENCE_MESSAGE_CHANNEL}";
+  function report(){
+    var d=document.documentElement,b=document.body;
+    var h=Math.max(d.scrollHeight,d.offsetHeight,b?b.scrollHeight:0,b?b.offsetHeight:0);
+    try{parent.postMessage({channel:CH,type:"resize",height:h},"*");}catch(e){}
+  }
+  if(typeof ResizeObserver!=="undefined"){
+    var ro=new ResizeObserver(report);
+    ro.observe(document.documentElement);
+    if(document.body)ro.observe(document.body);
+  }
+  window.addEventListener("load",report);
+  document.addEventListener("DOMContentLoaded",report);
+  report();
+  var n=0,i=setInterval(function(){report();if(++n>24)clearInterval(i);},200);
+})();`;
+
+/** Recommended max content height for inline ```html``` embeds (taller → workspace artifact). */
+export const INLINE_HTML_EMBED_GUIDANCE_MAX_HEIGHT_PX = 400;
+
+/**
+ * Wrap ```html``` fence content for a sandboxed iframe embedded in chat (includes auto-height bootstrap).
+ * @param {string} htmlInner
+ * @param {"light"|"dark"} [theme]
+ * @param {Record<string, string> | null | undefined} [themeTokens]
+ * @returns {string}
+ */
+export function wrapHtmlFenceForInlineSrcDoc(htmlInner, theme = "light", themeTokens) {
+  let doc = wrapLooseHtmlFragmentForSrcDoc(String(htmlInner ?? "").trim());
+  if (!doc) return "";
+
+  const baseStyle = buildInlineHtmlThemeStyleTag(theme, themeTokens);
+  const boot = `${baseStyle}<script>${INLINE_HTML_RESIZE_BOOTSTRAP}<\/script>`;
+
+  if (/<\/head>/i.test(doc)) {
+    doc = doc.replace(/<\/head>/i, `${boot}</head>`);
+  } else if (/<\/body>/i.test(doc)) {
+    doc = doc.replace(/<\/body>/i, `${boot}</body>`);
+  } else {
+    doc += boot;
+  }
+  return doc;
 }
 
 /**
