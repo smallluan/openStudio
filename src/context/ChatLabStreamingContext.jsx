@@ -60,8 +60,8 @@ import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
 const ChatLabStreamingContext = createContext(null);
 
 const PERSIST_MS = 420;
-/** Quiet period after `{ type: "done" }` before finalizing — absorbs trailing IPC deltas (resets on each late chunk). */
-const STREAM_DONE_GRACE_MS = 450;
+/** Brief post-`done` merge window for trailing IPC (tool_trace / agent_activity); does not keep streaming UI active. */
+const STREAM_DONE_TRAILING_MERGE_MS = 0;
 
 /**
  * Collect all currently-active streaming conversationIds from the slice map.
@@ -130,9 +130,7 @@ export function ChatLabStreamingProvider({ children }) {
   /** @type {import("react").MutableRefObject<Map<string, ReturnType<typeof setTimeout>>>} */
   const persistTimersRef = useRef(new Map());
   /** @type {import("react").MutableRefObject<Map<string, ReturnType<typeof setTimeout>>>} */
-  const doneGraceTimersRef = useRef(new Map());
-  /** @type {import("react").MutableRefObject<Set<string>>} */
-  const pendingDoneFinalizeRef = useRef(new Set());
+  const trailingMergeTimersRef = useRef(new Map());
   /** @type {import("react").MutableRefObject<Set<string>>} */
   const processingStreamIdsRef = useRef(new Set());
 
@@ -194,12 +192,11 @@ export function ChatLabStreamingProvider({ children }) {
         clearTimeout(persistTimer);
         persistTimersRef.current.delete(streamId);
       }
-      const doneTimer = doneGraceTimersRef.current.get(streamId);
-      if (doneTimer) {
-        clearTimeout(doneTimer);
-        doneGraceTimersRef.current.delete(streamId);
+      const trailingTimer = trailingMergeTimersRef.current.get(streamId);
+      if (trailingTimer) {
+        clearTimeout(trailingTimer);
+        trailingMergeTimersRef.current.delete(streamId);
       }
-      pendingDoneFinalizeRef.current.delete(streamId);
       processingStreamIdsRef.current.delete(streamId);
       slicesRef.current.delete(streamId);
       bumpSlices();
@@ -229,12 +226,9 @@ export function ChatLabStreamingProvider({ children }) {
 
     /** @param {string} streamId */
     const schedulePersist = (streamId) => {
-      const existing = persistTimersRef.current.get(streamId);
-      if (existing) clearTimeout(existing);
-      const timer = setTimeout(() => {
-        persistTimersRef.current.delete(streamId);
-        const s = getSlice(streamId);
-        if (!s?.active || !s.conversationId) return;
+      const s = getSlice(streamId);
+      if (!s?.conversationId) return;
+      if (!s.active) {
         persistAssistantMerge(
           s.conversationId,
           s.assistantMessageId,
@@ -243,6 +237,24 @@ export function ChatLabStreamingProvider({ children }) {
           s.toolTrace ?? [],
           s.activityLog ?? [],
           s.assistantTimeline ?? [],
+        );
+        return;
+      }
+      const existing = persistTimersRef.current.get(streamId);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        persistTimersRef.current.delete(streamId);
+        const cur = getSlice(streamId);
+        if (!cur?.conversationId) return;
+        if (!cur.active && !trailingMergeTimersRef.current.has(streamId)) return;
+        persistAssistantMerge(
+          cur.conversationId,
+          cur.assistantMessageId,
+          cur.content,
+          cur.thinking,
+          cur.toolTrace ?? [],
+          cur.activityLog ?? [],
+          cur.assistantTimeline ?? [],
         );
       }, PERSIST_MS);
       persistTimersRef.current.set(streamId, timer);
@@ -300,71 +312,64 @@ export function ChatLabStreamingProvider({ children }) {
     };
 
     /** @param {string} streamId */
-    const cancelPendingDoneFinalize = (streamId) => {
-      pendingDoneFinalizeRef.current.delete(streamId);
-      const timer = doneGraceTimersRef.current.get(streamId);
-      if (timer) {
-        clearTimeout(timer);
-        doneGraceTimersRef.current.delete(streamId);
-      }
-    };
-
-    /**
-     * Restart the post-`done` grace window when trailing IPC deltas arrive.
-     * Must not clear `pendingDoneFinalizeRef` — cancel+reschedule used to drop pending and stall forever.
-     * @param {string} streamId
-     */
-    const bumpDoneFinalizeGrace = (streamId) => {
-      if (!pendingDoneFinalizeRef.current.has(streamId)) return;
-      const timer = doneGraceTimersRef.current.get(streamId);
-      if (timer) {
-        clearTimeout(timer);
-        doneGraceTimersRef.current.delete(streamId);
-      }
-      scheduleDoneFinalize(streamId);
+    const scheduleTrailingSliceCleanup = (streamId) => {
+      const existing = trailingMergeTimersRef.current.get(streamId);
+      if (existing) clearTimeout(existing);
+      const sid = streamId;
+      const timer = setTimeout(() => {
+        trailingMergeTimersRef.current.delete(sid);
+        flushPersistNow(sid);
+        removeSlice(sid);
+      }, STREAM_DONE_TRAILING_MERGE_MS);
+      trailingMergeTimersRef.current.set(sid, timer);
     };
 
     /** @param {string} streamId */
-    const scheduleDoneFinalize = (streamId) => {
-      pendingDoneFinalizeRef.current.add(streamId);
-      const existing = doneGraceTimersRef.current.get(streamId);
-      if (existing) {
-        clearTimeout(existing);
-        doneGraceTimersRef.current.delete(streamId);
+    const bumpTrailingSliceCleanup = (streamId) => {
+      if (!trailingMergeTimersRef.current.has(streamId)) return;
+      scheduleTrailingSliceCleanup(streamId);
+    };
+
+    /** @param {string} streamId */
+    const clearTrailingSliceCleanup = (streamId) => {
+      const timer = trailingMergeTimersRef.current.get(streamId);
+      if (timer) {
+        clearTimeout(timer);
+        trailingMergeTimersRef.current.delete(streamId);
       }
-      const sid = streamId;
-      const timer = setTimeout(() => {
-        doneGraceTimersRef.current.delete(sid);
-        pendingDoneFinalizeRef.current.delete(sid);
-        const cur = getSlice(sid);
-        if (!cur || cur.streamId !== sid) {
-          endProcessing(sid);
-          return;
-        }
-        const snap = snapshotSlice(sid);
-        flushPersistNow(sid);
-        removeSlice(sid);
-        try {
-          window.dispatchEvent(
-            new CustomEvent("openstudio-gateway-chat-terminal", {
-              detail: {
-                kind: /** @type {const} */ ("done"),
-                conversationId: snap.conversationId,
-                assistantMessageId: snap.assistantMessageId,
-                content: snap.content,
-                thinking: snap.thinking,
-                toolTrace: snap.toolTrace ?? [],
-                activityLog: snap.activityLog ?? [],
-                assistantTimeline: snap.assistantTimeline ?? [],
-              },
-            }),
-          );
-        } catch {
-          /* ignore */
-        }
-        endProcessing(sid);
-      }, STREAM_DONE_GRACE_MS);
-      doneGraceTimersRef.current.set(sid, timer);
+    };
+
+    /** @param {string} streamId */
+    const finalizeDoneNow = (streamId) => {
+      const cur = getSlice(streamId);
+      if (!cur || cur.streamId !== streamId) {
+        endProcessing(streamId);
+        return;
+      }
+      const snap = snapshotSlice(streamId);
+      putSlice(streamId, { ...cur, active: false });
+      syncStreamingSessionId();
+      flushPersistNow(streamId);
+      try {
+        window.dispatchEvent(
+          new CustomEvent("openstudio-gateway-chat-terminal", {
+            detail: {
+              kind: /** @type {const} */ ("done"),
+              conversationId: snap.conversationId,
+              assistantMessageId: snap.assistantMessageId,
+              content: snap.content,
+              thinking: snap.thinking,
+              toolTrace: snap.toolTrace ?? [],
+              activityLog: snap.activityLog ?? [],
+              assistantTimeline: snap.assistantTimeline ?? [],
+            },
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+      endProcessing(streamId);
+      scheduleTrailingSliceCleanup(streamId);
     };
 
     /** @param {string} streamId @param {Record<string, unknown>} evt */
@@ -420,7 +425,7 @@ export function ChatLabStreamingProvider({ children }) {
           const assistantTimeline = mergeTimelineContentSync(prev.assistantTimeline, content, thinking);
           putSlice(streamId, { ...prev, content, thinking, assistantTimeline });
           schedulePersist(streamId);
-          bumpDoneFinalizeGrace(streamId);
+          bumpTrailingSliceCleanup(streamId);
           return;
         }
         case "tool_trace": {
@@ -430,7 +435,7 @@ export function ChatLabStreamingProvider({ children }) {
           const assistantTimeline = mergeTimelineToolTrace(prev.assistantTimeline, evt);
           putSlice(streamId, { ...prev, toolTrace, assistantTimeline });
           schedulePersist(streamId);
-          bumpDoneFinalizeGrace(streamId);
+          bumpTrailingSliceCleanup(streamId);
           return;
         }
         case "agent_activity": {
@@ -440,7 +445,7 @@ export function ChatLabStreamingProvider({ children }) {
           const assistantTimeline = mergeTimelineAgentActivity(prev.assistantTimeline, evt);
           putSlice(streamId, { ...prev, activityLog, assistantTimeline });
           schedulePersist(streamId);
-          bumpDoneFinalizeGrace(streamId);
+          bumpTrailingSliceCleanup(streamId);
           return;
         }
         case "thinking":
@@ -456,7 +461,7 @@ export function ChatLabStreamingProvider({ children }) {
             });
           }
           schedulePersist(streamId);
-          bumpDoneFinalizeGrace(streamId);
+          bumpTrailingSliceCleanup(streamId);
           return;
         case "text":
           if (typeof evt.delta !== "string") return;
@@ -471,13 +476,13 @@ export function ChatLabStreamingProvider({ children }) {
             });
           }
           schedulePersist(streamId);
-          bumpDoneFinalizeGrace(streamId);
+          bumpTrailingSliceCleanup(streamId);
           return;
         case "meta":
         case "usage":
           return;
         case "aborted": {
-          cancelPendingDoneFinalize(streamId);
+          clearTrailingSliceCleanup(streamId);
           const snap = snapshotSlice(streamId);
           flushPersistNow(streamId);
           removeSlice(streamId);
@@ -503,7 +508,7 @@ export function ChatLabStreamingProvider({ children }) {
           return;
         }
         case "error": {
-          cancelPendingDoneFinalize(streamId);
+          clearTrailingSliceCleanup(streamId);
           const snap = snapshotSlice(streamId);
           const raw = String(evt.message ?? "");
           flushPersistNow(streamId);
@@ -531,7 +536,7 @@ export function ChatLabStreamingProvider({ children }) {
           return;
         }
         case "done": {
-          scheduleDoneFinalize(streamId);
+          finalizeDoneNow(streamId);
           return;
         }
         default:
@@ -547,9 +552,8 @@ export function ChatLabStreamingProvider({ children }) {
       }
       for (const timer of persistTimersRef.current.values()) clearTimeout(timer);
       persistTimersRef.current.clear();
-      for (const timer of doneGraceTimersRef.current.values()) clearTimeout(timer);
-      doneGraceTimersRef.current.clear();
-      pendingDoneFinalizeRef.current.clear();
+      for (const timer of trailingMergeTimersRef.current.values()) clearTimeout(timer);
+      trailingMergeTimersRef.current.clear();
     };
   }, [bumpSlices, syncStreamingSessionId]);
 
