@@ -8,7 +8,8 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
 
 - [`sidebar_debug`](./sidebar-preview-tools.md) — console / 网络录制与按需拉取  
 - [`sidebar_debugger`](./sidebar-debugger.md) — JS 断点、暂停检查变量  
-- [`sidebar_screenshot`](./sidebar-preview-tools.md) — 视口截图
+- [`sidebar_screenshot`](./sidebar-preview-tools.md) — 视口截图  
+- [`browser-observation-prune.md`](./browser-observation-prune.md) — 换页后剥离旧 DOM 的上下文策略
 
 ---
 
@@ -87,12 +88,43 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
   "observation": {
     "url": "...",
     "title": "...",
+    "pageGeneration": 2,
+    "pageChanged": true,
     "text": "...",
     "elements": [{ "ref": "e1", "selector": "...", "name": "...", "role": "..." }]
   },
   "hint": "..."
 }
 ```
+
+可选参数：
+
+| 字段 | 说明 |
+|------|------|
+| `retainPriorPageDom` | 默认 `false`。为 `true` 时，组 prompt 时保留**上一页**（`pageGeneration - 1`）的 DOM 清单，用于少见的跨页对照 |
+
+### 2.3 换页后的上下文剥离（DOM vs 轨迹）
+
+**问题**：同轮多次 `browser_action` 会把每次的 `observation.elements` / `text` 留在 gateway 会话里；换页后旧 `ref`（`e1`…）不仅浪费 token，还会误导模型。
+
+**策略**（默认）：
+
+| 保留 | 剥离 |
+|------|------|
+| `steps` 执行结果、`ok` / `error` | 旧 observation 的 `elements` |
+| `url` / `title` / `pageGeneration` | 旧 observation 的 `text` |
+| **最新一次** observation 的完整 DOM | — |
+
+实现要点：
+
+1. 渲染进程在每次 observation 上打 `pageGeneration`（URL 变化或 `navigate` / `reload` / `refresh` 时递增）— `lib/browser-observation-prune.cjs` + `ChatLabPreviewContext`
+2. OpenClaw 在组 LLM prompt 时（`truncateOversizedToolResultsInMessages`）调用 `openStudioPruneStaleBrowserActionDom`，只保留最新 observation 的 DOM；更早的标记 `domStripped: true` 并留下 `elementCount` / `note`
+3. **不改写** session 落盘原文，只影响发往模型的 in-memory 历史
+4. 用户发送时的 `previewContext` 本来就是 volatile、只挂在最新 user turn，不受影响
+
+例外：`retainPriorPageDom: true` 时额外保留上一 `pageGeneration` 的完整 DOM。
+
+相关：`scripts/patch-openclaw-browser-observation-prune.mjs`、`docs` 本节。
 
 ---
 

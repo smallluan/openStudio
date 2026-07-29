@@ -33,6 +33,10 @@ import {
   composeChatLabPreviewContextBlock,
 } from "../chat/chatLabPreviewSnapshot.js";
 import { runSidebarPreviewAutomation } from "../chat/chatLabPreviewAutomation.js";
+import {
+  advancePageGeneration,
+  stepsIncludeNavigation,
+} from "../chat/chatLabBrowserObservation.js";
 
 const PREVIEW_DEVICE_KEY = "openstudio_chat_preview_device";
 const PREVIEW_TAB_MAX = 16;
@@ -306,7 +310,7 @@ function sessionFromWebTab(tab) {
  *   activatePreviewTab: (tabId: string) => void;
  *   captureSidebarContextBlock: () => Promise<string>;
  *   runSidebarAutomation: (steps: import("../chat/chatLabPreviewAutomation.js").SidebarAutomationStep[] | unknown) => Promise<unknown>;
- *   executeSidebarActionTool: (args: { steps?: unknown }) => Promise<unknown>;
+ *   executeSidebarActionTool: (args: { steps?: unknown; retainPriorPageDom?: boolean }) => Promise<unknown>;
  *   executeBrowserOpenTool: (args: { url?: string; title?: string }) => Promise<unknown>;
  * }>} */
 export const ChatLabPreviewContext = createContext(null);
@@ -369,6 +373,8 @@ export function ChatLabPreviewProvider({
   const dockOpenRef = useRef(dockOpen);
   /** @type {import("react").MutableRefObject<import("../chat/chatLabPreviewSnapshot.js").SidebarPreviewInteractiveElement[]>} */
   const lastInventoryRef = useRef([]);
+  /** Tracks page generations so OpenClaw can strip stale DOM from prior browser_action results. */
+  const pageGenerationStateRef = useRef({ pageGeneration: 0, lastUrl: "" });
   previewTabsRef.current = previewTabs;
   activePreviewTabIdRef.current = activePreviewTabId;
   dockOpenRef.current = dockOpen;
@@ -383,6 +389,8 @@ export function ChatLabPreviewProvider({
     setSession(null);
     setArtifactsPanel(null);
     setDockOpen(false);
+    lastInventoryRef.current = [];
+    pageGenerationStateRef.current = { pageGeneration: 0, lastUrl: "" };
   }, [conversationId, embedPreview]);
 
   useEffect(() => {
@@ -1368,7 +1376,7 @@ export function ChatLabPreviewProvider({
 
   /**
    * Native OpenClaw `browser_action` tool entry: run steps, then return fresh observation.
-   * @param {{ steps?: unknown }} args
+   * @param {{ steps?: unknown, retainPriorPageDom?: boolean }} args
    */
   const executeSidebarActionTool = useCallback(
     async (args = {}) => {
@@ -1393,6 +1401,7 @@ export function ChatLabPreviewProvider({
         }
       }
       const steps = args?.steps;
+      const retainPriorPageDom = args?.retainPriorPageDom === true;
       const runResult = await runSidebarAutomation(steps, { stopOnFailure: true });
       let observation = null;
       try {
@@ -1408,6 +1417,16 @@ export function ChatLabPreviewProvider({
         });
         if (snap) {
           if (Array.isArray(snap.elements)) lastInventoryRef.current = snap.elements;
+          const forceBump =
+            stepsIncludeNavigation(steps) || stepsIncludeNavigation(runResult?.steps);
+          const gen = advancePageGeneration(pageGenerationStateRef.current, {
+            url: snap.url ?? "",
+            forceBump,
+          });
+          pageGenerationStateRef.current = {
+            pageGeneration: gen.pageGeneration,
+            lastUrl: gen.lastUrl,
+          };
           observation = {
             ok: snap.ok !== false,
             url: snap.url ?? "",
@@ -1417,6 +1436,9 @@ export function ChatLabPreviewProvider({
             partial: Boolean(snap.partial),
             loginHint: Boolean(snap.loginHint),
             canvasHint: Boolean(snap.canvasHint),
+            pageGeneration: gen.pageGeneration,
+            pageChanged: gen.pageChanged,
+            ...(retainPriorPageDom ? { retainPriorPageDom: true } : {}),
           };
         }
       } catch (e) {
@@ -1426,6 +1448,10 @@ export function ChatLabPreviewProvider({
           elements: [],
         };
       }
+      const pageChanged = Boolean(observation && /** @type {any} */ (observation).pageChanged);
+      const hint = pageChanged
+        ? "Page changed — prior page element refs are invalid. Use this observation.elements[].ref only (older DOM is stripped from model context unless retainPriorPageDom=true). For file upload, use set_files with absolute paths. Call again for the next short batch (max 5 steps). When done, answer the user in natural language."
+        : "Use observation.elements[].ref (or selector) for the next browser_action call. For file upload, use set_files with absolute paths — do NOT click buttons that open the native OS file picker. Call again for the next short batch (max 5 steps). When done, answer the user in natural language.";
       return {
         ok: Boolean(runResult?.ok),
         error: runResult?.error,
@@ -1433,7 +1459,8 @@ export function ChatLabPreviewProvider({
         stoppedAt: runResult?.stoppedAt,
         steps: Array.isArray(runResult?.steps) ? runResult.steps : [],
         observation,
-        hint: "Use observation.elements[].ref (or selector) for the next browser_action call. For file upload, use set_files with absolute paths — do NOT click buttons that open the native OS file picker. Call again for the next short batch (max 5 steps). When done, answer the user in natural language.",
+        ...(retainPriorPageDom ? { retainPriorPageDom: true } : {}),
+        hint,
       };
     },
     [

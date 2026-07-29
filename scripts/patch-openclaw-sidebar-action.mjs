@@ -46,14 +46,17 @@ function createBrowserActionTool() {
 		label: "Browser Action",
 		name: "browser_action",
 		displaySummary: "Control Open Studio preview page",
-		description: "Execute a short UI automation batch (max 5 steps) on the Web Explore main viewport or Chat Lab preview panel. Browser tools target the Open Studio preview panel — call this tool in Web Explore when the user asks to click/type/scroll. Prefer ref/selector from the injected page inventory or the previous tool observation. The result includes a fresh observation with elements[].ref — call browser_action again for the next batch, or answer the user in natural language when done. Do not invent natural-language targets.",
+		description: "Execute a short UI automation batch (max 5 steps) on the Web Explore main viewport or Chat Lab preview panel. Browser tools target the Open Studio preview panel — call this tool in Web Explore when the user asks to click/type/scroll. Prefer ref/selector from the injected page inventory or the previous tool observation. The result includes a fresh observation with elements[].ref — call browser_action again for the next batch, or answer the user in natural language when done. Do not invent natural-language targets. After navigate/reload, prior page element refs are invalid — use the latest observation only (older DOM is stripped from context unless retainPriorPageDom=true).",
 		parameters: Type.Object({
 			steps: Type.Array(stepSchema, {
 				minItems: 1,
 				maxItems: 5,
 				description: "Short observe→act batch (max 5 steps)"
-			})
-		}),
+			}),
+			retainPriorPageDom: Type.Optional(Type.Boolean({
+				description: "Keep the previous page's DOM inventory in context (rare; default strips prior page DOM after navigation)"
+			}))
+		}, { additionalProperties: true }),
 		execute: async (_toolCallId, args) => {
 			const params = asToolParamsRecord(args);
 			const steps = Array.isArray(params.steps) ? params.steps : [];
@@ -69,7 +72,7 @@ function createBrowserActionTool() {
 				response = await fetch(url, {
 					method: "POST",
 					headers,
-					body: JSON.stringify({ steps }),
+					body: JSON.stringify({ steps, retainPriorPageDom: params.retainPriorPageDom === true }),
 					signal: AbortSignal.timeout(12e4)
 				});
 			} catch (error) {

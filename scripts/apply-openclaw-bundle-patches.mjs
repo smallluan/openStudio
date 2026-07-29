@@ -33,6 +33,7 @@ for (const script of [
   "patch-openclaw-sidebar-eval.mjs",
   "patch-openclaw-sidebar-tools-scope.mjs",
   "patch-openclaw-tool-search-aliases.mjs",
+  "patch-openclaw-browser-observation-prune.mjs",
   "patch-openclaw-sessions-spawn-await.mjs",
 ]) {
   const scriptPath = path.join(__dirname, script);
