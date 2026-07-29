@@ -110,7 +110,12 @@ function ChatLabEchartsFenceView(
         }
         setMarkdownTableFallback(false);
         if (resolved.pending) {
-          setError("");
+          if (streaming) {
+            setError("");
+            setBusy(false);
+            return;
+          }
+          setError(resolved.error || t("chart.parseFailed"));
           setBusy(false);
           return;
         }
@@ -185,7 +190,7 @@ function ChatLabEchartsFenceView(
     return undefined;
   }, [active]);
 
-  const showMask = busy || streaming || (!hasChart && !error);
+  const showMask = busy || (streaming && !hasChart && !error);
   const canDownload = hasChart && !showMask && !error;
 
   useEffect(() => {

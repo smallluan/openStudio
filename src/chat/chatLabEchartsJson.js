@@ -1,7 +1,7 @@
 /**
- * Lenient JSON parsing for LLM-generated ECharts option blocks.
- * Handles trailing commas, // and /* *\/ comments, single-quoted strings,
- * and unquoted object keys before falling back to strict JSON errors.
+ * Lenient parsing for LLM-generated ECharts option blocks.
+ * Handles strict JSON, trailing commas, comments, and JavaScript object literals
+ * (unquoted keys, single-quoted strings, callbacks, trailing commas).
  */
 
 /** @typedef {{ ok: true; value: Record<string, unknown> }} JsonParseOk */
@@ -16,35 +16,54 @@ export function parseLenientEchartsJson(source) {
   if (!text) {
     return { ok: false, error: "Empty chart option", pending: true };
   }
-  if (looksLikeIncompleteJson(text)) {
-    return { ok: false, error: "Chart JSON is still loading…", pending: true };
-  }
 
-  /** @type {string[]} */
-  const candidates = [text, sanitizeLlmJsonText(text)];
   /** @type {string | null} */
   let lastMessage = null;
 
-  for (const candidate of candidates) {
+  for (const candidate of [text, sanitizeLlmJsonText(text)]) {
     if (!candidate.trim()) continue;
-    try {
-      const value = JSON.parse(candidate);
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return { ok: false, error: "ECharts option must be a JSON object" };
-      }
-      return { ok: true, value: /** @type {Record<string, unknown>} */ (value) };
-    } catch (err) {
-      lastMessage = String(err?.message ?? err ?? "Invalid JSON");
-      if (/unexpected end of json input|unterminated string/i.test(lastMessage)) {
-        return { ok: false, error: "Chart JSON is incomplete or truncated", pending: true };
-      }
+    const jsonResult = tryJsonParse(candidate);
+    if (jsonResult.ok) return jsonResult;
+    lastMessage = jsonResult.error ?? lastMessage;
+    if (jsonResult.pending) {
+      return { ok: false, error: jsonResult.error, pending: true };
     }
+  }
+
+  if (text.startsWith("{")) {
+    const jsParsed = tryParseJsObjectLiteral(text);
+    if (jsParsed.ok) return jsParsed;
+    lastMessage = jsParsed.error ?? lastMessage;
+  }
+
+  if (looksLikeIncompleteJson(text)) {
+    return { ok: false, error: "Chart JSON is still loading…", pending: true };
   }
 
   return {
     ok: false,
     error: humanizeJsonError(lastMessage ?? "Invalid JSON"),
   };
+}
+
+/**
+ * @param {string} candidate
+ * @returns {JsonParseOk | (JsonParseErr & { pending?: boolean })}
+ */
+function tryJsonParse(candidate) {
+  try {
+    const value = JSON.parse(candidate);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { ok: false, error: "ECharts option must be a JSON object" };
+    }
+    return { ok: true, value: /** @type {Record<string, unknown>} */ (value) };
+  } catch (err) {
+    const message = String(err?.message ?? err ?? "Invalid JSON");
+    if (/unexpected end of json input|unterminated string/i.test(message)) {
+      return { ok: false, error: "Chart JSON is incomplete or truncated", pending: true };
+    }
+    return { ok: false, error: message };
+  }
 }
 
 /** @typedef {{ ok: true; option: Record<string, unknown>; partial?: boolean }} StreamingJsonOk */
@@ -86,17 +105,20 @@ function tryParsePartialClosedJson(source) {
 
   const closed = closeIncompleteJson(text);
   /** @type {string[]} */
-  const candidates = closed === text ? [sanitizeLlmJsonText(text)] : [closed, sanitizeLlmJsonText(closed)];
+  const candidates = closed === text
+    ? [text, sanitizeLlmJsonText(text)]
+    : [closed, sanitizeLlmJsonText(closed)];
 
   for (const candidate of candidates) {
     if (!candidate.trim()) continue;
-    try {
-      const value = JSON.parse(candidate);
-      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-      return { ok: true, value: /** @type {Record<string, unknown>} */ (value) };
-    } catch {
-      /* try next */
-    }
+    const jsonResult = tryJsonParse(candidate);
+    if (jsonResult.ok) return { ok: true, value: jsonResult.value };
+  }
+
+  const jsSource = closed === text ? text : closed;
+  if (jsSource.startsWith("{")) {
+    const jsParsed = tryParseJsObjectLiteral(jsSource);
+    if (jsParsed.ok) return { ok: true, value: jsParsed.value };
   }
 
   return { ok: false };
@@ -176,6 +198,7 @@ function looksLikeIncompleteJson(text) {
   let braces = 0;
   let brackets = 0;
   let inString = false;
+  let stringQuote = '"';
   let escaped = false;
 
   for (let idx = 0; idx < t.length; idx++) {
@@ -189,11 +212,12 @@ function looksLikeIncompleteJson(text) {
         escaped = true;
         continue;
       }
-      if (ch === '"') inString = false;
+      if (ch === stringQuote) inString = false;
       continue;
     }
-    if (ch === '"') {
+    if (ch === '"' || ch === "'") {
       inString = true;
+      stringQuote = ch;
       continue;
     }
     if (ch === "{") braces++;
@@ -468,15 +492,39 @@ function removeTrailingCommas(raw) {
 }
 
 /**
+ * Evaluate an ECharts option as a JavaScript object literal.
+ * Accepts unquoted keys, single-quoted strings, trailing commas, and callbacks.
+ * @param {string} source
+ * @returns {{ ok: true; value: Record<string, unknown> } | { ok: false; error: string }}
+ */
+function tryParseJsObjectLiteral(source) {
+  let text = stripJsonComments(String(source ?? "").trim().replace(/^\uFEFF/, ""));
+  text = text.replace(/\b(undefined)\b/g, "null");
+
+  try {
+    const value = new Function(`"use strict"; return (${text});`)();
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { ok: false, error: "ECharts option must be a JSON object" };
+    }
+    return { ok: true, value: /** @type {Record<string, unknown>} */ (value) };
+  } catch (err) {
+    return { ok: false, error: String(err?.message ?? err ?? "Invalid JavaScript object literal") };
+  }
+}
+
+/**
  * @param {string} message
  */
 function humanizeJsonError(message) {
   const msg = String(message ?? "Invalid JSON");
-  if (/property name or '}'/i.test(msg) || /after property value/i.test(msg)) {
-    return `${msg} — 请检查是否有多余逗号、单引号或未加引号的键名；ECharts 块必须是合法 JSON。`;
+  if (/property name or '}'/i.test(msg) || /double-quoted property name/i.test(msg)) {
+    return "图表配置格式有误，请检查括号、逗号或引号是否匹配。";
   }
-  if (/function/i.test(msg)) {
-    return "ECharts 配置不能包含 JavaScript 函数，请改用纯 JSON。";
+  if (/after property value/i.test(msg)) {
+    return `${msg} — 请检查是否有多余逗号或未闭合的引号。`;
+  }
+  if (/\bUnexpected token\b/i.test(msg)) {
+    return "图表配置语法有误，请检查对象是否完整闭合。";
   }
   return msg;
 }

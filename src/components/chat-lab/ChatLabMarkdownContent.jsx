@@ -7,17 +7,9 @@ import {
   prepareChatLabMarkdownForRender,
   segmentMarkdownContentBlocks,
 } from "../../chat/chatLabMarkdownImageGrid.js";
-import {
-  inferChartFromMarkdownTables,
-  shouldInferChartFromMarkdownTables,
-  tableChartSpecToDsl,
-} from "../../chat/chatLabMarkdownTableChart.js";
-import { useI18n } from "../../context/I18nContext.jsx";
 import { cn } from "../../ui/cn.js";
 import { ChatLabImageGrid } from "./ChatLabImageGrid.jsx";
-import ChatLabChartBlock from "./ChatLabChartBlock.jsx";
 import ChatLabDirectoryTree from "./ChatLabDirectoryTree.jsx";
-import { useDocTheme } from "./chatLabMarkdown.jsx";
 
 const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
 
@@ -31,14 +23,7 @@ export { ChatLabImageGrid };
  * }} props
  */
 export default function ChatLabMarkdownContent({ source, className, components }) {
-  const { t } = useI18n();
-  const theme = useDocTheme();
   const blocks = useMemo(() => segmentMarkdownContentBlocks(source), [source]);
-  const inferredChartDsl = useMemo(() => {
-    if (!shouldInferChartFromMarkdownTables(source)) return "";
-    const spec = inferChartFromMarkdownTables(source);
-    return spec ? tableChartSpecToDsl(spec) : "";
-  }, [source]);
 
   const mergedComponents = useMemo(
     () => ({
@@ -71,16 +56,6 @@ export default function ChatLabMarkdownContent({ source, className, components }
           </ReactMarkdown>
         );
       })}
-      {inferredChartDsl ?
-        <ChatLabChartBlock
-          code={inferredChartDsl}
-          label="chart"
-          displayLang="chart"
-          theme={theme}
-          t={t}
-          className="chat-lab__md-inferred-chart"
-        />
-      : null}
     </div>
   );
 }

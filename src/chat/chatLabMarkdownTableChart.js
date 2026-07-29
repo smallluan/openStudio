@@ -9,9 +9,6 @@ import {
 
 export { repairGfmMarkdownTables } from "./chatLabMarkdownTableRepair.js";
 
-const CHART_FENCE_RE = /```(?:chart|echarts)\b/i;
-const VISUALIZATION_INTENT_RE =
-  /(?:柱状图|折线图|饼图|散点图|图表|可视化|趋势图|对比图|占比图|条形图|统计图|bar chart|line chart|pie chart|plot|graph|visuali[sz])/i;
 const TABLE_ROW_RE = /^\s*\|(.+)\|\s*$/;
 const TABLE_SEP_RE = /^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?\s*$/;
 
@@ -143,92 +140,4 @@ export function looksLikeMarkdownTableBlock(block) {
 
   if (pipeRows < 2 || nonTableLines > 0) return false;
   return sawSep || pipeRows >= 2;
-}
-
-/**
- * @param {string} block
- * @returns {Record<string, unknown> | null}
- */
-export function chartDslSpecFromMarkdownTable(block) {
-  const tableSpec = chartSpecFromMarkdownTableBlock(block);
-  if (!tableSpec) return null;
-  return {
-    type: "bar",
-    title: tableSpec.title,
-    x: tableSpec.x,
-    values: tableSpec.values,
-    ...(tableSpec.yLabel ? { y: tableSpec.yLabel } : {}),
-  };
-}
-
-/**
- * Infer a bar chart from numeric markdown tables (fallback only).
- * @param {string} source
- * @returns {TableChartSpec | null}
- */
-export function inferChartFromMarkdownTables(source) {
-  const text = String(source ?? "");
-  if (CHART_FENCE_RE.test(text)) return null;
-
-  /** @type {string[]} */
-  const blocks = [];
-  /** @type {string[]} */
-  let buf = [];
-  let inTable = false;
-
-  for (const line of text.split(/\r?\n/)) {
-    const isTableLine = TABLE_ROW_RE.test(line) || TABLE_SEP_RE.test(line);
-    if (isTableLine) {
-      if (!inTable) {
-        buf = [];
-        inTable = true;
-      }
-      buf.push(line);
-      continue;
-    }
-    if (inTable) {
-      blocks.push(buf.join("\n"));
-      buf = [];
-      inTable = false;
-    }
-  }
-  if (inTable && buf.length) blocks.push(buf.join("\n"));
-
-  /** @type {TableChartSpec | null} */
-  let best = null;
-  for (const block of blocks) {
-    const spec = chartSpecFromMarkdownTableBlock(block);
-    if (!spec) continue;
-    if (!best || spec.x.length > best.x.length) best = spec;
-  }
-  return best;
-}
-
-/**
- * Only infer a chart when the reply already signals visualization intent and no chart fence exists.
- * @param {string} source
- */
-export function shouldInferChartFromMarkdownTables(source) {
-  const text = String(source ?? "");
-  if (CHART_FENCE_RE.test(text)) return false;
-  if (!VISUALIZATION_INTENT_RE.test(text)) return false;
-  return inferChartFromMarkdownTables(text) != null;
-}
-
-/**
- * @param {TableChartSpec} spec
- */
-export function tableChartSpecToDsl(spec) {
-  const title = String(spec.title ?? "数据柱状图").trim();
-  const yLabel = String(spec.yLabel ?? "").trim();
-  const lines = [
-    "type: bar",
-    `title: ${title}`,
-    `x: [${spec.x.join(", ")}]`,
-    "series:",
-    "  - name: 数值",
-    `    data: [${spec.values.join(", ")}]`,
-  ];
-  if (yLabel) lines.splice(2, 0, `y: ${yLabel}`);
-  return lines.join("\n");
 }
