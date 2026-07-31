@@ -1,6 +1,7 @@
 /** Local persistence for chat conversations (sidebar history). */
 
 import { sanitizeFollowUpRef } from "./chatLabFollowUp.js";
+import { sanitizeHtmlFenceHeights } from "./chatLabHtmlFenceHeights.js";
 import { sanitizeWorkflowSessionState } from "../workflow/workflowRuntimeRegistry.js";
 
 const LEGACY_STORAGE_KEY = "openstudio_chat_sessions_v1";
@@ -72,6 +73,7 @@ export const CHAT_SESSION_CHANNEL_WECHAT = "wechat";
  * @property {string} [workflowNodeId] Active workflow graph node id for assistant turns
  * @property {string} [workflowNodeLabel] Display label for workflow reply tabs
  * @property {boolean} [workflowHandoffReply] Assistant turn started by workflow handoff (not shown as user bubble)
+ * @property {Record<string, number>} [htmlFenceHeights] Measured inline ```html``` iframe heights by fence index
  */
 
 /**
@@ -671,6 +673,8 @@ function sanitizeMessages(raw) {
       row.workflowNodeLabel = m.workflowNodeLabel.trim().slice(0, 120);
     }
     if (m.workflowHandoffReply === true) row.workflowHandoffReply = true;
+    const htmlFenceHeights = sanitizeHtmlFenceHeights(m.htmlFenceHeights);
+    if (htmlFenceHeights) row.htmlFenceHeights = htmlFenceHeights;
     out.push(row);
   }
   return out;

@@ -11,10 +11,21 @@ import ChatLabHtmlFenceView from "./ChatLabHtmlFenceView.jsx";
  *   code: string;
  *   theme: "light" | "dark";
  *   streaming?: boolean;
+ *   reservedHeight?: number | null;
+ *   onHeightMeasured?: (height: number) => void;
+ *   onLayoutReady?: () => void;
  *   t: (k: string) => string;
  * }} props
  */
-export default function ChatLabHtmlBlock({ code, theme, streaming = false, t }) {
+export default function ChatLabHtmlBlock({
+  code,
+  theme,
+  streaming = false,
+  reservedHeight = null,
+  onHeightMeasured,
+  onLayoutReady,
+  t,
+}) {
   const preview = useContext(ChatLabPreviewContext);
   const [copied, setCopied] = useState(false);
 
@@ -63,7 +74,15 @@ export default function ChatLabHtmlBlock({ code, theme, streaming = false, t }) 
           title={copyLabel}
         />
       </div>
-      <ChatLabHtmlFenceView code={code} theme={theme} active streaming={streaming} />
+      <ChatLabHtmlFenceView
+        code={code}
+        theme={theme}
+        active
+        streaming={streaming}
+        reservedHeight={reservedHeight}
+        onHeightMeasured={onHeightMeasured}
+        onLayoutReady={onLayoutReady}
+      />
     </div>
   );
 }

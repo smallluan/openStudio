@@ -3,11 +3,15 @@ const FENCE_CLOSE_RE = /^```\s*$/;
 const FENCE_OPEN_RE = /^```(\S+)/;
 
 /**
- * Close unclosed ```html``` fences (streaming / model forgot closing fence).
+ * Close unclosed ```html``` fences when the message is complete.
+ * During streaming, leave fences open so partial HTML stays in the html block
+ * instead of leaking into prose (rehype-raw would partially parse it).
  * Does not modify HTML body content.
  * @param {string} source
+ * @param {{ streaming?: boolean }} [options]
  */
-export function repairHtmlCodeFences(source) {
+export function repairHtmlCodeFences(source, options = {}) {
+  const streaming = Boolean(options.streaming);
   const lines = String(source ?? "").split(/\r?\n/);
   /** @type {string[]} */
   const out = [];
@@ -41,7 +45,7 @@ export function repairHtmlCodeFences(source) {
       i++;
     }
 
-    if (!closed) {
+    if (!closed && !streaming) {
       out.push("```");
     }
   }
@@ -51,8 +55,8 @@ export function repairHtmlCodeFences(source) {
 
 /**
  * @param {string} source
- * @param {{ streaming?: boolean }} [_options]
+ * @param {{ streaming?: boolean }} [options]
  */
-export function repairHtmlMarkdownForRender(source, _options = {}) {
-  return repairHtmlCodeFences(source);
+export function repairHtmlMarkdownForRender(source, options = {}) {
+  return repairHtmlCodeFences(source, options);
 }

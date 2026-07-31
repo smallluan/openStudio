@@ -169,10 +169,27 @@ export const INLINE_HTML_FENCE_SANDBOX =
 const INLINE_HTML_RESIZE_BOOTSTRAP = `(function(){
   var CH="${INLINE_HTML_FENCE_MESSAGE_CHANNEL}";
   function report(){
-    var d=document.documentElement,b=document.body;
-    var h=Math.max(d.scrollHeight,d.offsetHeight,b?b.scrollHeight:0,b?b.offsetHeight:0);
+    var b=document.body,d=document.documentElement;
+    var h=0;
+    if(b){
+      var r=b.getBoundingClientRect();
+      h=Math.ceil(r.height)||0;
+    }
+    if(!h&&b) h=b.scrollHeight||0;
+    if(!h&&d) h=d.scrollHeight||0;
+    if(!h) return;
     try{parent.postMessage({channel:CH,type:"resize",height:h},"*");}catch(e){}
   }
+  function reportError(msg){
+    try{parent.postMessage({channel:CH,type:"error",message:String(msg||"Script error")},"*");}catch(e){}
+  }
+  window.addEventListener("error",function(ev){
+    reportError(ev&&ev.message?ev.message:"Script error");
+  });
+  window.addEventListener("unhandledrejection",function(ev){
+    var r=ev&&ev.reason;
+    reportError(r&&(r.message||r)||"Unhandled rejection");
+  });
   if(typeof ResizeObserver!=="undefined"){
     var ro=new ResizeObserver(report);
     ro.observe(document.documentElement);

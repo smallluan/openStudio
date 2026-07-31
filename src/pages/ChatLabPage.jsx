@@ -154,6 +154,7 @@ import { ImageViewProvider } from "../context/ImageViewContext.jsx";
 import Image from "../ui/Image.jsx";
 import Avatar from "../ui/Avatar.jsx";
 import { collectSessionArtifacts } from "../chat/chatLabSessionArtifacts.js";
+import { mergeHtmlFenceHeight, sanitizeHtmlFenceHeights } from "../chat/chatLabHtmlFenceHeights.js";
 import ChatLabArtifactsBar from "../components/chat-lab/ChatLabArtifactsBar.jsx";
 import ChatLabMentionAvatarGroup from "../components/chat-lab/ChatLabMentionAvatarGroup.jsx";
 import { TraceDisclosure, TraceRowChevron, TraceStepGlyph } from "../components/chat-lab/TraceDisclosure.jsx";
@@ -227,6 +228,22 @@ function chatDistanceFromBottomPx(el) {
 function shouldFollowChatThreadOutput(el, streamingActive, autoScrollRef, userScrollPausedRef) {
   if (!el || !autoScrollRef.current || userScrollPausedRef.current) return false;
   return chatDistanceFromBottomPx(el) < chatAutoScrollBottomThresholdPx(streamingActive);
+}
+
+/**
+ * Whether to pin on content growth. While streaming, require already near bottom.
+ * After streaming / on session open, trust autoScrollRef so async layout can still reach bottom.
+ * @param {HTMLElement | null} el
+ * @param {boolean} streamingActive
+ * @param {import("react").MutableRefObject<boolean>} autoScrollRef
+ * @param {import("react").MutableRefObject<boolean>} userScrollPausedRef
+ */
+function mayPinChatOnContentGrowth(el, streamingActive, autoScrollRef, userScrollPausedRef) {
+  if (!el || userScrollPausedRef.current || !autoScrollRef.current) return false;
+  if (streamingActive) {
+    return shouldFollowChatThreadOutput(el, streamingActive, autoScrollRef, userScrollPausedRef);
+  }
+  return true;
 }
 
 /**
@@ -387,6 +404,7 @@ function forcePinChatScroll(el) {
     requestAnimationFrame(apply);
   });
 }
+
 
 /**
  * Re-pin transcript when bubble layout grows (markdown, images, virtual remeasure).
@@ -773,6 +791,9 @@ function toPersistedChatMessage(m) {
       ? { workflowNodeLabel: m.workflowNodeLabel }
       : {}),
     ...(m.workflowHandoffReply ? { workflowHandoffReply: true } : {}),
+    ...(m.htmlFenceHeights && typeof m.htmlFenceHeights === "object"
+      ? { htmlFenceHeights: sanitizeHtmlFenceHeights(m.htmlFenceHeights) }
+      : {}),
   };
 }
 
@@ -816,6 +837,7 @@ function withBackfilledCreatedAt(rows, sessionUpdatedAt) {
  */
 function mapSessionMessageRow(m, opts = {}) {
   const streaming = Boolean(opts.streaming);
+  const htmlFenceHeights = sanitizeHtmlFenceHeights(m.htmlFenceHeights);
   return {
     id: m.id,
     role: m.role,
@@ -842,6 +864,7 @@ function mapSessionMessageRow(m, opts = {}) {
     ...(m.workflowNodeId ? { workflowNodeId: m.workflowNodeId } : {}),
     ...(m.workflowNodeLabel ? { workflowNodeLabel: m.workflowNodeLabel } : {}),
     ...(m.workflowHandoffReply ? { workflowHandoffReply: true } : {}),
+    ...(htmlFenceHeights ? { htmlFenceHeights } : {}),
     streaming,
   };
 }
@@ -2199,6 +2222,32 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
     return () => window.clearTimeout(h);
   }, [messages, conversationId, gatewayStreaming, t, ephemeralSession]);
+
+  const onHtmlFenceHeightMeasured = useCallback(
+    (messageId, blockIndex, height) => {
+      if (ephemeralSession) return;
+      setMessages((prev) => {
+        let changed = false;
+        const next = prev.map((m) => {
+          if (m.id !== messageId) return m;
+          const merged = mergeHtmlFenceHeight(m.htmlFenceHeights, blockIndex, height);
+          if (!merged) return m;
+          changed = true;
+          return { ...m, htmlFenceHeights: merged };
+        });
+        return changed ? next : prev;
+      });
+    },
+    [ephemeralSession],
+  );
+
+  const onHtmlFenceLayoutReady = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        threadScrollApiRef.current?.pinAfterAsyncLayout?.();
+      });
+    });
+  }, [threadScrollApiRef]);
 
   const reloadConfig = useCallback(async () => {
     if (!bridge?.getUserConfig) {
@@ -5470,6 +5519,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                     collapseTracePanels={parallelReplyActive}
                     userDisplayName={userDisplayName}
                     userAvatarGlyph={userAvatarGlyph}
+                    onHtmlFenceHeightMeasured={onHtmlFenceHeightMeasured}
+                    onHtmlFenceLayoutReady={onHtmlFenceLayoutReady}
                   />
                 </ChatLabThreadNav>
                 <ChatLabSelectionToolbar
@@ -6041,6 +6092,9 @@ function GapToolActivityPanel({
  *   keepTraceCollapsed?: boolean;
  *   nested?: boolean;
  *   plainText?: boolean;
+ *   htmlFenceHeights?: Record<string, number>;
+ *   onHtmlFenceHeight?: (blockIndex: number, height: number) => void;
+ *   onHtmlFenceLayoutReady?: () => void;
  * }} props
  */
 const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
@@ -6056,6 +6110,9 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
   keepTraceCollapsed = false,
   nested = false,
   plainText = false,
+  htmlFenceHeights,
+  onHtmlFenceHeight,
+  onHtmlFenceLayoutReady,
 }) {
   const toolMap = useMemo(() => new Map(toolRows.map((r) => [r.id, r])), [toolRows]);
   const activityMap = useMemo(() => new Map(activityRows.map((r) => [r.id, r])), [activityRows]);
@@ -6215,7 +6272,14 @@ const AssistantInterleavedBody = memo(function AssistantInterleavedBody({
           }
           return (
             <div key={p.key} className="chat-lab__timeline-block chat-lab__timeline-block--text chat-lab__md">
-              <ChatLabMarkdownContent source={body} components={mdComponents} streaming={streaming} />
+              <ChatLabMarkdownContent
+                source={body}
+                components={mdComponents}
+                streaming={streaming}
+                htmlFenceHeights={htmlFenceHeights}
+                onHtmlFenceHeight={onHtmlFenceHeight}
+                onHtmlFenceLayoutReady={onHtmlFenceLayoutReady}
+              />
             </div>
           );
         }
@@ -7595,7 +7659,15 @@ const MessageBubble = memo(function MessageBubble({
   mentionAgents = [],
   collapseTracePanels = false,
   agents = [],
+  onHtmlFenceHeightMeasured,
+  onHtmlFenceLayoutReady,
 }) {
+  const onHtmlFenceHeight = useCallback(
+    (blockIndex, height) => {
+      onHtmlFenceHeightMeasured?.(message.id, blockIndex, height);
+    },
+    [message.id, onHtmlFenceHeightMeasured],
+  );
   const isUser = message.role === "user";
   if (message.messageKind === "group_member_event") {
     return (
@@ -8036,6 +8108,9 @@ const MessageBubble = memo(function MessageBubble({
               tailBusy={Boolean(interleavedTailBusy)}
               tailBusyLabel={streamingBusyLabel}
               keepTraceCollapsed={collapseTracePanels}
+              htmlFenceHeights={message.htmlFenceHeights}
+              onHtmlFenceHeight={onHtmlFenceHeight}
+              onHtmlFenceLayoutReady={onHtmlFenceLayoutReady}
             />
             {message.error ? (
               <div className="mt-1 text-[0.78rem]" style={{ color: "#d84b4b" }}>
@@ -8050,6 +8125,9 @@ const MessageBubble = memo(function MessageBubble({
                 source={stripSidebarActionFences(String(message.content ?? ""))}
                 components={mdComponents}
                 streaming={bubbleStreaming}
+                htmlFenceHeights={message.htmlFenceHeights}
+                onHtmlFenceHeight={onHtmlFenceHeight}
+                onHtmlFenceLayoutReady={onHtmlFenceLayoutReady}
               />
             ) : showTyping ? (
               <ChatStreamingIndicator label={streamingBusyLabel} />
@@ -8169,6 +8247,7 @@ function estimateAssistantRowHeight(m) {
   const thinkingLen = String(m?.thinking ?? "").length;
   h += Math.min(3600, Math.ceil(contentLen / 2.6));
   h += Math.min(720, Math.ceil(thinkingLen / 3));
+  h += estimateHtmlFenceLayoutExtra(String(m?.content ?? ""), m?.htmlFenceHeights);
   const tools = Array.isArray(m?.toolTrace) ? m.toolTrace.length : 0;
   const activities = Array.isArray(m?.activityLog) ? m.activityLog.length : 0;
   const timeline = Array.isArray(m?.assistantTimeline) ? m.assistantTimeline.length : 0;
@@ -8227,6 +8306,7 @@ function buildMessagesMeasureDigest(messages) {
         Array.isArray(m.activityLog) ? m.activityLog.length : 0,
         Array.isArray(m.assistantTimeline) ? m.assistantTimeline.length : 0,
         timelineContentDigest(m.assistantTimeline),
+        m.htmlFenceHeights ? JSON.stringify(m.htmlFenceHeights) : "",
       ].join(":"),
     )
     .join("|");
@@ -8412,6 +8492,8 @@ function ChatLabPlainMessageList({
   collapseTracePanels = false,
   userDisplayName,
   userAvatarGlyph,
+  onHtmlFenceHeightMeasured,
+  onHtmlFenceLayoutReady,
 }) {
   const mentionDisplayOpts = useMemo(
     () => ({ everyoneLabel: mentionEveryoneLabel, mainAgent, participantIds }),
@@ -8437,13 +8519,18 @@ function ChatLabPlainMessageList({
     : "";
 
   const canFollowPin = useCallback(() => {
-    return shouldFollowChatThreadOutput(
+    return mayPinChatOnContentGrowth(
       messagesScrollRef.current,
       streamingPinActive,
       autoScrollRef,
       userScrollPausedRef,
     );
   }, [autoScrollRef, messagesScrollRef, streamingPinActive, userScrollPausedRef]);
+
+  const pinAfterAsyncLayout = useCallback(() => {
+    if (!autoScrollRef.current) return;
+    forcePinChatScroll(messagesScrollRef.current);
+  }, [autoScrollRef, messagesScrollRef]);
 
   const handleScroll = useCallback(() => {
     syncFromScroll(messagesScrollRef.current);
@@ -8452,26 +8539,36 @@ function ChatLabPlainMessageList({
   const pinScrollRafRef = useRef(/** @type {number | null} */ (null));
   const pinPlainNow = useCallback(() => {
     const el = messagesScrollRef.current;
-    if (!el || !canFollowPin()) return;
+    if (!el || !mayPinChatOnContentGrowth(el, streamingPinActive, autoScrollRef, userScrollPausedRef)) {
+      return;
+    }
     programmaticPinRef.current = true;
     el.scrollTop = el.scrollHeight;
     requestAnimationFrame(() => {
       programmaticPinRef.current = false;
     });
-  }, [canFollowPin, messagesScrollRef, programmaticPinRef]);
+  }, [autoScrollRef, messagesScrollRef, programmaticPinRef, streamingPinActive, userScrollPausedRef]);
   const pinScrollToBottom = useCallback(() => {
     if (messages.length === 0) return;
+    const el = messagesScrollRef.current;
     schedulePinChatScroll(
-      messagesScrollRef.current,
-      canFollowPin,
+      el,
+      () => mayPinChatOnContentGrowth(el, streamingPinActive, autoScrollRef, userScrollPausedRef),
       programmaticPinRef,
       pinScrollRafRef,
       () => {
-        const el = messagesScrollRef.current;
-        if (el) el.scrollTop = el.scrollHeight;
+        const node = messagesScrollRef.current;
+        if (node) node.scrollTop = node.scrollHeight;
       },
     );
-  }, [canFollowPin, messages.length, messagesScrollRef, programmaticPinRef]);
+  }, [
+    autoScrollRef,
+    messages.length,
+    messagesScrollRef,
+    programmaticPinRef,
+    streamingPinActive,
+    userScrollPausedRef,
+  ]);
 
   usePinChatOnContentGrowth(messagesScrollRef, canFollowPin, messagesMeasureDigest, pinPlainNow);
   useStreamingChatPinLoop(streamingPinActive, canFollowPin, pinPlainNow);
@@ -8517,6 +8614,7 @@ function ChatLabPlainMessageList({
         armPin();
         forcePinChatScroll(messagesScrollRef.current);
       },
+      pinAfterAsyncLayout: pinAfterAsyncLayout,
       scrollToBottom: ({ animated = true } = {}) => {
         armPin();
         const el = messagesScrollRef.current;
@@ -8534,7 +8632,7 @@ function ChatLabPlainMessageList({
         threadScrollApiRef.current = null;
       }
     };
-  }, [armPin, messages, messagesScrollRef, threadScrollApiRef]);
+  }, [armPin, messages, messagesScrollRef, pinAfterAsyncLayout, threadScrollApiRef]);
 
   return (
     <div
@@ -8575,6 +8673,8 @@ function ChatLabPlainMessageList({
               agents={agents}
               hideAgentHead={hideAgentHead}
               embedded={embedded}
+              onHtmlFenceHeightMeasured={onHtmlFenceHeightMeasured}
+              onHtmlFenceLayoutReady={onHtmlFenceLayoutReady}
             />
           );
         };
@@ -8665,6 +8765,8 @@ function ChatLabVirtualMessageList({
   collapseTracePanels = false,
   userDisplayName,
   userAvatarGlyph,
+  onHtmlFenceHeightMeasured,
+  onHtmlFenceLayoutReady,
 }) {
   const mentionDisplayOpts = useMemo(
     () => ({ everyoneLabel: mentionEveryoneLabel, mainAgent, participantIds }),
@@ -8711,7 +8813,7 @@ function ChatLabVirtualMessageList({
   const prevGatewayStreamingRef = useRef(gatewayStreaming);
 
   const canFollowPin = useCallback(() => {
-    return shouldFollowChatThreadOutput(
+    return mayPinChatOnContentGrowth(
       messagesScrollRef.current,
       streamingPinActive,
       autoScrollRef,
@@ -8793,10 +8895,17 @@ function ChatLabVirtualMessageList({
   }, []);
 
   const pinVirtualRafRef = useRef(/** @type {number | null} */ (null));
+  const pinAfterAsyncLayoutRafRef = useRef(/** @type {number | null} */ (null));
   const pinVirtualToBottom = useCallback(() => {
-    if (!canFollowPin() || renderItemsRef.current.length === 0) return;
+    const el = messagesScrollRef.current;
+    if (
+      !mayPinChatOnContentGrowth(el, streamingPinActive, autoScrollRef, userScrollPausedRef) ||
+      renderItemsRef.current.length === 0
+    ) {
+      return;
+    }
     const run = () => {
-      if (!canFollowPin()) return;
+      if (!mayPinChatOnContentGrowth(el, streamingPinActive, autoScrollRef, userScrollPausedRef)) return;
       const count = renderItemsRef.current.length;
       if (count === 0) return;
       programmaticPinRef.current = true;
@@ -8813,7 +8922,7 @@ function ChatLabVirtualMessageList({
       run();
       requestAnimationFrame(run);
     });
-  }, [canFollowPin, programmaticPinRef]);
+  }, [autoScrollRef, programmaticPinRef, streamingPinActive, userScrollPausedRef]);
 
   const handleScroll = useCallback(() => {
     syncFromScroll(messagesScrollRef.current);
@@ -8905,15 +9014,29 @@ function ChatLabVirtualMessageList({
     const count = renderItemsRef.current.length;
     if (count === 0) return;
     const run = () => {
+      programmaticPinRef.current = true;
       vInstRef.current.measure();
       vInstRef.current.scrollToIndex(count - 1, { align: "end", behavior: "instant" });
     };
     run();
     requestAnimationFrame(() => {
       run();
-      requestAnimationFrame(run);
+      requestAnimationFrame(() => {
+        run();
+        programmaticPinRef.current = false;
+      });
     });
-  }, []);
+  }, [programmaticPinRef]);
+
+  const pinAfterAsyncLayout = useCallback(() => {
+    if (!autoScrollRef.current) return;
+    if (pinAfterAsyncLayoutRafRef.current != null) return;
+    pinAfterAsyncLayoutRafRef.current = requestAnimationFrame(() => {
+      pinAfterAsyncLayoutRafRef.current = null;
+      if (!autoScrollRef.current) return;
+      forcePinVirtualToBottom();
+    });
+  }, [autoScrollRef, forcePinVirtualToBottom]);
 
   useLayoutEffect(() => {
     if (!conversationId || renderItems.length === 0) return;
@@ -8952,14 +9075,18 @@ function ChatLabVirtualMessageList({
     const raf = requestAnimationFrame(() => {
       vInstRef.current.measure();
       if (
-        canFollowPin() &&
+        autoScrollRef.current &&
         renderItemsRef.current.length > 0
       ) {
+        programmaticPinRef.current = true;
         vInstRef.current.scrollToIndex(renderItemsRef.current.length - 1, { align: "end", behavior: "instant" });
+        requestAnimationFrame(() => {
+          programmaticPinRef.current = false;
+        });
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [gatewayStreaming, canFollowPin]);
+  }, [gatewayStreaming, autoScrollRef, programmaticPinRef]);
 
   useLayoutEffect(() => {
     if (!remeasureKey || renderItems.length === 0) return;
@@ -8997,6 +9124,7 @@ function ChatLabVirtualMessageList({
         armPin();
         forcePinVirtualToBottom();
       },
+      pinAfterAsyncLayout: pinAfterAsyncLayout,
       scrollToBottom: ({ animated = true } = {}) => {
         armPin();
         const count = renderItemsRef.current.length;
@@ -9021,7 +9149,7 @@ function ChatLabVirtualMessageList({
         threadScrollApiRef.current = null;
       }
     };
-  }, [armPin, messages, messagesScrollRef, threadScrollApiRef]);
+  }, [armPin, forcePinVirtualToBottom, messages, messagesScrollRef, pinAfterAsyncLayout, threadScrollApiRef]);
 
   return (
     <>
@@ -9073,6 +9201,8 @@ function ChatLabVirtualMessageList({
                   agents={agents}
                   hideAgentHead={hideAgentHead}
                   embedded={embedded}
+                  onHtmlFenceHeightMeasured={onHtmlFenceHeightMeasured}
+                  onHtmlFenceLayoutReady={onHtmlFenceLayoutReady}
                 />
               );
             };

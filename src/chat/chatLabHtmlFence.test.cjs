@@ -14,6 +14,7 @@ test("wrapHtmlFenceForInlineSrcDoc wraps fragments and injects resize bootstrap"
   assert.match(doc, /color-scheme:light/);
   assert.match(doc, new RegExp(INLINE_HTML_FENCE_MESSAGE_CHANNEL));
   assert.match(doc, /ResizeObserver/);
+  assert.match(doc, /unhandledrejection/);
 });
 
 test("wrapHtmlFenceForInlineSrcDoc injects dark theme tokens", async () => {

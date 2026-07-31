@@ -9,6 +9,25 @@ test("repairHtmlCodeFences closes unclosed html fence", async () => {
   assert.equal((out.match(/```/g) || []).length, 2);
 });
 
+test("repairHtmlCodeFences keeps html fence open while streaming", async () => {
+  const { repairHtmlCodeFences } = await import("./chatLabMarkdownHtmlFenceRepair.js");
+  const source = ["Intro", "", "```html", "<div>partial"].join("\n");
+  const out = repairHtmlCodeFences(source, { streaming: true });
+  assert.match(out, /<div>partial/);
+  assert.equal((out.match(/```/g) || []).length, 1);
+});
+
+test("segmentMarkdownContentBlocks keeps streaming html out of prose", async () => {
+  const { segmentMarkdownContentBlocks } = await import("./chatLabMarkdownImageGrid.js");
+  const source = ["Before", "", "```html", "<table><tr><td>A"].join("\n");
+  const blocks = segmentMarkdownContentBlocks(source, { streaming: true });
+  assert.equal(blocks.filter((b) => b.kind === "html").length, 1);
+  assert.equal(blocks.filter((b) => b.kind === "prose").length, 1);
+  const prose = blocks.find((b) => b.kind === "prose")?.body ?? "";
+  assert.doesNotMatch(prose, /<table>/);
+  assert.match(blocks.find((b) => b.kind === "html")?.body ?? "", /<table>/);
+});
+
 test("repairHtmlMarkdownForRender does not alter html body", async () => {
   const { repairHtmlMarkdownForRender } = await import("./chatLabMarkdownHtmlFenceRepair.js");
   const html = [

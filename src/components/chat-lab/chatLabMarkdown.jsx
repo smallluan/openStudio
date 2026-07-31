@@ -18,6 +18,7 @@ import { cn } from "../../ui/cn.js";
 import Image from "../../ui/Image.jsx";
 import FluidTabBar from "../../ui/FluidTabBar.jsx";
 import { ChatLabPreviewContext } from "../../context/ChatLabPreviewContext.jsx";
+import { useI18n } from "../../context/I18nContext.jsx";
 import { csvToHtmlDocument, svgToHtmlDocument } from "../../chat/chatLabDocumentPreview.js";
 import {
   getChatLabMermaidConfig,
@@ -285,19 +286,35 @@ function FenceViewToggle({ value, onChange, t }) {
   );
 }
 
+function isMermaidErrorSvg(svg) {
+  return /Syntax error in text|class=["']error-icon["']|error-text/i.test(String(svg ?? ""));
+}
+
 /** @param {{ code: string; theme: "light" | "dark" }} props */
 function MermaidFenceView({ code, theme }) {
+  const { t } = useI18n();
   const reactId = useId();
   const renderId = useMemo(() => `mmd-${reactId.replace(/:/g, "")}`, [reactId]);
   const cacheKey = useMemo(() => mermaidCacheKey(theme, code), [theme, code]);
-  const [svg, setSvg] = useState(() => MERMAID_SVG_CACHE.get(cacheKey) ?? "");
-  const [error, setError] = useState("");
+  const [svg, setSvg] = useState(() => {
+    const cached = MERMAID_SVG_CACHE.get(cacheKey) ?? "";
+    return cached && !isMermaidErrorSvg(cached) ? cached : "";
+  });
+  const [error, setError] = useState(() => {
+    const cached = MERMAID_SVG_CACHE.get(cacheKey) ?? "";
+    return cached && isMermaidErrorSvg(cached) ? t("chatLab.mermaidSyntaxError") : "";
+  });
 
   useEffect(() => {
     const cached = MERMAID_SVG_CACHE.get(cacheKey);
     if (cached) {
-      setSvg(cached);
-      setError("");
+      if (isMermaidErrorSvg(cached)) {
+        setSvg("");
+        setError(t("chatLab.mermaidSyntaxError"));
+      } else {
+        setSvg(cached);
+        setError("");
+      }
       return undefined;
     }
 
@@ -310,19 +327,22 @@ function MermaidFenceView({ code, theme }) {
       })
       .then(({ svg: nextSvg }) => {
         if (cancelled) return;
+        if (isMermaidErrorSvg(nextSvg)) {
+          throw new Error(t("chatLab.mermaidSyntaxError"));
+        }
         const styledSvg = stylizeFlowchartSvg(nextSvg, theme);
         MERMAID_SVG_CACHE.set(cacheKey, styledSvg);
         setSvg(styledSvg);
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(String(err?.message ?? err ?? "Mermaid render failed"));
+          setError(String(err?.message ?? err ?? t("chatLab.mermaidSyntaxError")));
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [cacheKey, code, renderId, theme]);
+  }, [cacheKey, code, renderId, theme, t]);
 
   if (error) {
     return <p className="chat-lab__code-render-error">{error}</p>;
