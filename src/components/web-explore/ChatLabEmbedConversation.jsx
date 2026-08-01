@@ -17,6 +17,11 @@ import { ChatLabPageMain } from "../../pages/ChatLabPage.jsx";
  *   floatOpen?: boolean;
  *   onToggleFloatOpen?: () => void;
  *   onStartFloatDrag?: (e: import("react").PointerEvent<HTMLElement>) => void;
+ *   webExploreNavigation?: {
+ *     onBack: () => void;
+ *     onForward: () => void;
+ *     onReload: () => void;
+ *   };
  *   className?: string;
  * }} props
  */
@@ -30,6 +35,7 @@ export default function ChatLabEmbedConversation({
   floatOpen = true,
   onToggleFloatOpen,
   onStartFloatDrag,
+  webExploreNavigation,
   className,
 }) {
   const conversationIdRef = useRef(newWebExploreConversationId());
@@ -72,6 +78,7 @@ export default function ChatLabEmbedConversation({
             chatFloatOpen: floatOpen,
             onToggleFloatOpen,
             onStartFloatDrag,
+            webExploreNavigation,
             className,
           }}
         />

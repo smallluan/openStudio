@@ -1,4 +1,4 @@
-import { Maximize2, Minimize2, PanelRight, Route } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, PanelRight, RefreshCw, Route } from "lucide-react";
 import { Button, Popup } from "tdesign-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { buildUserTurnAnchors, pauseChatThreadPin, scrollThreadToMessage } from "../../chat/chatLabThreadScroll.js";
@@ -7,6 +7,14 @@ import { useI18n } from "../../context/I18nContext.jsx";
 import { OS_POPUP_INNER_CLASS, OS_POPUP_OVERLAY_CLASS, osPopupPopperOptions } from "../../ui/osPopupShared.js";
 import { cn } from "../../ui/cn.js";
 import ChatLabParticipantBar from "./ChatLabParticipantBar.jsx";
+
+/**
+ * @typedef {{
+ *   onBack: () => void;
+ *   onForward: () => void;
+ *   onReload: () => void;
+ * }} WebExploreNavigation
+ */
 
 /**
  * Conversation title bar with group members and turn-navigation icons.
@@ -28,6 +36,7 @@ import ChatLabParticipantBar from "./ChatLabParticipantBar.jsx";
  *   floatOpen?: boolean;
  *   onToggleFloatOpen?: () => void;
  *   onStartFloatDrag?: (e: import("react").PointerEvent<HTMLElement>) => void;
+ *   webExploreNavigation?: WebExploreNavigation;
  * }} props
  */
 export default function ChatLabConvHeader({
@@ -47,6 +56,7 @@ export default function ChatLabConvHeader({
   floatOpen = true,
   onToggleFloatOpen,
   onStartFloatDrag,
+  webExploreNavigation,
 }) {
   const { t } = useI18n();
   const preview = useChatLabPreview();
@@ -150,6 +160,46 @@ export default function ChatLabConvHeader({
 
   return (
     <header className="chat-lab__conv-header" onPointerDown={handleHeaderPointerDown}>
+      {webExploreNavigation ? (
+        <div className="chat-lab__web-explore-nav" onPointerDown={(e) => e.stopPropagation()}>
+          <Button
+            variant="text"
+            shape="square"
+            size="small"
+            type="button"
+            className="chat-lab__turn-nav-icon-btn"
+            aria-label={t("webExploreChat.back")}
+            title={t("webExploreChat.back")}
+            onClick={webExploreNavigation.onBack}
+          >
+            <ChevronLeft size={16} strokeWidth={2.1} aria-hidden />
+          </Button>
+          <Button
+            variant="text"
+            shape="square"
+            size="small"
+            type="button"
+            className="chat-lab__turn-nav-icon-btn"
+            aria-label={t("webExploreChat.forward")}
+            title={t("webExploreChat.forward")}
+            onClick={webExploreNavigation.onForward}
+          >
+            <ChevronRight size={16} strokeWidth={2.1} aria-hidden />
+          </Button>
+          <Button
+            variant="text"
+            shape="square"
+            size="small"
+            type="button"
+            className="chat-lab__turn-nav-icon-btn"
+            aria-label={t("chatLab.previewReload")}
+            title={t("chatLab.previewReload")}
+            onClick={webExploreNavigation.onReload}
+          >
+            <RefreshCw size={15} strokeWidth={2.1} aria-hidden />
+          </Button>
+        </div>
+      ) : null}
       <div className="chat-lab__header-actions" onPointerDown={(e) => e.stopPropagation()}>
         {showParticipants ? (
           <ChatLabParticipantBar

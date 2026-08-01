@@ -535,6 +535,8 @@
     "streaming": "Thinking…",
     "automationRunning": "Automating the page…",
     "minimize": "Minimize",
+    "back": "Back",
+    "forward": "Forward",
     "enterHint": "Enter to send · Shift+Enter for newline",
     "dragHandle": "Drag panel",
     "resizeHandle": "Resize panel",

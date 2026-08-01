@@ -5488,6 +5488,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                   floatOpen={embedMode?.chatFloatOpen !== false}
                   onToggleFloatOpen={embedMode?.onToggleFloatOpen}
                   onStartFloatDrag={embedMode?.onStartFloatDrag}
+                  webExploreNavigation={embedMode?.webExploreNavigation}
                 />
                 <div className="chat-lab__landing-mid">
                   <ChatLabHero
@@ -5517,6 +5518,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                   floatOpen={embedMode?.chatFloatOpen !== false}
                   onToggleFloatOpen={embedMode?.onToggleFloatOpen}
                   onStartFloatDrag={embedMode?.onStartFloatDrag}
+                  webExploreNavigation={embedMode?.webExploreNavigation}
                 >
                   <ChatLabMessageList
                     key={conversationId}

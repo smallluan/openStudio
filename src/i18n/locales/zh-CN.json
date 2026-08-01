@@ -535,6 +535,8 @@
     "streaming": "思考中…",
     "automationRunning": "正在自动化操作页面",
     "minimize": "收起",
+    "back": "上一页",
+    "forward": "下一页",
     "enterHint": "Enter 发送 · Shift+Enter 换行",
     "dragHandle": "拖动面板",
     "resizeHandle": "调整大小",

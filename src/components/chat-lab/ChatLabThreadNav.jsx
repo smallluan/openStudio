@@ -27,6 +27,7 @@ import ChatLabConvHeader from "./ChatLabConvHeader.jsx";
  *   floatOpen?: boolean;
  *   onToggleFloatOpen?: () => void;
  *   onStartFloatDrag?: (e: import("react").PointerEvent<HTMLElement>) => void;
+ *   webExploreNavigation?: import("./ChatLabConvHeader.jsx").WebExploreNavigation;
  *   children: import("react").ReactNode;
  * }} props
  */
@@ -45,6 +46,7 @@ export default function ChatLabThreadNav({
   floatOpen = true,
   onToggleFloatOpen,
   onStartFloatDrag,
+  webExploreNavigation,
   children,
 }) {
   const { t } = useI18n();
@@ -129,6 +131,7 @@ export default function ChatLabThreadNav({
     floatOpen,
     onToggleFloatOpen,
     onStartFloatDrag,
+    webExploreNavigation,
   };
 
   return (

@@ -72,6 +72,66 @@ function previewTabUrlsMatch(a, b) {
 }
 
 /**
+ * Wait for the Electron guest to expose a usable document before reporting
+ * browser_open success. The renderer ref can exist before the guest finishes
+ * mounting, so checking only `webviewRef.current` is not sufficient.
+ *
+ * @param {HTMLElement | null} node
+ * @param {string} expectedUrl
+ * @param {number} [timeoutMs]
+ * @returns {Promise<{ ready: boolean; url?: string; error?: string }>}
+ */
+function waitForPreviewWebviewReady(node, expectedUrl, timeoutMs = 15000) {
+  if (!node || typeof /** @type {any} */ (node).addEventListener !== "function") {
+    return Promise.resolve({ ready: false, error: "webview_unavailable" });
+  }
+  /** @type {import("electron").WebviewTag} */
+  const webview = /** @type {import("electron").WebviewTag} */ (node);
+  const target = String(expectedUrl ?? "").trim();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      webview.removeEventListener("dom-ready", onReady);
+      webview.removeEventListener("did-finish-load", onReady);
+      webview.removeEventListener("did-fail-load", onFail);
+      resolve(result);
+    };
+    const readUrl = () => {
+      try {
+        return String(webview.getURL?.() ?? "").trim();
+      } catch {
+        return "";
+      }
+    };
+    const onReady = () => {
+      const url = readUrl();
+      if (!url || url === "about:blank" || (target && !previewTabUrlsMatch(url, target) && webview.isLoading?.())) {
+        return;
+      }
+      finish({ ready: true, url });
+    };
+    const onFail = (event) => {
+      if (Number(event?.errorCode) === -3) return;
+      finish({
+        ready: false,
+        url: readUrl(),
+        error: String(event?.errorDescription ?? event?.errorCode ?? "webview_load_failed"),
+      });
+    };
+    const timer = window.setTimeout(() => {
+      finish({ ready: false, url: readUrl(), error: "webview_ready_timeout" });
+    }, timeoutMs);
+    webview.addEventListener("dom-ready", onReady);
+    webview.addEventListener("did-finish-load", onReady);
+    webview.addEventListener("did-fail-load", onFail);
+    onReady();
+  });
+}
+
+/**
  * @param {string} tabId
  */
 function previewFrameKeyForTab(tabId) {
@@ -1517,15 +1577,28 @@ export function ChatLabPreviewProvider({
         return { ok: false, error: "open_failed", url: resolved, message: "Could not open URL in preview panel" };
       }
       dispatchDockFocus({ url: resolved, title, source: "browser_open" });
+      const readiness = await waitForPreviewWebviewReady(webviewRef.current, resolved);
+      if (!readiness.ready) {
+        return {
+          ok: false,
+          error: readiness.error ?? "webview_not_ready",
+          url: readiness.url ?? resolved,
+          title,
+          dockOpen: true,
+          message:
+            "The preview panel opened, but the page did not become ready for browser_action. Retry after the page finishes loading.",
+        };
+      }
       return {
         ok: true,
         url: resolved,
         title,
         dockOpen: true,
-        message: "URL opened in the Open Studio right preview panel (sidebar). The panel should be visible now.",
+        ready: true,
+        message: "URL opened and finished loading in the Open Studio right preview panel. browser_action can continue.",
       };
     },
-    [dispatchDockFocus, embedPreview, showWebPreviewAtUrl],
+    [dispatchDockFocus, embedPreview, showWebPreviewAtUrl, webviewRef],
   );
 
   const closePreviewTab = useCallback(

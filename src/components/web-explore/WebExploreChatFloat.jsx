@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@open-studio/udesign";
+import { ChevronLeft, ChevronRight, Maximize2, RefreshCw } from "lucide-react";
 import heroAvatarLight from "../../assets/images/hero-avatar-light.png";
 import heroAvatarDark from "../../assets/images/hero-avatar-dark.png";
 import { useI18n } from "../../context/I18nContext.jsx";
@@ -10,7 +11,7 @@ import ChatLabEmbedConversation from "./ChatLabEmbedConversation.jsx";
 const POS_STORAGE_KEY = "openstudio_web_explore_chat_float_pos_v2";
 const SIZE_STORAGE_KEY = "openstudio_web_explore_chat_float_size_v1";
 const OPEN_STORAGE_KEY = "openstudio_web_explore_chat_float_open_v1";
-const LAUNCHER_W = 48;
+const LAUNCHER_W = 188;
 const LAUNCHER_H = 48;
 const DEFAULT_W = 440;
 const DEFAULT_H = 560;
@@ -448,6 +449,56 @@ export default function WebExploreChatFloat({
     setOpenAnchored(!openRef.current);
   }, [setOpenAnchored]);
 
+  const navigateHistory = useCallback(
+    (direction) => {
+      const node = webviewRef.current;
+      if (inElectron && node) {
+        try {
+          const webview = /** @type {import("electron").WebviewTag} */ (/** @type {unknown} */ (node));
+          if (direction === "back" && webview.canGoBack?.()) webview.goBack();
+          if (direction === "forward" && webview.canGoForward?.()) webview.goForward();
+          return;
+        } catch {
+          /* fall through to iframe history */
+        }
+      }
+      const frame = iframeRef.current;
+      try {
+        if (direction === "back") frame?.contentWindow?.history.back();
+        if (direction === "forward") frame?.contentWindow?.history.forward();
+      } catch {
+        /* cross-origin history may be unavailable */
+      }
+    },
+    [iframeRef, inElectron, webviewRef],
+  );
+
+  const reloadPage = useCallback(() => {
+    if (inElectron && webviewRef.current) {
+      try {
+        /** @type {import("electron").WebviewTag} */
+        const webview = /** @type {import("electron").WebviewTag} */ (
+          /** @type {unknown} */ (webviewRef.current)
+        );
+        webview.reload?.();
+        return;
+      } catch {
+        /* fall through to iframe reload */
+      }
+    }
+    try {
+      iframeRef.current?.contentWindow?.location.reload();
+    } catch {
+      /* cross-origin reload may be unavailable */
+    }
+  }, [iframeRef, inElectron, webviewRef]);
+
+  const webExploreNavigation = {
+    onBack: () => navigateHistory("back"),
+    onForward: () => navigateHistory("forward"),
+    onReload: reloadPage,
+  };
+
   const openWidth = open ? panelSize.w : LAUNCHER_W;
 
   return (
@@ -458,35 +509,95 @@ export default function WebExploreChatFloat({
         dragging && "web-explore-chat-float--dragging",
         resizing && "web-explore-chat-float--resizing",
       )}
-      style={{ left: `${pos.x}px`, top: `${pos.y}px`, width: `${openWidth}px` }}
+      style={{
+        left: `${pos.x}px`,
+        top: `${pos.y}px`,
+        width: `${openWidth}px`,
+        height: `${open ? panelSize.h : LAUNCHER_H}px`,
+      }}
     >
-      {!open ? (
-        <Button
-          type="button"
-          variant="text"
-          size="small"
-          className={cn(
-            "web-explore-chat-float__launcher",
-            dragging && "web-explore-chat-float__launcher--dragging",
-          )}
-          onPointerDown={startDrag}
-          onClick={() => {
-            if (dragRef.current.moved) return;
-            if (Date.now() < suppressLauncherClickUntilRef.current) return;
-            setOpenAnchored(true);
-          }}
-          title={t("webExploreChat.launcher")}
-          aria-label={t("webExploreChat.launcher")}
-        >
+      <div
+        className={cn(
+          "web-explore-chat-float__launcher-bar",
+          open && "web-explore-chat-float__launcher-bar--hidden",
+        )}
+        aria-hidden={open}
+        onPointerDown={startDrag}
+      >
           <img
-            className="web-explore-chat-float__launcher-icon"
+            className={cn(
+              "web-explore-chat-float__launcher-bar-logo",
+              dragging && "web-explore-chat-float__launcher--dragging",
+            )}
             src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
-            alt=""
+            alt={t("webExploreChat.launcher")}
             draggable={false}
-            aria-hidden
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              if (dragRef.current.moved) return;
+              if (Date.now() < suppressLauncherClickUntilRef.current) return;
+              setOpenAnchored(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              setOpenAnchored(true);
+            }}
+            title={t("webExploreChat.launcher")}
           />
-        </Button>
-      ) : null}
+          <div className="web-explore-chat-float__launcher-nav" onPointerDown={(e) => e.stopPropagation()}>
+            <Button
+              type="button"
+              variant="text"
+              shape="square"
+              size="small"
+              className="web-explore-chat-float__launcher-nav-btn"
+              onClick={() => navigateHistory("back")}
+              title={t("webExploreChat.back")}
+              aria-label={t("webExploreChat.back")}
+            >
+              <ChevronLeft size={16} strokeWidth={2.1} aria-hidden />
+            </Button>
+            <Button
+              type="button"
+              variant="text"
+              shape="square"
+              size="small"
+              className="web-explore-chat-float__launcher-nav-btn"
+              onClick={() => navigateHistory("forward")}
+              title={t("webExploreChat.forward")}
+              aria-label={t("webExploreChat.forward")}
+            >
+              <ChevronRight size={16} strokeWidth={2.1} aria-hidden />
+            </Button>
+            <Button
+              type="button"
+              variant="text"
+              shape="square"
+              size="small"
+              className="web-explore-chat-float__launcher-nav-btn"
+              onClick={reloadPage}
+              title={t("chatLab.previewReload")}
+              aria-label={t("chatLab.previewReload")}
+            >
+              <RefreshCw size={15} strokeWidth={2.1} aria-hidden />
+            </Button>
+          </div>
+          <Button
+            type="button"
+            variant="text"
+            shape="square"
+            size="small"
+            className="web-explore-chat-float__launcher-nav-btn"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => setOpenAnchored(true)}
+            title={t("webExploreChat.launcher")}
+            aria-label={t("webExploreChat.launcher")}
+          >
+            <Maximize2 size={15} strokeWidth={2.1} aria-hidden />
+          </Button>
+      </div>
 
       <section
         className={cn("web-explore-chat-float__panel", !open && "web-explore-chat-float__panel--hidden")}
@@ -505,6 +616,7 @@ export default function WebExploreChatFloat({
             floatOpen={open}
             onToggleFloatOpen={toggleFloatOpen}
             onStartFloatDrag={startDrag}
+            webExploreNavigation={webExploreNavigation}
             className="chat-lab--web-explore-embed"
           />
         </div>
