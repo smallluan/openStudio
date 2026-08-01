@@ -171,7 +171,9 @@ import { ChatLabContextMeter } from "../components/chat-lab/ChatLabContextMeter.
 import {
   filterSkillPickList,
   listSkillsForPicker,
+  browserDomPolicyFromSkillContent,
   pickRowFromSkillMeta,
+  browserDomPolicyFromPickRow,
   skillMetaFromPickRow,
   skillPickRowToPayload,
 } from "../skills/skillRegistry.js";
@@ -1464,7 +1466,11 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   const previewApi = useChatLabPreview();
 
   const activeRootRef = useRef(/** @type {string | null} */ (null));
-  const previewSnapshotRef = useRef(/** @type {(() => Promise<string>) | null} */ (null));
+  const previewSnapshotRef = useRef(
+    /** @type {((opts?: { domRead?: string }) => Promise<string>) | null} */ (null),
+  );
+  const browserDomPolicyRef = useRef(/** @type {"auto" | "selector-only" | "full"} */ ("full"));
+  const browserDomPolicyReadyRef = useRef(Promise.resolve());
   const sidebarAutomationContinueCountRef = useRef(0);
   /** @type {import("react").MutableRefObject<string>} */
   const sidebarAutomationContinueAnchorRef = useRef("");
@@ -1476,6 +1482,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     [bridge, t],
   );
   const resolvePreviewContextBlock = useCallback(async () => {
+    await browserDomPolicyReadyRef.current;
     if (webExploreEmbed) {
       const activeUrl = String(embedMode?.activeUrl ?? "").trim();
       const pageTitle = String(embedMode?.pageTitle ?? "").trim();
@@ -1501,7 +1508,11 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
 
       try {
         if (previewApi?.captureSidebarContextBlock) {
-          const fromCtx = String((await previewApi.captureSidebarContextBlock()) ?? "").trim();
+          const fromCtx = String(
+            (await previewApi.captureSidebarContextBlock({
+              domRead: browserDomPolicyRef.current === "selector-only" ? "metadata" : "full",
+            })) ?? "",
+          ).trim();
           if (fromCtx) return fromCtx;
         }
       } catch {
@@ -1519,6 +1530,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           webviewRef,
           iframeRef,
           forceSidebar: true,
+          domRead: browserDomPolicyRef.current === "selector-only" ? "metadata" : "full",
         });
         const composed = composeChatLabPreviewContextBlock(t, snap, { webExploreMode: true });
         if (composed) return composed;
@@ -1532,7 +1544,9 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     const capture = previewSnapshotRef.current ?? previewApi?.captureSidebarContextBlock ?? null;
     if (!capture) return "";
     try {
-      return await capture();
+      return await capture({
+        domRead: browserDomPolicyRef.current === "selector-only" ? "metadata" : "full",
+      });
     } catch {
       return "";
     }
@@ -1587,6 +1601,45 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   const [composerSkillRow, setComposerSkillRow] = useState(
     /** @type {import("../skills/skillRegistry.js").SkillPickRow | null} */ (null),
   );
+  useEffect(() => {
+    let cancelled = false;
+    const directPolicy = browserDomPolicyFromPickRow(composerSkillRow);
+    if (directPolicy) {
+      browserDomPolicyRef.current = directPolicy;
+      browserDomPolicyReadyRef.current = Promise.resolve();
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (!composerSkillRow || !bridge?.readSkillFile) {
+      browserDomPolicyRef.current = "full";
+      browserDomPolicyReadyRef.current = Promise.resolve();
+      return () => {
+        cancelled = true;
+      };
+    }
+    browserDomPolicyRef.current = "full";
+    const pending = Promise.resolve()
+      .then(() =>
+        bridge.readSkillFile({
+          kind: composerSkillRow.kind,
+          localPath: composerSkillRow.localPath,
+          skillId: composerSkillRow.kind === "openclaw" ? composerSkillRow.slug : undefined,
+        }),
+      )
+      .then((result) => {
+        if (cancelled) return;
+        const policy = browserDomPolicyFromSkillContent(result?.content) ?? "full";
+        browserDomPolicyRef.current = policy;
+      })
+      .catch(() => {
+        if (!cancelled) browserDomPolicyRef.current = "full";
+      });
+    browserDomPolicyReadyRef.current = pending;
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, composerSkillRow]);
   const [composerWorkflowId, setComposerWorkflowId] = useState("");
   const [workflowRuntimeState, setWorkflowRuntimeState] = useState(
     /** @type {import("../workflow/workflowRuntimeRegistry.js").WorkflowSessionRuntimeState | null} */ (null),

@@ -21,6 +21,7 @@ export function useSkillLibrary() {
       description: partial.description ?? "",
       categoryId: partial.categoryId,
       localPath: partial.localPath,
+      browserDomPolicy: partial.browserDomPolicy,
       fromNl: partial.fromNl ?? false,
       createdAt: Date.now(),
     };

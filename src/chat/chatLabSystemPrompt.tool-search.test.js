@@ -7,6 +7,7 @@ import {
 
 const EN = {
   "chatLab.toolSearchPrompt": "## Tool discovery\ntool_search → tool_describe → tool_call",
+  "chatLab.windowsShellPrompt": "## Windows shell\nNever use `&&` or `||` in PowerShell.",
   "chatLab.toolSearchUserTurnHint": "**Tool Search**: use tool_search first",
   "chatLab.imageDisplayPrompt": "## images",
   "chatLab.chartDisplayPrompt": "## charts",
@@ -31,6 +32,7 @@ describe("composeChatLabStudioSuffix tool search", () => {
     assert.match(suffix, /git_grep/);
     assert.match(suffix, /workspace_glob/);
     assert.match(suffix, /browser_open/);
+    assert.match(suffix, /Never use `&&` or `\|\|` in PowerShell/);
     assert.ok(suffix.indexOf("Tool discovery") < suffix.indexOf("## images"));
   });
 });
@@ -38,5 +40,6 @@ describe("composeChatLabStudioSuffix tool search", () => {
 describe("composeToolSearchUserTurnHint", () => {
   it("returns the short per-turn reminder", () => {
     assert.match(composeToolSearchUserTurnHint(t), /tool_search first/);
+    assert.match(composeToolSearchUserTurnHint(t), /Never use `&&` or `\|\|` in PowerShell/);
   });
 });

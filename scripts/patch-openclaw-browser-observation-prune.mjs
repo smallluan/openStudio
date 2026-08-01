@@ -2,8 +2,8 @@
  * Inject browser_action DOM pruning into OpenClaw prompt assembly.
  *
  * Hooks `truncateOversizedToolResultsInMessages` so every LLM request drops
- * stale page inventories while keeping action trails. Optionally extends the
- * native `browser_action` tool schema with `retainPriorPageDom`.
+ * stale page inventories while keeping action trails. Extends the native
+ * `browser_action` tool schema with `retainPriorPageDom` and layered `domRead`.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -91,7 +91,7 @@ function patchBrowserActionToolSchema() {
     return false;
   }
   let src = fs.readFileSync(target, "utf8");
-  if (src.includes(TOOL_PARAM_TOKEN)) {
+  if (src.includes(TOOL_PARAM_TOKEN) && src.includes("domRead: Type.Optional")) {
     console.log("[patch-openclaw-browser-observation-prune] browser_action retain param already applied");
     return true;
   }
@@ -109,28 +109,17 @@ function patchBrowserActionToolSchema() {
 				description: "Short observe→act batch (max 5 steps)"
 			})
 		}),`;
-
-  if (!src.includes(realNeedleStart)) {
-    console.warn(
-      "[patch-openclaw-browser-observation-prune] skip — browser_action parameters needle missing",
-    );
-    return false;
-  }
-
-  const bodyNeedle = "body: JSON.stringify({ steps }),";
-  // There may be multiple tools with similar body - scope to browser_action by requiring nearby marker
-  const toolIdx = src.indexOf("OPEN_STUDIO_BROWSER_ACTION_TOOL");
-  const slice = src.slice(toolIdx, toolIdx + 3500);
-  if (!slice.includes(bodyNeedle)) {
-    console.warn(
-      "[patch-openclaw-browser-observation-prune] skip — browser_action fetch body needle missing",
-    );
-    return false;
-  }
-
-  src = src.replace(
-    realNeedleStart,
-    `parameters: Type.Object({
+  const domReadNeedleStart = `parameters: Type.Object({
+			steps: Type.Array(stepSchema, {
+				minItems: 1,
+				maxItems: 5,
+				description: "Short observe→act batch (max 5 steps)"
+			}),
+			domRead: Type.Optional(Type.String({
+				description: "DOM read level: auto (default), none, metadata, target, inventory, or full. auto skips unrelated page DOM when steps use explicit selectors."
+			}))
+		}),`;
+  const retainedNeedleStart = `parameters: Type.Object({
 			steps: Type.Array(stepSchema, {
 				minItems: 1,
 				maxItems: 5,
@@ -139,15 +128,73 @@ function patchBrowserActionToolSchema() {
 			retainPriorPageDom: Type.Optional(Type.Boolean({
 				description: "Keep the previous page's DOM inventory in context (rare; default strips prior page DOM after navigation)"
 			}))
-		}, { additionalProperties: true }), /* ${TOOL_PARAM_TOKEN} */`,
-  );
+		}, { additionalProperties: true }),`;
+
+  if (!src.includes(realNeedleStart) && !src.includes(domReadNeedleStart) && !src.includes(retainedNeedleStart)) {
+    console.warn(
+      "[patch-openclaw-browser-observation-prune] skip — browser_action parameters needle missing",
+    );
+    return false;
+  }
+
+  // There may be multiple tools with similar body - scope to browser_action by requiring nearby marker
+  const toolIdx = src.indexOf("OPEN_STUDIO_BROWSER_ACTION_TOOL");
+  const slice = src.slice(toolIdx, toolIdx + 3500);
+  if (
+    !slice.includes("body: JSON.stringify({ steps }),") &&
+    !slice.includes("body: JSON.stringify({ steps, domRead:") &&
+    !slice.includes("body: JSON.stringify({")
+  ) {
+    console.warn(
+      "[patch-openclaw-browser-observation-prune] skip — browser_action fetch body needle missing",
+    );
+    return false;
+  }
+
+  const desiredSchema = `parameters: Type.Object({
+			steps: Type.Array(stepSchema, {
+				minItems: 1,
+				maxItems: 5,
+				description: "Short observe→act batch (max 5 steps)"
+			}),
+			retainPriorPageDom: Type.Optional(Type.Boolean({
+				description: "Keep the previous page's DOM inventory in context (rare; default strips prior page DOM after navigation)"
+			})),
+			domRead: Type.Optional(Type.String({
+				description: "DOM read level: auto (default), none, metadata, target, inventory, or full. auto skips unrelated page DOM when steps use explicit selectors."
+			}))
+		}, { additionalProperties: true }), /* ${TOOL_PARAM_TOKEN} */`;
+  if (src.includes(realNeedleStart)) {
+    src = src.replace(realNeedleStart, desiredSchema);
+  } else if (src.includes(retainedNeedleStart)) {
+    src = src.replace(
+      retainedNeedleStart,
+      desiredSchema,
+    );
+  } else {
+    const withRetain = domReadNeedleStart.replace(
+      `			domRead: Type.Optional(Type.String({
+				description: "DOM read level: auto (default), none, metadata, target, inventory, or full. auto skips unrelated page DOM when steps use explicit selectors."
+			}))`,
+      `			retainPriorPageDom: Type.Optional(Type.Boolean({
+				description: "Keep the previous page's DOM inventory in context (rare; default strips prior page DOM after navigation)"
+			})),
+			domRead: Type.Optional(Type.String({
+				description: "DOM read level: auto (default), none, metadata, target, inventory, or full. auto skips unrelated page DOM when steps use explicit selectors."
+			}))`,
+    );
+    src = src.replace(
+      domReadNeedleStart,
+      withRetain.replace(`		}),`, `		}, { additionalProperties: true }), /* ${TOOL_PARAM_TOKEN} */`),
+    );
+  }
 
   // Replace only the first { steps } body after the browser_action marker
   const before = src.slice(0, toolIdx);
   const after = src.slice(toolIdx);
   const afterPatched = after.replace(
-    "body: JSON.stringify({ steps }),",
-    `body: JSON.stringify({ steps, retainPriorPageDom: params.retainPriorPageDom === true }),`,
+    /body: JSON\.stringify\(\{[\s\S]*?\}\),/,
+    `body: JSON.stringify({ steps, retainPriorPageDom: params.retainPriorPageDom === true, domRead: typeof params.domRead === "string" ? params.domRead : "auto" }),`,
   );
   if (afterPatched === after) {
     console.warn(

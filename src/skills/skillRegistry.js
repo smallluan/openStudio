@@ -3,7 +3,7 @@ import { filterUsableBundledSkills } from "./skillAvailability.js";
 import { userSkillDisplayTitle } from "./skillDisplay.js";
 import { loadSkillLibrary } from "./skillsLocalStore.js";
 
-/** @typedef {{ generatedFrom: string; openclawVersion: string; count: number; skills: Array<{ id: string; name: string; description: string; emoji: string; categoryId: string }> }} OpenclawBundledManifest */
+/** @typedef {{ generatedFrom: string; openclawVersion: string; count: number; skills: Array<{ id: string; name: string; description: string; emoji: string; categoryId: string; browserDomPolicy?: string }> }} OpenclawBundledManifest */
 
 export const OPENCLAW_BUNDLED_SKILL_MANIFEST = openclawManifest;
 
@@ -29,6 +29,7 @@ export function formatSkillTitle(slug) {
  *   label: string;
  *   emoji: string;
  *   description: string;
+ *   browserDomPolicy?: "auto" | "selector-only" | "full";
  *   searchText: string;
  * }} OpenClawPickSkill
  */
@@ -42,6 +43,7 @@ export function formatSkillTitle(slug) {
  *   emoji: string;
  *   description: string;
  *   localPath?: string;
+ *   browserDomPolicy?: "auto" | "selector-only" | "full";
  *   searchText: string;
  * }} UserPickSkill
  */
@@ -66,6 +68,7 @@ export function listSkillsForPicker(env) {
       label,
       emoji: s.emoji,
       description: s.description,
+      browserDomPolicy: s.browserDomPolicy,
       searchText: blob,
     };
   });
@@ -81,6 +84,7 @@ export function listSkillsForPicker(env) {
       emoji: s.fromNl ? "✨" : "📁",
       description: s.description ?? "",
       localPath: s.localPath,
+      browserDomPolicy: s.browserDomPolicy,
       searchText: blob,
     };
   });
@@ -100,11 +104,13 @@ export function filterSkillPickList(list, query) {
  *   kind: "openclaw";
  *   slug: string;
  *   label: string;
+ *   browserDomPolicy?: "auto" | "selector-only" | "full";
  * } | {
  *   kind: "user";
  *   label: string;
  *   description?: string;
  *   localPath?: string;
+ *   browserDomPolicy?: "auto" | "selector-only" | "full";
  * }} ComposerSkillPayload
  */
 
@@ -115,31 +121,74 @@ export function filterSkillPickList(list, query) {
 export function skillPickRowToPayload(row) {
   if (!row) return null;
   if (row.kind === "openclaw") {
-    return { kind: "openclaw", slug: row.slug, label: row.label };
+    return {
+      kind: "openclaw",
+      slug: row.slug,
+      label: row.label,
+      browserDomPolicy: browserDomPolicyFromPickRow(row),
+    };
   }
   return {
     kind: "user",
     label: row.label,
     description: row.description || undefined,
     localPath: row.localPath || undefined,
+    browserDomPolicy: browserDomPolicyFromPickRow(row),
   };
+}
+
+/**
+ * Skills may opt into selector-only passive context without changing the normal
+ * conversation default. The marker is intentionally plain text so it also works
+ * for skills loaded from a local SKILL.md description.
+ *
+ * @param {SkillPickRow | null | undefined} row
+ * @returns {"auto" | "selector-only" | "full" | undefined}
+ */
+export function browserDomPolicyFromPickRow(row) {
+  const explicit = String(row?.browserDomPolicy ?? "").trim().toLowerCase();
+  if (explicit === "selector-only" || explicit === "full" || explicit === "auto") return explicit;
+  return browserDomPolicyFromSkillContent(row?.description);
+}
+
+/**
+ * @param {unknown} content
+ * @returns {"auto" | "selector-only" | "full" | undefined}
+ */
+export function browserDomPolicyFromSkillContent(content) {
+  const match = /(?:\[openstudio:browser-dom=|browserDomPolicy\s*:\s*)(auto|selector-only|full)/i.exec(
+    String(content ?? ""),
+  );
+  return match ? /** @type {any} */ (match[1].toLowerCase()) : undefined;
 }
 
 /**
  * Strips a small skill snapshot for message persistence + UI tags.
  * @param {SkillPickRow | null | undefined} row
- * @returns {{ kind: 'openclaw'; slug: string; label: string; emoji: string } | { kind: 'user'; userSkillId: string; label: string; emoji: string } | undefined}
+ * @returns {{ kind: 'openclaw'; slug: string; label: string; emoji: string; browserDomPolicy?: string } | { kind: 'user'; userSkillId: string; label: string; emoji: string; browserDomPolicy?: string } | undefined}
  */
 export function skillMetaFromPickRow(row) {
   if (!row) return undefined;
   if (row.kind === "openclaw") {
-    return { kind: "openclaw", slug: row.slug, label: row.label, emoji: row.emoji };
+    return {
+      kind: "openclaw",
+      slug: row.slug,
+      label: row.label,
+      emoji: row.emoji,
+      browserDomPolicy: browserDomPolicyFromPickRow(row),
+    };
   }
-  return { kind: "user", userSkillId: row.userSkillId, label: row.label, emoji: row.emoji };
+  return {
+    kind: "user",
+    userSkillId: row.userSkillId,
+    label: row.label,
+    emoji: row.emoji,
+    browserDomPolicy: browserDomPolicyFromPickRow(row),
+  };
 }
 
 /**
- * @param {{ kind?: string; slug?: string; userSkillId?: string; label?: string; emoji?: string } | null | undefined} meta
+ * @param {{ kind?: string; slug?: string; userSkillId?: string; label?: string; emoji?: string; browserDomPolicy?: string } | null | undefined} meta
  * @param {SkillPickRow[]} list
  * @returns {SkillPickRow | null}
  */
@@ -149,7 +198,7 @@ export function pickRowFromSkillMeta(meta, list) {
     const slug = typeof meta.slug === "string" ? meta.slug.trim() : "";
     if (!slug) return null;
     const hit = list.find((r) => r.kind === "openclaw" && r.slug === slug);
-    if (hit) return hit;
+    if (hit) return hit.browserDomPolicy ? hit : { ...hit, browserDomPolicy: meta.browserDomPolicy };
     return {
       kind: /** @type {const} */ ("openclaw"),
       id: `oc:${slug}`,
@@ -158,12 +207,13 @@ export function pickRowFromSkillMeta(meta, list) {
       emoji: meta.emoji || "🧩",
       description: "",
       searchText: "",
+      browserDomPolicy: meta.browserDomPolicy,
     };
   }
   const uid = typeof meta.userSkillId === "string" ? meta.userSkillId.trim() : "";
   if (!uid) return null;
   const hit = list.find((r) => r.kind === "user" && r.userSkillId === uid);
-  if (hit) return hit;
+  if (hit) return hit.browserDomPolicy ? hit : { ...hit, browserDomPolicy: meta.browserDomPolicy };
   return {
     kind: /** @type {const} */ ("user"),
     id: `us:${uid}`,
@@ -172,5 +222,6 @@ export function pickRowFromSkillMeta(meta, list) {
     emoji: meta.emoji || "📁",
     description: "",
     searchText: "",
+    browserDomPolicy: meta.browserDomPolicy,
   };
 }

@@ -9,7 +9,9 @@ export function formatComposerSkillDirective(s) {
     const label = String(s.label ?? "").trim();
     if (!slug) return "";
     const labelBit = label ? ` (${label})` : "";
-    return `[OpenClaw skill: ${slug}]${labelBit} Please follow this bundled SKILL when it applies to the user's request.`;
+    const domPolicy = String(s.browserDomPolicy ?? "").trim();
+    const domBit = domPolicy ? ` Browser DOM policy: ${domPolicy}.` : "";
+    return `[OpenClaw skill: ${slug}]${labelBit} Please follow this bundled SKILL when it applies to the user's request.${domBit}`;
   }
   if (kind === "user") {
     const label = String(s.label ?? "").trim();
@@ -19,6 +21,8 @@ export function formatComposerSkillDirective(s) {
     const parts = [label];
     if (desc) parts.push(desc);
     if (localPath) parts.push(`Path: ${localPath}`);
+    const domPolicy = String(s.browserDomPolicy ?? "").trim();
+    if (domPolicy) parts.push(`Browser DOM policy: ${domPolicy}`);
     return `[User-registered skill] ${parts.join(" — ")}`;
   }
   return "";

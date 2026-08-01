@@ -28,7 +28,7 @@ function createBrowserActionTool() {
 	if (!baseUrl) return null;
 	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
 	const stepSchema = Type.Object({
-		action: Type.String({ description: "UI action: click, focus, type, press, wait, scroll, snapshot, navigate, reload, ..." }),
+		action: Type.String({ description: "UI action: click, focus, type, press, wait, scroll, query, inspect, snapshot, navigate, reload, ..." }),
 		ref: Type.Optional(Type.String({ description: "Element ref from observation.elements, e.g. e3" })),
 		selector: Type.Optional(Type.String()),
 		text: Type.Optional(Type.String()),
@@ -46,7 +46,7 @@ function createBrowserActionTool() {
 		label: "Browser Action",
 		name: "browser_action",
 		displaySummary: "Control Open Studio preview page",
-		description: "Execute a short UI automation batch (max 5 steps) on the Web Explore main viewport or Chat Lab preview panel. Browser tools target the Open Studio preview panel — call this tool in Web Explore when the user asks to click/type/scroll. Prefer ref/selector from the injected page inventory or the previous tool observation. The result includes a fresh observation with elements[].ref — call browser_action again for the next batch, or answer the user in natural language when done. Do not invent natural-language targets. After navigate/reload, prior page element refs are invalid — use the latest observation only (older DOM is stripped from context unless retainPriorPageDom=true).",
+		description: "Execute a short UI automation batch (max 5 steps) on the Web Explore main viewport or Chat Lab preview panel. Browser tools target the Open Studio preview panel — call this tool in Web Explore when the user asks to click/type/scroll. Prefer explicit selector for selector-only tasks. Use action=query/inspect for targeted DOM discovery; use domRead=inventory/full only when exploration is needed. The result includes an observation whose DOM level is reported as domRead. Do not invent natural-language targets. After navigate/reload, prior page element refs are invalid — use the latest observation only (older DOM is stripped from context unless retainPriorPageDom=true).",
 		parameters: Type.Object({
 			steps: Type.Array(stepSchema, {
 				minItems: 1,
@@ -55,6 +55,9 @@ function createBrowserActionTool() {
 			}),
 			retainPriorPageDom: Type.Optional(Type.Boolean({
 				description: "Keep the previous page's DOM inventory in context (rare; default strips prior page DOM after navigation)"
+			})),
+			domRead: Type.Optional(Type.String({
+				description: "DOM read level: auto (default), none, metadata, target, inventory, or full. auto skips unrelated page DOM when steps use explicit selectors."
 			}))
 		}, { additionalProperties: true }),
 		execute: async (_toolCallId, args) => {
@@ -72,7 +75,11 @@ function createBrowserActionTool() {
 				response = await fetch(url, {
 					method: "POST",
 					headers,
-					body: JSON.stringify({ steps, retainPriorPageDom: params.retainPriorPageDom === true }),
+					body: JSON.stringify({
+						steps,
+						retainPriorPageDom: params.retainPriorPageDom === true,
+						domRead: typeof params.domRead === "string" ? params.domRead : "auto"
+					}),
 					signal: AbortSignal.timeout(12e4)
 				});
 			} catch (error) {

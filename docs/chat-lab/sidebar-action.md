@@ -27,13 +27,21 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
 - 支持同域 iframe；Canvas / 在线表格类页面往往读不全  
 - 有快照时 AI 应优先使用快照，不要用 web fetch 重复抓同一 URL
 
+普通对话默认保持完整快照。selector-only skill 可以在描述中加入：
+
+```text
+[openstudio:browser-dom=selector-only]
+```
+
+这会让首轮被动上下文只注入 URL/title；模型随后通过 `browser_action` 主动查询需要的 DOM。
+
 ### 1.2 控制（主动）— native `sidebar_action`
 
 ```
 模型 tool call: sidebar_action({ steps: [...] })  ≤5
   → OpenClaw execute 等待 HTTP loopback
   → Electron bridge → 渲染进程 runSidebarAutomation
-  → 抓取最新 DOM / 元素清单
+  → 按 domRead 分层读取最新 DOM / 元素清单
   → jsonResult({ ok, steps, observation })
   → 同轮继续：再 call，或自然语言结束
 ```
@@ -68,7 +76,42 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
 }
 ```
 
-### 2.1 定位（必须基于观测）
+### 2.1 DOM 读取层级
+
+`browser_action` 支持请求级 `domRead`，默认是 `auto`：
+
+| 层级 | 行为 |
+|------|------|
+| `auto` | 全是明确 selector 时跳过全页扫描；使用 ref/模糊定位时自动升到 `inventory` 或 `full` |
+| `none` / `metadata` | 只返回 URL/title/pageGeneration，不返回正文或元素清单 |
+| `target` | 只查询本次请求提供的 selector，不扫描无关页面 |
+| `inventory` | 只返回交互元素清单，不读取正文 |
+| `full` | 返回正文、iframe 文本、canvas 提示和元素清单 |
+
+selector-only 填单示例：
+
+```json
+{
+  "domRead": "auto",
+  "steps": [
+    { "action": "type", "selector": "input[name='title']", "text": "示例工单" },
+    { "action": "click", "selector": "button[type='submit']" }
+  ]
+}
+```
+
+需要主动确认某个 selector 时使用 `query`（`inspect` 同义），只返回小型目标结果：
+
+```json
+{
+  "domRead": "target",
+  "steps": [
+    { "action": "query", "selector": "button[data-testid='submit']" }
+  ]
+}
+```
+
+### 2.2 定位（必须基于观测）
 
 | 字段 | 说明 |
 |------|------|
@@ -79,7 +122,7 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
 
 **禁止**臆造自然语言字段（如 `"target":"包含「毕导」的视频卡片"`）。
 
-### 2.2 返回
+### 2.3 返回
 
 ```json
 {
@@ -90,6 +133,7 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
     "title": "...",
     "pageGeneration": 2,
     "pageChanged": true,
+    "domRead": "none",
     "text": "...",
     "elements": [{ "ref": "e1", "selector": "...", "name": "...", "role": "..." }]
   },
@@ -103,7 +147,7 @@ Open Studio 可通过 Chat Lab 右侧边栏预览或网页漫游主视口打开�
 |------|------|
 | `retainPriorPageDom` | 默认 `false`。为 `true` 时，组 prompt 时保留**上一页**（`pageGeneration - 1`）的 DOM 清单，用于少见的跨页对照 |
 
-### 2.3 换页后的上下文剥离（DOM vs 轨迹）
+### 2.4 换页后的上下文剥离（DOM vs 轨迹）
 
 **问题**：同轮多次 `browser_action` 会把每次的 `observation.elements` / `text` 留在 gateway 会话里；换页后旧 `ref`（`e1`…）不仅浪费 token，还会误导模型。
 

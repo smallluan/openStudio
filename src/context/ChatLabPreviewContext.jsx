@@ -32,7 +32,11 @@ import {
   captureSidebarPreviewSnapshot,
   composeChatLabPreviewContextBlock,
 } from "../chat/chatLabPreviewSnapshot.js";
-import { runSidebarPreviewAutomation } from "../chat/chatLabPreviewAutomation.js";
+import {
+  normalizeAutomationSteps,
+  runSidebarPreviewAutomation,
+} from "../chat/chatLabPreviewAutomation.js";
+import { resolveDomReadLevel } from "../chat/chatLabDomReadPolicy.js";
 import {
   advancePageGeneration,
   stepsIncludeNavigation,
@@ -368,9 +372,9 @@ function sessionFromWebTab(tab) {
  *   previewTabs: PreviewWebTab[];
  *   activePreviewTabId: string;
  *   activatePreviewTab: (tabId: string) => void;
- *   captureSidebarContextBlock: () => Promise<string>;
+ *   captureSidebarContextBlock: (opts?: { domRead?: "auto" | "none" | "metadata" | "target" | "inventory" | "full" }) => Promise<string>;
  *   runSidebarAutomation: (steps: import("../chat/chatLabPreviewAutomation.js").SidebarAutomationStep[] | unknown) => Promise<unknown>;
- *   executeSidebarActionTool: (args: { steps?: unknown; retainPriorPageDom?: boolean }) => Promise<unknown>;
+ *   executeSidebarActionTool: (args: { steps?: unknown; retainPriorPageDom?: boolean; domRead?: string }) => Promise<unknown>;
  *   executeBrowserOpenTool: (args: { url?: string; title?: string }) => Promise<unknown>;
  * }>} */
 export const ChatLabPreviewContext = createContext(null);
@@ -1327,7 +1331,7 @@ export function ChatLabPreviewProvider({
     }
   }, []);
 
-  const captureSidebarContextBlock = useCallback(async () => {
+  const captureSidebarContextBlock = useCallback(async (opts = {}) => {
     if (!embedPreview && linkOpenMode === "external") return "";
     const captureSession = embedPreview ? externalSessionRef.current ?? session : session;
     if (!captureSession) return "";
@@ -1340,6 +1344,7 @@ export function ChatLabPreviewProvider({
         activePreviewTabId,
         artifactsPanel,
         forceSidebar: embedPreview,
+        domRead: opts.domRead,
       });
       if (!snap && embedPreview && captureSession?.src) {
         lastInventoryRef.current = [];
@@ -1379,26 +1384,34 @@ export function ChatLabPreviewProvider({
         return { ok: false, error: "external_mode", steps: [] };
       }
       const captureSession = embedPreview ? externalSessionRef.current ?? session : session;
-      /** Prefer a fresh inventory so refs match the page about to be acted on. */
+      /** Prefer a fresh inventory only when the request cannot target selectors directly. */
       let elements = lastInventoryRef.current;
-      try {
-        const snap = await captureSidebarPreviewSnapshot({
-          session: captureSession,
-          webviewRef,
-          iframeRef,
-          previewTabs,
-          activePreviewTabId,
-          artifactsPanel,
-          forceSidebar: embedPreview,
-        });
-        if (Array.isArray(snap?.elements) && snap.elements.length) {
-          elements = snap.elements;
-          lastInventoryRef.current = snap.elements;
+      const normalizedSteps = normalizeAutomationSteps(steps);
+      let domRead = resolveDomReadLevel(opts.domRead, normalizedSteps, {
+        hasInventory: Array.isArray(elements) && elements.length > 0,
+        inventoryRefs: Array.isArray(elements) ? elements.map((element) => element?.ref) : [],
+      });
+      if (domRead === "inventory" || domRead === "full") {
+        try {
+          const snap = await captureSidebarPreviewSnapshot({
+            session: captureSession,
+            webviewRef,
+            iframeRef,
+            previewTabs,
+            activePreviewTabId,
+            artifactsPanel,
+            forceSidebar: embedPreview,
+            domRead,
+          });
+          if (Array.isArray(snap?.elements) && snap.elements.length) {
+            elements = snap.elements;
+            lastInventoryRef.current = snap.elements;
+          }
+        } catch {
+          /* keep last inventory */
         }
-      } catch {
-        /* keep last inventory */
       }
-      return runSidebarPreviewAutomation({
+      const runResult = await runSidebarPreviewAutomation({
         steps,
         session: captureSession,
         webviewRef,
@@ -1416,9 +1429,11 @@ export function ChatLabPreviewProvider({
         t,
         forceSidebar: embedPreview,
         elements,
+        domRead,
         onStepComplete: opts.onStepComplete,
         stopOnFailure: opts.stopOnFailure,
       });
+      return { ...runResult, domRead };
     },
     [
       activePreviewTabId,
@@ -1436,7 +1451,11 @@ export function ChatLabPreviewProvider({
 
   /**
    * Native OpenClaw `browser_action` tool entry: run steps, then return fresh observation.
-   * @param {{ steps?: unknown, retainPriorPageDom?: boolean }} args
+   * @param {{
+   *   steps?: unknown;
+   *   retainPriorPageDom?: boolean;
+   *   domRead?: "auto" | "none" | "metadata" | "target" | "inventory" | "full";
+   * }} args
    */
   const executeSidebarActionTool = useCallback(
     async (args = {}) => {
@@ -1462,7 +1481,15 @@ export function ChatLabPreviewProvider({
       }
       const steps = args?.steps;
       const retainPriorPageDom = args?.retainPriorPageDom === true;
-      const runResult = await runSidebarAutomation(steps, { stopOnFailure: true });
+      const runResult = await runSidebarAutomation(steps, {
+        domRead: args?.domRead,
+        stopOnFailure: true,
+      });
+      const domRead = String(runResult?.domRead ?? args?.domRead ?? "auto");
+      const normalizedSteps = normalizeAutomationSteps(steps);
+      const selectors = normalizedSteps
+        .map((step) => (typeof step.selector === "string" ? step.selector.trim() : ""))
+        .filter(Boolean);
       let observation = null;
       try {
         const captureSession = embedPreview ? externalSessionRef.current ?? session : session;
@@ -1474,6 +1501,8 @@ export function ChatLabPreviewProvider({
           activePreviewTabId,
           artifactsPanel,
           forceSidebar: embedPreview,
+          domRead,
+          selectors,
         });
         if (snap) {
           if (Array.isArray(snap.elements)) lastInventoryRef.current = snap.elements;
@@ -1496,6 +1525,7 @@ export function ChatLabPreviewProvider({
             partial: Boolean(snap.partial),
             loginHint: Boolean(snap.loginHint),
             canvasHint: Boolean(snap.canvasHint),
+            domRead: snap.domRead ?? domRead,
             pageGeneration: gen.pageGeneration,
             pageChanged: gen.pageChanged,
             ...(retainPriorPageDom ? { retainPriorPageDom: true } : {}),
@@ -1510,14 +1540,19 @@ export function ChatLabPreviewProvider({
       }
       const pageChanged = Boolean(observation && /** @type {any} */ (observation).pageChanged);
       const hint = pageChanged
-        ? "Page changed — prior page element refs are invalid. Use this observation.elements[].ref only (older DOM is stripped from model context unless retainPriorPageDom=true). For file upload, use set_files with absolute paths. Call again for the next short batch (max 5 steps). When done, answer the user in natural language."
-        : "Use observation.elements[].ref (or selector) for the next browser_action call. For file upload, use set_files with absolute paths — do NOT click buttons that open the native OS file picker. Call again for the next short batch (max 5 steps). When done, answer the user in natural language.";
+        ? "Page changed — prior page element refs are invalid. Use the latest observation only. This observation used domRead=" +
+          String(observation?.domRead ?? domRead) +
+          "; when no elements are returned, call browser_action with an explicit selector or use action=query/inspect. For file upload, use set_files with absolute paths. Call again for the next short batch (max 5 steps). When done, answer the user in natural language."
+        : "This observation used domRead=" +
+          String(observation?.domRead ?? domRead) +
+          ". Prefer explicit CSS selectors for selector-only tasks; use action=query/inspect for targeted discovery or domRead=inventory/full when exploration is needed. For file upload, use set_files with absolute paths — do NOT click buttons that open the native OS file picker. Call again for the next short batch (max 5 steps). When done, answer the user in natural language.";
       return {
         ok: Boolean(runResult?.ok),
         error: runResult?.error,
         stopReason: runResult?.stopReason,
         stoppedAt: runResult?.stoppedAt,
         steps: Array.isArray(runResult?.steps) ? runResult.steps : [],
+        domRead: runResult?.domRead ?? domRead,
         observation,
         ...(retainPriorPageDom ? { retainPriorPageDom: true } : {}),
         hint,

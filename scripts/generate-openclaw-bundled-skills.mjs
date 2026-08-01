@@ -37,6 +37,12 @@ function extractDescription(fm) {
   return plainMatch ? plainMatch[1].trim() : "";
 }
 
+/** @param {string} fm */
+function extractBrowserDomPolicy(fm) {
+  const m = /(?:browserDomPolicy|browser-dom-policy)\s*:\s*(auto|selector-only|full)/i.exec(fm);
+  return m ? m[1].toLowerCase() : undefined;
+}
+
 /** @param {string} block */
 function quotedList(block) {
   if (!block) return [];
@@ -75,6 +81,7 @@ for (const ent of entries) {
   if (!description) description = "OpenClaw bundled skill.";
   const emoji = extractEmoji(fm);
   const meta = extractOpenclawMeta(fm);
+  const browserDomPolicy = extractBrowserDomPolicy(fm);
   skills.push({
     id,
     name,
@@ -84,6 +91,7 @@ for (const ent of entries) {
     os: meta.os,
     requiresBins: meta.requiresBins,
     requiresEnv: meta.requiresEnv,
+    ...(browserDomPolicy ? { browserDomPolicy } : {}),
   });
 }
 

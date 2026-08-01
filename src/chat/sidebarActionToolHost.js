@@ -3,7 +3,7 @@
  * ChatLabPreviewProvider hosts register executors; IPC subscriptions dispatch here.
  */
 
-/** @type {((args: { steps?: unknown }) => Promise<unknown>) | null} */
+/** @type {((args: { steps?: unknown; domRead?: string; retainPriorPageDom?: boolean }) => Promise<unknown>) | null} */
 let actionExecutor = null;
 /** @type {((args: { url?: string; title?: string }) => Promise<unknown>) | null} */
 let openExecutor = null;
@@ -14,7 +14,7 @@ let actionIpcBound = false;
 let openIpcBound = false;
 
 /**
- * @param {(args: { steps?: unknown }) => Promise<unknown>} fn
+ * @param {(args: { steps?: unknown; domRead?: string; retainPriorPageDom?: boolean }) => Promise<unknown>} fn
  * @returns {() => void}
  */
 export function registerBrowserActionToolExecutor(fn) {
@@ -41,7 +41,7 @@ export function registerBrowserOpenToolExecutor(fn) {
 }
 
 /**
- * @param {{ steps?: unknown }} args
+ * @param {{ steps?: unknown; domRead?: string; retainPriorPageDom?: boolean }} args
  */
 export async function runBrowserActionToolRequest(args) {
   if (!actionExecutor) {
@@ -107,6 +107,8 @@ function ensureBrowserToolIpcBound() {
       try {
         const result = await runBrowserActionToolRequest({
           steps: payload?.steps ?? payload?.args?.steps,
+          domRead: payload?.args?.domRead,
+          retainPriorPageDom: payload?.args?.retainPriorPageDom === true,
         });
         await bridge.respondSidebarActionTool({ id, result });
       } catch (e) {

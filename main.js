@@ -1578,6 +1578,29 @@ app.whenReady().then(async () => {
     return { ok: true, path: dir };
   });
 
+  ipcMain.handle("studio:readSkillFile", (_event, payload) => {
+    const kind = payload?.kind === "user" ? "user" : "bundled";
+    const dir =
+      kind === "user"
+        ? resolveUserSkillDirectorySync(payload?.localPath)
+        : resolveBundledSkillDirectorySync(payload?.skillId);
+    if (!dir) return { ok: false, message: "path_not_found" };
+    const root = path.resolve(dir);
+    const filePath = path.resolve(root, "SKILL.md");
+    if (path.dirname(filePath) !== root || !fs.existsSync(filePath)) {
+      return { ok: false, message: "skill_file_not_found" };
+    }
+    try {
+      return {
+        ok: true,
+        path: filePath,
+        content: fs.readFileSync(filePath, "utf8").slice(0, 128 * 1024),
+      };
+    } catch (error) {
+      return { ok: false, message: String(error?.message ?? error) };
+    }
+  });
+
   ipcMain.handle("studio:logRendererMessage", (_e, payload) => {
     const levelRaw = typeof payload?.level === "string" ? payload.level.toLowerCase() : "info";
     const message =

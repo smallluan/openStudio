@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  openclaw@2026.6.1: 5629db5ecad6e082e02ff54555feb077da71963f383e159b7fa9b00918df8a51
+  openclaw@2026.6.1: 925092c34459fff71c2a8ba5797b16987e89c8907acce695e8b1c73eb4e06866
 
 importers:
 
@@ -83,7 +83,7 @@ importers:
         version: 11.15.0
       openclaw:
         specifier: ^2026.6.1
-        version: 2026.6.1(patch_hash=5629db5ecad6e082e02ff54555feb077da71963f383e159b7fa9b00918df8a51)
+        version: 2026.6.1(patch_hash=925092c34459fff71c2a8ba5797b16987e89c8907acce695e8b1c73eb4e06866)
       png-to-ico:
         specifier: ^3.0.1
         version: 3.0.1
@@ -8734,7 +8734,7 @@ snapshots:
       ws: 8.21.0
       zod: 4.4.3
 
-  openclaw@2026.6.1(patch_hash=5629db5ecad6e082e02ff54555feb077da71963f383e159b7fa9b00918df8a51):
+  openclaw@2026.6.1(patch_hash=925092c34459fff71c2a8ba5797b16987e89c8907acce695e8b1c73eb4e06866):
     dependencies:
       '@agentclientprotocol/sdk': 0.22.1(zod@4.4.3)
       '@anthropic-ai/sdk': 0.100.1(zod@4.4.3)

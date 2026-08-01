@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("studioBridge", {
   saveImageFromUrl: (payload) => ipcRenderer.invoke("studio:saveImageFromUrl", payload),
   getSkillEnvironment: () => ipcRenderer.invoke("studio:getSkillEnvironment"),
   openSkillDirectory: (payload) => ipcRenderer.invoke("studio:openSkillDirectory", payload),
+  readSkillFile: (payload) => ipcRenderer.invoke("studio:readSkillFile", payload),
   logRendererMessage: (payload) =>
     ipcRenderer.invoke("studio:logRendererMessage", payload && typeof payload === "object" ? payload : { message: String(payload) }),
   readWorkspacePreviewFile: (rawPath) => ipcRenderer.invoke("studio:readWorkspacePreviewFile", rawPath),

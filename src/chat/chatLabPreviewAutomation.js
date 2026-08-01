@@ -29,6 +29,8 @@ import { captureSidebarPreviewSnapshot, composeChatLabPreviewContextBlock } from
  *   toOffsetY?: number;
  *   dragSteps?: number;
  *   files?: string[];
+ *   domRead?: "none" | "metadata" | "target" | "inventory" | "full";
+ *   selectors?: string[];
  * }} SidebarAutomationStep */
 
 /** @typedef {import("./chatLabPreviewSnapshot.js").SidebarPreviewInteractiveElement} SidebarPreviewInteractiveElement */
@@ -136,6 +138,12 @@ export function normalizeAutomationSteps(raw, opts = {}) {
     if (typeof row.title === "string" && row.title.trim()) step.title = row.title.trim();
     if (typeof row.parentSelector === "string" && row.parentSelector.trim()) {
       step.parentSelector = row.parentSelector.trim();
+    }
+    if (typeof row.domRead === "string" && row.domRead.trim()) {
+      step.domRead = row.domRead.trim().toLowerCase();
+    }
+    if (Array.isArray(row.selectors)) {
+      step.selectors = row.selectors.map((selector) => String(selector ?? "").trim()).filter(Boolean).slice(0, 60);
     }
     if (typeof row.url === "string" && row.url.trim()) step.url = row.url.trim();
     if (typeof row.key === "string" && row.key.trim()) step.key = row.key.trim();
@@ -849,6 +857,40 @@ function buildStepScript(step) {
     }
     try {
       var action = String(step.action || "").toLowerCase();
+      if (action === "query" || action === "inspect") {
+        var querySelector = String(step.selector || "").trim();
+        if (!querySelector) {
+          return { ok: false, action: "query", error: "missing_selector" };
+        }
+        var queryNodes = querySelectorAllDeep(querySelector);
+        var queryMatches = [];
+        for (var qi = 0; qi < queryNodes.length && queryMatches.length < 12; qi++) {
+          var queryNode = queryNodes[qi];
+          queryMatches.push({
+            tag: String(queryNode.tagName || "").toLowerCase(),
+            role: String(queryNode.getAttribute("role") || queryNode.tagName || "").toLowerCase(),
+            name: String(
+              queryNode.getAttribute("aria-label") ||
+                queryNode.getAttribute("placeholder") ||
+                queryNode.innerText ||
+                queryNode.textContent ||
+                "",
+            )
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 120),
+            visible: vis(queryNode),
+          });
+        }
+        return {
+          ok: true,
+          action: "query",
+          selector: querySelector,
+          count: queryNodes.length,
+          visibleCount: queryNodes.filter(function(node) { return vis(node); }).length,
+          matches: queryMatches,
+        };
+      }
       if (action === "wait") {
         return { ok: true, action: "wait", ms: Number(step.ms) || 0 };
       }
@@ -1330,6 +1372,7 @@ async function runStepOnWebviewWithRetry(wv, step) {
  *   stopOnFailure?: boolean;
  *   forceSidebar?: boolean;
  *   elements?: SidebarPreviewInteractiveElement[];
+ *   domRead?: "auto" | "none" | "metadata" | "target" | "inventory" | "full";
  * }} input
  */
 export async function runSidebarPreviewAutomation(input) {
@@ -1337,7 +1380,7 @@ export async function runSidebarPreviewAutomation(input) {
     normalizeAutomationSteps(input.steps),
     /** @type {SidebarPreviewInteractiveElement[] | undefined} */ (input.elements),
   );
-  if (!steps.length) return { ok: false, error: "no_steps", steps: [] };
+  if (!steps.length) return { ok: false, error: "no_steps", steps: [], domRead: input.domRead ?? "full" };
   const stopOnFailure = input.stopOnFailure !== false;
 
   /** @type {Array<Record<string, unknown>>} */
@@ -1372,6 +1415,8 @@ export async function runSidebarPreviewAutomation(input) {
         activePreviewTabId: input.activePreviewTabId,
         artifactsPanel: input.artifactsPanel,
         forceSidebar: input.forceSidebar,
+        domRead: step.domRead ?? input.domRead,
+        selectors: step.selectors ?? (step.selector ? [step.selector] : []),
       });
       const block = input.t ? composeChatLabPreviewContextBlock(input.t, snap) : "";
       results.push({
@@ -1380,6 +1425,8 @@ export async function runSidebarPreviewAutomation(input) {
         url: snap?.url ?? "",
         title: snap?.title ?? "",
         text: snap?.text ?? "",
+        elements: Array.isArray(snap?.elements) ? snap.elements : [],
+        domRead: snap?.domRead ?? "full",
         excerpt: block,
       });
       if (input.onStepComplete) {
@@ -1407,6 +1454,7 @@ export async function runSidebarPreviewAutomation(input) {
           ok: false,
           error: "webview_unavailable",
           steps: results,
+          domRead: input.domRead ?? "full",
           stoppedAt: stepIndex,
           stopReason: "webview_unavailable",
         };
@@ -1423,6 +1471,7 @@ export async function runSidebarPreviewAutomation(input) {
       return {
         ok: false,
         steps: results,
+        domRead: input.domRead ?? "full",
         stoppedAt: stepIndex,
         stopReason: String(row.error || "step_failed"),
       };
@@ -1458,5 +1507,9 @@ export async function runSidebarPreviewAutomation(input) {
     }
   }
 
-  return { ok: results.every((r) => r.ok !== false), steps: results };
+  return {
+    ok: results.every((r) => r.ok !== false),
+    steps: results,
+    domRead: input.domRead ?? "full",
+  };
 }

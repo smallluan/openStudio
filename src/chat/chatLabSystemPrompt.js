@@ -10,6 +10,7 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
   const parts = [
     // Tool Search first: models must discover Studio tools via search→describe→call.
     String(t("chatLab.toolSearchPrompt") ?? "").trim(),
+    String(t("chatLab.windowsShellPrompt") ?? "").trim(),
     "## Code search (required for project analysis)\nFor the selected project, use Tool Search for `git_grep`, `workspace_glob`, and `workspace_read` before using the generic shell tool. Use `git_status` or `git_log` for repository state and history. Pass the selected project root explicitly. Search first, then read only matching files; do not dump a codebase with repeated one-file shell reads.",
     String(t("chatLab.imageDisplayPrompt") ?? "").trim(),
     String(t("chatLab.chartDisplayPrompt") ?? "").trim(),
@@ -32,7 +33,12 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
  * @param {(key: string) => string} t
  */
 export function composeToolSearchUserTurnHint(t) {
-  return String(t("chatLab.toolSearchUserTurnHint") ?? "").trim();
+  return [
+    String(t("chatLab.toolSearchUserTurnHint") ?? "").trim(),
+    String(t("chatLab.windowsShellPrompt") ?? "").trim(),
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**

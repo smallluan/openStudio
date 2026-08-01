@@ -1,4 +1,5 @@
 import { readLinkOpenModeLocal } from "./chatLabLinkOpenPreference.js";
+import { normalizeDomReadLevel } from "./chatLabDomReadPolicy.js";
 
 /** @typedef {{
  *   ref: string;
@@ -9,6 +10,7 @@ import { readLinkOpenModeLocal } from "./chatLabLinkOpenPreference.js";
  *   placeholder?: string;
  *   href?: string;
  *   inputType?: string;
+ *   matchCount?: number;
  * }} SidebarPreviewInteractiveElement */
 
 /** @typedef {{
@@ -21,6 +23,7 @@ import { readLinkOpenModeLocal } from "./chatLabLinkOpenPreference.js";
  *   partial?: boolean;
  *   loginHint?: boolean;
  *   canvasHint?: boolean;
+ *   domRead?: "none" | "metadata" | "target" | "inventory" | "full";
  *   error?: string;
  * }} SidebarPreviewSnapshot */
 
@@ -28,10 +31,12 @@ export const SIDEBAR_PREVIEW_TEXT_MAX = 8000;
 export const SIDEBAR_PREVIEW_ELEMENTS_MAX = 60;
 
 /**
- * Extract visible text + interactive element inventory from the active webview.
- * Returns a JSON string: `{ text, canvas, elements: [...] }`.
+ * Extract a selected DOM layer from the active webview.
+ * Returns a JSON string: `{ text, canvas, elements: [...], domRead }`.
  */
 const EXTRACT_PAGE_SCRIPT = `(function(){
+  var READ_LEVEL = "__OPEN_STUDIO_READ_LEVEL__";
+  var TARGET_SELECTORS = __OPEN_STUDIO_TARGET_SELECTORS__;
   var TEXT_MAX = ${SIDEBAR_PREVIEW_TEXT_MAX};
   var EL_MAX = ${SIDEBAR_PREVIEW_ELEMENTS_MAX};
   function isVisible(el) {
@@ -249,21 +254,93 @@ const EXTRACT_PAGE_SCRIPT = `(function(){
     }
     return out;
   }
+  function collectTargets(selectors) {
+    var out = [];
+    var seen = [];
+    var roots = [document];
+    try {
+      var frames = document.querySelectorAll("iframe");
+      for (var fi = 0; fi < frames.length; fi++) {
+        try {
+          if (frames[fi].contentDocument) roots.push(frames[fi].contentDocument);
+        } catch (eFrame) {}
+      }
+    } catch (eFrames) {}
+    for (var si = 0; si < selectors.length && out.length < EL_MAX; si++) {
+      var selector = String(selectors[si] || "").trim();
+      if (!selector) continue;
+      var count = 0;
+      for (var ri = 0; ri < roots.length; ri++) {
+        var nodes = [];
+        try {
+          nodes = Array.prototype.slice.call(roots[ri].querySelectorAll(selector));
+        } catch (eQuery) {
+          continue;
+        }
+        count += nodes.length;
+        for (var ni = 0; ni < nodes.length && out.length < EL_MAX; ni++) {
+          var el = nodes[ni];
+          if (seen.indexOf(el) >= 0) continue;
+          seen.push(el);
+          var tag = String(el.tagName || "").toLowerCase();
+          out.push({
+            ref: "q" + (out.length + 1),
+            tag: tag,
+            role: attr(el, "role") || tag,
+            name: shorten(accessibleName(el), 80),
+            selector: selector,
+            matchCount: count
+          });
+        }
+      }
+      if (!count) {
+        out.push({
+          ref: "q" + (out.length + 1),
+          tag: "",
+          role: "",
+          name: "",
+          selector: selector,
+          matchCount: 0
+        });
+      }
+    }
+    return out;
+  }
   try {
-    var bodyText = visibleText(document.body);
-    var frameParts = iframeTexts(document, 0);
-    var combined = [bodyText].concat(frameParts).filter(Boolean).join("\\n\\n").trim();
-    var canvas = largeCanvasPresent();
-    var elements = collectInteractive(document);
+    var combined = "";
+    var canvas = false;
+    var elements = [];
+    if (READ_LEVEL === "full") {
+      var bodyText = visibleText(document.body);
+      var frameParts = iframeTexts(document, 0);
+      combined = [bodyText].concat(frameParts).filter(Boolean).join("\\n\\n").trim();
+      canvas = largeCanvasPresent();
+      elements = collectInteractive(document);
+    } else if (READ_LEVEL === "inventory") {
+      elements = collectInteractive(document);
+    } else if (READ_LEVEL === "target") {
+      elements = collectTargets(TARGET_SELECTORS);
+    }
     return JSON.stringify({
       text: combined.slice(0, TEXT_MAX),
       canvas: canvas,
-      elements: elements
+      elements: elements,
+      domRead: READ_LEVEL
     });
   } catch (e) {
-    return JSON.stringify({ text: "", canvas: false, elements: [] });
+    return JSON.stringify({ text: "", canvas: false, elements: [], domRead: READ_LEVEL });
   }
 })()`;
+
+/**
+ * @param {"target"|"inventory"|"full"} readLevel
+ * @param {string[]} selectors
+ */
+function buildExtractPageScript(readLevel, selectors = []) {
+  return EXTRACT_PAGE_SCRIPT
+    .replace('"__OPEN_STUDIO_READ_LEVEL__"', JSON.stringify(readLevel))
+    .replace("__OPEN_STUDIO_TARGET_SELECTORS__", JSON.stringify(Array.isArray(selectors) ? selectors : []));
+}
 
 /**
  * @param {string} text
@@ -298,7 +375,7 @@ function isElectronWebview(node) {
 
 /**
  * @param {unknown} raw
- * @returns {{ text: string; canvasHint: boolean; elements: SidebarPreviewInteractiveElement[] }}
+ * @returns {{ text: string; canvasHint: boolean; elements: SidebarPreviewInteractiveElement[]; domRead: string }}
  */
 function normalizeExtractedPage(raw) {
   /** @type {SidebarPreviewInteractiveElement[]} */
@@ -313,7 +390,7 @@ function normalizeExtractedPage(raw) {
     if (Array.isArray(obj.elements)) {
       elements = normalizeElements(obj.elements);
     }
-    return { text, canvasHint, elements };
+    return { text, canvasHint, elements, domRead: String(obj.domRead ?? "") };
   }
 
   const blob = String(raw ?? "").trim();
@@ -330,7 +407,7 @@ function normalizeExtractedPage(raw) {
 
   canvasHint = /\[meta:canvas-or-spreadsheet-ui\]\s*$/.test(blob);
   text = blob.replace(/\n?\[meta:canvas-or-spreadsheet-ui\]\s*$/, "").trim();
-  return { text, canvasHint, elements };
+  return { text, canvasHint, elements, domRead: "" };
 }
 
 /**
@@ -361,6 +438,9 @@ function normalizeElements(rows) {
     if (typeof item.inputType === "string" && item.inputType.trim()) {
       next.inputType = item.inputType.trim();
     }
+    if (typeof item.matchCount === "number" && Number.isFinite(item.matchCount)) {
+      next.matchCount = Math.max(0, Math.floor(item.matchCount));
+    }
     out.push(next);
     if (out.length >= SIDEBAR_PREVIEW_ELEMENTS_MAX) break;
   }
@@ -381,6 +461,7 @@ export function formatSidebarPreviewInventory(elements) {
       if (el.placeholder) bits.push(`placeholder=${el.placeholder}`);
       if (el.inputType) bits.push(`type=${el.inputType}`);
       if (el.href) bits.push(`href=${el.href}`);
+      if (typeof el.matchCount === "number") bits.push(`matches=${el.matchCount}`);
       return bits.join(" | ");
     })
     .join("\n");
@@ -395,6 +476,8 @@ export function formatSidebarPreviewInventory(elements) {
  *   activePreviewTabId?: string;
  *   artifactsPanel?: unknown;
  *   forceSidebar?: boolean;
+ *   domRead?: "auto" | "none" | "metadata" | "target" | "inventory" | "full";
+ *   selectors?: string[];
  * }} input
  * @returns {Promise<SidebarPreviewSnapshot | null>}
  */
@@ -419,6 +502,11 @@ export async function captureSidebarPreviewSnapshot(input) {
   let elements = [];
   let partial = false;
   let canvasHint = false;
+  const requestedReadLevel = normalizeDomReadLevel(input.domRead, "full");
+  const readLevel = requestedReadLevel === "auto" ? "full" : requestedReadLevel;
+  const selectors = Array.isArray(input.selectors)
+    ? input.selectors.map((selector) => String(selector ?? "").trim()).filter(Boolean).slice(0, SIDEBAR_PREVIEW_ELEMENTS_MAX)
+    : [];
 
   const webviewNode = input.webviewRef?.current ?? null;
   if (session.kind === "iframe" && isElectronWebview(webviewNode)) {
@@ -426,11 +514,13 @@ export async function captureSidebarPreviewSnapshot(input) {
     try {
       url = String(wv.getURL?.() ?? activeTab?.src ?? session.src ?? "").trim();
       title = String(wv.getTitle?.() ?? activeTab?.title ?? session.title ?? "").trim();
-      const raw = await wv.executeJavaScript(EXTRACT_PAGE_SCRIPT, false);
-      const parsed = normalizeExtractedPage(raw);
-      text = parsed.text;
-      canvasHint = parsed.canvasHint;
-      elements = parsed.elements;
+      if (readLevel !== "none" && readLevel !== "metadata") {
+        const raw = await wv.executeJavaScript(buildExtractPageScript(readLevel, selectors), false);
+        const parsed = normalizeExtractedPage(raw);
+        text = parsed.text;
+        canvasHint = parsed.canvasHint;
+        elements = parsed.elements;
+      }
     } catch {
       url = String(activeTab?.src ?? session.src ?? "").trim();
       title = String(activeTab?.title ?? session.title ?? "").trim();
@@ -442,11 +532,13 @@ export async function captureSidebarPreviewSnapshot(input) {
     const frame = input.iframeRef?.current;
     try {
       const doc = frame?.contentDocument;
-      text = String(doc?.body?.innerText ?? doc?.body?.textContent ?? "")
-        .replace(/\s+\n/g, "\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim()
-        .slice(0, SIDEBAR_PREVIEW_TEXT_MAX);
+      if (readLevel === "full") {
+        text = String(doc?.body?.innerText ?? doc?.body?.textContent ?? "")
+          .replace(/\s+\n/g, "\n")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim()
+          .slice(0, SIDEBAR_PREVIEW_TEXT_MAX);
+      }
     } catch {
       partial = true;
     }
@@ -456,7 +548,7 @@ export async function captureSidebarPreviewSnapshot(input) {
     const frame = input.iframeRef?.current;
     try {
       const doc = frame?.contentDocument;
-      if (doc?.body) {
+      if (doc?.body && readLevel === "full") {
         text = String(doc.body.innerText ?? doc.body.textContent ?? "")
           .replace(/\s+\n/g, "\n")
           .replace(/\n{3,}/g, "\n\n")
@@ -483,6 +575,7 @@ export async function captureSidebarPreviewSnapshot(input) {
     title: title || url,
     text,
     tabCount: tabs.length || 1,
+    domRead: readLevel,
     ...(elements.length ? { elements } : {}),
     ...(partial ? { partial: true } : {}),
     ...(canvasHint ? { canvasHint: true } : {}),
