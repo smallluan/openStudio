@@ -2823,11 +2823,50 @@ app.whenReady().then(async () => {
       };
 
       const storedSchedule = buildStoredSchedule(effectiveExisting.schedule);
-      const patch = buildCronUpdatePatch(cfg, { ...draft, channel: nextChannel }, message);
+      const currentCronJobs = await listCronJobs(cfg);
+      const currentCronJob = currentCronJobs.find(
+        (job) => job && typeof job === "object" && job.id === effectiveCronJobId,
+      );
+      const currentPayload =
+        currentCronJob?.payload && typeof currentCronJob.payload === "object"
+          ? currentCronJob.payload
+          : null;
+      const sessionTarget =
+        currentCronJob?.sessionTarget === "main" ||
+        (currentPayload && currentPayload.kind === "systemEvent")
+          ? "main"
+          : String(currentCronJob?.sessionTarget ?? "").trim();
+      let patch = buildCronUpdatePatch(
+        cfg,
+        { ...draft, channel: nextChannel },
+        message,
+        { sessionTarget },
+      );
       if (nextChannel === "open-studio") {
         Object.assign(patch, buildOpenStudioCronErrorResetPatch());
       }
-      await updateCronJob(cfg, effectiveCronJobId, patch);
+      try {
+        await updateCronJob(cfg, effectiveCronJobId, patch);
+      } catch (e) {
+        const errorMessage = String(e?.message ?? e);
+        if (
+          patch.payload?.kind !== "systemEvent" &&
+          errorMessage.includes("main cron jobs require payload.kind")
+        ) {
+          patch = buildCronUpdatePatch(
+            cfg,
+            { ...draft, channel: nextChannel },
+            message,
+            { sessionTarget: "main" },
+          );
+          if (nextChannel === "open-studio") {
+            Object.assign(patch, buildOpenStudioCronErrorResetPatch());
+          }
+          await updateCronJob(cfg, effectiveCronJobId, patch);
+        } else {
+          throw e;
+        }
+      }
       automationTasksStore.upsert({
         ...effectiveExisting,
         cronJobId: effectiveCronJobId,

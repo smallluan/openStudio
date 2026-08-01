@@ -81,8 +81,12 @@ export default function ChatLabHtmlFenceView({
       reportedHeightRef.current = normalizeHtmlFenceHeightPx(reservedHeight);
       setFrameHeight(seedHeight);
       setRuntimeError("");
+      setLoading(Boolean(srcDoc) && !renderFailed);
+      return;
     }
-    setLoading(Boolean(srcDoc) && !renderFailed);
+    if (!srcDoc || renderFailed) {
+      setLoading(false);
+    }
   }, [debouncedCode, srcDoc, seedHeight, reservedHeight, renderFailed]);
 
   useEffect(() => {
