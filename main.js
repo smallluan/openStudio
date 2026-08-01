@@ -72,6 +72,7 @@ const {
   prewarmStudioGatewaySessions,
   prewarmGatewaySessionKeys,
 } = require("./lib/openclaw-gateway-session.cjs");
+const { fetchGatewaySessionContextUsage } = require("./lib/openclaw-gateway-context-usage.cjs");
 const {
   syncOpenClawAgentFromStudioConfig,
   parseAgentIdFromSessionKey,
@@ -1801,6 +1802,27 @@ app.whenReady().then(async () => {
     } catch (e) {
       const msg = String(e?.message ?? e);
       getStudioLog().warn("[gateway] probe failed:", msg);
+      return { ok: false, message: msg };
+    }
+  });
+
+  ipcMain.handle("studio:getSessionContextUsage", async (_event, payload) => {
+    const sessionKey = typeof payload?.sessionKey === "string" ? payload.sessionKey.trim() : "";
+    if (!sessionKey) return { ok: false, message: "missing_session_key" };
+    try {
+      const cfg = userConfigStore.readRaw();
+      const ac = new AbortController();
+      const tid = setTimeout(() => ac.abort(), 8000);
+      try {
+        const usage = await fetchGatewaySessionContextUsage(cfg, sessionKey, ac.signal);
+        if (!usage) return { ok: false, message: "unavailable" };
+        return { ok: true, usage };
+      } finally {
+        clearTimeout(tid);
+      }
+    } catch (e) {
+      const msg = String(e?.message ?? e);
+      getStudioLog().verbose?.("[gateway] session context usage failed", { sessionKey, message: msg });
       return { ok: false, message: msg };
     }
   });

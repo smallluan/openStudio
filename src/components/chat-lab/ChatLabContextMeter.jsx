@@ -18,14 +18,15 @@ export function ChatLabContextMeter({ ratio, ariaSummary, percentText, line1, li
     <div
       className={cn(
         "flex flex-col gap-1 px-3 py-2",
+        "text-[0.75rem] leading-snug text-[var(--os-text-muted)]",
         "rounded-[10px] border",
         "border-[color-mix(in_srgb,var(--os-border)_72%,transparent)]",
         "bg-[var(--os-bg-modal)]",
         "shadow-[var(--os-shadow-soft)]",
       )}
     >
-      <div className="text-[0.8125rem] leading-snug text-[var(--os-text)]">{line1}</div>
-      <div className="text-[0.75rem] leading-snug text-[var(--os-text-muted)]">{line2}</div>
+      <div>{line1}</div>
+      <div>{line2}</div>
     </div>
   );
 

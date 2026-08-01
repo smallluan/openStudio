@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld("studioBridge", {
   maybeOpenWorkspaceOfficeFileExternally: (rawPath) =>
     ipcRenderer.invoke("studio:maybeOpenWorkspaceOfficeFileExternally", rawPath),
   probeGateway: () => ipcRenderer.invoke("studio:probeGateway"),
+  getSessionContextUsage: (payload) => ipcRenderer.invoke("studio:getSessionContextUsage", payload),
   warmGatewayChatPrep: () => ipcRenderer.invoke("studio:warmGatewayChatPrep"),
   prewarmStudioGatewaySessions: (payload) => ipcRenderer.invoke("studio:prewarmStudioGatewaySessions", payload),
   bootstrapGateway: () => ipcRenderer.invoke("studio:bootstrapGateway"),

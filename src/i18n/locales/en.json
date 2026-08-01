@@ -932,7 +932,7 @@
       "readme": "README excerpt:\n{{excerpt}}",
       "instruction": "When the user asks about \"this project\" or the current codebase, they mean the selected folder above—not the agent bootstrap workspace. Answer from files under that path; use absolute paths under that directory when reading files with tools."
     },
-    "contextMeterLine1": "Context, {{pct}}%",
+    "contextMeterLine1": "Context: {{pct}}%",
     "contextMeterLine1Pending": "After send, {{pct}}%",
     "queuedMessagesLabel": "Queued messages",
     "queuedMessagesCount": "{{count}} queued",
@@ -940,7 +940,8 @@
     "queuedMessageFiles": "{{count}} files",
     "queuedMessageEmpty": "Empty message",
     "cancelQueuedMessage": "Cancel queued",
-    "contextMeterLine2": "~{{n}} tokens used / {{windowK}}",
+    "contextMeterLine2": "Used (approx.): {{usedK}}/{{windowK}}",
+    "contextMeterLine2Exact": "Used: {{usedK}}/{{windowK}}",
     "composerAttachmentsLabel": "Images to send",
     "removeComposerImage": "Remove image",
     "chatUntitledImage": "[Image]",

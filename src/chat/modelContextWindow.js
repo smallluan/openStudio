@@ -69,14 +69,39 @@ export function getContextWindowSize(modelId) {
   return 128000;
 }
 
+/** @param {string} fixed */
+function trimTrailingZeros(fixed) {
+  if (!fixed.includes(".")) return fixed;
+  return fixed.replace(/\.?0+$/, "");
+}
+
+/**
+ * Compact token count for context meter (e.g. 11745 → "11.75k", 200000 → "200k").
+ * @param {number} tokens
+ * @returns {string}
+ */
+export function formatContextTokensK(tokens) {
+  const n = Number(tokens);
+  if (!Number.isFinite(n) || n < 0) return "0k";
+  if (n >= 1_000_000) {
+    const v = n / 1_000_000;
+    const decimals = v >= 10 ? 0 : v >= 1 ? 1 : 2;
+    return `${trimTrailingZeros(v.toFixed(decimals))}m`;
+  }
+  if (n >= 1000) {
+    const v = n / 1000;
+    if (v >= 100) return `${Math.round(v)}k`;
+    const rounded = Math.round(v * 100) / 100;
+    return `${trimTrailingZeros(rounded.toFixed(2))}k`;
+  }
+  return String(Math.round(n));
+}
+
 /**
  * Format context window size for display.
  * @param {number} tokens
  * @returns {string}
  */
 export function formatContextWindow(tokens) {
-  if (tokens >= 1000000) {
-    return `${(tokens / 1000000).toFixed(1)}M`;
-  }
-  return `${Math.round(tokens / 1000)}K`;
+  return formatContextTokensK(tokens);
 }

@@ -15,7 +15,8 @@ import {
   imageAttachmentsContextChars,
   readImageFileAsComposerAttachment,
 } from "../chat/chatLabComposerAttachments.js";
-import { getContextWindowSize, formatContextWindow } from "../chat/modelContextWindow.js";
+import { getContextWindowSize, formatContextTokensK } from "../chat/modelContextWindow.js";
+import { useGatewaySessionContextUsage } from "../chat/useGatewaySessionContextUsage.js";
 import { buildStreamUsageMeta } from "../chat/chatStreamUsageMeta.js";
 import {
   emojiForFileRefKind,
@@ -51,6 +52,7 @@ import {
   recordAgentGatewaySync,
   resetThreadGatewaySync,
   resolveAgentGatewayContext,
+  resolveAgentStudioSessionKey,
 } from "../chat/gatewayContext.js";
 import {
   CHAT_SESSION_CHANNEL_WECHAT,
@@ -4845,36 +4847,65 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
   );
 
   const contextUsageApprox = useMemo(() => {
-    // Get current model's context window size
+    // Fallback when gateway session usage is unavailable (offline / empty session).
     const currentProfile = config?.modelProfiles?.find((p) => p.id === toolbarModelId);
     const currentModelId = currentProfile?.modelId || "";
     const contextWindow = getContextWindowSize(currentModelId);
-    
-    // Calculate USED context: only sent messages (user + assistant)
-    // Do NOT include system prompt - it's a fixed cost, not user-visible usage
+
     const usedChars = estimateThreadCharBudget(messages, {
-      systemPromptLen: 0,  // Don't count system prompt
+      systemPromptLen: 0,
       inputLen: 0,
       pendingImagePayloadChars: 0,
     });
     const usedTokens = approxTokensFromChars(usedChars);
     const usedFrac = usedTokens / contextWindow;
-    
-    return { 
-      chars: usedChars, 
-      tokens: usedTokens, 
+
+    return {
+      chars: usedChars,
+      tokens: usedTokens,
       frac: usedFrac,
-      contextWindow 
+      contextWindow,
     };
-  }, [messages, t, config?.modelProfiles, toolbarModelId]);
+  }, [messages, config?.modelProfiles, toolbarModelId]);
+
+  const gatewaySessionKey = useMemo(() => {
+    if (!mainAgent || !conversationId) return "";
+    return resolveAgentStudioSessionKey(mainAgent, conversationId);
+  }, [mainAgent, conversationId]);
+
+  const gatewayContextUsageRefreshKey = useMemo(() => {
+    const last = messages[messages.length - 1];
+    return `${messages.length}:${String(last?.content ?? "").length}:${gatewayStreaming ? 1 : 0}`;
+  }, [messages, gatewayStreaming]);
+
+  const { usage: gatewayContextUsage } = useGatewaySessionContextUsage({
+    bridge,
+    sessionKey: gatewaySessionKey,
+    enabled:
+      isElectron &&
+      gatewayPhase === "online" &&
+      !chatApiBlocked &&
+      Boolean(gatewaySessionKey) &&
+      !isLanding,
+    refreshKey: gatewayContextUsageRefreshKey,
+  });
+
+  const contextUsage = gatewayContextUsage ?? contextUsageApprox;
 
   const contextMeterLines = useMemo(() => {
-    const pct = Math.round(Math.min(100, Math.max(0, contextUsageApprox.frac * 100)));
-    const windowFormatted = formatContextWindow(contextUsageApprox.contextWindow);
+    const pct = Math.round(Math.min(100, Math.max(0, contextUsage.frac * 100)));
+    const usedTokens = /** @type {{ usedTokens?: number; tokens?: number }} */ (contextUsage).usedTokens
+      ?? /** @type {{ tokens?: number }} */ (contextUsage).tokens
+      ?? 0;
+    const usedK = formatContextTokensK(usedTokens);
+    const windowK = formatContextTokensK(contextUsage.contextWindow);
     const line1 = t("chatLab.contextMeterLine1", { pct });
-    const line2 = t("chatLab.contextMeterLine2", { n: contextUsageApprox.tokens, windowK: windowFormatted });
+    const line2 = t(gatewayContextUsage ? "chatLab.contextMeterLine2Exact" : "chatLab.contextMeterLine2", {
+      usedK,
+      windowK,
+    });
     return { line1, line2, pct, ariaSummary: `${line1}，${line2}` };
-  }, [contextUsageApprox, t]);
+  }, [contextUsage, gatewayContextUsage, t]);
 
   const addComposerImageFiles = useCallback(
     /** @param {FileList | File[] | null | undefined} fileList */
@@ -5382,7 +5413,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
           </ChatLabToolbarScroll>
           <div className="chat-lab__shell-toolbar-end">
             <ChatLabContextMeter
-              ratio={Math.min(1, contextUsageApprox.frac)}
+              ratio={Math.min(1, contextUsage.frac)}
               ariaSummary={contextMeterLines.ariaSummary}
               percentText={`${contextMeterLines.pct}%`}
               line1={contextMeterLines.line1}

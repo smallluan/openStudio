@@ -933,7 +933,7 @@
       "readme": "README 摘要：\n{{excerpt}}",
       "instruction": "当用户问「这个项目」「当前代码库」或类似问题时，指的是上述选中文件夹，而不是 Agent 的 bootstrap 工作区。请基于该路径下的文件作答；若需读文件，请使用该目录下的绝对路径。"
     },
-    "contextMeterLine1": "上下文，{{pct}}%",
+    "contextMeterLine1": "上下文：{{pct}}%",
     "contextMeterLine1Pending": "预估发送后，{{pct}}%",
     "queuedMessagesLabel": "排队消息",
     "queuedMessagesCount": "{{count}} 条排队",
@@ -941,7 +941,8 @@
     "queuedMessageFiles": "{{count}} 个文件",
     "queuedMessageEmpty": "空消息",
     "cancelQueuedMessage": "取消排队",
-    "contextMeterLine2": "已使用约 {{n}} tokens / {{windowK}}",
+    "contextMeterLine2": "已使用约：{{usedK}}/{{windowK}}",
+    "contextMeterLine2Exact": "已使用：{{usedK}}/{{windowK}}",
     "composerAttachmentsLabel": "待发送的图片",
     "removeComposerImage": "移除图片",
     "chatUntitledImage": "[图片]",
