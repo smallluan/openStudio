@@ -28,6 +28,8 @@ describe("composeChatLabStudioSuffix tool search", () => {
   it("puts Tool Search instructions first", () => {
     const suffix = composeChatLabStudioSuffix(t, { linkOpenMode: "sidebar" });
     assert.match(suffix, /Tool discovery/);
+    assert.match(suffix, /git_grep/);
+    assert.match(suffix, /workspace_glob/);
     assert.match(suffix, /browser_open/);
     assert.ok(suffix.indexOf("Tool discovery") < suffix.indexOf("## images"));
   });

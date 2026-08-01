@@ -278,6 +278,7 @@ function postProcessMarkdownBlocks(blocks) {
 }
 
 export function segmentMarkdownContentBlocks(source, options = {}) {
+  const renderDirectoryTrees = options.renderDirectoryTrees !== false;
   const repaired = repairHtmlMarkdownForRender(String(source ?? ""), options);
   const lines = repaired.split(/\r?\n/);
   /** @type {MarkdownContentBlock[]} */
@@ -366,13 +367,13 @@ export function segmentMarkdownContentBlocks(source, options = {}) {
       pushProseLine(line);
       continue;
     }
-    if (isAsciiTreeLine(line)) {
+    if (renderDirectoryTrees && isAsciiTreeLine(line)) {
       flushProse();
       flushImages();
       treeBuf.push(normalizeAsciiTreeLine(line));
       continue;
     }
-    if (treeBuf.length) {
+    if (renderDirectoryTrees && treeBuf.length) {
       if (isBlankOrBlockquoteSeparator(line)) {
         const nextTree = nextAsciiTreeLine(lines, i + 1);
         if (nextTree) continue;
@@ -411,7 +412,7 @@ export function segmentMarkdownContentBlocks(source, options = {}) {
   flushProse();
   flushHtml();
   flushImages();
-  flushTree();
+  if (renderDirectoryTrees) flushTree();
   return mergeAdjacentGalleryBlocks(postProcessMarkdownBlocks(blocks));
 }
 

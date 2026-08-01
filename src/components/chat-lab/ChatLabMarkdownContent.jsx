@@ -12,7 +12,6 @@ import { cn } from "../../ui/cn.js";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { useDocTheme } from "./chatLabMarkdown.jsx";
 import { ChatLabImageGrid } from "./ChatLabImageGrid.jsx";
-import ChatLabDirectoryTree from "./ChatLabDirectoryTree.jsx";
 import ChatLabHtmlBlock from "./ChatLabHtmlBlock.jsx";
 
 const CHAT_MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
@@ -41,7 +40,10 @@ export default function ChatLabMarkdownContent({
 }) {
   const { t } = useI18n();
   const theme = useDocTheme();
-  const blocks = useMemo(() => segmentMarkdownContentBlocks(source, { streaming }), [source, streaming]);
+  const blocks = useMemo(
+    () => segmentMarkdownContentBlocks(source, { streaming, renderDirectoryTrees: false }),
+    [source, streaming],
+  );
   const heightsComplete = useMemo(
     () => htmlFenceHeightsCompleteForMarkdown(source, htmlFenceHeights),
     [source, htmlFenceHeights],
@@ -92,9 +94,6 @@ export default function ChatLabMarkdownContent({
       {blocks.map((block, idx) => {
         if (block.kind === "gallery") {
           return <ChatLabImageGrid key={`gallery-${idx}`} images={block.images} />;
-        }
-        if (block.kind === "tree") {
-          return <ChatLabDirectoryTree key={`tree-${idx}`} root={block.tree} />;
         }
         if (block.kind === "html") {
           const fenceIndex = htmlFenceIndex;

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { useOptionalChatLabWorkspace } from "../../context/ChatLabWorkspaceContext.jsx";
 
 /**
@@ -9,7 +9,9 @@ import { useOptionalChatLabWorkspace } from "../../context/ChatLabWorkspaceConte
 export default function ChatLabWorkspaceActiveRootBridge({ activeRootRef }) {
   const workspace = useOptionalChatLabWorkspace();
   const activeRoot = workspace?.activeRoot ?? null;
-  useEffect(() => {
+  // Keep the parent ref current before browser paint. The composer can send a
+  // message immediately after the folder picker closes.
+  useLayoutEffect(() => {
     activeRootRef.current = activeRoot;
   }, [activeRoot, activeRootRef]);
   return null;

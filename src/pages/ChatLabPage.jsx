@@ -493,7 +493,6 @@ function useNestedAutoScroll(active, contentDigest) {
 
   useLayoutEffect(() => {
     if (!active) return;
-    pinnedRef.current = true;
     pinToBottom();
   }, [active, contentDigest, pinToBottom]);
 
@@ -501,7 +500,6 @@ function useNestedAutoScroll(active, contentDigest) {
     if (!active) return;
     const el = ref.current;
     if (!el) return;
-    pinnedRef.current = true;
     const pin = () => {
       if (!pinnedRef.current) return;
       el.scrollTop = el.scrollHeight;
@@ -966,8 +964,14 @@ function mapSessionRecordToUiMessages(rec, gatewaySliceOrSlices) {
           : {}),
         ...(gatewaySlice.toolTrace?.length ? { toolTrace: gatewaySlice.toolTrace } : {}),
         ...(gatewaySlice.activityLog?.length ? { activityLog: gatewaySlice.activityLog } : {}),
-        ...(gatewaySlice.assistantTimeline?.length
-          ? { assistantTimeline: gatewaySlice.assistantTimeline }
+        ...(gatewaySlice.assistantTimeline?.length || m.assistantTimeline?.length
+          ? {
+              assistantTimeline: mergePreservingSidebarAutomationTimeline(
+                m.assistantTimeline,
+                gatewaySlice.assistantTimeline,
+                gatewaySlice.content ?? m.content,
+              ),
+            }
           : {}),
       };
     });
@@ -1183,17 +1187,47 @@ function mergePreservingSidebarAutomationToolTrace(prev, incoming) {
 function mergePreservingSidebarAutomationTimeline(prev, incoming, canonContent = "") {
   const prevList = Array.isArray(prev) ? prev : [];
   const incomingList = Array.isArray(incoming) ? incoming : [];
-  const sidebarSegs = prevList.filter(
-    (s) => s?.kind === "tool" && String(s.refId ?? "").startsWith("sidebar-auto:"),
-  );
   /** @type {import("../chat/streamTimelineMerge.js").AssistantTimelineSegment[]} */
   let tl = incomingList.length ? [...incomingList] : [...prevList];
-  const seen = new Set(tl.filter((s) => s.kind === "tool").map((s) => s.refId));
-  for (const seg of sidebarSegs) {
-    if (!seen.has(seg.refId)) {
-      tl.push(seg);
-      seen.add(seg.refId);
+
+  // A gateway content snapshot and a tool/activity snapshot can cross in flight.
+  // The newer prose snapshot is valid, but its timeline may still omit refs that
+  // were already emitted by the client. Preserve every prior non-text segment
+  // instead of only preserving sidebar automation rows.
+  const segmentKey = (seg) =>
+    seg?.kind === "text" || seg?.kind === "thinking"
+      ? ""
+      : `${String(seg?.kind ?? "")}:${String(seg?.refId ?? "")}`;
+  const present = new Set(tl.map(segmentKey).filter(Boolean));
+  for (let i = 0; i < prevList.length; i++) {
+    const seg = prevList[i];
+    const key = segmentKey(seg);
+    if (!key || present.has(key)) continue;
+
+    let insertAt = -1;
+    for (let j = i + 1; j < prevList.length; j++) {
+      const nextKey = segmentKey(prevList[j]);
+      if (!nextKey) continue;
+      const idx = tl.findIndex((candidate) => segmentKey(candidate) === nextKey);
+      if (idx >= 0) {
+        insertAt = idx;
+        break;
+      }
     }
+    if (insertAt < 0) {
+      for (let j = i - 1; j >= 0; j--) {
+        const priorKey = segmentKey(prevList[j]);
+        if (!priorKey) continue;
+        const idx = tl.findIndex((candidate) => segmentKey(candidate) === priorKey);
+        if (idx >= 0) {
+          insertAt = idx + 1;
+          break;
+        }
+      }
+    }
+    if (insertAt < 0) tl.push(seg);
+    else tl.splice(insertAt, 0, seg);
+    present.add(key);
   }
   // Do not strip fences from stored timeline text — runner may still need them.
   // Display paths call stripSidebarActionFences / markdown hides the fence card.
@@ -8564,9 +8598,18 @@ function ChatLabPlainMessageList({
   }, [autoScrollRef, messagesScrollRef, streamingPinActive, userScrollPausedRef]);
 
   const pinAfterAsyncLayout = useCallback(() => {
-    if (!autoScrollRef.current) return;
+    if (
+      !mayPinChatOnContentGrowth(
+        messagesScrollRef.current,
+        streamingPinActive,
+        autoScrollRef,
+        userScrollPausedRef,
+      )
+    ) {
+      return;
+    }
     forcePinChatScroll(messagesScrollRef.current);
-  }, [autoScrollRef, messagesScrollRef]);
+  }, [autoScrollRef, messagesScrollRef, streamingPinActive, userScrollPausedRef]);
 
   const handleScroll = useCallback(() => {
     syncFromScroll(messagesScrollRef.current);
@@ -8610,15 +8653,14 @@ function ChatLabPlainMessageList({
   useStreamingChatPinLoop(streamingPinActive, canFollowPin, pinPlainNow);
 
   useLayoutEffect(() => {
-    if (!conversationId || messages.length === 0) return;
+    if (!conversationId) return;
     armPin();
     forcePinChatScroll(messagesScrollRef.current);
-  }, [armPin, conversationId, messages.length, messagesScrollRef]);
+  }, [armPin, conversationId, messagesScrollRef]);
 
   useLayoutEffect(() => {
-    armPin();
     pinScrollToBottom();
-  }, [scrollPinKey, armPin, pinScrollToBottom]);
+  }, [scrollPinKey, pinScrollToBottom]);
 
   useLayoutEffect(() => {
     pinScrollToBottom();
@@ -9065,26 +9107,49 @@ function ChatLabVirtualMessageList({
   }, [programmaticPinRef]);
 
   const pinAfterAsyncLayout = useCallback(() => {
-    if (!autoScrollRef.current) return;
+    if (
+      !mayPinChatOnContentGrowth(
+        messagesScrollRef.current,
+        streamingPinActive,
+        autoScrollRef,
+        userScrollPausedRef,
+      )
+    ) {
+      return;
+    }
     if (pinAfterAsyncLayoutRafRef.current != null) return;
     pinAfterAsyncLayoutRafRef.current = requestAnimationFrame(() => {
       pinAfterAsyncLayoutRafRef.current = null;
-      if (!autoScrollRef.current) return;
+      if (
+        !mayPinChatOnContentGrowth(
+          messagesScrollRef.current,
+          streamingPinActive,
+          autoScrollRef,
+          userScrollPausedRef,
+        )
+      ) {
+        return;
+      }
       forcePinVirtualToBottom();
     });
-  }, [autoScrollRef, forcePinVirtualToBottom]);
+  }, [
+    autoScrollRef,
+    forcePinVirtualToBottom,
+    messagesScrollRef,
+    streamingPinActive,
+    userScrollPausedRef,
+  ]);
 
   useLayoutEffect(() => {
-    if (!conversationId || renderItems.length === 0) return;
+    if (!conversationId) return;
     armPin();
     forcePinVirtualToBottom();
-  }, [armPin, conversationId, forcePinVirtualToBottom, renderItems.length]);
+  }, [armPin, conversationId, forcePinVirtualToBottom]);
 
   /** Pin when a new turn starts — not on every streaming token (messages reference churn). */
   useLayoutEffect(() => {
-    armPin();
     pinVirtualToBottom();
-  }, [scrollPinKey, armPin, pinVirtualToBottom]);
+  }, [scrollPinKey, pinVirtualToBottom]);
 
   /** Follow streaming growth only while the reader is already at the bottom. */
   useLayoutEffect(() => {

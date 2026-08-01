@@ -48,7 +48,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  			snapshot,
  			authStore: params.authStore,
  			key: "mediaUnderstandingProviders",
-@@ -2698,6 +2698,437 @@ function resolveGoalSessionScope(options) {
+@@ -2698,6 +2698,566 @@ function resolveGoalSessionScope(options) {
  		storePath: resolveStorePath(options.config?.session?.store, { agentId })
  	};
  }
@@ -131,6 +131,135 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +			return jsonResult(payload);
 +		}
 +	};
++}
++
++function createOpenStudioWorkspaceTools(options) {
++	/* OPEN_STUDIO_WORKSPACE_CODE_TOOLS */
++	const fs = process.getBuiltinModule("node:fs");
++	const path = process.getBuiltinModule("node:path");
++	const childProcess = process.getBuiltinModule("node:child_process");
++	const skipDirs = new Set([".git", "node_modules", "dist", "build", "release", ".cursor", "vendor", "coverage", "__pycache__"]);
++	const readString = (args, key) => typeof args?.[key] === "string" ? args[key].trim() : "";
++	const resolveRoot = (args) => {
++		const raw = readString(args, "root");
++		if (!raw) throw new ToolInputError("root is required; pass the selected project directory");
++		const root = path.resolve(raw);
++		if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new ToolInputError("root must be an existing directory");
++		return root;
++	};
++	const result = (value) => jsonResult({ ok: true, ...value });
++	const maxResults = (args, fallback = 50) => Math.min(200, Math.max(1, Number.isFinite(args?.maxResults) ? Math.floor(args.maxResults) : fallback));
++	const runGit = (root, args) => {
++		const r = childProcess.spawnSync("git", args, { cwd: root, encoding: "utf8", windowsHide: true, timeout: 20000, maxBuffer: 2 * 1024 * 1024 });
++		if (r.error) return { ok: false, error: String(r.error.message || r.error) };
++		return { ok: r.status === 0, output: String(r.stdout || ""), error: String(r.stderr || "") };
++	};
++	const rootSchema = Type.String({ description: "Selected project root. Pass the absolute path shown in the project context, for example D:\\openStudio." });
++	const commonSchema = (description) => Type.Object({
++		root: rootSchema,
++		maxResults: Type.Optional(Type.Number({ description: "Maximum number of results (1-200)." })),
++		...description
++	}, { additionalProperties: false });
++	const gitGrepTool = {
++		label: "Git Grep",
++		name: "git_grep",
++		displaySummary: "Search tracked project code",
++		description: "Search the selected Git repository with git grep. Use this first for code symbols, strings, imports, routes, and configuration references instead of reading files one by one. Pass the selected project root explicitly.",
++		parameters: commonSchema({
++			pattern: Type.String({ description: "Text or regular expression to search for." }),
++			path: Type.Optional(Type.String({ description: "Optional repository-relative path or directory." })),
++			regex: Type.Optional(Type.Boolean({ description: "Treat pattern as a regular expression; default false uses fixed text." }))
++		}),
++		execute: async (_id, args) => {
++			const root = resolveRoot(args);
++			const pattern = readString(args, "pattern");
++			if (!pattern) throw new ToolInputError("pattern is required");
++			const command = ["grep", "--no-color", "-n", "--max-count", String(maxResults(args)), ...(args?.regex === true ? [] : ["--fixed-strings"]), "-e", pattern];
++			const target = readString(args, "path");
++			if (target) command.push("--", target);
++			const r = runGit(root, command);
++			if (!r.ok && !r.output.trim()) return result({ root, matches: [], error: r.error.trim() || "git_grep_failed" });
++			return result({ root, matches: r.output.trim().split(/\r?\n/).filter(Boolean), truncated: r.output.trim().split(/\r?\n/).filter(Boolean).length >= maxResults(args) });
++		}
++	};
++	const gitStatusTool = {
++		label: "Git Status",
++		name: "git_status",
++		displaySummary: "Inspect project Git status",
++		description: "Show the selected project's current Git branch and changed files. Use before modifying code or when the user asks about repository state.",
++		parameters: Type.Object({ root: rootSchema }, { additionalProperties: false }),
++		execute: async (_id, args) => {
++			const root = resolveRoot(args);
++			const r = runGit(root, ["status", "--short", "--branch"]);
++			return result({ root, status: r.output.trim(), error: r.ok ? void 0 : r.error.trim() || "git_status_failed" });
++		}
++	};
++	const gitLogTool = {
++		label: "Git Log",
++		name: "git_log",
++		displaySummary: "Inspect project Git history",
++		description: "Show recent commits from the selected project. Use this instead of repeatedly running shell git log commands.",
++		parameters: commonSchema({ limit: Type.Optional(Type.Number({ description: "Number of commits (1-100)." })) }),
++		execute: async (_id, args) => {
++			const root = resolveRoot(args);
++			const limit = Math.min(100, Math.max(1, Number.isFinite(args?.limit) ? Math.floor(args.limit) : 20));
++			const r = runGit(root, ["log", "--oneline", "--decorate", "-n", String(limit)]);
++			return result({ root, commits: r.output.trim().split(/\r?\n/).filter(Boolean), error: r.ok ? void 0 : r.error.trim() || "git_log_failed" });
++		}
++	};
++	const workspaceGlobTool = {
++		label: "Workspace Glob",
++		name: "workspace_glob",
++		displaySummary: "Find project files",
++		description: "Find files and directories under the selected project root. Use this for filename discovery before reading files; hidden/build/dependency directories are skipped.",
++		parameters: commonSchema({ query: Type.Optional(Type.String({ description: "Case-insensitive filename or path fragment." })) }),
++		execute: async (_id, args) => {
++			const root = resolveRoot(args);
++			const query = readString(args, "query").toLowerCase();
++			const entries = [];
++			const walk = (dir, depth) => {
++				if (entries.length >= maxResults(args) || depth > 8) return;
++				let children = [];
++				try { children = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
++				for (const child of children) {
++					if (entries.length >= maxResults(args)) return;
++					if (child.isDirectory() && skipDirs.has(child.name)) continue;
++					const full = path.join(dir, child.name);
++					const relative = path.relative(root, full).replace(/\\/g, "/");
++					if (!query || relative.toLowerCase().includes(query)) entries.push({ path: relative, kind: child.isDirectory() ? "directory" : "file" });
++					if (child.isDirectory()) walk(full, depth + 1);
++				}
++			};
++			walk(root, 0);
++			return result({ root, entries });
++		}
++	};
++	const workspaceReadTool = {
++		label: "Workspace Read",
++		name: "workspace_read",
++		displaySummary: "Read selected project file",
++		description: "Read a relevant file from the selected project after search has identified it. Use narrow line ranges when possible; do not use this to dump an entire codebase.",
++		parameters: Type.Object({
++			root: rootSchema,
++			path: Type.String({ description: "Absolute path or path relative to root." }),
++			startLine: Type.Optional(Type.Number({ description: "1-based first line." })),
++			endLine: Type.Optional(Type.Number({ description: "1-based inclusive last line." }))
++		}, { additionalProperties: false }),
++		execute: async (_id, args) => {
++			const root = resolveRoot(args);
++			const requested = readString(args, "path");
++			if (!requested) throw new ToolInputError("path is required");
++			const file = path.resolve(root, requested);
++			const relative = path.relative(root, file);
++			if (relative.startsWith("..") || path.isAbsolute(relative)) throw new ToolInputError("path must stay inside root");
++			if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new ToolInputError("file not found");
++			const lines = String(fs.readFileSync(file, "utf8")).split(/\r?\n/);
++			const start = Math.max(1, Number.isFinite(args?.startLine) ? Math.floor(args.startLine) : 1);
++			const end = Math.min(lines.length, Number.isFinite(args?.endLine) ? Math.floor(args.endLine) : Math.min(lines.length, start + 199));
++			return result({ root, path: relative.replace(/\\/g, "/"), startLine: start, endLine: end, text: lines.slice(start - 1, end).join("\n") });
++		}
++	};
++	return [gitGrepTool, gitStatusTool, gitLogTool, workspaceGlobTool, workspaceReadTool];
 +}
 +
 +function createBrowserOpenTool() {
@@ -486,7 +615,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  function createGetGoalTool(options) {
  	return {
  		label: "Get Goal",
-@@ -11499,7 +11868,12 @@ function resolveSessionsSpawnThreadAvailability(opts) {
+@@ -11499,7 +11997,12 @@ function resolveSessionsSpawnThreadAvailability(opts) {
  function createSessionsSpawnToolSchema(params) {
  	const spawnModes = params.threadAvailable ? SUBAGENT_SPAWN_MODES : ["run"];
  	const schema = {
@@ -500,7 +629,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  		taskName: Type.Optional(Type.String({ description: "Stable alias for later targeting; lowercase letters/digits/underscores/hyphens, starts letter." })),
  		label: Type.Optional(Type.String()),
  		runtime: optionalStringEnum(params.acpAvailable ? SESSIONS_SPAWN_RUNTIMES : ["subagent"]),
-@@ -11520,6 +11894,11 @@ function createSessionsSpawnToolSchema(params) {
+@@ -11520,6 +12023,11 @@ function createSessionsSpawnToolSchema(params) {
  			mimeType: Type.Optional(Type.String())
  		}), { maxItems: 50 })),
  		attachAs: Type.Optional(Type.Object({ mountPath: Type.Optional(Type.String()) })),
@@ -512,7 +641,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  		...params.acpAvailable ? {
  			resumeSessionId: Type.Optional(Type.String({ description: "ACP-only resume target; ignored for runtime=\"subagent\". Use id already recorded for this requester." })),
  			streamTo: optionalStringEnum(SESSIONS_SPAWN_ACP_STREAM_TARGETS, { description: "ACP-only stream target; ignored for runtime=\"subagent\". Use \"parent\" to stream turn to requester." })
-@@ -11532,6 +11911,182 @@ function resolveAcpUnavailableMessage(opts) {
+@@ -11532,6 +12040,182 @@ function resolveAcpUnavailableMessage(opts) {
  	if (opts?.config?.acp?.enabled === false) return "runtime=\"acp\" is unavailable because ACP is disabled by policy (`acp.enabled=false`). Use runtime=\"subagent\".";
  	return "runtime=\"acp\" is unavailable in this session because no ACP runtime backend is loaded. Enable the acpx plugin or use runtime=\"subagent\".";
  }
@@ -695,7 +824,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  function createSessionsSpawnTool(opts) {
  	const acpAvailable = isAcpRuntimeSpawnAvailable({
  		config: opts?.config,
-@@ -11542,7 +12097,7 @@ function createSessionsSpawnTool(opts) {
+@@ -11542,7 +12226,7 @@ function createSessionsSpawnTool(opts) {
  		label: "Sessions",
  		name: "sessions_spawn",
  		displaySummary: acpAvailable ? SESSIONS_SPAWN_TOOL_DISPLAY_SUMMARY : SESSIONS_SPAWN_SUBAGENT_TOOL_DISPLAY_SUMMARY,
@@ -704,7 +833,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  			acpAvailable,
  			threadAvailable
  		}),
-@@ -11552,11 +12107,103 @@ function createSessionsSpawnTool(opts) {
+@@ -11552,11 +12236,103 @@ function createSessionsSpawnTool(opts) {
  		}),
  		execute: async (_toolCallId, args) => {
  			const params = args;
@@ -810,7 +939,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  			const taskNameResult = normalizeSubagentTaskName(params.taskName);
  			if (taskNameResult.error) return jsonResult({
  				status: "error",
-@@ -11572,18 +12219,22 @@ function createSessionsSpawnTool(opts) {
+@@ -11572,18 +12348,22 @@ function createSessionsSpawnTool(opts) {
  			const cwd = readStringParam(params, "cwd");
  			const mode = params.mode === "run" || params.mode === "session" ? params.mode : void 0;
  			const cleanup = params.cleanup === "keep" || params.cleanup === "delete" ? params.cleanup : "keep";
@@ -837,7 +966,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  			if (acpUnsupportedInheritedTool) return jsonResult({
  				status: "forbidden",
  				error: formatAcpInheritedToolDenyError(acpUnsupportedInheritedTool),
-@@ -11634,7 +12285,7 @@ function createSessionsSpawnTool(opts) {
+@@ -11634,7 +12414,7 @@ function createSessionsSpawnTool(opts) {
  					agentMemberRoleIds: opts?.agentMemberRoleIds,
  					sandboxed: opts?.sandboxed,
  					inheritedToolAllowlist: opts?.inheritedToolAllowlist,
@@ -846,7 +975,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  				});
  				const childSessionKey = result.childSessionKey?.trim();
  				const childRunId = isSpawnAcpAcceptedResult(result) ? result.runId?.trim() : void 0;
-@@ -11684,9 +12335,9 @@ function createSessionsSpawnTool(opts) {
+@@ -11684,9 +12464,9 @@ function createSessionsSpawnTool(opts) {
  						});
  					}
  				}
@@ -858,7 +987,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  				task,
  				taskName,
  				label: label || void 0,
-@@ -11717,8 +12368,8 @@ function createSessionsSpawnTool(opts) {
+@@ -11717,8 +12497,8 @@ function createSessionsSpawnTool(opts) {
  				requesterAgentIdOverride: opts?.requesterAgentIdOverride,
  				workspaceDir: opts?.workspaceDir,
  				inheritedToolAllowlist: opts?.inheritedToolAllowlist,
@@ -869,7 +998,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  		}
  	};
  }
-@@ -11729,9 +12380,10 @@ function createSessionsYieldTool(opts) {
+@@ -11729,9 +12509,10 @@ function createSessionsYieldTool(opts) {
  	return {
  		label: "Yield",
  		name: "sessions_yield",
@@ -881,7 +1010,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  			const message = readStringParam(args, "message") || "Turn yielded.";
  			if (!opts?.sessionId) return jsonResult({
  				status: "error",
-@@ -13798,6 +14450,11 @@ function createWebSearchTool(options) {
+@@ -13798,6 +14579,11 @@ function createWebSearchTool(options) {
  	};
  }
  let openClawToolsDeps = { callGateway };
@@ -893,7 +1022,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  function createOpenClawTools(options) {
  	const resolvedConfig = options?.config ?? openClawToolsDeps.config;
  	const runtimeSnapshot = getActiveSecretsRuntimeConfigSnapshot();
-@@ -13921,6 +14578,18 @@ function createOpenClawTools(options) {
+@@ -13921,6 +14707,19 @@ function createOpenClawTools(options) {
  		lateBindRuntimeConfig: true
  	});
  	options?.recordToolPrepStage?.("openclaw-tools:web-fetch-tool");
@@ -904,6 +1033,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +	const browserScreenshotTool = __studioWebExploreSession ? createBrowserScreenshotTool() : null;
 +	const browserDebuggerTool = __studioWebExploreSession ? createBrowserDebuggerTool() : null;
 +	const browserEvalTool = __studioWebExploreSession ? createBrowserEvalTool() : null;
++	const workspaceCodeTools = createOpenStudioWorkspaceTools(options);
 +	options?.recordToolPrepStage?.("openclaw-tools:browser-action-tool");
 +	options?.recordToolPrepStage?.("openclaw-tools:browser-open-tool");
 +	options?.recordToolPrepStage?.("openclaw-tools:browser-preview-tools");
@@ -912,7 +1042,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
  	const messageTool = options?.disableMessageTool ? null : createMessageTool({
  		agentAccountId: options?.agentAccountId,
  		agentSessionKey: options?.agentSessionKey,
-@@ -14104,7 +14771,13 @@ function createOpenClawTools(options) {
+@@ -14104,7 +14900,14 @@ function createOpenClawTools(options) {
  			webSearchTool,
  			webFetchTool,
  			imageTool,
@@ -923,7 +1053,8 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +			browserDebugTool,
 +			browserScreenshotTool,
 +			browserDebuggerTool,
-+			browserEvalTool
++			browserEvalTool,
++			...workspaceCodeTools
  		])
  	];
  	options?.recordToolPrepStage?.("openclaw-tools:core-tool-list");
