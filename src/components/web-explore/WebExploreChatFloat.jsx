@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@open-studio/udesign";
 import { ChevronLeft, ChevronRight, Maximize2, RefreshCw } from "lucide-react";
-import heroAvatarLight from "../../assets/images/hero-avatar-light.png";
-import heroAvatarDark from "../../assets/images/hero-avatar-dark.png";
 import { useI18n } from "../../context/I18nContext.jsx";
-import { useTheme } from "../../context/ThemeContext.jsx";
 import { cn } from "../../ui/cn.js";
 import ChatLabEmbedConversation from "./ChatLabEmbedConversation.jsx";
 
 const POS_STORAGE_KEY = "openstudio_web_explore_chat_float_pos_v2";
 const SIZE_STORAGE_KEY = "openstudio_web_explore_chat_float_size_v1";
 const OPEN_STORAGE_KEY = "openstudio_web_explore_chat_float_open_v1";
-const LAUNCHER_W = 188;
+const LAUNCHER_W = 152;
 const LAUNCHER_H = 48;
 const DEFAULT_W = 440;
 const DEFAULT_H = 560;
@@ -156,7 +153,6 @@ export default function WebExploreChatFloat({
   onNavigate,
 }) {
   const { t } = useI18n();
-  const { theme } = useTheme();
   const [open, setOpen] = useState(() => readStoredOpen());
   const [panelSize, setPanelSize] = useState(() => readStoredSize() ?? { w: DEFAULT_W, h: DEFAULT_H });
   const [boundsRect, setBoundsRect] = useState(() => ({
@@ -524,28 +520,6 @@ export default function WebExploreChatFloat({
         aria-hidden={open}
         onPointerDown={startDrag}
       >
-          <img
-            className={cn(
-              "web-explore-chat-float__launcher-bar-logo",
-              dragging && "web-explore-chat-float__launcher--dragging",
-            )}
-            src={theme === "dark" ? heroAvatarDark : heroAvatarLight}
-            alt={t("webExploreChat.launcher")}
-            draggable={false}
-            role="button"
-            tabIndex={0}
-            onClick={() => {
-              if (dragRef.current.moved) return;
-              if (Date.now() < suppressLauncherClickUntilRef.current) return;
-              setOpenAnchored(true);
-            }}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter" && e.key !== " ") return;
-              e.preventDefault();
-              setOpenAnchored(true);
-            }}
-            title={t("webExploreChat.launcher")}
-          />
           <div className="web-explore-chat-float__launcher-nav" onPointerDown={(e) => e.stopPropagation()}>
             <Button
               type="button"

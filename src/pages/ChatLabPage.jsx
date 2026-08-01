@@ -1412,6 +1412,7 @@ export default function ChatLabPage() {
  *     chatFloatOpen?: boolean;
  *     onToggleFloatOpen?: () => void;
  *     onStartFloatDrag?: (e: import("react").PointerEvent<HTMLElement>) => void;
+ *     onClearConversation?: () => void;
  *     className?: string;
  *   };
  * }} props
@@ -5489,6 +5490,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                   onToggleFloatOpen={embedMode?.onToggleFloatOpen}
                   onStartFloatDrag={embedMode?.onStartFloatDrag}
                   webExploreNavigation={embedMode?.webExploreNavigation}
+                  onClearConversation={embedMode?.onClearConversation}
                 />
                 <div className="chat-lab__landing-mid">
                   <ChatLabHero
@@ -5519,6 +5521,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                   onToggleFloatOpen={embedMode?.onToggleFloatOpen}
                   onStartFloatDrag={embedMode?.onStartFloatDrag}
                   webExploreNavigation={embedMode?.webExploreNavigation}
+                  onClearConversation={embedMode?.onClearConversation}
                 >
                   <ChatLabMessageList
                     key={conversationId}

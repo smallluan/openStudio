@@ -1,4 +1,14 @@
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, PanelRight, RefreshCw, Route } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Maximize2,
+  Minimize2,
+  MoreHorizontal,
+  PanelRight,
+  RefreshCw,
+  Route,
+  Trash2,
+} from "lucide-react";
 import { Button, Popup } from "tdesign-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { buildUserTurnAnchors, pauseChatThreadPin, scrollThreadToMessage } from "../../chat/chatLabThreadScroll.js";
@@ -6,6 +16,7 @@ import { useChatLabPreview } from "../../context/ChatLabPreviewContext.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { OS_POPUP_INNER_CLASS, OS_POPUP_OVERLAY_CLASS, osPopupPopperOptions } from "../../ui/osPopupShared.js";
 import { cn } from "../../ui/cn.js";
+import FluidConfirmDialog from "../../ui/FluidConfirmDialog.jsx";
 import ChatLabParticipantBar from "./ChatLabParticipantBar.jsx";
 
 /**
@@ -37,6 +48,7 @@ import ChatLabParticipantBar from "./ChatLabParticipantBar.jsx";
  *   onToggleFloatOpen?: () => void;
  *   onStartFloatDrag?: (e: import("react").PointerEvent<HTMLElement>) => void;
  *   webExploreNavigation?: WebExploreNavigation;
+ *   onClearConversation?: () => void;
  * }} props
  */
 export default function ChatLabConvHeader({
@@ -57,12 +69,15 @@ export default function ChatLabConvHeader({
   onToggleFloatOpen,
   onStartFloatDrag,
   webExploreNavigation,
+  onClearConversation,
 }) {
   const { t } = useI18n();
   const preview = useChatLabPreview();
   const panelId = useId();
   const popoverListRef = useRef(/** @type {HTMLOListElement | null} */ (null));
   const [navOpen, setNavOpen] = useState(false);
+  const [webNavOpen, setWebNavOpen] = useState(false);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   const userTurns = useMemo(() => buildUserTurnAnchors(messages, 64), [messages]);
   const showParticipants = typeof onParticipantsChange === "function";
@@ -70,6 +85,18 @@ export default function ChatLabConvHeader({
   useEffect(() => {
     setNavOpen(false);
   }, [conversationId]);
+
+  useEffect(() => {
+    if (!webNavOpen) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".chat-lab__web-explore-nav, .chat-lab__web-explore-menu")) return;
+      setWebNavOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    return () => window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+  }, [webNavOpen]);
 
   useEffect(() => {
     if (!navOpen || !activeTurnId) return;
@@ -158,46 +185,80 @@ export default function ChatLabConvHeader({
     </div>
   );
 
+  const webNavigationMenu = (
+    <div className="chat-lab__web-explore-menu">
+      <Button
+        variant="text"
+        size="small"
+        type="button"
+        className="chat-lab__web-explore-menu-item"
+        onClick={() => {
+          webExploreNavigation?.onBack();
+          setWebNavOpen(false);
+        }}
+      >
+        <ChevronLeft size={16} strokeWidth={2.1} aria-hidden />
+        <span>{t("webExploreChat.back")}</span>
+      </Button>
+      <Button
+        variant="text"
+        size="small"
+        type="button"
+        className="chat-lab__web-explore-menu-item"
+        onClick={() => {
+          webExploreNavigation?.onForward();
+          setWebNavOpen(false);
+        }}
+      >
+        <ChevronRight size={16} strokeWidth={2.1} aria-hidden />
+        <span>{t("webExploreChat.forward")}</span>
+      </Button>
+      <Button
+        variant="text"
+        size="small"
+        type="button"
+        className="chat-lab__web-explore-menu-item"
+        onClick={() => {
+          webExploreNavigation?.onReload();
+          setWebNavOpen(false);
+        }}
+      >
+        <RefreshCw size={15} strokeWidth={2.1} aria-hidden />
+        <span>{t("chatLab.previewReload")}</span>
+      </Button>
+    </div>
+  );
+
   return (
-    <header className="chat-lab__conv-header" onPointerDown={handleHeaderPointerDown}>
+    <>
+      <header className="chat-lab__conv-header" onPointerDown={handleHeaderPointerDown}>
       {webExploreNavigation ? (
         <div className="chat-lab__web-explore-nav" onPointerDown={(e) => e.stopPropagation()}>
-          <Button
-            variant="text"
-            shape="square"
-            size="small"
-            type="button"
-            className="chat-lab__turn-nav-icon-btn"
-            aria-label={t("webExploreChat.back")}
-            title={t("webExploreChat.back")}
-            onClick={webExploreNavigation.onBack}
+          <Popup
+            visible={webNavOpen}
+            trigger="click"
+            placement="bottom-start"
+            attach="body"
+            zIndex={400}
+            overlayClassName={OS_POPUP_OVERLAY_CLASS}
+            overlayInnerClassName={OS_POPUP_INNER_CLASS}
+            popperOptions={osPopupPopperOptions(8, 8)}
+            content={webNavigationMenu}
+            onVisibleChange={setWebNavOpen}
           >
-            <ChevronLeft size={16} strokeWidth={2.1} aria-hidden />
-          </Button>
-          <Button
-            variant="text"
-            shape="square"
-            size="small"
-            type="button"
-            className="chat-lab__turn-nav-icon-btn"
-            aria-label={t("webExploreChat.forward")}
-            title={t("webExploreChat.forward")}
-            onClick={webExploreNavigation.onForward}
-          >
-            <ChevronRight size={16} strokeWidth={2.1} aria-hidden />
-          </Button>
-          <Button
-            variant="text"
-            shape="square"
-            size="small"
-            type="button"
-            className="chat-lab__turn-nav-icon-btn"
-            aria-label={t("chatLab.previewReload")}
-            title={t("chatLab.previewReload")}
-            onClick={webExploreNavigation.onReload}
-          >
-            <RefreshCw size={15} strokeWidth={2.1} aria-hidden />
-          </Button>
+            <Button
+              variant="text"
+              shape="square"
+              size="small"
+              type="button"
+              className="chat-lab__turn-nav-icon-btn chat-lab__web-explore-more"
+              aria-label={t("webExploreChat.navigation")}
+              title={t("webExploreChat.navigation")}
+              aria-expanded={webNavOpen}
+            >
+              <MoreHorizontal size={17} strokeWidth={2.1} aria-hidden />
+            </Button>
+          </Popup>
         </div>
       ) : null}
       <div className="chat-lab__header-actions" onPointerDown={(e) => e.stopPropagation()}>
@@ -210,6 +271,20 @@ export default function ChatLabConvHeader({
             onChange={onParticipantsChange}
             disabled={participantsDisabled}
           />
+        ) : null}
+        {webExploreNavigation && typeof onClearConversation === "function" ? (
+          <Button
+            variant="text"
+            shape="square"
+            size="small"
+            type="button"
+            className="chat-lab__turn-nav-icon-btn"
+            aria-label={t("webExploreChat.clearConversation")}
+            title={t("webExploreChat.clearConversation")}
+            onClick={() => setClearDialogOpen(true)}
+          >
+            <Trash2 size={16} strokeWidth={2.1} aria-hidden />
+          </Button>
         ) : null}
         <Popup
           key={conversationId ?? "turn-nav"}
@@ -288,6 +363,18 @@ export default function ChatLabConvHeader({
           </Button>
         )}
       </div>
-    </header>
+      </header>
+      <FluidConfirmDialog
+        open={clearDialogOpen}
+        onOpenChange={setClearDialogOpen}
+        title={t("webExploreChat.clearConversation")}
+        confirmLabel={t("dialog.confirm")}
+        cancelLabel={t("dialog.cancel")}
+        danger
+        onConfirm={onClearConversation}
+      >
+        <p>{t("webExploreChat.clearConversationConfirm")}</p>
+      </FluidConfirmDialog>
+    </>
   );
 }

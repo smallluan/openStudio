@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { newWebExploreConversationId } from "../../chat/chatSessionsStore.js";
 import { ChatLabPreviewProvider } from "../../context/ChatLabPreviewContext.jsx";
 import { ChatLabWorkspaceProvider } from "../../context/ChatLabWorkspaceContext.jsx";
@@ -39,8 +39,15 @@ export default function ChatLabEmbedConversation({
   className,
 }) {
   const conversationIdRef = useRef(newWebExploreConversationId());
-  const conversationId = conversationIdRef.current;
+  const [conversationGeneration, setConversationGeneration] = useState(0);
+  const conversationId = useMemo(
+    () => (conversationGeneration === 0 ? conversationIdRef.current : newWebExploreConversationId()),
+    [conversationGeneration],
+  );
   const [workspaceEmptySession, setWorkspaceEmptySession] = useState(true);
+  const clearConversation = useCallback(() => {
+    setConversationGeneration((value) => value + 1);
+  }, []);
 
   const externalSession = useMemo(
     () => ({
@@ -64,6 +71,7 @@ export default function ChatLabEmbedConversation({
         embedPreview
       >
         <ChatLabPageMain
+          key={conversationId}
           conversationId={conversationId}
           onWorkspaceEmptySessionChange={setWorkspaceEmptySession}
           embedMode={{
@@ -79,6 +87,7 @@ export default function ChatLabEmbedConversation({
             onToggleFloatOpen,
             onStartFloatDrag,
             webExploreNavigation,
+            onClearConversation: clearConversation,
             className,
           }}
         />
