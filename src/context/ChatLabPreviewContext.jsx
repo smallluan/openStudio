@@ -33,6 +33,7 @@ import {
   composeChatLabPreviewContextBlock,
 } from "../chat/chatLabPreviewSnapshot.js";
 import {
+  SIDEBAR_AUTOMATION_DEFAULT_MAX_STEPS_PER_TURN,
   normalizeAutomationSteps,
   runSidebarPreviewAutomation,
 } from "../chat/chatLabPreviewAutomation.js";
@@ -371,6 +372,7 @@ function sessionFromWebTab(tab) {
  *   subscribeFrameMessages: (fn: (data: unknown) => void) => () => void;
  *   previewTabs: PreviewWebTab[];
  *   activePreviewTabId: string;
+ *   browserAutomationMaxSteps: number;
  *   activatePreviewTab: (tabId: string) => void;
  *   captureSidebarContextBlock: (opts?: { domRead?: "auto" | "none" | "metadata" | "target" | "inventory" | "full" }) => Promise<string>;
  *   runSidebarAutomation: (steps: import("../chat/chatLabPreviewAutomation.js").SidebarAutomationStep[] | unknown) => Promise<unknown>;
@@ -444,6 +446,9 @@ export function ChatLabPreviewProvider({
   dockOpenRef.current = dockOpen;
   const [deviceMode, setDeviceModeState] = useState(readPreviewDeviceMode);
   const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
+  const [browserAutomationMaxSteps, setBrowserAutomationMaxSteps] = useState(
+    SIDEBAR_AUTOMATION_DEFAULT_MAX_STEPS_PER_TURN,
+  );
 
   useEffect(() => {
     if (embedPreview) return;
@@ -465,11 +470,25 @@ export function ChatLabPreviewProvider({
 
   useEffect(() => {
     let cancelled = false;
+    const onAutomationMaxStepsChange = (event) => {
+      const maxSteps = Number(event?.detail?.maxSteps);
+      if (!Number.isFinite(maxSteps)) return;
+      setBrowserAutomationMaxSteps(Math.min(100, Math.max(1, Math.floor(maxSteps))));
+    };
+    window.addEventListener(
+      "openstudio-chatlab-browser-automation-max-steps",
+      onAutomationMaxStepsChange,
+    );
     const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
     (async () => {
       try {
         const c = await bridge?.getUserConfig?.();
         if (cancelled || !c || typeof c !== "object") return;
+        if (Number.isFinite(Number(c.chatLabBrowserAutomationMaxSteps))) {
+          setBrowserAutomationMaxSteps(
+            Math.min(100, Math.max(1, Math.floor(Number(c.chatLabBrowserAutomationMaxSteps)))),
+          );
+        }
         if (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar") {
           const mode = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
           setLinkOpenMode(mode);
@@ -481,6 +500,10 @@ export function ChatLabPreviewProvider({
     })();
     return () => {
       cancelled = true;
+      window.removeEventListener(
+        "openstudio-chatlab-browser-automation-max-steps",
+        onAutomationMaxStepsChange,
+      );
     };
   }, []);
 
@@ -1386,7 +1409,7 @@ export function ChatLabPreviewProvider({
       const captureSession = embedPreview ? externalSessionRef.current ?? session : session;
       /** Prefer a fresh inventory only when the request cannot target selectors directly. */
       let elements = lastInventoryRef.current;
-      const normalizedSteps = normalizeAutomationSteps(steps);
+      const normalizedSteps = normalizeAutomationSteps(steps, { maxSteps: browserAutomationMaxSteps });
       let domRead = resolveDomReadLevel(opts.domRead, normalizedSteps, {
         hasInventory: Array.isArray(elements) && elements.length > 0,
         inventoryRefs: Array.isArray(elements) ? elements.map((element) => element?.ref) : [],
@@ -1413,6 +1436,7 @@ export function ChatLabPreviewProvider({
       }
       const runResult = await runSidebarPreviewAutomation({
         steps,
+        maxSteps: browserAutomationMaxSteps,
         session: captureSession,
         webviewRef,
         iframeRef,
@@ -1441,6 +1465,7 @@ export function ChatLabPreviewProvider({
       embedPreview,
       iframeRef,
       linkOpenMode,
+      browserAutomationMaxSteps,
       navigatePreviewTo,
       previewTabs,
       session,
@@ -1486,7 +1511,7 @@ export function ChatLabPreviewProvider({
         stopOnFailure: true,
       });
       const domRead = String(runResult?.domRead ?? args?.domRead ?? "auto");
-      const normalizedSteps = normalizeAutomationSteps(steps);
+      const normalizedSteps = normalizeAutomationSteps(steps, { maxSteps: browserAutomationMaxSteps });
       const selectors = normalizedSteps
         .map((step) => (typeof step.selector === "string" ? step.selector.trim() : ""))
         .filter(Boolean);
@@ -1542,10 +1567,14 @@ export function ChatLabPreviewProvider({
       const hint = pageChanged
         ? "Page changed — prior page element refs are invalid. Use the latest observation only. This observation used domRead=" +
           String(observation?.domRead ?? domRead) +
-          "; when no elements are returned, call browser_action with an explicit selector or use action=query/inspect. For file upload, use set_files with absolute paths. Call again for the next short batch (max 5 steps). When done, answer the user in natural language."
+          "; when no elements are returned, call browser_action with an explicit selector or use action=query/inspect. For file upload, use set_files with absolute paths. Call again for the next batch (up to " +
+          String(browserAutomationMaxSteps) +
+          " steps). When done, answer the user in natural language."
         : "This observation used domRead=" +
           String(observation?.domRead ?? domRead) +
-          ". Prefer explicit CSS selectors for selector-only tasks; use action=query/inspect for targeted discovery or domRead=inventory/full when exploration is needed. For file upload, use set_files with absolute paths — do NOT click buttons that open the native OS file picker. Call again for the next short batch (max 5 steps). When done, answer the user in natural language.";
+          ". Prefer explicit CSS selectors for selector-only tasks; use action=query/inspect for targeted discovery or domRead=inventory/full when exploration is needed. For file upload, use set_files with absolute paths — do NOT click buttons that open the native OS file picker. Call again for the next batch (up to " +
+          String(browserAutomationMaxSteps) +
+          " steps). When done, answer the user in natural language.";
       return {
         ok: Boolean(runResult?.ok),
         error: runResult?.error,
@@ -1561,6 +1590,7 @@ export function ChatLabPreviewProvider({
     [
       activePreviewTabId,
       artifactsPanel,
+      browserAutomationMaxSteps,
       embedPreview,
       iframeRef,
       previewTabs,

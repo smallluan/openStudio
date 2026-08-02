@@ -37,12 +37,14 @@ export default function ChatLabSidebarActionRunner({
     ranKeysRef.current = new Set();
     for (const m of messages) {
       if (m.role !== "assistant" || m.error) continue;
-      const steps = extractSidebarActionStepsFromAssistantMessage(m);
+      const steps = extractSidebarActionStepsFromAssistantMessage(m, {
+        maxPerTurn: preview?.browserAutomationMaxSteps,
+      });
       if (!steps.length || !m.id) continue;
       ranKeysRef.current.add(stepsRunKey(m.id, steps));
     }
     seededRef.current = true;
-  }, [conversationId, messages]);
+  }, [conversationId, messages, preview?.browserAutomationMaxSteps]);
 
   const automationEnabled = Boolean(preview?.embedPreview);
 
@@ -58,11 +60,17 @@ export default function ChatLabSidebarActionRunner({
       .reverse()
       .find((m) => {
         if (m.role !== "assistant" || m.error) return false;
-        return extractSidebarActionStepsFromAssistantMessage(m).length > 0;
+        return (
+          extractSidebarActionStepsFromAssistantMessage(m, {
+            maxPerTurn: preview?.browserAutomationMaxSteps,
+          }).length > 0
+        );
       });
     if (!candidate?.id) return;
 
-    const resolvedSteps = extractSidebarActionStepsFromAssistantMessage(candidate);
+    const resolvedSteps = extractSidebarActionStepsFromAssistantMessage(candidate, {
+      maxPerTurn: preview?.browserAutomationMaxSteps,
+    });
     if (!resolvedSteps.length) return;
 
     const runKey = stepsRunKey(candidate.id, resolvedSteps);
@@ -114,6 +122,7 @@ export default function ChatLabSidebarActionRunner({
     })();
   }, [
     automationEnabled,
+    preview?.browserAutomationMaxSteps,
     messages,
     onAutomationApplied,
     preview?.runSidebarAutomation,

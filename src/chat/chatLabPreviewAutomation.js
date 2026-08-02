@@ -36,8 +36,9 @@ import { captureSidebarPreviewSnapshot, composeChatLabPreviewContextBlock } from
 /** @typedef {import("./chatLabPreviewSnapshot.js").SidebarPreviewInteractiveElement} SidebarPreviewInteractiveElement */
 
 export const SIDEBAR_AUTOMATION_STEP_INTERVAL_MS = 500;
-/** Short batches only — observe→act loop continues via client handoff turns. */
-export const SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN = 5;
+/** Default is configurable in Settings; this is also the renderer safety ceiling. */
+export const SIDEBAR_AUTOMATION_DEFAULT_MAX_STEPS_PER_TURN = 20;
+export const SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN = 100;
 
 const RETRYABLE_STEP_ERRORS = new Set(["element_not_found"]);
 const STEP_RETRY_DELAYS_MS = [800, 1200, 1800];
@@ -98,7 +99,9 @@ export function normalizeAutomationSteps(raw, opts = {}) {
     1,
     Math.min(
       SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN,
-      Number(opts.maxSteps) || SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN,
+      Number.isFinite(Number(opts.maxSteps))
+        ? Math.floor(Number(opts.maxSteps))
+        : SIDEBAR_AUTOMATION_DEFAULT_MAX_STEPS_PER_TURN,
     ),
   );
   const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" ? [raw] : [];
@@ -1010,6 +1013,30 @@ function buildStepScript(step) {
           text: String(clickEl.innerText || clickEl.textContent || "").trim().slice(0, 80),
         };
       }
+      if (action === "measure-click") {
+        var measuredEl = resolveTarget(step);
+        if (!measuredEl) return { ok: false, action: "measure-click", error: "element_not_found" };
+        measuredEl = resolveClickableTarget(measuredEl);
+        scrollTargetIntoView(measuredEl);
+        var measuredRect = measuredEl.getBoundingClientRect();
+        var measuredPoint = resolveClientPoint(measuredEl, step);
+        var measuredHit = elementAtPoint(measuredPoint.x, measuredPoint.y) || measuredEl;
+        return {
+          ok: true,
+          action: "measure-click",
+          selector: step.selector || null,
+          target: measuredEl.tagName,
+          hitTarget: measuredHit.tagName,
+          x: measuredPoint.x,
+          y: measuredPoint.y,
+          rect: {
+            left: measuredRect.left,
+            top: measuredRect.top,
+            width: measuredRect.width,
+            height: measuredRect.height,
+          },
+        };
+      }
       if (action === "mousedown" || action === "pointerdown") {
         var downEl = resolveMouseTarget(step, true);
         if (!downEl) return { ok: false, action: action, error: "element_not_found" };
@@ -1251,6 +1278,7 @@ async function runSetFilesOnWebview(wv, step) {
 
 const WEBVIEW_INTERACTION_ACTIONS = new Set([
   "click",
+  "measure-click",
   "focus",
   "blur",
   "type",
@@ -1322,6 +1350,33 @@ async function runStepOnWebview(wv, step) {
     }
     return { ok: true, action: "reload", waitMs, url };
   }
+  if (action === "measure-click") {
+    focusWebviewHost(wv);
+    const measured = await wv.executeJavaScript(buildStepScript(step), false);
+    if (!measured || measured.ok === false) {
+      return measured && typeof measured === "object"
+        ? measured
+        : { ok: false, action: "measure-click", error: "measurement_failed" };
+    }
+    const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+    if (typeof bridge?.guestMouseClick !== "function") {
+      return { ...measured, ok: false, error: "electron_input_unavailable" };
+    }
+    const webContentsId = typeof wv.getWebContentsId === "function" ? wv.getWebContentsId() : 0;
+    const inputResult = await bridge.guestMouseClick({
+      webContentsId,
+      x: measured.x,
+      y: measured.y,
+      button: step.button === 2 ? "right" : step.button === 1 ? "middle" : "left",
+      clickCount: 1,
+    });
+    return {
+      ...measured,
+      ...inputResult,
+      action: "measure-click",
+      measured: true,
+    };
+  }
   if (WEBVIEW_INTERACTION_ACTIONS.has(step.action)) {
     focusWebviewHost(wv);
   }
@@ -1373,11 +1428,12 @@ async function runStepOnWebviewWithRetry(wv, step) {
  *   forceSidebar?: boolean;
  *   elements?: SidebarPreviewInteractiveElement[];
  *   domRead?: "auto" | "none" | "metadata" | "target" | "inventory" | "full";
+ *   maxSteps?: number;
  * }} input
  */
 export async function runSidebarPreviewAutomation(input) {
   const steps = resolveAutomationStepRefs(
-    normalizeAutomationSteps(input.steps),
+    normalizeAutomationSteps(input.steps, { maxSteps: input.maxSteps }),
     /** @type {SidebarPreviewInteractiveElement[] | undefined} */ (input.elements),
   );
   if (!steps.length) return { ok: false, error: "no_steps", steps: [], domRead: input.domRead ?? "full" };
@@ -1478,6 +1534,7 @@ export async function runSidebarPreviewAutomation(input) {
     }
     if (
       step.action === "click" ||
+      step.action === "measure-click" ||
       step.action === "focus" ||
       step.action === "type" ||
       step.action === "type_chars" ||

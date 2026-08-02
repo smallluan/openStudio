@@ -46,12 +46,12 @@ function createBrowserActionTool() {
 		label: "Browser Action",
 		name: "browser_action",
 		displaySummary: "Control Open Studio preview page",
-		description: "Execute a short UI automation batch (max 5 steps) on the Web Explore main viewport or Chat Lab preview panel. Browser tools target the Open Studio preview panel — call this tool in Web Explore when the user asks to click/type/scroll. Prefer explicit selector for selector-only tasks. Use action=query/inspect for targeted DOM discovery; use domRead=inventory/full only when exploration is needed. The result includes an observation whose DOM level is reported as domRead. Do not invent natural-language targets. After navigate/reload, prior page element refs are invalid — use the latest observation only (older DOM is stripped from context unless retainPriorPageDom=true).",
+	description: "Execute a UI automation batch (up to the configured per-turn step limit, default 20) on the Web Explore main viewport or Chat Lab preview panel. Browser tools target the Open Studio preview panel — call this tool in Web Explore when the user asks to click/type/scroll. Prefer explicit selector for selector-only tasks. Use action=query/inspect for targeted DOM discovery; use domRead=inventory/full only when exploration is needed. The result includes an observation whose DOM level is reported as domRead. Do not invent natural-language targets. After navigate/reload, prior page element refs are invalid — use the latest observation only (older DOM is stripped from context unless retainPriorPageDom=true).",
 		parameters: Type.Object({
 			steps: Type.Array(stepSchema, {
 				minItems: 1,
-				maxItems: 5,
-				description: "Short observe→act batch (max 5 steps)"
+				maxItems: 100,
+				description: "Observe→act batch; Open Studio applies the configured per-turn step limit (default 20)"
 			}),
 			retainPriorPageDom: Type.Optional(Type.Boolean({
 				description: "Keep the previous page's DOM inventory in context (rare; default strips prior page DOM after navigation)"

@@ -152,6 +152,8 @@ contextBridge.exposeInMainWorld("studioBridge", {
       "studio:setGuestFileInputFiles",
       payload && typeof payload === "object" ? payload : {},
     ),
+  guestMouseClick: (payload) =>
+    ipcRenderer.invoke("studio:guestMouseClick", payload && typeof payload === "object" ? payload : {}),
   onDebuggerPause: (listener) => {
     const wrapped = (_e, data) => listener(data);
     ipcRenderer.on("studio:debuggerPause", wrapped);

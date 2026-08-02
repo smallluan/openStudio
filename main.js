@@ -147,6 +147,7 @@ const {
   initPreviewGuestFileInput,
   handleSetGuestFileInputFiles,
 } = require("./lib/preview-guest-file-input.cjs");
+const { handleGuestMouseClick } = require("./lib/preview-guest-input.cjs");
 
 /** Sidebar cannot embed Office; open these locally in the OS default viewer instead. */
 const OPEN_EXTERNALLY_SIDE_PREVIEW_EXT = new Set([".pptx", ".ppt", ".xlsx", ".xls"]);
@@ -1489,6 +1490,18 @@ app.whenReady().then(async () => {
       return {
         ok: false,
         error: "set_files_failed",
+        message: e instanceof Error ? e.message : String(e),
+      };
+    }
+  });
+
+  ipcMain.handle("studio:guestMouseClick", async (_event, payload) => {
+    try {
+      return await handleGuestMouseClick(payload && typeof payload === "object" ? payload : {});
+    } catch (e) {
+      return {
+        ok: false,
+        error: "input_dispatch_failed",
         message: e instanceof Error ? e.message : String(e),
       };
     }

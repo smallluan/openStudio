@@ -9,12 +9,21 @@ import {
   writeLinkOpenModeLocal,
 } from "../../chat/chatLabLinkOpenPreference.js";
 import { BUILTIN_BRAND_PRESETS } from "../../theme/brandColor.js";
-import { ColorPicker, Select as TSelect, Switch, Typography } from "tdesign-react";
+import { ColorPicker, Input, Select as TSelect, Switch, Typography } from "tdesign-react";
 import "tdesign-react/es/color-picker/style/index.css";
 import { cn } from "../../ui/cn.js";
 
 const SETTINGS_SELECT_POPUP = { attach: () => document.body, zIndex: 2600 };
 const SETTINGS_COLOR_PICKER_POPUP = { attach: () => document.body, zIndex: 2600 };
+const BROWSER_AUTOMATION_MAX_STEPS_DEFAULT = 20;
+const BROWSER_AUTOMATION_MAX_STEPS_MIN = 1;
+const BROWSER_AUTOMATION_MAX_STEPS_MAX = 100;
+
+function normalizeBrowserAutomationMaxSteps(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return BROWSER_AUTOMATION_MAX_STEPS_DEFAULT;
+  return Math.min(BROWSER_AUTOMATION_MAX_STEPS_MAX, Math.max(BROWSER_AUTOMATION_MAX_STEPS_MIN, Math.floor(n)));
+}
 
 /**
  * ColorPicker preview updates immediately; theme commits on mouseup or popup close.
@@ -101,6 +110,9 @@ export default function GeneralSettingsSection() {
   const [chatLabAutoTitle, setChatLabAutoTitle] = useState(false);
   const [chatLabGroupContinuousConversation, setChatLabGroupContinuousConversation] = useState(true);
   const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
+  const [browserAutomationMaxSteps, setBrowserAutomationMaxSteps] = useState(
+    BROWSER_AUTOMATION_MAX_STEPS_DEFAULT,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +125,9 @@ export default function GeneralSettingsSection() {
             typeof c.chatLabGroupContinuousConversation === "boolean"
               ? c.chatLabGroupContinuousConversation
               : true,
+          );
+          setBrowserAutomationMaxSteps(
+            normalizeBrowserAutomationMaxSteps(c.chatLabBrowserAutomationMaxSteps),
           );
           if (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar") {
             const mode = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
@@ -179,6 +194,30 @@ export default function GeneralSettingsSection() {
         }
       } catch {
         setLinkOpenMode(readLinkOpenModeLocal());
+      }
+    }
+  };
+
+  const persistBrowserAutomationMaxSteps = async (next) => {
+    const value = normalizeBrowserAutomationMaxSteps(next);
+    setBrowserAutomationMaxSteps(value);
+    try {
+      await bridge?.setUserConfig?.({ chatLabBrowserAutomationMaxSteps: value });
+      window.dispatchEvent(
+        new CustomEvent("openstudio-chatlab-browser-automation-max-steps", {
+          detail: { maxSteps: value },
+        }),
+      );
+    } catch {
+      try {
+        const c = await bridge?.getUserConfig?.();
+        if (c && typeof c === "object") {
+          setBrowserAutomationMaxSteps(
+            normalizeBrowserAutomationMaxSteps(c.chatLabBrowserAutomationMaxSteps),
+          );
+        }
+      } catch {
+        setBrowserAutomationMaxSteps(BROWSER_AUTOMATION_MAX_STEPS_DEFAULT);
       }
     }
   };
@@ -296,6 +335,24 @@ export default function GeneralSettingsSection() {
             options={linkOpenModeOptions}
             popupProps={SETTINGS_SELECT_POPUP}
             className="settings-select"
+          />
+        </GeneralSettingRow>
+
+        <GeneralSettingRow
+          title={t("settings.browserAutomationMaxSteps")}
+        >
+          <Input
+            id="settings-browser-automation-max-steps"
+            type="number"
+            min={BROWSER_AUTOMATION_MAX_STEPS_MIN}
+            max={BROWSER_AUTOMATION_MAX_STEPS_MAX}
+            value={String(browserAutomationMaxSteps)}
+            onChange={(value) => {
+              const n = Number.parseInt(String(value ?? ""), 10);
+              if (Number.isFinite(n)) setBrowserAutomationMaxSteps(normalizeBrowserAutomationMaxSteps(n));
+            }}
+            onBlur={() => void persistBrowserAutomationMaxSteps(browserAutomationMaxSteps)}
+            className="settings-number-input"
           />
         </GeneralSettingRow>
 

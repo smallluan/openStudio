@@ -8,6 +8,7 @@ import {
 const EN = {
   "chatLab.toolSearchPrompt": "## Tool discovery\ntool_search → tool_describe → tool_call",
   "chatLab.windowsShellPrompt": "## Windows shell\nNever use `&&` or `||` in PowerShell.",
+  "chatLab.browserAutomationLimitPrompt": "## Browser automation\nThe configured default is 20 steps.",
   "chatLab.toolSearchUserTurnHint": "**Tool Search**: use tool_search first",
   "chatLab.imageDisplayPrompt": "## images",
   "chatLab.chartDisplayPrompt": "## charts",
@@ -33,6 +34,7 @@ describe("composeChatLabStudioSuffix tool search", () => {
     assert.match(suffix, /workspace_glob/);
     assert.match(suffix, /browser_open/);
     assert.match(suffix, /Never use `&&` or `\|\|` in PowerShell/);
+    assert.match(suffix, /configured default is 20 steps/);
     assert.ok(suffix.indexOf("Tool discovery") < suffix.indexOf("## images"));
   });
 });

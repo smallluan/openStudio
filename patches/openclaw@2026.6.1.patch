@@ -59,7 +59,7 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +	if (!baseUrl) return null;
 +	const token = String(process.env.OPEN_STUDIO_SIDEBAR_TOOL_TOKEN || "").trim();
 +	const stepSchema = Type.Object({
-+		action: Type.String({ description: "UI action: click, focus, type, press, wait, scroll, query, inspect, snapshot, navigate, reload, ..." }),
++		action: Type.String({ description: "UI action: click, measure-click, focus, type, press, wait, scroll, query, inspect, snapshot, navigate, reload, ..." }),
 +		ref: Type.Optional(Type.String({ description: "Element ref from observation.elements, e.g. e3" })),
 +		selector: Type.Optional(Type.String()),
 +		text: Type.Optional(Type.String()),
@@ -77,12 +77,12 @@ index 39ac74ffcd21e220846566c8614e52e0eb5b4e9e..a81e1352031da0f928aac150f3cdb06a
 +		label: "Browser Action",
 +		name: "browser_action",
 +		displaySummary: "Control Open Studio preview page",
-+		description: "Execute a short UI automation batch (max 5 steps) on the Open Studio preview panel or Web Explore page. Prefer explicit selector for selector-only tasks. Use action=query/inspect for targeted DOM discovery; use domRead=inventory/full only when exploration is needed. The result includes an observation whose DOM level is reported as domRead. Do not invent natural-language targets.",
++		description: "Execute a UI automation batch (up to the configured per-turn step limit, default 20) on the Open Studio preview panel or Web Explore page. Prefer explicit selector for selector-only tasks. Use action=query/inspect for targeted DOM discovery; use domRead=inventory/full only when exploration is needed. The result includes an observation whose DOM level is reported as domRead. Do not invent natural-language targets.",
 +		parameters: Type.Object({
 +			steps: Type.Array(stepSchema, {
 +				minItems: 1,
-+				maxItems: 5,
-+				description: "Short observe→act batch (max 5 steps)"
++				maxItems: 100,
++				description: "Observe→act batch; Open Studio applies the configured per-turn step limit (default 20)"
 +			}),
 +			domRead: Type.Optional(Type.String({
 +				description: "DOM read level: auto (default), none, metadata, target, inventory, or full. auto skips unrelated page DOM when steps use explicit selectors."

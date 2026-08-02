@@ -25,6 +25,7 @@ export function composeChatLabStudioSuffix(t, opts = {}) {
     parts.push(String(t("chatLab.sidebarAutomationPrompt") ?? "").trim());
     parts.push(String(t("chatLab.sidebarPreviewCapabilitiesPrompt") ?? "").trim());
   }
+  parts.push(String(t("chatLab.browserAutomationLimitPrompt") ?? "").trim());
   return parts.filter(Boolean).join("\n\n");
 }
 

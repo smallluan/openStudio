@@ -1,4 +1,8 @@
-import { normalizeAutomationSteps, SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN } from "./chatLabPreviewAutomation.js";
+import {
+  normalizeAutomationSteps,
+  SIDEBAR_AUTOMATION_DEFAULT_MAX_STEPS_PER_TURN,
+  SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN,
+} from "./chatLabPreviewAutomation.js";
 
 /** @typedef {import("./chatLabPreviewAutomation.js").SidebarAutomationStep} SidebarAutomationStep */
 
@@ -11,7 +15,7 @@ function createFenceRe() {
   return /```\s*sidebar-action[^\n]*\r?\n([\s\S]*?)```/gi;
 }
 
-const SIDEBAR_ACTION_HINT_RE = /"action"\s*:\s*"(click|focus|blur|type|type_chars|press|wait|scroll|snapshot|navigate|mousedown|mouseup|pointerdown|pointerup|mousemove|pointermove|hover|dblclick|rightclick|contextmenu|drag)"/i;
+const SIDEBAR_ACTION_HINT_RE = /"action"\s*:\s*"(click|measure-click|focus|blur|type|type_chars|press|wait|scroll|snapshot|navigate|mousedown|mouseup|pointerdown|pointerup|mousemove|pointermove|hover|dblclick|rightclick|contextmenu|drag)"/i;
 
 /**
  * @param {unknown} row
@@ -91,7 +95,10 @@ export function looksLikeSidebarActionMessage(content) {
  * @returns {SidebarAutomationStep[]}
  */
 export function extractSidebarActionStepsFromText(text, opts = {}) {
-  const maxPerTurn = Math.max(1, opts.maxPerTurn ?? SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN);
+  const maxPerTurn = Math.min(
+    SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN,
+    Math.max(1, opts.maxPerTurn ?? SIDEBAR_AUTOMATION_DEFAULT_MAX_STEPS_PER_TURN),
+  );
   const blob = String(text ?? "");
   /** @type {SidebarAutomationStep[]} */
   const all = [];
@@ -130,7 +137,10 @@ export function extractSidebarActionSteps(content, opts = {}) {
  * @returns {SidebarAutomationStep[]}
  */
 export function extractSidebarActionStepsFromAssistantMessage(message, opts = {}) {
-  const maxPerTurn = Math.max(1, opts.maxPerTurn ?? SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN);
+  const maxPerTurn = Math.min(
+    SIDEBAR_AUTOMATION_MAX_STEPS_PER_TURN,
+    Math.max(1, opts.maxPerTurn ?? SIDEBAR_AUTOMATION_DEFAULT_MAX_STEPS_PER_TURN),
+  );
   const stashed = normalizeAutomationSteps(message?.sidebarAutomationSteps, { maxSteps: maxPerTurn });
   if (stashed.length) return stashed;
 
