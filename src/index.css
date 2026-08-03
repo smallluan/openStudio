@@ -8820,6 +8820,16 @@ html[data-os-motion="reduced"] .chat-lab__shell-textarea {
   background: color-mix(in srgb, #2e9c55 12%, transparent);
 }
 
+.chat-lab__msg-action-btn--speaking {
+  opacity: 1;
+  color: color-mix(in srgb, #4b83d8 78%, var(--os-text));
+}
+
+.chat-lab__msg-action-btn--speaking:hover:not(:disabled) {
+  color: color-mix(in srgb, #4b83d8 90%, var(--os-text));
+  background: color-mix(in srgb, #4b83d8 12%, transparent);
+}
+
 .chat-lab__msg-action-btn--toggle {
   width: auto;
   gap: 0.24rem;

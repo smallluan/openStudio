@@ -902,6 +902,8 @@
     "artifactsSelectFile": "从左侧选择文件以预览",
     "messageCopy": "复制本条",
     "messageCopied": "已复制",
+    "messageSpeech": "朗读本条",
+    "messageSpeechStop": "停止朗读",
     "timelineExpand": "展开过程",
     "timelineCollapse": "收起过程",
     "timelineCollapsedSummary": "已收起上方 {{count}} 段过程",

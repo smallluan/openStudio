@@ -879,6 +879,8 @@
     "artifactsSelectFile": "從左側選擇檔案以預覽",
     "messageCopy": "複製此則",
     "messageCopied": "已複製",
+    "messageSpeech": "朗讀此則",
+    "messageSpeechStop": "停止朗讀",
     "timelineExpand": "展開過程",
     "timelineCollapse": "收起過程",
     "timelineCollapsedSummary": "已收起上方 {{count}} 段過程",

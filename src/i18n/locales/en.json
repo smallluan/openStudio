@@ -901,6 +901,8 @@
     "artifactsSelectFile": "Select a file on the left to preview",
     "messageCopy": "Copy message",
     "messageCopied": "Copied",
+    "messageSpeech": "Read message aloud",
+    "messageSpeechStop": "Stop reading aloud",
     "timelineExpand": "Expand trace",
     "timelineCollapse": "Collapse trace",
     "timelineCollapsedSummary": "{{count}} earlier timeline block(s) hidden",

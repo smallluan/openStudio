@@ -875,6 +875,8 @@
     "artifactsSelectFile": "左からファイルを選んでプレビュー",
     "messageCopy": "メッセージをコピー",
     "messageCopied": "コピーしました",
+    "messageSpeech": "このメッセージを読み上げる",
+    "messageSpeechStop": "読み上げを停止",
     "timelineExpand": "過程を展開",
     "timelineCollapse": "過程を折りたたむ",
     "timelineCollapsedSummary": "上部の {{count}} 件の過程を折りたたみました",

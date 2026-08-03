@@ -4,7 +4,7 @@ import { Radio, RadioGroup, Select as TSelect } from "tdesign-react";
 import { createPortal } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Send, Cpu, GitBranch, Timer } from "lucide-react";
+import { Send, Cpu, GitBranch, Timer, Volume2, VolumeX } from "lucide-react";
 import "katex/dist/katex.min.css";
 import {
   CONTEXT_WINDOW_APPROX_TOKENS,
@@ -7324,6 +7324,14 @@ function MessageMetaEditIcon() {
   );
 }
 
+const activeSpeechMessageIds = new Set();
+
+function stopChatLabSpeech() {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  activeSpeechMessageIds.clear();
+}
+
 /** Max height before user-sent bubble content is collapsed by default. */
 const USER_MESSAGE_COLLAPSED_MAX_PX = 240;
 
@@ -7948,6 +7956,25 @@ const MessageBubble = memo(function MessageBubble({
   }, [isUser, message.content, message.error, message.fileRefs, message.imageAttachments, message.thinking, t]);
 
   const [copiedPulse, setCopiedPulse] = useState(false);
+  const speechText = useMemo(() => {
+    const content = String(message.content ?? "").trim();
+    if (content) return content;
+    return String(message.error ?? "").trim();
+  }, [message.content, message.error]);
+  const [speechActive, setSpeechActive] = useState(false);
+
+  useEffect(() => {
+    const onSpeechStarted = (event) => {
+      if (event.detail?.messageId !== message.id) setSpeechActive(false);
+    };
+    window.addEventListener("chat-lab-speech-start", onSpeechStarted);
+    return () => {
+      window.removeEventListener("chat-lab-speech-start", onSpeechStarted);
+      if (activeSpeechMessageIds.has(message.id)) {
+        stopChatLabSpeech();
+      }
+    };
+  }, [message.id]);
 
   const fileRefs = Array.isArray(message.fileRefs) ? message.fileRefs : [];
 
@@ -7984,6 +8011,29 @@ const MessageBubble = memo(function MessageBubble({
     setCopiedPulse(true);
     window.setTimeout(() => setCopiedPulse(false), 1600);
   }, [copyPlain]);
+
+  const handleSpeech = useCallback(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis || !speechText) return;
+    if (speechActive) {
+      stopChatLabSpeech();
+      setSpeechActive(false);
+      return;
+    }
+    stopChatLabSpeech();
+    window.dispatchEvent(new CustomEvent("chat-lab-speech-start", { detail: { messageId: message.id } }));
+    const utterance = new SpeechSynthesisUtterance(speechText);
+    utterance.onend = () => {
+      activeSpeechMessageIds.delete(message.id);
+      setSpeechActive(false);
+    };
+    utterance.onerror = () => {
+      activeSpeechMessageIds.delete(message.id);
+      setSpeechActive(false);
+    };
+    activeSpeechMessageIds.add(message.id);
+    setSpeechActive(true);
+    window.speechSynthesis.speak(utterance);
+  }, [message.id, speechActive, speechText]);
 
   const disableUserEdit = streamLocked;
   const startComposerEdit = useCallback(() => {
@@ -8328,6 +8378,19 @@ const MessageBubble = memo(function MessageBubble({
               aria-label={copiedPulse ? t("chatLab.messageCopied") : t("chatLab.messageCopy")}
             >
               {copiedPulse ? <MessageMetaCopiedIcon /> : <MessageMetaCopyIcon />}
+            </Button>
+            <Button
+              variant="text"
+              shape="square"
+              size="small"
+              type="button"
+              className={cn("chat-lab__msg-action-btn", speechActive && "chat-lab__msg-action-btn--speaking")}
+              onClick={handleSpeech}
+              disabled={!speechText}
+              title={speechActive ? t("chatLab.messageSpeechStop") : t("chatLab.messageSpeech")}
+              aria-label={speechActive ? t("chatLab.messageSpeechStop") : t("chatLab.messageSpeech")}
+            >
+              {speechActive ? <VolumeX size={15} strokeWidth={1.75} aria-hidden /> : <Volume2 size={15} strokeWidth={1.75} aria-hidden />}
             </Button>
             {isUser ? (
               <Button
