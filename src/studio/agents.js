@@ -120,7 +120,7 @@ export function buildGlobalUserMd(profile) {
   if (!profile || typeof profile !== "object") return "";
   const displayName = String(profile.displayName ?? "").trim();
   const gender =
-    profile.gender === "male" ? "Male" : profile.gender === "female" ? "Female" : "";
+    profile.gender === "male" ? "Male" : profile.gender === "female" ? "Female" : profile.gender === "secret" ? "Prefer not to say" : "";
   const avatarRef = avatarRefForLlmContext(profile.avatar);
   const userMd = String(profile.userMd ?? "").trim();
   const metaLines = [];

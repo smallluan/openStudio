@@ -1949,6 +1949,236 @@ code {
   line-height: 1.4;
 }
 
+.user-profile-settings {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 3rem;
+  padding: 0.35rem 0 0.75rem;
+  zoom: 0.82;
+}
+
+.user-profile-card {
+  border: 0;
+  border-radius: 0;
+  background: var(--os-bg-panel);
+  box-shadow: none;
+  padding: 0;
+}
+
+.user-profile-card__title {
+  margin: 0;
+  color: var(--os-text);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.user-profile-basic {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: center;
+  margin-top: 1.15rem;
+}
+
+.user-profile-avatar-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.user-profile-avatar {
+  position: relative;
+  width: 7rem;
+  height: 7rem;
+  overflow: visible;
+  border: 0;
+  border-radius: 50%;
+  background: var(--os-bg-subtle);
+  color: var(--os-text);
+  cursor: pointer;
+}
+
+.user-profile-avatar img,
+.user-profile-avatar > span:first-child {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  object-fit: cover;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.user-profile-avatar__camera {
+  position: absolute;
+  right: -0.2rem;
+  bottom: 0;
+  display: flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--os-bg-panel);
+  border-radius: 50%;
+  background: #315bdc;
+  color: white;
+}
+
+.user-profile-avatar-input {
+  display: none;
+}
+
+.user-profile-avatar-link {
+  border: 0;
+  background: none;
+  color: var(--os-text);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.user-profile-avatar-link:hover {
+  color: var(--os-accent);
+}
+
+.user-profile-avatar-hint {
+  color: var(--os-text-muted);
+  font-size: 0.7rem;
+}
+
+.user-profile-basic-fields {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.user-profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.user-profile-field > label,
+.user-profile-field__label {
+  color: var(--os-text);
+  font-size: 0.88rem;
+}
+
+.user-profile-field--gender {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.user-profile-field--gender .t-radio-group {
+  flex-shrink: 0;
+}
+
+.user-profile-card__description {
+  margin: 0.25rem 0 0.9rem;
+  color: var(--os-text-muted);
+  font-size: 0.82rem;
+}
+
+.user-profile-card--about {
+  display: flex;
+  min-height: 24rem;
+  flex-direction: column;
+}
+
+.user-profile-about-input {
+  position: relative;
+  display: block;
+  min-height: 0;
+  flex: 1;
+}
+
+.user-profile-about-input .t-textarea,
+.user-profile-about-input .t-textarea__inner {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100% !important;
+}
+
+.user-profile-about-input .t-textarea {
+  display: block;
+}
+
+.user-profile-about-input .t-textarea__inner {
+  min-height: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--os-border);
+  border-radius: 0.75rem;
+  background: transparent;
+  font-size: 0.9rem;
+  outline: none;
+  box-shadow: none !important;
+}
+
+.user-profile-about-input .t-textarea__inner:focus,
+.user-profile-about-input .t-textarea__inner:focus-visible,
+.user-profile-about-input .t-textarea:focus-within {
+  border-color: var(--os-border) !important;
+  outline: none;
+  box-shadow: none !important;
+}
+
+.user-profile-about-input > span {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.8rem;
+  color: var(--os-text-muted);
+  font-size: 0.8rem;
+}
+
+.user-profile-tip {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid color-mix(in srgb, #315bdc 20%, var(--os-border));
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, #315bdc 6%, var(--os-bg-panel));
+  color: #315bdc;
+  text-align: left;
+  cursor: pointer;
+}
+
+.user-profile-tip > span {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.user-profile-tip strong {
+  font-size: 0.9rem;
+}
+
+.user-profile-tip .t-typography {
+  color: var(--os-text-muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 700px) {
+  .user-profile-basic {
+    grid-template-columns: 1fr;
+  }
+
+  .user-profile-genders {
+    gap: 0.5rem;
+  }
+}
+
 .general-setting-row {
   display: flex;
   width: 100%;

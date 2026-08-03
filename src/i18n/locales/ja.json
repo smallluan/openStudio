@@ -186,16 +186,24 @@
     "advancedFeatures": "高度な機能",
     "sectionBuilding": "「{{label}}」は準備中です。",
     "profile": {
+      "basicInfo": "基本情報",
       "avatar": "アバター",
       "defaultName": "ユーザー",
+      "changeAvatar": "クリックしてアバターを変更",
+      "avatarHint": "JPG / PNG、最大 2MB",
       "displayName": "表示名",
+      "editName": "表示名を編集",
       "displayNamePlaceholder": "名前を入力",
       "gender": "性別",
       "genderMale": "男性",
       "genderFemale": "女性",
+      "genderSecret": "非公開",
       "userMd": "自己紹介",
+      "aboutDescription": "AI にあなたの情報を伝えて、よりパーソナルな会話を楽しみましょう",
       "userMdPlaceholder": "職業、興味、好み、よく使うツールなどを記入…",
-      "userMdHint": "名前・性別・自己紹介は USER.md として会話コンテキストに注入されます。アバターは UI 専用で、画像ピクセル/Base64 はモデルに送りません。"
+      "userMdHint": "名前・性別・自己紹介は USER.md として会話コンテキストに注入されます。アバターは UI 専用で、画像ピクセル/Base64 はモデルに送りません。",
+      "tipTitle": "ヒント",
+      "tipDescription": "職業、興味、使用言語、好み、受けたいサポートなどを AI に伝えられます。"
     },
     "usage": {
       "today": "今日",

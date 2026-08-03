@@ -188,16 +188,24 @@
     "advancedFeatures": "Advanced",
     "sectionBuilding": "The “{{label}}” section is under construction.",
     "profile": {
+      "basicInfo": "Basic information",
       "avatar": "Avatar",
       "defaultName": "User",
+      "changeAvatar": "Click to change avatar",
+      "avatarHint": "JPG / PNG supported, max 2MB",
       "displayName": "Display name",
+      "editName": "Edit display name",
       "displayNamePlaceholder": "Enter your name",
       "gender": "Gender",
       "genderMale": "Male",
       "genderFemale": "Female",
+      "genderSecret": "Prefer not to say",
       "userMd": "About me",
+      "aboutDescription": "Tell AI more about you for a more personalized conversation",
       "userMdPlaceholder": "Tell the agent about yourself — role, interests, preferences, tools you use…",
-      "userMdHint": "Name, gender, and About me are saved as USER.md and injected into agent context. Avatars are UI-only — image pixels / Base64 are never sent to the model."
+      "userMdHint": "Name, gender, and About me are saved as USER.md and injected into agent context. Avatars are UI-only — image pixels / Base64 are never sent to the model.",
+      "tipTitle": "Tip",
+      "tipDescription": "Tell AI about your role, interests, preferred languages, usage preferences, and the help you want."
     },
     "usage": {
       "today": "Today",

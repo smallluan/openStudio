@@ -186,16 +186,24 @@
     "advancedFeatures": "進階功能設定",
     "sectionBuilding": "「{{label}}」頁面建置中。",
     "profile": {
+      "basicInfo": "基本資訊",
       "avatar": "頭像",
       "defaultName": "使用者",
+      "changeAvatar": "點擊更換頭像",
+      "avatarHint": "支援 JPG / PNG，最大 2MB",
       "displayName": "使用者名稱",
+      "editName": "編輯使用者名稱",
       "displayNamePlaceholder": "輸入你的名稱",
       "gender": "性別",
       "genderMale": "男",
       "genderFemale": "女",
+      "genderSecret": "保密",
       "userMd": "關於我",
+      "aboutDescription": "告訴 AI 更多關於你的資訊，讓對話體驗更個人化",
       "userMdPlaceholder": "介紹一下你自己，例如職業、興趣、偏好、常用工具等…",
-      "userMdHint": "姓名、性別與「關於我」會寫入 USER.md 並注入對話上下文。頭像僅用於介面展示，不會把圖片像素/Base64 傳給模型。"
+      "userMdHint": "姓名、性別與「關於我」會寫入 USER.md 並注入對話上下文。頭像僅用於介面展示，不會把圖片像素/Base64 傳給模型。",
+      "tipTitle": "提示",
+      "tipDescription": "你可以告訴 AI 你的職業、興趣、常用語言、使用偏好、希望獲得的協助等資訊。"
     },
     "usage": {
       "today": "今日",

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Input, Radio, Textarea, Typography } from "tdesign-react";
+import { Input, RadioGroup, Textarea } from "tdesign-react";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { isAgentAvatarImageSrc } from "../../studio/agents.js";
-import Avatar from "../../ui/Avatar.jsx";
-import { cn } from "../../ui/cn.js";
+import { Camera, LockKeyhole, Mars, Pencil, Venus } from "lucide-react";
 
-/** @typedef {{ displayName: string; avatar: string; gender: "male" | "female"; userMd: string }} UserProfileForm */
+/** @typedef {{ displayName: string; avatar: string; gender: "male" | "female" | "secret"; userMd: string }} UserProfileForm */
 
 const EMPTY_PROFILE = /** @type {UserProfileForm} */ ({
   displayName: "",
@@ -16,7 +15,7 @@ const EMPTY_PROFILE = /** @type {UserProfileForm} */ ({
 
 /** @param {unknown} gender */
 function normalizeGender(gender) {
-  return gender === "female" ? "female" : "male";
+  return gender === "female" || gender === "secret" ? gender : "male";
 }
 
 /** @param {unknown} raw */
@@ -28,25 +27,6 @@ function profileFromConfig(raw) {
     gender: normalizeGender(p.gender),
     userMd: typeof p.userMd === "string" ? p.userMd : "",
   };
-}
-
-/**
- * @param {{ title: string; children: import("react").ReactNode; stacked?: boolean }} props
- */
-function ProfileSettingRow({ title, children, stacked = false }) {
-  return (
-    <div className={cn("general-setting-row", stacked && "general-setting-row--stacked")}>
-      <Typography.Text className="general-setting-row__label">{title}</Typography.Text>
-      <div
-        className={cn(
-          "general-setting-row__control",
-          stacked && "general-setting-row__control--full",
-        )}
-      >
-        {children}
-      </div>
-    </div>
-  );
 }
 
 /** User profile fields persisted in studio-user-config.json and injected as USER.md. */
@@ -137,7 +117,7 @@ export default function UserProfileSettingsSection() {
   const handleAvatarUpload = useCallback(
     /** @param {File} file */
     (file) => {
-      if (!file.type.startsWith("image/")) return;
+      if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) return;
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -152,62 +132,86 @@ export default function UserProfileSettingsSection() {
     [persistProfile],
   );
 
-  const handleAvatarClear = useCallback(() => {
-    void persistProfile({ avatar: "" });
-  }, [persistProfile]);
-
   const avatarSrc = isAgentAvatarImageSrc(profile.avatar) ? profile.avatar : "";
+  const nameInputRef = useRef(null);
+  const avatarInputRef = useRef(null);
+  const handleAvatarInputChange = useCallback(
+    (event) => {
+      const file = event.target.files?.[0];
+      if (file) void handleAvatarUpload(file);
+      event.target.value = "";
+    },
+    [handleAvatarUpload],
+  );
 
   return (
-    <div className="general-settings w-full">
-      <ProfileSettingRow title={t("settings.profile.avatar")}>
-        <Avatar
-          src={avatarSrc}
-          name={profile.displayName || t("settings.profile.defaultName")}
-          size="lg"
-          shape="circle"
-          editable
-          onUpload={handleAvatarUpload}
-          onDelete={profile.avatar ? handleAvatarClear : undefined}
-        />
-      </ProfileSettingRow>
-
-      <ProfileSettingRow title={t("settings.profile.displayName")}>
-        <Input
-          borderless
-          value={profile.displayName}
-          placeholder={t("settings.profile.displayNamePlaceholder")}
-          onChange={(v) => queuePersist({ displayName: String(v ?? "") })}
-          onBlur={() => void flushPersist()}
-          className="settings-profile-input"
-        />
-      </ProfileSettingRow>
-
-      <ProfileSettingRow title={t("settings.profile.gender")}>
-        <Radio.Group
-          value={profile.gender}
-          onChange={(v) => {
-            void persistProfile({ gender: normalizeGender(v) });
-          }}
-        >
-          <Radio value="male">{t("settings.profile.genderMale")}</Radio>
-          <Radio value="female">{t("settings.profile.genderFemale")}</Radio>
-        </Radio.Group>
-      </ProfileSettingRow>
-
-      <ProfileSettingRow title={t("settings.profile.userMd")} stacked>
-        <Textarea
-          value={profile.userMd}
-          placeholder={t("settings.profile.userMdPlaceholder")}
-          autosize={{ minRows: 4, maxRows: 12 }}
-          onChange={(v) => queuePersist({ userMd: String(v ?? "") })}
-          onBlur={() => void flushPersist()}
-          className="settings-profile-textarea"
-        />
-        <Typography.Text theme="secondary" className="settings-profile-hint">
-          {t("settings.profile.userMdHint")}
-        </Typography.Text>
-      </ProfileSettingRow>
+    <div className="user-profile-settings">
+      <section className="user-profile-card user-profile-card--basic">
+        <h2 className="user-profile-card__title">{t("settings.profile.basicInfo")}</h2>
+        <div className="user-profile-basic">
+          <div className="user-profile-avatar-block">
+            <button
+              type="button"
+              className="user-profile-avatar"
+              onClick={() => avatarInputRef.current?.click()}
+              aria-label={t("settings.profile.changeAvatar")}
+            >
+              {avatarSrc ? <img src={avatarSrc} alt="" /> : <span>{(profile.displayName || t("settings.profile.defaultName")).slice(0, 1)}</span>}
+              <span className="user-profile-avatar__camera"><Camera size={18} /></span>
+            </button>
+            <input
+              ref={avatarInputRef}
+              className="user-profile-avatar-input"
+              type="file"
+              accept="image/jpeg,image/png"
+              onChange={handleAvatarInputChange}
+            />
+          </div>
+          <div className="user-profile-basic-fields">
+            <div className="user-profile-field">
+              <label htmlFor="settings-profile-display-name">{t("settings.profile.displayName")}</label>
+              <Input
+                ref={nameInputRef}
+                id="settings-profile-display-name"
+                size="large"
+                value={profile.displayName}
+                placeholder={t("settings.profile.displayNamePlaceholder")}
+                onChange={(v) => queuePersist({ displayName: String(v ?? "") })}
+                onBlur={() => void flushPersist()}
+                suffix={<Pencil size={19} aria-label={t("settings.profile.editName")} />}
+              />
+            </div>
+            <div className="user-profile-field user-profile-field--gender">
+              <span className="user-profile-field__label">{t("settings.profile.gender")}</span>
+              <RadioGroup
+                value={profile.gender}
+                theme="button"
+                variant="outline"
+                onChange={(value) => void persistProfile({ gender: normalizeGender(value) })}
+                options={[
+                  { value: "male", label: <span style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", whiteSpace: "nowrap" }}><Mars size={18} />{t("settings.profile.genderMale")}</span> },
+                  { value: "female", label: <span style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", whiteSpace: "nowrap" }}><Venus size={18} />{t("settings.profile.genderFemale")}</span> },
+                  { value: "secret", label: <span style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", whiteSpace: "nowrap" }}><LockKeyhole size={18} />{t("settings.profile.genderSecret")}</span> },
+                ]}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+      <section className="user-profile-card user-profile-card--about">
+        <h2 className="user-profile-card__title">{t("settings.profile.userMd")}</h2>
+        <p className="user-profile-card__description">{t("settings.profile.aboutDescription")}</p>
+        <div className="user-profile-about-input">
+          <Textarea
+            value={profile.userMd}
+            maxLength={500}
+            placeholder={t("settings.profile.userMdPlaceholder")}
+            onChange={(v) => queuePersist({ userMd: String(v ?? "") })}
+            onBlur={() => void flushPersist()}
+          />
+          <span>{profile.userMd.length} / 500</span>
+        </div>
+      </section>
     </div>
   );
 }
