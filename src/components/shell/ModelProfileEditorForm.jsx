@@ -1,7 +1,8 @@
-import Select from "../../ui/Select.jsx";
+import { Select as TSelect } from "tdesign-react";
 import TextField from "../../ui/TextField.jsx";
 import { useI18n } from "../../context/I18nContext.jsx";
 import { useModelSettings } from "../../context/ModelSettingsContext.jsx";
+import { osPopupAttach } from "../../ui/osPopupShared.js";
 
 /**
  * @param {{
@@ -32,9 +33,8 @@ export default function ModelProfileEditorForm({ profile, mode, hasKey, apiKey, 
 
       <div className="flex flex-col gap-1">
         <span className="text-[0.75rem] text-[var(--os-text-muted)]">{t("userConfig.provider")}</span>
-        <Select
+        <TSelect
           id={`model-provider-${profile.id}`}
-          ariaLabel={t("userConfig.providerAria")}
           value={profile.provider}
           onChange={(v) =>
             MODEL_PROVIDER_IDS.includes(/** @type {*} */ (v)) ?
@@ -45,7 +45,13 @@ export default function ModelProfileEditorForm({ profile, mode, hasKey, apiKey, 
             : onChange({ provider: "", minimaxRegion: "" })
           }
           options={providerOptionsWithUnset}
-          className="w-full"
+          placeholder={t("userConfig.providerUnsetOption")}
+          popupProps={{
+            attach: osPopupAttach,
+            placement: "bottom-start",
+            zIndex: 2700,
+          }}
+          className="model-profile-editor__select w-full"
         />
       </div>
 
@@ -63,16 +69,20 @@ export default function ModelProfileEditorForm({ profile, mode, hasKey, apiKey, 
       {profile.provider === "minimax" ?
         <div className="flex flex-col gap-1">
           <span className="text-[0.75rem] text-[var(--os-text-muted)]">{t("userConfig.minimaxRegion")}</span>
-          <Select
+          <TSelect
             id={`model-minimax-region-${profile.id}`}
-            ariaLabel={t("userConfig.minimaxRegionAria")}
             value={profile.minimaxRegion === "intl" ? "intl" : "cn"}
             onChange={(v) => onChange({ minimaxRegion: v === "intl" ? "intl" : "cn" })}
             options={[
               { value: "cn", label: t("userConfig.minimaxRegionOptions.cn") },
               { value: "intl", label: t("userConfig.minimaxRegionOptions.intl") },
             ]}
-            className="w-full"
+            popupProps={{
+              attach: osPopupAttach,
+              placement: "bottom-start",
+              zIndex: 2700,
+            }}
+            className="model-profile-editor__select w-full"
           />
         </div>
       : null}
