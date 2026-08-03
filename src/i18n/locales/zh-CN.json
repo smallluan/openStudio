@@ -87,9 +87,14 @@
     "localAccount": "本地账户",
     "appearance": "外观",
     "appearanceAria": "外观模式",
+    "appearanceHint": "选择你喜欢的界面风格",
     "appearanceMode": {
       "light": "浅色模式",
-      "dark": "深色模式"
+      "lightHint": "清爽明亮",
+      "dark": "深色模式",
+      "darkHint": "沉浸专注",
+      "system": "跟随系统",
+      "systemHint": "自动切换"
     },
     "themeColorShort": "主题色",
     "themeColorAria": "选择应用主题色",

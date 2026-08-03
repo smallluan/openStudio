@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   applyBrandColorToDocument,
   BUILTIN_BRAND_PRESETS,
@@ -14,15 +22,20 @@ const STORAGE_KEY = "openstudio_theme";
 function readStoredTheme() {
   try {
     const v = window.localStorage.getItem(STORAGE_KEY);
-    if (v === "light" || v === "dark") return v;
+    if (v === "light" || v === "dark" || v === "system") return v;
   } catch {
     /* ignore */
   }
-  return null;
+  return "light";
 }
 
-function getInitialTheme() {
-  return readStoredTheme() ?? "light";
+function resolveTheme(preference) {
+  if (preference !== "system") return preference;
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  } catch {
+    return "light";
+  }
 }
 
 function applyThemeToDocument(theme) {
@@ -36,8 +49,18 @@ function applyThemeToDocument(theme) {
 const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(getInitialTheme);
+  const [themePreference, setThemePreference] = useState(readStoredTheme);
+  const [theme, setThemeState] = useState(() => resolveTheme(readStoredTheme()));
   const [brandColor, setBrandColorState] = useState(readStoredBrandColor);
+
+  useEffect(() => {
+    if (themePreference !== "system") return undefined;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const updateTheme = () => setThemeState(media.matches ? "dark" : "light");
+    updateTheme();
+    media.addEventListener?.("change", updateTheme);
+    return () => media.removeEventListener?.("change", updateTheme);
+  }, [themePreference]);
 
   useLayoutEffect(() => {
     applyThemeToDocument(theme);
@@ -45,8 +68,9 @@ export function ThemeProvider({ children }) {
   }, [theme, brandColor]);
 
   const setTheme = useCallback((next) => {
-    const v = next === "light" ? "light" : "dark";
-    setThemeState(v);
+    const v = next === "light" || next === "dark" || next === "system" ? next : "dark";
+    setThemePreference(v);
+    setThemeState(resolveTheme(v));
     try {
       window.localStorage.setItem(STORAGE_KEY, v);
     } catch {
@@ -55,8 +79,10 @@ export function ThemeProvider({ children }) {
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setThemeState((t) => {
+    setThemePreference((preference) => {
+      const t = resolveTheme(preference);
       const v = t === "light" ? "dark" : "light";
+      setThemeState(v);
       try {
         window.localStorage.setItem(STORAGE_KEY, v);
       } catch {
@@ -91,6 +117,7 @@ export function ThemeProvider({ children }) {
   const value = useMemo(
     () => ({
       theme,
+      themePreference,
       setTheme,
       toggleTheme,
       brandColor,
@@ -98,7 +125,7 @@ export function ThemeProvider({ children }) {
       setCustomBrandColor,
       brandPrimary: resolveBrandPrimary(brandColor),
     }),
-    [theme, setTheme, toggleTheme, brandColor, setBrandColorPreset, setCustomBrandColor],
+    [theme, themePreference, setTheme, toggleTheme, brandColor, setBrandColorPreset, setCustomBrandColor],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
@@ -107,8 +134,8 @@ export function ThemeProvider({ children }) {
 // Apply stored theme before first paint so TDesign tokens match on boot.
 try {
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  const bootTheme = stored === "light" || stored === "dark" ? stored : "light";
-  if (stored === "light" || stored === "dark") applyThemeToDocument(stored);
+  const bootTheme = resolveTheme(stored === "light" || stored === "dark" || stored === "system" ? stored : "light");
+  if (stored === "light" || stored === "dark" || stored === "system") applyThemeToDocument(bootTheme);
   applyBrandColorToDocument(bootTheme, resolveBrandPrimary(readStoredBrandColor()));
 } catch {
   /* ignore */

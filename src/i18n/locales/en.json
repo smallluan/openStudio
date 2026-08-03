@@ -87,9 +87,14 @@
     "localAccount": "Local account",
     "appearance": "Appearance",
     "appearanceAria": "Appearance mode",
+    "appearanceHint": "Choose your preferred interface style",
     "appearanceMode": {
       "light": "Light",
-      "dark": "Dark"
+      "lightHint": "Bright and clear",
+      "dark": "Dark",
+      "darkHint": "Focused and immersive",
+      "system": "System",
+      "systemHint": "Switch automatically"
     },
     "themeColorShort": "Theme color",
     "themeColorAria": "Choose application theme color",

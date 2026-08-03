@@ -87,9 +87,14 @@
     "localAccount": "ローカルアカウント",
     "appearance": "外観",
     "appearanceAria": "外観モード",
+    "appearanceHint": "好みのインターフェーススタイルを選択",
     "appearanceMode": {
       "light": "ライト",
-      "dark": "ダーク"
+      "lightHint": "明るく見やすい",
+      "dark": "ダーク",
+      "darkHint": "集中しやすい",
+      "system": "システムに従う",
+      "systemHint": "自動切り替え"
     },
     "themeColorShort": "テーマカラー",
     "themeColorAria": "アプリのテーマカラーを選択",

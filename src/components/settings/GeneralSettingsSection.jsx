@@ -9,6 +9,10 @@ import {
   writeLinkOpenModeLocal,
 } from "../../chat/chatLabLinkOpenPreference.js";
 import { BUILTIN_BRAND_PRESETS } from "../../theme/brandColor.js";
+import themeMode1 from "../../assets/images/thememode1.png";
+import themeMode2 from "../../assets/images/thememode2.png";
+import themeMode3 from "../../assets/images/thememode3.png";
+import { Check } from "lucide-react";
 import { ColorPicker, Input, Select as TSelect, Switch, Typography } from "tdesign-react";
 import "tdesign-react/es/color-picker/style/index.css";
 import { cn } from "../../ui/cn.js";
@@ -82,12 +86,15 @@ function DeferredThemeColorPicker({ value, onCommit, className }) {
 }
 
 /**
- * @param {{ title: string; children: import("react").ReactNode; stacked?: boolean }} props
+ * @param {{ title: string; description?: string; children: import("react").ReactNode; stacked?: boolean }} props
  */
-function GeneralSettingRow({ title, children, stacked = false }) {
+function GeneralSettingRow({ title, description, children, stacked = false }) {
   return (
     <div className={cn("general-setting-row", stacked && "general-setting-row--stacked")}>
-      <Typography.Text className="general-setting-row__label">{title}</Typography.Text>
+      <div className="general-setting-row__label">
+        <Typography.Text>{title}</Typography.Text>
+        {description ? <span className="general-setting-row__description">{description}</span> : null}
+      </div>
       <div
         className={cn(
           "general-setting-row__control",
@@ -100,9 +107,48 @@ function GeneralSettingRow({ title, children, stacked = false }) {
   );
 }
 
+function AppearanceModeCards({ preference, onChange, t }) {
+  const modes = [
+    { value: "light", image: themeMode1 },
+    { value: "dark", image: themeMode2 },
+    { value: "system", image: themeMode3 },
+  ];
+
+  return (
+    <div className="appearance-mode-cards" role="radiogroup" aria-label={t("settings.appearanceAria")}>
+      {modes.map(({ value, image }) => {
+        const selected = preference === value;
+        return (
+          <button
+            key={value}
+            type="button"
+            className={cn("appearance-mode-card", selected && "appearance-mode-card--selected")}
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(value)}
+          >
+            <span className={cn("appearance-mode-card__preview", `appearance-mode-card__preview--${value}`)}>
+              <img src={image} alt="" draggable="false" />
+              {selected ? <Check className="appearance-mode-card__check" size={10} strokeWidth={3} aria-hidden="true" /> : null}
+            </span>
+            <span className="appearance-mode-card__name">{t(`settings.appearanceMode.${value}`)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Appearance + language + ChatLab title automation. */
 export default function GeneralSettingsSection() {
-  const { theme, setTheme, brandColor, setBrandColorPreset, setCustomBrandColor, brandPrimary } = useTheme();
+  const {
+    themePreference,
+    setTheme,
+    brandColor,
+    setBrandColorPreset,
+    setCustomBrandColor,
+    brandPrimary,
+  } = useTheme();
   const { t, locale, setLocale } = useI18n();
   const { mode: uiMotion, setMode: setUiMotion } = useMotionPreference();
   const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
@@ -222,14 +268,6 @@ export default function GeneralSettingsSection() {
     }
   };
 
-  const themeOptions = useMemo(
-    () => [
-      { value: "light", label: t("settings.appearanceMode.light") },
-      { value: "dark", label: t("settings.appearanceMode.dark") },
-    ],
-    [t],
-  );
-
   const languageOptions = useMemo(
     () => [
       { value: "zh-CN", label: t("settings.lang.zhCN") },
@@ -259,16 +297,12 @@ export default function GeneralSettingsSection() {
 
   return (
     <div className="general-settings w-full">
-        <GeneralSettingRow title={t("settings.appearance")}>
-          <TSelect
-            id="settings-appearance"
-            borderless
-            value={theme}
-            onChange={(v) => setTheme(v)}
-            options={themeOptions}
-            popupProps={SETTINGS_SELECT_POPUP}
-            className="settings-select"
-          />
+        <GeneralSettingRow
+          title={t("settings.appearanceAria")}
+          description={t("settings.appearanceHint")}
+          stacked
+        >
+          <AppearanceModeCards preference={themePreference} onChange={setTheme} t={t} />
         </GeneralSettingRow>
 
         <GeneralSettingRow title={t("settings.themeColorShort")} stacked>

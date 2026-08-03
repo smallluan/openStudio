@@ -87,9 +87,14 @@
     "localAccount": "本機帳戶",
     "appearance": "外觀",
     "appearanceAria": "外觀模式",
+    "appearanceHint": "選擇你喜歡的介面風格",
     "appearanceMode": {
       "light": "淺色模式",
-      "dark": "深色模式"
+      "lightHint": "清爽明亮",
+      "dark": "深色模式",
+      "darkHint": "沉浸專注",
+      "system": "跟隨系統",
+      "systemHint": "自動切換"
     },
     "themeColorShort": "主題色",
     "themeColorAria": "選擇應用主題色",
