@@ -7,11 +7,11 @@ import themeMode1 from "../../assets/images/thememode1.png";
 import themeMode2 from "../../assets/images/thememode2.png";
 import themeMode3 from "../../assets/images/thememode3.png";
 import { Check } from "lucide-react";
-import { ColorPicker, Select as TSelect, Typography } from "tdesign-react";
+import { ColorPicker, RadioGroup, Typography } from "tdesign-react";
 import "tdesign-react/es/color-picker/style/index.css";
+import "tdesign-react/es/radio/style/index.css";
 import { cn } from "../../ui/cn.js";
 
-const SETTINGS_SELECT_POPUP = { attach: () => document.body, zIndex: 2600 };
 const SETTINGS_COLOR_PICKER_POPUP = { attach: () => document.body, zIndex: 2600 };
 
 /**
@@ -139,10 +139,10 @@ export default function GeneralSettingsSection() {
 
   const languageOptions = useMemo(
     () => [
-      { value: "zh-CN", label: t("settings.lang.zhCN") },
-      { value: "zh-TW", label: t("settings.lang.zhTW") },
-      { value: "en", label: t("settings.lang.en") },
-      { value: "ja", label: t("settings.lang.ja") },
+      { value: "zh-CN", label: `🇨🇳 ${t("settings.lang.zhCN")}` },
+      { value: "zh-TW", label: `🇹🇼 ${t("settings.lang.zhTW")}` },
+      { value: "en", label: `🇺🇸 ${t("settings.lang.en")}` },
+      { value: "ja", label: `🇯🇵 ${t("settings.lang.ja")}` },
     ],
     [t],
   );
@@ -208,14 +208,13 @@ export default function GeneralSettingsSection() {
         </GeneralSettingRow>
 
         <GeneralSettingRow title={t("settings.languageShort")}>
-          <TSelect
+          <RadioGroup
             id="settings-language"
-            borderless
             value={locale}
             onChange={(v) => isLocaleId(v) && setLocale(v)}
             options={languageOptions}
-            popupProps={SETTINGS_SELECT_POPUP}
-            className="settings-select"
+            theme="button"
+            variant="outline"
           />
         </GeneralSettingRow>
 
