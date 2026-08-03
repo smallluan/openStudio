@@ -2,6 +2,7 @@
 export const SETTINGS_SECTION_IDS = /** @type {const} */ ([
   "profile",
   "general",
+  "conversation",
   "accounts",
   "channels",
   "usage",

@@ -1,33 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../../context/I18nContext.jsx";
-import { useMotionPreference } from "../../context/MotionPreferenceContext.jsx";
 import { useTheme } from "../../context/ThemeContext.jsx";
 import { isLocaleId } from "../../i18n/messages.js";
-import {
-  normalizeLinkOpenMode,
-  readLinkOpenModeLocal,
-  writeLinkOpenModeLocal,
-} from "../../chat/chatLabLinkOpenPreference.js";
 import { BUILTIN_BRAND_PRESETS } from "../../theme/brandColor.js";
 import themeMode1 from "../../assets/images/thememode1.png";
 import themeMode2 from "../../assets/images/thememode2.png";
 import themeMode3 from "../../assets/images/thememode3.png";
 import { Check } from "lucide-react";
-import { ColorPicker, Input, Select as TSelect, Switch, Typography } from "tdesign-react";
+import { ColorPicker, Select as TSelect, Typography } from "tdesign-react";
 import "tdesign-react/es/color-picker/style/index.css";
 import { cn } from "../../ui/cn.js";
 
 const SETTINGS_SELECT_POPUP = { attach: () => document.body, zIndex: 2600 };
 const SETTINGS_COLOR_PICKER_POPUP = { attach: () => document.body, zIndex: 2600 };
-const BROWSER_AUTOMATION_MAX_STEPS_DEFAULT = 20;
-const BROWSER_AUTOMATION_MAX_STEPS_MIN = 1;
-const BROWSER_AUTOMATION_MAX_STEPS_MAX = 100;
-
-function normalizeBrowserAutomationMaxSteps(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return BROWSER_AUTOMATION_MAX_STEPS_DEFAULT;
-  return Math.min(BROWSER_AUTOMATION_MAX_STEPS_MAX, Math.max(BROWSER_AUTOMATION_MAX_STEPS_MIN, Math.floor(n)));
-}
 
 /**
  * ColorPicker preview updates immediately; theme commits on mouseup or popup close.
@@ -75,6 +60,7 @@ function DeferredThemeColorPicker({ value, onCommit, className }) {
       }}
       popupProps={{
         ...SETTINGS_COLOR_PICKER_POPUP,
+        visible: open,
         onVisibleChange: (visible) => {
           setOpen(visible);
           if (!visible) commitDraft();
@@ -86,13 +72,13 @@ function DeferredThemeColorPicker({ value, onCommit, className }) {
 }
 
 /**
- * @param {{ title: string; description?: string; children: import("react").ReactNode; stacked?: boolean }} props
+ * @param {{ title: import("react").ReactNode; description?: string; children: import("react").ReactNode; stacked?: boolean }} props
  */
 function GeneralSettingRow({ title, description, children, stacked = false }) {
   return (
     <div className={cn("general-setting-row", stacked && "general-setting-row--stacked")}>
-      <div className="general-setting-row__label">
-        <Typography.Text>{title}</Typography.Text>
+      <div className="general-setting-row__label general-setting-row__label--heading">
+        <Typography.Text className="general-setting-row__label-text">{title}</Typography.Text>
         {description ? <span className="general-setting-row__description">{description}</span> : null}
       </div>
       <div
@@ -139,7 +125,7 @@ function AppearanceModeCards({ preference, onChange, t }) {
   );
 }
 
-/** Appearance + language + ChatLab title automation. */
+/** Appearance, theme color, and language settings. */
 export default function GeneralSettingsSection() {
   const {
     themePreference,
@@ -150,123 +136,6 @@ export default function GeneralSettingsSection() {
     brandPrimary,
   } = useTheme();
   const { t, locale, setLocale } = useI18n();
-  const { mode: uiMotion, setMode: setUiMotion } = useMotionPreference();
-  const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
-
-  const [chatLabAutoTitle, setChatLabAutoTitle] = useState(false);
-  const [chatLabGroupContinuousConversation, setChatLabGroupContinuousConversation] = useState(true);
-  const [linkOpenMode, setLinkOpenMode] = useState(readLinkOpenModeLocal);
-  const [browserAutomationMaxSteps, setBrowserAutomationMaxSteps] = useState(
-    BROWSER_AUTOMATION_MAX_STEPS_DEFAULT,
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const c = await bridge?.getUserConfig?.();
-        if (!cancelled && c && typeof c === "object") {
-          setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
-          setChatLabGroupContinuousConversation(
-            typeof c.chatLabGroupContinuousConversation === "boolean"
-              ? c.chatLabGroupContinuousConversation
-              : true,
-          );
-          setBrowserAutomationMaxSteps(
-            normalizeBrowserAutomationMaxSteps(c.chatLabBrowserAutomationMaxSteps),
-          );
-          if (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar") {
-            const mode = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
-            setLinkOpenMode(mode);
-            writeLinkOpenModeLocal(mode);
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [bridge]);
-
-  const persistChatLabAutoTitle = async (next) => {
-    setChatLabAutoTitle(next);
-    try {
-      await bridge?.setUserConfig?.({ chatLabAutoTitle: next });
-    } catch {
-      try {
-        const c = await bridge?.getUserConfig?.();
-        if (c && typeof c === "object") setChatLabAutoTitle(Boolean(c.chatLabAutoTitle));
-      } catch {
-        setChatLabAutoTitle(false);
-      }
-    }
-  };
-
-  const persistChatLabGroupContinuousConversation = async (next) => {
-    setChatLabGroupContinuousConversation(next);
-    try {
-      await bridge?.setUserConfig?.({ chatLabGroupContinuousConversation: next });
-    } catch {
-      try {
-        const c = await bridge?.getUserConfig?.();
-        if (c && typeof c === "object") {
-          setChatLabGroupContinuousConversation(
-            typeof c.chatLabGroupContinuousConversation === "boolean"
-              ? c.chatLabGroupContinuousConversation
-              : true,
-          );
-        }
-      } catch {
-        setChatLabGroupContinuousConversation(true);
-      }
-    }
-  };
-
-  const persistLinkOpenMode = async (next) => {
-    const mode = normalizeLinkOpenMode(next);
-    setLinkOpenMode(mode);
-    writeLinkOpenModeLocal(mode);
-    try {
-      await bridge?.setUserConfig?.({ chatLabLinkOpenMode: mode });
-    } catch {
-      try {
-        const c = await bridge?.getUserConfig?.();
-        if (c && typeof c === "object" && (c.chatLabLinkOpenMode === "external" || c.chatLabLinkOpenMode === "sidebar")) {
-          const restored = normalizeLinkOpenMode(c.chatLabLinkOpenMode);
-          setLinkOpenMode(restored);
-          writeLinkOpenModeLocal(restored);
-        }
-      } catch {
-        setLinkOpenMode(readLinkOpenModeLocal());
-      }
-    }
-  };
-
-  const persistBrowserAutomationMaxSteps = async (next) => {
-    const value = normalizeBrowserAutomationMaxSteps(next);
-    setBrowserAutomationMaxSteps(value);
-    try {
-      await bridge?.setUserConfig?.({ chatLabBrowserAutomationMaxSteps: value });
-      window.dispatchEvent(
-        new CustomEvent("openstudio-chatlab-browser-automation-max-steps", {
-          detail: { maxSteps: value },
-        }),
-      );
-    } catch {
-      try {
-        const c = await bridge?.getUserConfig?.();
-        if (c && typeof c === "object") {
-          setBrowserAutomationMaxSteps(
-            normalizeBrowserAutomationMaxSteps(c.chatLabBrowserAutomationMaxSteps),
-          );
-        }
-      } catch {
-        setBrowserAutomationMaxSteps(BROWSER_AUTOMATION_MAX_STEPS_DEFAULT);
-      }
-    }
-  };
 
   const languageOptions = useMemo(
     () => [
@@ -274,23 +143,6 @@ export default function GeneralSettingsSection() {
       { value: "zh-TW", label: t("settings.lang.zhTW") },
       { value: "en", label: t("settings.lang.en") },
       { value: "ja", label: t("settings.lang.ja") },
-    ],
-    [t],
-  );
-
-  const uiMotionOptions = useMemo(
-    () => [
-      { value: "full", label: t("settings.uiMotion.full") },
-      { value: "system", label: t("settings.uiMotion.system") },
-      { value: "reduced", label: t("settings.uiMotion.reduced") },
-    ],
-    [t],
-  );
-
-  const linkOpenModeOptions = useMemo(
-    () => [
-      { value: "sidebar", label: t("settings.linkOpenMode.sidebar") },
-      { value: "external", label: t("settings.linkOpenMode.external") },
     ],
     [t],
   );
@@ -305,7 +157,11 @@ export default function GeneralSettingsSection() {
           <AppearanceModeCards preference={themePreference} onChange={setTheme} t={t} />
         </GeneralSettingRow>
 
-        <GeneralSettingRow title={t("settings.themeColorShort")} stacked>
+        <GeneralSettingRow
+          title={t("settings.themeColorShort")}
+          description={t("settings.themeColorHint")}
+          stacked
+        >
           <div className="theme-color-picker" role="group" aria-label={t("settings.themeColorAria")}>
             <div className="theme-color-picker__presets">
               {BUILTIN_BRAND_PRESETS.map((preset) => {
@@ -314,22 +170,39 @@ export default function GeneralSettingsSection() {
                   <button
                     key={preset.id}
                     type="button"
-                    className={cn("theme-color-card", selected && "theme-color-card--selected")}
-                    style={{ backgroundColor: preset.color }}
+                    className="theme-color-option"
                     aria-label={t(`settings.themeColorPresets.${preset.id}`)}
                     aria-pressed={selected}
                     onClick={() => setBrandColorPreset(preset.id)}
-                  />
+                  >
+                    <span
+                      className={cn(
+                        "theme-color-card",
+                        `theme-color-card--${preset.id}`,
+                        selected && "theme-color-card--selected",
+                      )}
+                    >
+                      {selected ? <Check className="theme-color-card__check" size={14} strokeWidth={3} aria-hidden="true" /> : null}
+                    </span>
+                    <span className="theme-color-option__label">
+                      {t(`settings.themeColorPresets.${preset.id}`)}
+                    </span>
+                  </button>
                 );
               })}
             </div>
             <div className="theme-color-picker__custom">
-              <span className="theme-color-picker__custom-label">{t("settings.themeColorCustom")}</span>
-              <DeferredThemeColorPicker
-                value={brandColor.type === "custom" ? brandColor.color : brandPrimary}
-                onCommit={setCustomBrandColor}
-                className="theme-color-picker__input"
-              />
+              <div className="theme-color-picker__custom-copy">
+                <span className="theme-color-picker__custom-hint">
+                  {t("settings.themeColorCustomHint")}
+                </span>
+              </div>
+              <div className="theme-color-picker__input">
+                <DeferredThemeColorPicker
+                  value={brandColor.type === "custom" ? brandColor.color : brandPrimary}
+                  onCommit={setCustomBrandColor}
+                />
+              </div>
             </div>
           </div>
         </GeneralSettingRow>
@@ -346,67 +219,6 @@ export default function GeneralSettingsSection() {
           />
         </GeneralSettingRow>
 
-        <GeneralSettingRow title={t("settings.uiMotionShort")}>
-          <TSelect
-            id="settings-ui-motion"
-            borderless
-            value={uiMotion}
-            onChange={(v) => {
-              if (v === "full" || v === "system" || v === "reduced") setUiMotion(v);
-            }}
-            options={uiMotionOptions}
-            popupProps={SETTINGS_SELECT_POPUP}
-            className="settings-select"
-          />
-        </GeneralSettingRow>
-
-        <GeneralSettingRow title={t("settings.linkOpenModeShort")}>
-          <TSelect
-            id="settings-link-open-mode"
-            borderless
-            value={linkOpenMode}
-            onChange={(v) => void persistLinkOpenMode(v)}
-            options={linkOpenModeOptions}
-            popupProps={SETTINGS_SELECT_POPUP}
-            className="settings-select"
-          />
-        </GeneralSettingRow>
-
-        <GeneralSettingRow
-          title={t("settings.browserAutomationMaxSteps")}
-        >
-          <Input
-            id="settings-browser-automation-max-steps"
-            type="number"
-            min={BROWSER_AUTOMATION_MAX_STEPS_MIN}
-            max={BROWSER_AUTOMATION_MAX_STEPS_MAX}
-            value={String(browserAutomationMaxSteps)}
-            onChange={(value) => {
-              const n = Number.parseInt(String(value ?? ""), 10);
-              if (Number.isFinite(n)) setBrowserAutomationMaxSteps(normalizeBrowserAutomationMaxSteps(n));
-            }}
-            onBlur={() => void persistBrowserAutomationMaxSteps(browserAutomationMaxSteps)}
-            className="settings-number-input"
-          />
-        </GeneralSettingRow>
-
-        <GeneralSettingRow title={t("settings.autoSummarize")}>
-          <Switch
-            id="settings-auto-summarize"
-            aria-label={t("settings.autoSummarizeTitle")}
-            value={chatLabAutoTitle}
-            onChange={(v) => void persistChatLabAutoTitle(Boolean(v))}
-          />
-        </GeneralSettingRow>
-
-        <GeneralSettingRow title={t("settings.groupContinuousConversation")}>
-          <Switch
-            id="settings-group-continuous-conversation"
-            aria-label={t("settings.groupContinuousConversationAria")}
-            value={chatLabGroupContinuousConversation}
-            onChange={(v) => void persistChatLabGroupContinuousConversation(Boolean(v))}
-          />
-        </GeneralSettingRow>
     </div>
   );
 }

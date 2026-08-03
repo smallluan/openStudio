@@ -1,8 +1,9 @@
-import { BarChart3, Bug, Cpu, KeyRound, Radio, Settings, User } from "lucide-react";
+import { BarChart3, Bug, Cpu, KeyRound, MessageCircle, Palette, Radio, User } from "lucide-react";
 import { Menu } from "@open-studio/udesign";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import ChannelSettingsSection from "../components/settings/ChannelSettingsSection.jsx";
+import ConversationSettingsSection from "../components/settings/ConversationSettingsSection.jsx";
 import DebugToolsSettingsSection from "../components/settings/DebugToolsSettingsSection.jsx";
 import GeneralSettingsSection from "../components/settings/GeneralSettingsSection.jsx";
 import UserProfileSettingsSection from "../components/settings/UserProfileSettingsSection.jsx";
@@ -19,7 +20,8 @@ import { cn } from "../ui/cn.js";
 
 const SETTINGS_SECTION_ICONS = {
   profile: User,
-  general: Settings,
+  general: Palette,
+  conversation: MessageCircle,
   accounts: KeyRound,
   channels: Radio,
   usage: BarChart3,
@@ -36,7 +38,7 @@ export default function SettingsPage() {
   const settingsNavItems = useMemo(
     () =>
       SETTINGS_SECTION_IDS.map((id) => {
-        const Icon = SETTINGS_SECTION_ICONS[id] ?? Settings;
+        const Icon = SETTINGS_SECTION_ICONS[id] ?? Palette;
         return {
           id,
           label: t(`settings.sections.${id}`),
@@ -48,6 +50,7 @@ export default function SettingsPage() {
 
   const sectionTitle =
     SETTINGS_SECTION_IDS.includes(section) ? t(`settings.sections.${section}`) : t("settings.title");
+  const SectionIcon = SETTINGS_SECTION_ICONS[section] ?? Palette;
 
   const modelSection = section === "model";
   const accountsSection = section === "accounts";
@@ -74,9 +77,12 @@ export default function SettingsPage() {
 
         <div className="settings-sheet__main">
           <header className="settings-sheet__header">
-            <h1 id="settings-modal-title" className="sr-only">
-              {sectionTitle}
-            </h1>
+            <div className="settings-sheet__header-title-wrap">
+              <h1 id="settings-modal-title" className="settings-sheet__header-title">
+                <NavIcon icon={SectionIcon} size={18} strokeWidth={1.5} />
+                {sectionTitle}
+              </h1>
+            </div>
             <ModalCloseButton onClick={onClose} aria-label={t("settings.closeAria")} />
           </header>
 
@@ -94,6 +100,12 @@ export default function SettingsPage() {
             {section === "general" ? (
               <div className="settings-sheet__section">
                 <GeneralSettingsSection />
+              </div>
+            ) : null}
+
+            {section === "conversation" ? (
+              <div className="settings-sheet__section">
+                <ConversationSettingsSection />
               </div>
             ) : null}
 
