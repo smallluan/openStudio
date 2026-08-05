@@ -11,7 +11,7 @@ export function formatComposerSkillDirective(s) {
     const labelBit = label ? ` (${label})` : "";
     const domPolicy = String(s.browserDomPolicy ?? "").trim();
     const domBit = domPolicy ? ` Browser DOM policy: ${domPolicy}.` : "";
-    return `[OpenClaw skill: ${slug}]${labelBit} Please follow this bundled SKILL when it applies to the user's request.${domBit}`;
+    return `[OpenClaw skill: ${slug}]${labelBit} Before responding, you MUST first read the complete SKILL.md for this selected skill. Do not rely on its name or description alone; after reading it, follow the skill instructions for the user's request.${domBit}`;
   }
   if (kind === "user") {
     const label = String(s.label ?? "").trim();
@@ -23,7 +23,7 @@ export function formatComposerSkillDirective(s) {
     if (localPath) parts.push(`Path: ${localPath}`);
     const domPolicy = String(s.browserDomPolicy ?? "").trim();
     if (domPolicy) parts.push(`Browser DOM policy: ${domPolicy}`);
-    return `[User-registered skill] ${parts.join(" — ")}`;
+    return `[User-registered skill] ${parts.join(" — ")}. Before responding, you MUST first read the complete SKILL.md for this selected skill, not only its name or description, and then follow its instructions for the user's request.`;
   }
   return "";
 }
