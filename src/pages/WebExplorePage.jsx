@@ -167,7 +167,7 @@ function withLifecycle(tabs, activeTabId) {
 
 export default function WebExplorePage() {
   const { t } = useI18n();
-  const { collapsePrimaryRail } = useOutletContext() ?? {};
+  const { collapsePrimaryRail, expandPrimaryRail } = useOutletContext() ?? {};
   const landingInputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
   const barInputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
   const viewportRef = useRef(/** @type {HTMLDivElement | null} */ (null));
@@ -197,6 +197,14 @@ export default function WebExplorePage() {
   const [saveComboDone, setSaveComboDone] = useState(false);
   const { presets, savePreset, deletePreset } = useExploreUrlPresets();
   const inElectron = typeof window !== "undefined" && Boolean(window.studioBridge);
+
+  useEffect(() => {
+    return () => {
+      if (typeof expandPrimaryRail === "function") {
+        void expandPrimaryRail();
+      }
+    };
+  }, [expandPrimaryRail]);
 
   tabsRef.current = tabs;
   activeTabIdRef.current = activeTabId;
@@ -471,13 +479,16 @@ export default function WebExplorePage() {
 
   const handleBackToLanding = useCallback(() => {
     openSeqRef.current += 1;
+    if (typeof expandPrimaryRail === "function") {
+      void expandPrimaryRail();
+    }
     setTabs([]);
     setActiveTabId("");
     setActivePresetId("");
     setRedirectGroups([]);
     setDraft("");
     setLandingKey((k) => k + 1);
-  }, []);
+  }, [expandPrimaryRail]);
 
   const handleAddTab = useCallback(() => {
     void withRailCollapsedIfNeeded(() => {
@@ -498,6 +509,9 @@ export default function WebExplorePage() {
     const next = prev.filter((tab) => tab.id !== id);
     if (!next.length) {
       openSeqRef.current += 1;
+      if (typeof expandPrimaryRail === "function") {
+        void expandPrimaryRail();
+      }
       setTabs([]);
       setActiveTabId("");
       setActivePresetId("");
@@ -514,7 +528,7 @@ export default function WebExplorePage() {
       return;
     }
     setTabs(withLifecycle(next, activeTabIdRef.current));
-  }, []);
+  }, [expandPrimaryRail]);
 
   const handleActivateTab = useCallback((value) => {
     const id = String(value ?? "").trim();

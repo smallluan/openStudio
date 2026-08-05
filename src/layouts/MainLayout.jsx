@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@open-studio/udesign";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Compass, GitBranch, MessageSquarePlus, Puzzle, Timer, Users } from "lucide-react";
 import SidebarToggleIcon from "../assets/svg/SidebarToggleIcon.jsx";
 import TitleBar from "../components/chrome/TitleBar.jsx";
@@ -84,12 +84,16 @@ export default function MainLayout({ railResizeEnabled = false }) {
     [t],
   );
 
+  const location = useLocation();
   const lastExpandedRef = useRef(RAIL_DEFAULT);
   const railTransitionTimerRef = useRef(/** @type {number | null} */ (null));
+  const railPxRef = useRef(RAIL_DEFAULT);
+  const previousPathRef = useRef(location.pathname);
   const [railPx, setRailPx] = useState(RAIL_DEFAULT);
   const [railDragging, setRailDragging] = useState(false);
   const [railTransitioning, setRailTransitioning] = useState(false);
 
+  railPxRef.current = railPx;
   const isNarrow = railPx < RAIL_MIN;
   useWechatSessionSync();
   useWechatAutoReplyStream();
@@ -130,19 +134,31 @@ export default function MainLayout({ railResizeEnabled = false }) {
   const onRailCommit = useCallback((w) => {
     const next = finalizeRailWidth(w);
     if (next >= RAIL_MIN) lastExpandedRef.current = next;
+    railPxRef.current = next;
     setRailPx(next);
   }, []);
 
   /** Collapses the primary rail; resolves after the width transition settles (or immediately if already narrow). */
   const collapsePrimaryRail = useCallback(() => {
-    let didCollapse = false;
-    setRailPx((w) => {
-      if (w < RAIL_MIN) return w;
-      didCollapse = true;
-      lastExpandedRef.current = clampExpanded(w);
-      return RAIL_COLLAPSED;
+    const current = railPxRef.current;
+    if (current < RAIL_MIN) return Promise.resolve();
+    lastExpandedRef.current = clampExpanded(current);
+    railPxRef.current = RAIL_COLLAPSED;
+    setRailPx(RAIL_COLLAPSED);
+    startRailTransition();
+    return new Promise((resolve) => {
+      window.setTimeout(() => {
+        requestAnimationFrame(() => resolve());
+      }, RAIL_WIDTH_TRANSITION_MS);
     });
-    if (!didCollapse) return Promise.resolve();
+  }, [startRailTransition]);
+
+  /** Expands the primary rail to its last expanded width. */
+  const expandPrimaryRail = useCallback(() => {
+    if (railPxRef.current >= RAIL_MIN) return Promise.resolve();
+    const expanded = clampExpanded(lastExpandedRef.current || RAIL_DEFAULT);
+    railPxRef.current = expanded;
+    setRailPx(expanded);
     startRailTransition();
     return new Promise((resolve) => {
       window.setTimeout(() => {
@@ -156,14 +172,28 @@ export default function MainLayout({ railResizeEnabled = false }) {
     startRailTransition();
     setRailPx((w) => {
       if (w < RAIL_MIN) {
-        return Math.max(RAIL_MIN, lastExpandedRef.current || RAIL_DEFAULT);
+        const expanded = Math.max(RAIL_MIN, lastExpandedRef.current || RAIL_DEFAULT);
+        railPxRef.current = expanded;
+        return expanded;
       }
       lastExpandedRef.current = clampExpanded(w);
+      railPxRef.current = RAIL_COLLAPSED;
       return RAIL_COLLAPSED;
     });
   }, [startRailTransition]);
 
-  const outletContext = useMemo(() => ({ collapsePrimaryRail }), [collapsePrimaryRail]);
+  useEffect(() => {
+    const wasExplore = previousPathRef.current === "/explore";
+    if (wasExplore && location.pathname !== "/explore") {
+      void expandPrimaryRail();
+    }
+    previousPathRef.current = location.pathname;
+  }, [expandPrimaryRail, location.pathname]);
+
+  const outletContext = useMemo(
+    () => ({ collapsePrimaryRail, expandPrimaryRail }),
+    [collapsePrimaryRail, expandPrimaryRail],
+  );
 
   const handleRailTransitionEnd = useCallback((e) => {
     if (e.propertyName !== "width") return;
