@@ -19,6 +19,7 @@ export function useSkillLibrary() {
       id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `skill-${Date.now()}`,
       title: partial.title,
       description: partial.description ?? "",
+      icon: partial.icon,
       categoryId: partial.categoryId,
       localPath: partial.localPath,
       browserDomPolicy: partial.browserDomPolicy,

@@ -11,14 +11,14 @@ export function pathBasename(rawPath) {
 }
 
 /**
- * Display name for a user skill row: folder name when localPath is set.
+ * Display name for a user skill row: explicit skill name, then folder name.
  * @param {{ title?: string; localPath?: string; id?: string }} skill
  */
 export function userSkillDisplayTitle(skill) {
-  const fromPath = pathBasename(skill?.localPath);
-  if (fromPath) return fromPath;
   const title = String(skill?.title ?? "").trim();
   if (title) return title;
+  const fromPath = pathBasename(skill?.localPath);
+  if (fromPath) return fromPath;
   return String(skill?.id ?? "").trim() || "skill";
 }
 

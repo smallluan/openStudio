@@ -2,7 +2,7 @@ const STORAGE_KEY = "openstudio_skill_library_v1";
 
 /**
  * @typedef {{ id: string; label: string }} UserCategoryRow
- * @typedef {{ id: string; title: string; description: string; categoryId: string; localPath?: string; browserDomPolicy?: "auto" | "selector-only" | "full"; fromNl?: boolean; createdAt: number }} UserSkillRow
+ * @typedef {{ id: string; title: string; description: string; icon?: string; categoryId: string; localPath?: string; browserDomPolicy?: "auto" | "selector-only" | "full"; fromNl?: boolean; createdAt: number }} UserSkillRow
  * @typedef {{ userCategories: UserCategoryRow[]; userSkills: UserSkillRow[] }} SkillLibrarySnapshot
  */
 

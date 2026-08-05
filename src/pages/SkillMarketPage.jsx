@@ -2,21 +2,22 @@ import { useCallback, useId, useMemo, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
 import { Space, Tabs } from "tdesign-react";
 import OsEmpty from "../ui/OsEmpty.jsx";
-import { AddIcon, FolderIcon } from "tdesign-icons-react";
+import { AddIcon, AppIcon, FolderIcon } from "tdesign-icons-react";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { filterUsableBundledSkills } from "../skills/skillAvailability.js";
-import { pathBasename, userSkillDisplayTitle } from "../skills/skillDisplay.js";
+import { userSkillDisplayTitle } from "../skills/skillDisplay.js";
+import { parseSkillFrontmatter } from "../skills/skillFrontmatter.js";
 import { BUILTIN_SKILL_DEFS } from "../skills/skillsCatalog.js";
 import { OPENCLAW_BUNDLED_SKILLS, formatSkillTitle } from "../skills/skillRegistry.js";
 import { useSkillEnvironment } from "../skills/useSkillEnvironment.js";
 import { useSkillLibrary } from "../skills/useSkillLibrary.js";
 import Modal from "../ui/Modal.jsx";
 import ModalCloseButton from "../ui/ModalCloseButton.jsx";
+import FluidConfirmDialog from "../ui/FluidConfirmDialog.jsx";
 import TextField from "../ui/TextField.jsx";
 import { cn } from "../ui/cn.js";
 
-const ALL_FILTER = "__all__";
 const BUILTIN_FILTER = "__builtin__";
 const OTHER_FILTER = "__other__";
 
@@ -48,20 +49,16 @@ export default function SkillMarketPage() {
   const { lib, addUserSkill, removeUserSkill, addUserCategory } = useSkillLibrary();
   const skillEnv = useSkillEnvironment();
   const canOpenFolder = Boolean(typeof window !== "undefined" && window.studioBridge?.openSkillDirectory);
-  const uploadTitleId = useId();
   const addCategoryTitleId = useId();
 
-  const [filterId, setFilterId] = useState(ALL_FILTER);
+  const [filterId, setFilterId] = useState(OTHER_FILTER);
   const [query, setQuery] = useState("");
 
-  const [uploadOpen, setUploadOpen] = useState(false);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
   const [newCategoryLabel, setNewCategoryLabel] = useState("");
-
-  const [uploadTitle, setUploadTitle] = useState("");
-  const [uploadDesc, setUploadDesc] = useState("");
-  const [uploadPath, setUploadPath] = useState("");
-  const [uploadCategoryId, setUploadCategoryId] = useState(OTHER_FILTER);
+  const [uploadingSkill, setUploadingSkill] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
 
   const openclawSkillById = useMemo(() => new Map(OPENCLAW_BUNDLED_SKILLS.map((s) => [s.id, s])), []);
 
@@ -98,16 +95,11 @@ export default function SkillMarketPage() {
 
   const categoryTabs = useMemo(() => {
     return [
-      { id: ALL_FILTER, label: "全部" },
-      { id: BUILTIN_FILTER, label: "内置" },
-      { id: OTHER_FILTER, label: "其他" },
+      { id: OTHER_FILTER, label: t("skillsPage.filterLocal"), icon: <FolderIcon /> },
+      { id: BUILTIN_FILTER, label: t("skillsPage.filterBuiltin"), icon: <AppIcon /> },
       ...lib.userCategories.map((c) => ({ id: c.id, label: c.label })),
     ];
-  }, [lib.userCategories]);
-
-  const uploadCategoryOptions = useMemo(() => {
-    return [{ id: OTHER_FILTER, label: "其他" }, ...lib.userCategories];
-  }, [lib.userCategories]);
+  }, [lib.userCategories, t]);
 
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -123,7 +115,7 @@ export default function SkillMarketPage() {
 
   const filteredBuiltin = useMemo(() => {
     return usableBuiltinDefs.filter((def) => {
-      if (filterId !== ALL_FILTER && filterId !== BUILTIN_FILTER) return false;
+      if (filterId !== BUILTIN_FILTER) return false;
       const meta = openclawSkillById.get(def.id);
       const title = meta ? formatSkillTitle(meta.name) : def.id;
       const manifestDesc = meta?.description ?? "";
@@ -136,39 +128,75 @@ export default function SkillMarketPage() {
     return lib.userSkills.filter((s) => {
       const categoryId = customCategoryMap.has(s.categoryId) ? s.categoryId : OTHER_FILTER;
       if (filterId === BUILTIN_FILTER) return false;
-      if (filterId !== ALL_FILTER && filterId !== categoryId) return false;
+      if (filterId !== categoryId) return false;
       const title = userSkillDisplayTitle(s);
       return matchesQuery(title, s.description);
     });
   }, [customCategoryMap, filterId, lib.userSkills, matchesQuery]);
 
-  const shouldShowBuiltinLoading = skillEnv.loading && (filterId === ALL_FILTER || filterId === BUILTIN_FILTER);
+  const shouldShowBuiltinLoading = skillEnv.loading && filterId === BUILTIN_FILTER;
   const visibleCount = filteredBuiltin.length + filteredUser.length;
   const shouldShowEmpty = !shouldShowBuiltinLoading && visibleCount === 0;
 
-  const resetUploadForm = useCallback(() => {
-    setUploadTitle("");
-    setUploadDesc("");
-    setUploadPath("");
-    setUploadCategoryId(OTHER_FILTER);
+  const uploadSkillFromFolder = useCallback(async () => {
+    if (uploadingSkill) return;
+    const pickFolder = window.studioBridge?.pickWorkspaceFolder;
+    if (!pickFolder) {
+      window.alert(t("skillsPage.upload.chooseFolderFailed"));
+      return;
+    }
+    setUploadingSkill(true);
+    try {
+      const result = await pickFolder();
+      if (result?.canceled) return;
+      if (!result?.ok || !result.path) {
+        window.alert(t("skillsPage.upload.chooseFolderFailed"));
+        return;
+      }
+      const localPath = String(result.path).trim();
+      const readSkillFile = window.studioBridge?.readSkillFile;
+      if (!readSkillFile) {
+        window.alert(t("skillsPage.upload.metadataReadFailed"));
+        return;
+      }
+      const fileResult = await readSkillFile({ kind: "user", localPath });
+      if (!fileResult?.ok) {
+        window.alert(t("skillsPage.upload.metadataReadFailed"));
+        return;
+      }
+      const metadata = parseSkillFrontmatter(fileResult.content);
+      const title = metadata.name.trim();
+      const description = metadata.description.trim();
+      if (!title || !description) {
+        window.alert(t("skillsPage.upload.metadataRequired"));
+        return;
+      }
+      addUserSkill({
+        title,
+        description,
+        icon: metadata.icon,
+        categoryId: OTHER_FILTER,
+        localPath,
+        fromNl: false,
+      });
+    } catch {
+      window.alert(t("skillsPage.upload.metadataReadFailed"));
+    } finally {
+      setUploadingSkill(false);
+    }
+  }, [addUserSkill, t, uploadingSkill]);
+
+  const requestRemoveUserSkill = useCallback((id) => {
+    setPendingDeleteId(id);
+    setDeleteConfirmOpen(true);
   }, []);
 
-  const onConfirmUpload = useCallback(() => {
-    const localPath = uploadPath.trim() || undefined;
-    const title =
-      (localPath ? pathBasename(localPath) : "") ||
-      uploadTitle.trim() ||
-      t("skillsPage.upload.defaultTitle");
-    addUserSkill({
-      title,
-      description: uploadDesc.trim(),
-      categoryId: uploadCategoryId || OTHER_FILTER,
-      localPath,
-      fromNl: false,
-    });
-    resetUploadForm();
-    setUploadOpen(false);
-  }, [addUserSkill, resetUploadForm, t, uploadCategoryId, uploadDesc, uploadPath, uploadTitle]);
+  const handleConfirmDelete = useCallback(() => {
+    if (!pendingDeleteId) return;
+    removeUserSkill(pendingDeleteId);
+    setPendingDeleteId(null);
+    setDeleteConfirmOpen(false);
+  }, [pendingDeleteId, removeUserSkill]);
 
   const onAddCategory = useCallback(() => {
     setNewCategoryLabel("");
@@ -204,7 +232,19 @@ export default function SkillMarketPage() {
               <div style={{ minWidth: 0 }}>
                 <Tabs
                   value={filterId}
-                  list={categoryTabs.map((tab) => ({ value: tab.id, label: tab.label }))}
+                  list={categoryTabs.map((tab) => ({
+                    value: tab.id,
+                    label: tab.icon ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex text-[0.9em]" aria-hidden>
+                          {tab.icon}
+                        </span>
+                        {tab.label}
+                      </span>
+                    ) : (
+                      tab.label
+                    ),
+                  }))}
                   onChange={(value) => setFilterId(String(value))}
                 />
               </div>
@@ -222,7 +262,13 @@ export default function SkillMarketPage() {
               placeholder={t("skillsPage.searchPlaceholder")}
               aria-label={t("skillsPage.searchPlaceholder")}
             />
-            <Button type="button" theme="primary" icon={<AddIcon />} onClick={() => setUploadOpen(true)}>
+            <Button
+              type="button"
+              theme="primary"
+              icon={<AddIcon />}
+              disabled={uploadingSkill}
+              onClick={uploadSkillFromFolder}
+            >
               {t("skillsPage.actions.upload")}
             </Button>
           </Space>
@@ -238,7 +284,7 @@ export default function SkillMarketPage() {
         {shouldShowBuiltinLoading ? (
           <OsEmpty description="正在加载技能..." />
         ) : shouldShowEmpty ? (
-          <OsEmpty description={t("skillsPage.emptyBuiltin")} />
+          <OsEmpty description={filterId === BUILTIN_FILTER ? t("skillsPage.emptyBuiltin") : t("skillsPage.emptyUser")} />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filteredBuiltin.map((def) => {
@@ -257,9 +303,6 @@ export default function SkillMarketPage() {
                         {title}
                       </h3>
                     </div>
-                    <span className="shrink-0 rounded-md bg-[color-mix(in_srgb,var(--os-accent)_12%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-accent)]">
-                      {t("skillsPage.badgeBuiltin")}
-                    </span>
                   </div>
                   <p
                     className="mt-2 flex-1 cursor-default whitespace-pre-wrap text-[0.78rem] leading-snug text-[var(--os-text-muted)]"
@@ -297,19 +340,15 @@ export default function SkillMarketPage() {
             {filteredUser.map((s) => {
               const displayTitle = userSkillDisplayTitle(s);
               const canOpenUserFolder = canOpenFolder && Boolean(s.localPath?.trim());
-              const badgeLabel = customCategoryMap.get(s.categoryId) || "其他";
               return (
                 <SkillCardShell key={s.id} className="group relative">
                   <div className="flex items-start gap-2.5">
                     <span className="text-xl leading-none" aria-hidden>
-                      {s.fromNl ? "✨" : "📁"}
+                      {s.icon || (s.fromNl ? "✨" : "📁")}
                     </span>
                     <div className="min-w-0 flex-1">
                       <h3 className="truncate text-[0.9rem] font-semibold text-[var(--os-text)]">{displayTitle}</h3>
                     </div>
-                    <span className="shrink-0 rounded-md bg-[color-mix(in_srgb,var(--os-text-muted)_10%,transparent)] px-1.5 py-0.5 text-[0.65rem] font-medium text-[var(--os-text-muted)]">
-                      {badgeLabel}
-                    </span>
                   </div>
                   <p
                     className="mt-2 flex-1 cursor-default whitespace-pre-wrap text-[0.78rem] leading-snug text-[var(--os-text-muted)]"
@@ -317,11 +356,6 @@ export default function SkillMarketPage() {
                   >
                     {s.description || t("skillsPage.noDescription")}
                   </p>
-                  {s.localPath ? (
-                    <p className="mt-1 truncate font-mono text-[0.68rem] text-[var(--os-text-faint)]" title={s.localPath}>
-                      {s.localPath}
-                    </p>
-                  ) : null}
                   <div
                     className={cn(
                       "pointer-events-none absolute inset-x-0 bottom-0 z-[1] opacity-0 transition-opacity duration-200 ease-in-out",
@@ -350,7 +384,7 @@ export default function SkillMarketPage() {
                           theme="danger"
                           variant="text"
                           size="small"
-                          onClick={() => removeUserSkill(s.id)}
+                          onClick={() => requestRemoveUserSkill(s.id)}
                         >
                           {t("skillsPage.delete")}
                         </Button>
@@ -364,75 +398,17 @@ export default function SkillMarketPage() {
         )}
       </div>
 
-      {uploadOpen ? (
-        <Modal onClose={() => { setUploadOpen(false); resetUploadForm(); }} labelledBy={uploadTitleId}>
-          <div className="flex w-full min-w-[min(100vw-2rem,440px)] flex-col bg-[var(--os-bg-modal)]">
-            <div className="flex items-center justify-between border-b border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <h2 id={uploadTitleId} className="text-base font-semibold">
-                {t("skillsPage.upload.title")}
-              </h2>
-              <ModalCloseButton
-                onClick={() => {
-                  setUploadOpen(false);
-                  resetUploadForm();
-                }}
-              />
-            </div>
-            <div className="flex flex-col gap-3 px-5 py-4">
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("skillsPage.upload.fieldTitle")}
-                <TextField value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} />
-              </label>
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("skillsPage.upload.fieldDesc")}
-                <textarea
-                  className="min-h-[72px] resize-y rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 py-2 text-[0.8125rem] text-[var(--os-text)] placeholder:text-[var(--os-text-faint)] focus-visible:border-[color-mix(in_srgb,var(--os-accent)_38%,var(--os-border))] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_srgb,var(--os-focus-ring)_28%,transparent)]"
-                  value={uploadDesc}
-                  onChange={(e) => setUploadDesc(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("skillsPage.upload.fieldPath")}
-                <TextField
-                  value={uploadPath}
-                  onChange={(e) => setUploadPath(e.target.value)}
-                  placeholder={t("skillsPage.upload.pathPlaceholder")}
-                />
-              </label>
-              <p className="text-[0.7rem] leading-snug text-[var(--os-text-faint)]">{t("skillsPage.upload.pathHint")}</p>
-              <label className="flex flex-col gap-1 text-[0.75rem] text-[var(--os-text-muted)]">
-                {t("skillsPage.upload.fieldCategory")}
-                <select
-                  className="box-border h-8 w-full rounded-lg border border-[var(--os-border)] bg-[var(--os-bg-elevated)] px-2.5 text-[0.8125rem] text-[var(--os-text)]"
-                  value={uploadCategoryId}
-                  onChange={(e) => setUploadCategoryId(e.target.value)}
-                >
-                  {uploadCategoryOptions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <Button
-                type="button"
-                variant="text"
-                onClick={() => {
-                  setUploadOpen(false);
-                  resetUploadForm();
-                }}
-              >
-                {t("skillsPage.cancel")}
-              </Button>
-              <Button type="button" theme="primary" onClick={onConfirmUpload}>
-                {t("skillsPage.upload.confirm")}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      ) : null}
+      <FluidConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          setDeleteConfirmOpen(open);
+          if (!open) setPendingDeleteId(null);
+        }}
+        danger
+        onConfirm={handleConfirmDelete}
+      >
+        {t("skillsPage.deleteConfirm")}
+      </FluidConfirmDialog>
 
       {addCategoryOpen ? (
         <Modal onClose={() => setAddCategoryOpen(false)} labelledBy={addCategoryTitleId} width="360px">

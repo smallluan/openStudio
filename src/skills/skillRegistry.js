@@ -43,6 +43,7 @@ export function formatSkillTitle(slug) {
  *   emoji: string;
  *   description: string;
  *   localPath?: string;
+ *   icon?: string;
  *   browserDomPolicy?: "auto" | "selector-only" | "full";
  *   searchText: string;
  * }} UserPickSkill
@@ -81,7 +82,7 @@ export function listSkillsForPicker(env) {
       id: `us:${s.id}`,
       userSkillId: s.id,
       label,
-      emoji: s.fromNl ? "✨" : "📁",
+      emoji: s.icon || (s.fromNl ? "✨" : "📁"),
       description: s.description ?? "",
       localPath: s.localPath,
       browserDomPolicy: s.browserDomPolicy,
