@@ -2,16 +2,18 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import htmlwanderHero from "../assets/images/htmlwander.png";
 import {
   ArrowLeft,
-  Bot,
   Check,
   Code,
+  CornerDownLeft,
   ExternalLink,
+  Grid2X2,
   Layers,
+  List,
   Monitor,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Replace,
-  ShieldCheck,
   Smartphone,
   X,
 } from "lucide-react";
@@ -24,6 +26,7 @@ import WebExplorePageScriptModal from "../components/web-explore/WebExplorePageS
 import { openChatLabExternalUrl } from "../chat/chatLabLinkOpenPreference.js";
 import { useI18n } from "../context/I18nContext.jsx";
 import { cn } from "../ui/cn.js";
+import OsEmpty from "../ui/OsEmpty.jsx";
 import {
   EXPLORE_TAB_IDLE_HIBERNATE_MS,
   createExploreTab as createExploreTabRow,
@@ -31,7 +34,11 @@ import {
   reconcileExploreTabLifecycle,
   touchExploreTab,
 } from "../web-explore/exploreTabLifecycle.js";
-import { collectPresetUrls, presetTitleFromUrls } from "../web-explore/exploreUrlPresetsStore.js";
+import {
+  collectPresetUrls,
+  presetHostnameLabel,
+  presetTitleFromUrls,
+} from "../web-explore/exploreUrlPresetsStore.js";
 import {
   createExploreRedirectGroup,
   hasActiveExploreRedirectRules,
@@ -86,6 +93,65 @@ function explorePageTitle(url) {
   }
 }
 
+/**
+ * @param {string} url
+ */
+function presetFaviconUrl(url) {
+  const hostname = presetHostnameLabel(url);
+  return hostname
+    ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`
+    : "";
+}
+
+function PresetFavicon({ url }) {
+  const [failed, setFailed] = useState(false);
+  const hostname = presetHostnameLabel(url);
+  const src = presetFaviconUrl(url);
+
+  if (!src || failed) {
+    return (
+      <span className="web-explore-page__saved-logo-fallback" aria-hidden>
+        {(hostname || "?").slice(0, 1).toUpperCase()}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      className="web-explore-page__saved-logo"
+      src={src}
+      alt=""
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/**
+ * @param {number} timestamp
+ * @param {(key: string, vars?: Record<string, unknown>) => string} t
+ */
+function formatPresetUpdatedAt(timestamp, t) {
+  const date = new Date(Number(timestamp));
+  if (!Number.isFinite(date.getTime())) return "";
+  const now = new Date();
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  if (dateStart === dayStart) return t("webExplorePage.updatedToday", { time });
+  if (dateStart === dayStart - dayMs) return t("webExplorePage.updatedYesterday", { time });
+  return t("webExplorePage.updatedDate", {
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+    time,
+  });
+}
+
 /** @param {string} [url] @param {import("../web-explore/explorePageScript.js").ExploreTabPageScript | null} [pageScript] @returns {ExploreTab} */
 function createExploreTab(url = "", pageScript = null) {
   return { ...createExploreTabRow(normalizeExploreUrl(url)), pageScript: pageScript ?? null };
@@ -101,14 +167,6 @@ function withLifecycle(tabs, activeTabId) {
 
 export default function WebExplorePage() {
   const { t } = useI18n();
-  const featureCards = useMemo(
-    () => [
-      { id: "automation", icon: Bot },
-      { id: "session", icon: ShieldCheck },
-      { id: "combos", icon: Layers },
-    ],
-    [],
-  );
   const { collapsePrimaryRail } = useOutletContext() ?? {};
   const landingInputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
   const barInputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
@@ -135,6 +193,7 @@ export default function WebExplorePage() {
   );
   const [landingKey, setLandingKey] = useState(0);
   const [deviceMode, setDeviceMode] = useState(/** @type {"desktop" | "mobile"} */ ("desktop"));
+  const [savedView, setSavedView] = useState(/** @type {"grid" | "list"} */ ("grid"));
   const [saveComboDone, setSaveComboDone] = useState(false);
   const { presets, savePreset, deletePreset } = useExploreUrlPresets();
   const inElectron = typeof window !== "undefined" && Boolean(window.studioBridge);
@@ -713,96 +772,145 @@ export default function WebExplorePage() {
     return (
       <div className="web-explore-page">
         <div className="web-explore-page__landing" aria-label={t("nav.webExplore")}>
-          <div className="web-explore-page__hero" aria-hidden>
+          <div className="web-explore-page__hero">
+            <div className="web-explore-page__hero-copy">
+              <h1 className="web-explore-page__hero-title">{t("nav.webExplore")}</h1>
+              <p className="web-explore-page__hero-subtitle">
+                {t("webExplorePage.heroSubtitle")}
+              </p>
+              <form key={landingKey} className="web-explore-page__form" onSubmit={handleSubmit}>
+                <Input
+                  ref={landingInputRef}
+                  block
+                  align="left"
+                  size="medium"
+                  autofocus
+                  autocomplete="off"
+                  spellCheck={false}
+                  className="web-explore-page__input"
+                  value={draft}
+                  onChange={setDraft}
+                  placeholder={t("webExplorePage.urlPlaceholder")}
+                  aria-label={t("webExplorePage.urlInputAria")}
+                  suffix={
+                    <span className="web-explore-page__input-enter-hint" aria-hidden>
+                      <CornerDownLeft size={13} strokeWidth={1.8} />
+                      <span>Enter</span>
+                    </span>
+                  }
+                />
+              </form>
+            </div>
             <img
               className="web-explore-page__hero-img"
               src={htmlwanderHero}
               alt=""
             />
           </div>
-          <section className="web-explore-page__features" aria-label={t("webExplorePage.featuresAria")}>
-            {featureCards.map(({ id, icon: Icon }) => (
-              <article key={id} className="web-explore-page__feature-card">
-                <div className="web-explore-page__feature-head">
-                  <span className="web-explore-page__feature-icon" aria-hidden>
-                    <Icon size={18} strokeWidth={1.9} />
-                  </span>
-                  <h2 className="web-explore-page__feature-title">{t(`webExplorePage.features.${id}.title`)}</h2>
+          <section className="web-explore-page__saved" aria-label={t("webExplorePage.savedCombosAria")}>
+              <div className="web-explore-page__saved-header">
+                <h2 className="web-explore-page__saved-title">
+                  {t("webExplorePage.savedCombosTitle")}
+                  <span className="web-explore-page__saved-count">{presets.length}</span>
+                </h2>
+                <div className="web-explore-page__saved-actions">
+                  <div className="web-explore-page__saved-view-toggle" role="group" aria-label={t("webExplorePage.savedViewAria")}>
+                    <Button
+                      type="button"
+                      variant="text"
+                      shape="square"
+                      size="small"
+                      className={cn(
+                        "web-explore-page__saved-view-btn",
+                        savedView === "grid" && "web-explore-page__saved-view-btn--active",
+                      )}
+                      onClick={() => setSavedView("grid")}
+                      title={t("webExplorePage.gridView")}
+                      aria-label={t("webExplorePage.gridView")}
+                      aria-pressed={savedView === "grid"}
+                    >
+                      <Grid2X2 size={15} strokeWidth={1.9} aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="text"
+                      shape="square"
+                      size="small"
+                      className={cn(
+                        "web-explore-page__saved-view-btn",
+                        savedView === "list" && "web-explore-page__saved-view-btn--active",
+                      )}
+                      onClick={() => setSavedView("list")}
+                      title={t("webExplorePage.listView")}
+                      aria-label={t("webExplorePage.listView")}
+                      aria-pressed={savedView === "list"}
+                    >
+                      <List size={15} strokeWidth={1.9} aria-hidden />
+                    </Button>
+                  </div>
                 </div>
-                <p className="web-explore-page__feature-desc">{t(`webExplorePage.features.${id}.description`)}</p>
-              </article>
-            ))}
-          </section>
-          <form key={landingKey} className="web-explore-page__form" onSubmit={handleSubmit}>
-            <Input
-              ref={landingInputRef}
-              block
-              align="center"
-              size="large"
-              autofocus
-              autocomplete="off"
-              spellCheck={false}
-              className="web-explore-page__input"
-              value={draft}
-              onChange={setDraft}
-              placeholder={t("webExplorePage.urlPlaceholder")}
-              aria-label={t("webExplorePage.urlInputAria")}
-              suffix={
-                <Button
-                  type="submit"
-                  theme="primary"
-                  size="small"
-                  className="web-explore-page__input-submit"
-                >
-                  {t("webExplorePage.startExplore")}
-                </Button>
-              }
-            />
-          </form>
-          {presets.length > 0 ? (
-            <section className="web-explore-page__saved" aria-label={t("webExplorePage.savedCombosAria")}>
-              <h2 className="web-explore-page__saved-title">{t("webExplorePage.savedCombosTitle")}</h2>
-              <ul className="web-explore-page__saved-list">
+              </div>
+            {presets.length > 0 ? (
+              <ul className={cn("web-explore-page__saved-list", `web-explore-page__saved-list--${savedView}`)}>
                 {presets.map((preset) => {
                   const title = presetTitleFromUrls(preset.urls);
                   const tabCount = preset.urls.length;
                   return (
                     <li key={preset.id} className="web-explore-page__saved-item">
-                      <button
-                        type="button"
-                        className="web-explore-page__saved-open"
-                        title={t("webExplorePage.openCombo")}
-                        aria-label={t("webExplorePage.openCombo")}
-                        onClick={() => void openUrlPreset(preset.urls, preset.id)}
-                      >
-                        <span className="web-explore-page__saved-open-icon" aria-hidden>
-                          <Layers size={15} strokeWidth={1.85} />
-                        </span>
-                        <span className="web-explore-page__saved-open-main">
-                          <span className="web-explore-page__saved-open-title">{title}</span>
-                          <span className="web-explore-page__saved-open-meta">
-                            {t("webExplorePage.comboTabCount", { count: tabCount })}
+                      <div className="web-explore-page__saved-card">
+                        <button
+                          type="button"
+                          className="web-explore-page__saved-open"
+                          title={t("webExplorePage.openCombo")}
+                          aria-label={t("webExplorePage.openCombo")}
+                          onClick={() => void openUrlPreset(preset.urls, preset.id)}
+                        >
+                          <span className="web-explore-page__saved-card-top">
+                            <span className="web-explore-page__saved-logos" aria-hidden>
+                              {preset.urls.slice(0, 4).map((url, index) => (
+                                <PresetFavicon
+                                  key={`${url}-${index}`}
+                                  url={url}
+                                />
+                              ))}
+                              {preset.urls.length > 4 ? (
+                                <span className="web-explore-page__saved-logo-more">
+                                  +{preset.urls.length - 4}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="web-explore-page__saved-open-title">{title}</span>
                           </span>
-                        </span>
-                      </button>
-                      <Button
-                        type="button"
-                        variant="text"
-                        shape="square"
-                        size="small"
-                        className="web-explore-page__saved-delete"
-                        title={t("webExplorePage.deleteCombo")}
-                        aria-label={t("webExplorePage.deleteCombo")}
-                        onClick={() => deletePreset(preset.id)}
-                      >
-                        <X size={14} strokeWidth={2.1} aria-hidden />
-                      </Button>
+                          <span className="web-explore-page__saved-meta">
+                            <span className="web-explore-page__saved-badge">
+                              {t("webExplorePage.comboTabCount", { count: tabCount })}
+                            </span>
+                            <span>{formatPresetUpdatedAt(preset.updatedAt, t)}</span>
+                          </span>
+                        </button>
+                        <Button
+                          type="button"
+                          variant="text"
+                          shape="square"
+                          size="small"
+                          className="web-explore-page__saved-delete"
+                          title={t("webExplorePage.deleteCombo")}
+                          aria-label={t("webExplorePage.deleteCombo")}
+                          onClick={() => deletePreset(preset.id)}
+                        >
+                          <MoreHorizontal size={15} strokeWidth={2.1} aria-hidden />
+                        </Button>
+                      </div>
                     </li>
                   );
                 })}
               </ul>
-            </section>
-          ) : null}
+            ) : (
+              <div className="web-explore-page__saved-empty">
+                <OsEmpty description={t("webExplorePage.emptyCombos")} />
+              </div>
+            )}
+          </section>
         </div>
       </div>
     );
