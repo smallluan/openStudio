@@ -33,7 +33,18 @@ export const MAX_ACTIVITY_LOG = 120;
  *   assistantTimeline?: import("./streamTimelineMerge.js").AssistantTimelineSegment[];
  * }} ActivityRow */
 
-const DONE_PHASES = new Set(["end", "error", "failed", "cancelled", "canceled", "complete", "completed", "ok"]);
+const DONE_PHASES = new Set([
+  "end",
+  "error",
+  "failed",
+  "cancelled",
+  "canceled",
+  "complete",
+  "completed",
+  "ok",
+  "success",
+  "result",
+]);
 
 /** @param {ActivityRow | undefined} row */
 function isSubagentActivityRowDone(row) {
@@ -280,18 +291,74 @@ export function pickSubagentProgressLine(opts = {}) {
 /** @param {unknown} value */
 function parseToolJsonObject(value) {
   if (!value) return null;
-  if (typeof value === "object" && !Array.isArray(value)) return /** @type {Record<string, unknown>} */ (value);
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return unwrapSpawnResultObject(/** @type {Record<string, unknown>} */ (value));
+  }
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed.startsWith("{")) return null;
   try {
     const parsed = JSON.parse(trimmed);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? /** @type {Record<string, unknown>} */ (parsed)
+      ? unwrapSpawnResultObject(/** @type {Record<string, unknown>} */ (parsed))
       : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * OpenClaw tool results are often `{ content:[{text}], details:{...} }` wrappers.
+ * @param {Record<string, unknown> | null} obj
+ * @returns {Record<string, unknown> | null}
+ */
+function unwrapSpawnResultObject(obj) {
+  if (!obj) return null;
+  if (Array.isArray(obj.results) || typeof obj.runId === "string") return obj;
+  const details = obj.details;
+  if (details && typeof details === "object" && !Array.isArray(details)) {
+    const inner = unwrapSpawnResultObject(/** @type {Record<string, unknown>} */ (details));
+    if (inner && (Array.isArray(inner.results) || typeof inner.runId === "string")) return inner;
+    if (typeof /** @type {Record<string, unknown>} */ (details).status === "string") {
+      return /** @type {Record<string, unknown>} */ (details);
+    }
+  }
+  if (Array.isArray(obj.content)) {
+    for (const part of obj.content) {
+      if (!part || typeof part !== "object") continue;
+      const text = /** @type {Record<string, unknown>} */ (part).text;
+      if (typeof text !== "string") continue;
+      const trimmed = text.trim();
+      if (!trimmed.startsWith("{")) continue;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+        const inner = unwrapSpawnResultObject(/** @type {Record<string, unknown>} */ (parsed));
+        if (inner) return inner;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return obj;
+}
+
+/** @param {string} status */
+function isTerminalChildStatus(status) {
+  const st = String(status ?? "").trim().toLowerCase();
+  return (
+    st === "completed" ||
+    st === "complete" ||
+    st === "ok" ||
+    st === "success" ||
+    st === "error" ||
+    st === "failed" ||
+    st === "timeout" ||
+    st === "forbidden" ||
+    st === "cancelled" ||
+    st === "canceled" ||
+    st === "aborted"
+  );
 }
 
 /** @param {Record<string, unknown> | null | undefined} args */
@@ -341,7 +408,7 @@ export function toolTraceAwaitsSubagent(toolRows, opts = {}) {
       const st =
         resultObj && typeof resultObj.status === "string" ? resultObj.status.trim().toLowerCase() : "";
       // Mid-turn barrier still running until completed/error with results.
-      if (st === "completed" || st === "error" || Array.isArray(resultObj?.results)) return false;
+      if (isTerminalChildStatus(st) || Array.isArray(resultObj?.results)) return false;
       return false;
     }
     return true;
@@ -352,7 +419,7 @@ export function toolTraceAwaitsSubagent(toolRows, opts = {}) {
     const resultObj = parseToolJsonObject(r.result) ?? parseToolJsonObject(r.partialResult);
     if (!resultObj) return false;
     const st = typeof resultObj.status === "string" ? resultObj.status.trim().toLowerCase() : "";
-    return st === "completed" || st === "error" || Array.isArray(resultObj.results);
+    return isTerminalChildStatus(st) || Array.isArray(resultObj.results);
   });
   if (yieldSettled) return false;
 
@@ -364,12 +431,10 @@ export function toolTraceAwaitsSubagent(toolRows, opts = {}) {
       resultObj && typeof resultObj.status === "string" ? resultObj.status.trim().toLowerCase() : "";
     // Parallel mode: tool returns quickly with accepted while the child keeps working.
     if (st === "accepted" || st === "running") return true;
-    if (st === "completed" || st === "ok" || st === "error" || st === "timeout" || st === "forbidden") {
-      return false;
-    }
+    if (isTerminalChildStatus(st)) return false;
     if (r.done) return false;
     const phase = String(r.phase ?? "").trim().toLowerCase();
-    if (DONE_PHASES.has(phase)) return false;
+    if (DONE_PHASES.has(phase) || phase === "result") return false;
     return true;
   });
 }
@@ -392,14 +457,14 @@ export function deriveSubagentRowsFromToolTrace(toolRows, opts = {}) {
     const resultObj = parseToolJsonObject(y.result) ?? parseToolJsonObject(y.partialResult);
     if (!resultObj) return false;
     const st = typeof resultObj.status === "string" ? resultObj.status.trim().toLowerCase() : "";
-    return st === "completed" || st === "error" || Array.isArray(resultObj.results);
+    return isTerminalChildStatus(st) || Array.isArray(resultObj.results);
   });
   const yieldInFlight =
     !yieldSettled &&
     yieldRows.some((y) => {
       if (y.error) return false;
       const phase = String(y.phase ?? "").trim().toLowerCase();
-      return !(DONE_PHASES.has(phase) || y.done);
+      return !(DONE_PHASES.has(phase) || phase === "result" || y.done);
     });
 
   /** @type {ActivityRow[]} */
@@ -413,6 +478,16 @@ export function deriveSubagentRowsFromToolTrace(toolRows, opts = {}) {
       parseToolJsonObject(spawn.summary);
     const batchResults = Array.isArray(resultObj?.results) ? resultObj.results : null;
     const batchArgs = Array.isArray(args.tasks) ? args.tasks : null;
+    const spawnPhase = String(spawn.phase ?? "").trim().toLowerCase();
+    const toolStillRunning =
+      Boolean(streaming) &&
+      !spawn.error &&
+      !spawn.done &&
+      !DONE_PHASES.has(spawnPhase) &&
+      spawnPhase !== "result";
+    const topStatus =
+      resultObj && typeof resultObj.status === "string" ? resultObj.status.trim().toLowerCase() : "";
+    const hardBlockFinished = isTerminalChildStatus(topStatus) && topStatus !== "accepted";
     // Hard-barrier parallel: one sessions_spawn({tasks:[...]}) → one card per child.
     // Show from args.tasks as soon as the tool starts (don't wait for final results).
     if ((batchResults && batchResults.length) || (batchArgs && batchArgs.length)) {
@@ -438,22 +513,15 @@ export function deriveSubagentRowsFromToolTrace(toolRows, opts = {}) {
         const status = br && typeof br.status === "string" ? br.status.trim().toLowerCase() : "";
         const childRunId = br && typeof br.runId === "string" ? br.runId.trim() : "";
         const childFinished =
-          status === "completed" ||
-          status === "ok" ||
-          status === "error" ||
-          status === "timeout" ||
-          status === "forbidden";
-        const toolStillRunning =
-          Boolean(streaming) &&
-          !spawn.error &&
-          !spawn.done &&
-          !DONE_PHASES.has(String(spawn.phase ?? "").trim().toLowerCase());
+          isTerminalChildStatus(status) ||
+          // Spawn tool already closed without per-child status ⇒ hard-block finished.
+          ((!status || hardBlockFinished) && !toolStillRunning && topStatus !== "accepted" && topStatus !== "running");
         const active =
           Boolean(streaming) &&
           !spawn.error &&
           !childFinished &&
           !yieldSettled &&
-          (toolStillRunning || status === "accepted" || status === "running" || !status);
+          (toolStillRunning || status === "accepted" || status === "running");
         // Never reuse parent spawn.summary for every child — it cross-contaminates progress.
         rows.push({
           id: `subagent-tool:${spawn.id}:${childRunId || i}`,
@@ -477,24 +545,18 @@ export function deriveSubagentRowsFromToolTrace(toolRows, opts = {}) {
       fromArgs.label ||
       (resultObj && typeof resultObj.label === "string" ? resultObj.label.trim() : "") ||
       "";
-    const status =
-      resultObj && typeof resultObj.status === "string" ? resultObj.status.trim().toLowerCase() : "";
+    const status = topStatus;
     const childRunId =
       resultObj && typeof resultObj.runId === "string" ? resultObj.runId.trim() : "";
-    const childFinished =
-      status === "completed" ||
-      status === "ok" ||
-      status === "error" ||
-      status === "timeout" ||
-      status === "forbidden";
+    const childFinished = isTerminalChildStatus(status);
     // Parallel detach mode: spawn returns accepted while child works; active until yield.
-    const childWorking = status === "accepted" || status === "running" || (!status && !spawn.done);
+    const childWorking = status === "accepted" || status === "running" || (!status && toolStillRunning);
     const active =
       Boolean(streaming) &&
       !spawn.error &&
       !childFinished &&
       !yieldSettled &&
-      (childWorking || yieldInFlight || (status !== "accepted" && !spawn.done));
+      (childWorking || yieldInFlight || (status !== "accepted" && toolStillRunning));
     // Default hard-block: tool in-flight (no terminal status yet) stays active.
     const title = shortSubagentTitle(task, label);
     const progress = pickSubagentProgressLine({
@@ -552,31 +614,45 @@ export function coalesceSubagentActivityRows(fromLog, fromTools, opts = {}) {
 
   /** Prefer tool-derived rows (stable id per spawn); enrich only with matching child activity. */
   if (tools.length) {
+    const isPendingRunId = (/** @type {string} */ runId) => /^pending:/i.test(runId);
+    const titlesLooselyMatch = (/** @type {string} */ a, /** @type {string} */ b) => {
+      if (!a || !b) return false;
+      return a === b || a.includes(b) || b.includes(a);
+    };
     const logSubagents = [...log]
-      .filter((a) => String(a.stream ?? "").toLowerCase() === "subagent")
+      .filter((a) => {
+        if (String(a.stream ?? "").toLowerCase() !== "subagent") return false;
+        const rid = typeof a.subagentRunId === "string" ? a.subagentRunId.trim() : "";
+        // Stale placeholder rows must not block per-child attribution / index fallback.
+        return !isPendingRunId(rid);
+      })
       .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
 
     return tools.map((toolRow, toolIdx) => {
       let progress = String(toolRow.text ?? "").trim();
       let workerStreaming = Boolean(toolRow.workerStreaming);
       let phase = toolRow.phase;
+      let childSettled = false;
       const toolRunId =
         typeof toolRow.subagentRunId === "string" ? toolRow.subagentRunId.trim() : "";
       const toolTitle = String(toolRow.title ?? "").trim().toLowerCase();
+      const toolTask = String(toolRow.subagentTask ?? "").trim().toLowerCase();
       for (const a of log) {
         const actRunId = typeof a.subagentRunId === "string" ? a.subagentRunId.trim() : "";
+        if (isPendingRunId(actRunId)) continue;
         const actTitle = String(a.title ?? "").trim().toLowerCase();
+        const actTask = String(a.subagentTask ?? "").trim().toLowerCase();
         const sameRun = Boolean(toolRunId && actRunId && toolRunId === actRunId);
         const sameTitle =
-          Boolean(toolTitle && actTitle) &&
-          (toolTitle === actTitle ||
-            toolTitle.includes(actTitle) ||
-            actTitle.includes(toolTitle));
+          titlesLooselyMatch(toolTitle, actTitle) ||
+          titlesLooselyMatch(toolTitle, actTask) ||
+          titlesLooselyMatch(toolTask, actTitle) ||
+          titlesLooselyMatch(toolTask, actTask);
         // Strict attribution: never paint one child's progress onto another card.
         if (toolRunId && actRunId) {
           if (!sameRun) continue;
-        } else if (toolTitle && actTitle) {
-          if (!sameTitle) continue;
+        } else if (sameTitle) {
+          /* matched by title/task */
         } else {
           continue;
         }
@@ -593,17 +669,20 @@ export function coalesceSubagentActivityRows(fromLog, fromTools, opts = {}) {
         // Per-child completion is independent: one child finishing must not wait on siblings
         // or on the parent sessions_spawn tool still being in-flight.
         if (actDone) {
+          childSettled = true;
           workerStreaming = false;
           if (!actPhase || !DONE_PHASES.has(actPhase)) phase = "end";
-        } else if (streaming && a.workerStreaming) {
+        } else if (streaming && a.workerStreaming && !childSettled) {
           workerStreaming = true;
         }
       }
 
-      // Parallel batch: when runId/title attribution misses, match by stable spawn order.
-      if (streaming && workerStreaming && logSubagents.length === tools.length) {
+      // Parallel batch: when runId/title attribution misses, match by stable spawn order
+      // against live (non-pending) activity rows only.
+      if (streaming && workerStreaming && !childSettled && logSubagents.length === tools.length) {
         const logRow = logSubagents[toolIdx];
         if (isSubagentActivityRowDone(logRow)) {
+          childSettled = true;
           workerStreaming = false;
           phase = "end";
           const p = pickSubagentProgressLine({
@@ -617,6 +696,9 @@ export function coalesceSubagentActivityRows(fromLog, fromTools, opts = {}) {
       if (!streaming) {
         workerStreaming = false;
         phase = "end";
+      } else if (childSettled) {
+        workerStreaming = false;
+        if (!DONE_PHASES.has(String(phase ?? "").trim().toLowerCase())) phase = "end";
       } else if (!toolRow.workerStreaming && String(toolRow.phase ?? "").toLowerCase() === "end") {
         workerStreaming = false;
         phase = "end";

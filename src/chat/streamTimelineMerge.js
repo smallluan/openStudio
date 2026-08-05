@@ -87,11 +87,9 @@ export function mergeAssistantTextChunk(body, delta) {
   if (!a) return b;
   if (b === a) return a;
 
-  if (b.startsWith(a)) {
-    const tail = b.slice(a.length);
-    if (tail.trim() && a.includes(tail.trim())) return a;
-    return b;
-  }
+  // True prefix extensions must always win. Rejecting when `a` already contains
+  // the short tail (e.g. repeated words / URL fragments) truncates mid-stream.
+  if (b.startsWith(a)) return b;
   if (a.startsWith(b)) return a;
   if (a.includes(b)) return a;
   if (b.includes(a)) return b;
@@ -190,7 +188,27 @@ function incrementalTextAfterPrior(prior, chunk) {
     }
   }
 
+  // Prior prose may reappear inside a later cumulative snapshot — keep the
+  // unmatched suffix instead of dropping the whole post-tool segment.
   if (normP.length >= 24 && normB.includes(normP)) {
+    const idx = normB.indexOf(normP);
+    if (idx >= 0) {
+      let rawIdx = 0;
+      let normIdx = 0;
+      const target = idx + normP.length;
+      while (rawIdx < b.length && normIdx < target) {
+        const ch = b[rawIdx];
+        if (/\s/.test(ch)) {
+          rawIdx += 1;
+          continue;
+        }
+        normIdx += 1;
+        rawIdx += 1;
+      }
+      while (rawIdx < b.length && /\s/.test(b[rawIdx])) rawIdx += 1;
+      const tail = b.slice(rawIdx).trimStart();
+      if (tail) return tail;
+    }
     return "";
   }
 
@@ -362,8 +380,15 @@ export function reconcileTimelineWithCanonicalText(list, canonical) {
       continue;
     }
     if (typeof tail === "string" && !tail.trim()) {
-      // Earlier text segments already cover canonical prose; avoid emitting
-      // one final full-body text block that duplicates the whole narrative.
+      // Earlier text segments already cover canonical prose. Keep a distinct
+      // post-tool body that is not yet folded into `content` (common while
+      // trailing deltas / content_sync race), otherwise the UI flashes then
+      // swallows the last prose block.
+      const normBody = normalizeCompareText(body);
+      const normCanon = normalizeCompareText(c);
+      if (normBody && !normCanon.includes(normBody)) {
+        out.push(seg);
+      }
       continue;
     }
     if (hasInterleavingBefore && priorForGuard.trim()) {
@@ -394,6 +419,76 @@ export function reconcileTimelineWithCanonicalText(list, canonical) {
 }
 
 /**
+ * Ensure interleaved timeline prose is at least as complete as canonical `content`.
+ * UI renders timeline segments (not `message.content`) whenever tools are present.
+ * @param {AssistantTimelineSegment[] | undefined} list
+ * @param {string | undefined} canonical
+ */
+export function ensureTimelineCoversCanonicalText(list, canonical) {
+  const c = typeof canonical === "string" ? canonical : "";
+  let tl = Array.isArray(list) ? [...list] : [];
+  if (!c.trim()) return tl;
+  tl = reconcileTimelineWithCanonicalText(tl, c);
+
+  /** @type {number[]} */
+  const textIdxs = [];
+  for (let i = 0; i < tl.length; i++) {
+    if (tl[i]?.kind === "text") textIdxs.push(i);
+  }
+  const joined = textIdxs.map((i) => String(tl[i].body ?? "")).join("");
+  if (!joined.trim()) {
+    return trimTimeline([{ kind: "text", body: c }, ...tl]);
+  }
+  if (preferLongerAssistantText(joined, c) !== c || c.length <= joined.length) {
+    return trimTimeline(tl);
+  }
+
+  if (c.startsWith(joined)) {
+    const tail = c.slice(joined.length);
+    if (tail && textIdxs.length) {
+      const last = textIdxs[textIdxs.length - 1];
+      tl[last] = { kind: "text", body: String(tl[last].body ?? "") + tail };
+    }
+    return trimTimeline(tl);
+  }
+
+  // Whitespace drift between timeline segments and content_sync.
+  const normJoined = normalizeCompactText(joined);
+  const normC = normalizeCompactText(c);
+  if (normC.startsWith(normJoined) && normC.length > normJoined.length && textIdxs.length) {
+    const last = textIdxs[textIdxs.length - 1];
+    const pin = joined.slice(-Math.min(48, joined.length));
+    const idx = pin ? c.lastIndexOf(pin) : -1;
+    if (idx >= 0) {
+      const tail = c.slice(idx + pin.length);
+      if (tail) {
+        tl[last] = { kind: "text", body: String(tl[last].body ?? "") + tail };
+        return trimTimeline(tl);
+      }
+    }
+  }
+
+  if (textIdxs.length) {
+    const last = textIdxs[textIdxs.length - 1];
+    const prior = priorTextBeforeIndex(tl, last);
+    const tail = canonicalTailForLastTextSegment(tl, last, c);
+    if (typeof tail === "string" && tail.trim()) {
+      tl[last] = {
+        kind: "text",
+        body: preferLongerAssistantText(String(tl[last].body ?? ""), tail),
+      };
+    } else {
+      const sliced = incrementalTextAfterPrior(prior, c);
+      tl[last] = {
+        kind: "text",
+        body: preferLongerAssistantText(String(tl[last].body ?? ""), sliced || c),
+      };
+    }
+  }
+  return trimTimeline(tl);
+}
+
+/**
  * Align timeline prose with a terminal `content_sync` without shortening prior deltas.
  * @param {AssistantTimelineSegment[] | undefined} prev
  * @param {string | undefined} content
@@ -405,7 +500,7 @@ export function mergeTimelineContentSync(prev, content, thinking) {
   const th = typeof thinking === "string" ? thinking : "";
 
   if (c.trim()) {
-    list = reconcileTimelineWithCanonicalText(list, c);
+    list = ensureTimelineCoversCanonicalText(list, c);
   }
 
   if (th.trim()) {
@@ -445,14 +540,34 @@ export function mergeTimelineTextDelta(prev, delta) {
     const segIdx = insertIdx - 1;
     const priorBefore = priorTextBeforeIndex(list, segIdx);
     const combined = mergeAssistantTextChunk(prevAtInsert.body, delta);
-    const body = incrementalTextAfterPrior(priorBefore, combined);
+    let body = incrementalTextAfterPrior(priorBefore, combined);
+    if (!body.trim()) {
+      // Never drop a true growth of the segment body (content can still accumulate).
+      if (combined.length > String(prevAtInsert.body ?? "").length) {
+        body =
+          priorBefore && combined.startsWith(priorBefore)
+            ? combined.slice(priorBefore.length).trimStart() || combined
+            : combined;
+      } else {
+        const fromDelta = incrementalTextAfterPrior(priorBefore, delta);
+        if (!fromDelta.trim()) return trimTimeline(list);
+        body = mergeAssistantTextChunk(String(prevAtInsert.body ?? ""), fromDelta);
+        body = incrementalTextAfterPrior(priorBefore, body) || body;
+      }
+    }
     if (!body.trim()) return trimTimeline(list);
     list[segIdx] = { kind: "text", body };
     return trimTimeline(list);
   }
   const priorText = priorTextBeforeIndex(list, insertIdx);
-  const body = incrementalTextAfterPrior(priorText, delta);
-  if (!body.trim()) return trimTimeline(list);
+  let body = incrementalTextAfterPrior(priorText, delta);
+  if (!body.trim()) {
+    // Cumulative snapshot after a tool: keep unmatched suffix rather than skipping.
+    if (delta.trim() && priorText.trim() && normalizeCompareText(delta).includes(normalizeCompareText(priorText))) {
+      body = incrementalTextAfterPrior(priorText, delta);
+    }
+    if (!body.trim()) return trimTimeline(list);
+  }
   list.splice(insertIdx, 0, { kind: "text", body });
   return trimTimeline(list);
 }

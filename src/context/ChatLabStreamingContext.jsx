@@ -13,6 +13,7 @@ import {
   upsertSession,
 } from "../chat/chatSessionsStore.js";
 import {
+  ensureTimelineCoversCanonicalText,
   mergeTimelineAgentActivity,
   mergeAssistantTextChunk,
   mergeTimelineContentSync,
@@ -60,8 +61,8 @@ import { mergeActivityLog, mergeToolTrace } from "../chat/toolTraceMerge.js";
 const ChatLabStreamingContext = createContext(null);
 
 const PERSIST_MS = 420;
-/** Brief post-`done` merge window for trailing IPC (tool_trace / agent_activity); does not keep streaming UI active. */
-const STREAM_DONE_TRAILING_MERGE_MS = 0;
+/** Brief post-`done` merge window for trailing IPC (text / tool_trace / content_sync); does not keep streaming UI active. */
+const STREAM_DONE_TRAILING_MERGE_MS = 500;
 
 /**
  * Collect all currently-active streaming conversationIds from the slice map.
@@ -104,6 +105,10 @@ function persistAssistantMerge(
     const incT = typeof thinking === "string" ? thinking : "";
     const nextC = preferLongerAssistantText(prevC, incC);
     const nextT = preferLongerAssistantText(prevT, incT);
+    const nextTl =
+      Array.isArray(assistantTimeline) && assistantTimeline.length > 0
+        ? ensureTimelineCoversCanonicalText(assistantTimeline, nextC)
+        : assistantTimeline;
     /** @type {typeof m} */
     const row = { ...m, content: nextC };
     if (nextT.trim()) row.thinking = nextT;
@@ -112,7 +117,7 @@ function persistAssistantMerge(
     else if (Array.isArray(toolTrace) && toolTrace.length === 0) delete row.toolTrace;
     if (Array.isArray(activityLog) && activityLog.length > 0) row.activityLog = activityLog;
     else if (Array.isArray(activityLog) && activityLog.length === 0) delete row.activityLog;
-    if (Array.isArray(assistantTimeline) && assistantTimeline.length > 0) row.assistantTimeline = assistantTimeline;
+    if (Array.isArray(nextTl) && nextTl.length > 0) row.assistantTimeline = nextTl;
     else if (Array.isArray(assistantTimeline) && assistantTimeline.length === 0) delete row.assistantTimeline;
     return row;
   });
@@ -346,9 +351,13 @@ export function ChatLabStreamingProvider({ children }) {
         endProcessing(streamId);
         return;
       }
-      const snap = snapshotSlice(streamId);
-      putSlice(streamId, { ...cur, active: false });
+      const assistantTimeline = ensureTimelineCoversCanonicalText(
+        cur.assistantTimeline ?? [],
+        cur.content ?? "",
+      );
+      putSlice(streamId, { ...cur, active: false, assistantTimeline });
       syncStreamingSessionId();
+      const snap = snapshotSlice(streamId);
       flushPersistNow(streamId);
       try {
         window.dispatchEvent(
@@ -468,10 +477,14 @@ export function ChatLabStreamingProvider({ children }) {
           {
             const prev = getSlice(streamId);
             if (!prev || prev.streamId !== streamId) return;
-            const assistantTimeline = mergeTimelineTextDelta(prev.assistantTimeline, evt.delta);
+            const content = mergeAssistantTextChunk(prev.content ?? "", evt.delta);
+            const assistantTimeline = ensureTimelineCoversCanonicalText(
+              mergeTimelineTextDelta(prev.assistantTimeline, evt.delta),
+              content,
+            );
             putSlice(streamId, {
               ...prev,
-              content: mergeAssistantTextChunk(prev.content ?? "", evt.delta),
+              content,
               assistantTimeline,
             });
           }

@@ -29,7 +29,10 @@ import {
   formatQuestionnaireReplyMessage,
   parseAssistantQuickReplies,
 } from "../chat/assistantQuickReplyParse.js";
-import { preferLongerAssistantText, reconcileTimelineWithCanonicalText } from "../chat/streamTimelineMerge.js";
+import {
+  ensureTimelineCoversCanonicalText,
+  preferLongerAssistantText,
+} from "../chat/streamTimelineMerge.js";
 import {
   areSubagentCardsSettled,
   coalesceSubagentActivityRows,
@@ -1235,7 +1238,7 @@ function mergePreservingSidebarAutomationTimeline(prev, incoming, canonContent =
   // Display paths call stripSidebarActionFences / markdown hides the fence card.
   const canon = String(canonContent ?? "");
   if (canon.trim().length > 0 && tl.length > 0) {
-    tl = reconcileTimelineWithCanonicalText(tl, canon);
+    tl = ensureTimelineCoversCanonicalText(tl, canon);
   }
   return tl.length ? tl : undefined;
 }
@@ -1251,7 +1254,7 @@ function mergeSidebarAutomationTimeline(timeline, sidebarRows, cleanContent) {
   tl = /** @type {typeof tl} */ (stripSidebarActionFencesFromTimeline(tl) ?? []);
   const cleaned = stripSidebarActionFences(cleanContent);
   if (cleaned.trim().length > 0 && tl.length > 0) {
-    tl = reconcileTimelineWithCanonicalText(tl, cleaned);
+    tl = ensureTimelineCoversCanonicalText(tl, cleaned);
     tl = /** @type {typeof tl} */ (stripSidebarActionFencesFromTimeline(tl) ?? []);
   }
   const seen = new Set(tl.filter((s) => s.kind === "tool").map((s) => s.refId));
@@ -2534,7 +2537,8 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       let next = prev;
       let changed = false;
       for (const slice of gatewaySlicesForConv) {
-        if (!slice.active) continue;
+        // Apply active streams and brief post-done trailing slices (inactive but
+        // still present) so late text/tool IPC is not swallowed after `done`.
         const { assistantMessageId, active, content, thinking, toolTrace, activityLog, assistantTimeline } =
           slice;
         let idx = next.findIndex((m) => m.id === assistantMessageId);
@@ -2563,8 +2567,13 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
                 if (prev.includes(nextText)) return prev;
                 return `${prev}\n\n${nextText}`;
               })()
-            : incomingContent;
-          const row = { ...m, content: mergedContent, thinking, streaming: active };
+            : preferLongerAssistantText(String(m.content ?? ""), incomingContent);
+          const row = {
+            ...m,
+            content: mergedContent,
+            thinking: preferLongerAssistantText(String(m.thinking ?? ""), String(thinking ?? "")),
+            streaming: active,
+          };
           if (toolTrace && toolTrace.length > 0) {
             const merged = mergePreservingSidebarAutomationToolTrace(m.toolTrace, toolTrace);
             if (merged) row.toolTrace = merged;
@@ -5763,9 +5772,12 @@ function isRunningToolRow(row) {
 /** @param {import("../chat/toolTraceMerge.js").ActivityRow | undefined} row */
 function isRunningActivityRow(row) {
   if (!row) return false;
-  if (Boolean(row.workerStreaming)) return true;
   const stream = String(row.stream ?? "").trim().toLowerCase();
   const phase = String(row.phase ?? "").trim().toLowerCase();
+  // Per-child subagent cards: terminal phase wins over a stale workerStreaming flag
+  // so one finished child can settle while siblings keep running.
+  if (stream === "subagent" && isCompletedActivityPhase(phase)) return false;
+  if (Boolean(row.workerStreaming)) return true;
   if (isCompletedActivityPhase(phase)) return false;
   // Subagent cards: empty phase + not streaming means settled for this child only.
   // (Previously empty phase forced "running", so both cards stayed loading after siblings finished.)
@@ -7834,8 +7846,14 @@ const MessageBubble = memo(function MessageBubble({
     }, 560);
     return () => window.clearTimeout(timer);
   }, [shouldEnterAnim, message.id, onUserEnterAnimEnd]);
-  const timeline = Array.isArray(message.assistantTimeline) ? message.assistantTimeline : [];
-  const interleavedAssistant = timeline.length > 0;
+  const timeline = useMemo(() => {
+    const raw = Array.isArray(message.assistantTimeline) ? message.assistantTimeline : [];
+    const content = String(message.content ?? "");
+    if (!raw.length || !content.trim()) return raw;
+    // Timeline-only display can lag behind accumulated `content` after tools —
+    // cover the canonical body so the bubble never sticks mid-sentence.
+    return ensureTimelineCoversCanonicalText(raw, content);
+  }, [message.assistantTimeline, message.content]);
   const toolRows = Array.isArray(message.toolTrace) ? message.toolTrace : [];
   const activityRows = Array.isArray(message.activityLog) ? message.activityLog : [];
   const subagentActivityRows = useMemo(() => {
@@ -7847,6 +7865,18 @@ const MessageBubble = memo(function MessageBubble({
       streaming: Boolean(message.streaming),
     });
   }, [activityRows, toolRows, message.streaming]);
+  // Lifecycle-only timelines (e.g. "工具 0 · 步骤 1") must not force interleaved
+  // rendering — that path shows segment bodies and can freeze on a mid-sentence cut
+  // even when `message.content` already has the full reply.
+  const interleavedAssistant = useMemo(() => {
+    if (subagentActivityRows.length > 0) return true;
+    return timeline.some((s) => {
+      if (s.kind === "tool") return true;
+      if (s.kind === "thinking" && String(s.body ?? "").trim()) return true;
+      if (s.kind === "activity") return !isTerminalLifecycleRef(s.refId);
+      return false;
+    });
+  }, [timeline, subagentActivityRows.length]);
   // Parent turn streaming is authoritative; never fake "正在生成" after the turn ends.
   const bubbleStreaming = Boolean(message.streaming);
   const parentLifecycleEnded = useMemo(
@@ -7858,10 +7888,21 @@ const MessageBubble = memo(function MessageBubble({
       ),
     [activityRows],
   );
+  const subagentCardsSettled =
+    subagentActivityRows.length > 0 && areSubagentCardsSettled(subagentActivityRows);
+  // Parent already wrote the summary while spawn/yield tools are closed — never keep the
+  // sticky "正在等待子智能体回复…" footer after the visible work is done.
+  const spawnToolsClosed = !toolRows.some((row) => {
+    if (!isSessionsSpawnToolName(row.toolName) && !/^sessions_yield$/i.test(String(row.toolName ?? ""))) {
+      return false;
+    }
+    return isRunningToolRow(row);
+  });
   const subagentBusy =
     bubbleStreaming &&
     !parentLifecycleEnded &&
-    !(subagentActivityRows.length > 0 && areSubagentCardsSettled(subagentActivityRows)) &&
+    !subagentCardsSettled &&
+    !(spawnToolsClosed && String(message.content ?? "").trim()) &&
     (subagentActivityRows.some((row) => isRunningActivityRow(row)) ||
       toolTraceAwaitsSubagent(toolRows, { subagentCards: subagentActivityRows }));
   const generalActivityRows = useMemo(

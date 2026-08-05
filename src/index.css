@@ -10901,11 +10901,21 @@ button.os-image {
   vertical-align: middle;
 }
 
+.chat-lab__html-embed:has(.chat-lab__echarts-render-wrap) {
+  --os-chart-body-bg: #ffffff;
+  width: 100%;
+}
+
+.chat-lab__html-embed:has(.chat-lab__echarts-render-wrap)[data-theme="dark"] {
+  --os-chart-body-bg: #1a1f27;
+}
+
 .chat-lab__echarts-render-wrap {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   min-width: 0;
+  width: 100%;
 }
 
 .chat-lab__echarts-render {
