@@ -645,7 +645,9 @@
     "deleteModal": {
       "title": "Delete agent",
       "body": "Remove “{{name}}”? This cannot be undone (local save will update).",
-      "confirm": "Delete"
+      "confirm": "Delete",
+      "busy": "Deleting…",
+      "failed": "Delete failed: gateway or local files could not be cleaned up. Try again, or quit the app and retry."
     }
   },
   "skillsPage": {

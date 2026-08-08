@@ -82,6 +82,8 @@ const {
 const {
   provisionOpenClawAgent,
   removeOpenClawAgent,
+  resolveOrphanOpenClawAgents,
+  pruneOrphanOpenClawAgents,
   readAgentSoulMd,
   readAgentIdentityMd,
   readAgentAgentsMd,
@@ -113,6 +115,7 @@ const {
   waitForGatewayWarmupIfNeeded,
   attachGatewayQuitHandlers,
   restartOwnedGateway,
+  teardownOwnedGateway,
   resolveBundledOpenClawPackageMetaSync,
 } = require("./lib/openclaw-gateway-supervisor.cjs");
 const { migratePackagedOpenClawStateFromLegacyDev } = require("./lib/openclaw-runtime-profile.cjs");
@@ -1736,13 +1739,55 @@ app.whenReady().then(async () => {
   ipcMain.handle("studio:deleteGatewayAgent", async (_event, payload) => {
     try {
       const cfg = userConfigStore.readRaw();
+      // Stop gateway first so sessions.sqlite locks do not block directory removal.
+      invalidateGatewaySession();
+      teardownOwnedGateway("agent_delete");
+      if (process.platform === "win32") {
+        await new Promise((r) => setTimeout(r, 350));
+      }
       const result = removeOpenClawAgent(payload, cfg);
+      await ensureLocalGatewayRunning(() => userConfigStore.readRaw(), { probeOpenClawGateway });
       if (result.ok && result.removed) {
-        await restartOwnedGateway(() => userConfigStore.readRaw(), { probeOpenClawGateway });
         await waitForGatewayWarmupIfNeeded(() => userConfigStore.readRaw(), { probeOpenClawGateway });
       }
       return result;
     } catch (e) {
+      try {
+        await ensureLocalGatewayRunning(() => userConfigStore.readRaw(), { probeOpenClawGateway });
+      } catch {
+        /* ignore */
+      }
+      return { ok: false, reason: String(e?.message ?? e) };
+    }
+  });
+
+  ipcMain.handle("studio:pruneOrphanGatewayAgents", async (_event, payload) => {
+    try {
+      const cfg = userConfigStore.readRaw();
+      const peek = resolveOrphanOpenClawAgents(payload, cfg);
+      if (!peek.ok) return { ok: false, reason: peek.reason };
+      if (!peek.orphanIds?.length) {
+        return { ok: true, removed: [], pruned: 0, needsGatewayRestart: false };
+      }
+
+      // Stop gateway only when there is real cleanup work (releases sessions.sqlite locks).
+      invalidateGatewaySession();
+      teardownOwnedGateway("agent_orphan_prune");
+      if (process.platform === "win32") {
+        await new Promise((r) => setTimeout(r, 350));
+      }
+      const result = pruneOrphanOpenClawAgents(payload, cfg);
+      await ensureLocalGatewayRunning(() => userConfigStore.readRaw(), { probeOpenClawGateway });
+      if (result.ok && result.pruned > 0) {
+        await waitForGatewayWarmupIfNeeded(() => userConfigStore.readRaw(), { probeOpenClawGateway });
+      }
+      return result;
+    } catch (e) {
+      try {
+        await ensureLocalGatewayRunning(() => userConfigStore.readRaw(), { probeOpenClawGateway });
+      } catch {
+        /* ignore */
+      }
       return { ok: false, reason: String(e?.message ?? e) };
     }
   });

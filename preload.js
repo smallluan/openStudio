@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld("studioBridge", {
   getDefaultGatewayAgentId: () => ipcRenderer.invoke("studio:getDefaultGatewayAgentId"),
   provisionAgent: (payload) => ipcRenderer.invoke("studio:provisionAgent", payload),
   deleteGatewayAgent: (payload) => ipcRenderer.invoke("studio:deleteGatewayAgent", payload),
+  pruneOrphanGatewayAgents: (payload) => ipcRenderer.invoke("studio:pruneOrphanGatewayAgents", payload),
   readAgentSoul: (payload) => ipcRenderer.invoke("studio:readAgentSoul", payload),
   readAgentIdentity: (payload) => ipcRenderer.invoke("studio:readAgentIdentity", payload),
   readAgentAgents: (payload) => ipcRenderer.invoke("studio:readAgentAgents", payload),

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Button, Input } from "@open-studio/udesign";
+import { MessagePlugin } from "tdesign-react";
 import { Plus } from "lucide-react";
 import agentHero from "../assets/images/agent-hero.png";
 import SearchSparkleIcon from "../assets/svg/SearchSparkleIcon.jsx";
@@ -106,6 +107,8 @@ export default function LobsterManagementPage() {
   const [query, setQuery] = useState("");
   const [detailAgentId, setDetailAgentId] = useState(/** @type {string | null} */ (null));
   const [deleteTargetId, setDeleteTargetId] = useState(/** @type {string | null} */ (null));
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState(/** @type {string | null} */ (null));
   const [skillQuery, setSkillQuery] = useState("");
   const [skillDialogOpen, setSkillDialogOpen] = useState(false);
   const [editSidebarField, setEditSidebarField] = useState(/** @type {"identity" | "description" | "soul" | "agents" | "user" | "tools" | "memory" | null} */ (null));
@@ -993,33 +996,69 @@ export default function LobsterManagementPage() {
       ) : null}
 
       {deleteTarget ? (
-        <Modal onClose={() => setDeleteTargetId(null)} labelledBy={delTitleId}>
+        <Modal
+          onClose={() => {
+            if (deleteBusy) return;
+            setDeleteTargetId(null);
+            setDeleteError(null);
+          }}
+          labelledBy={delTitleId}
+        >
           <div className="flex w-full min-w-[min(100vw-2rem,400px)] flex-col bg-[var(--os-bg-modal)]">
             <div className="flex items-center justify-between border-b border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
               <h2 id={delTitleId} className="text-base font-semibold">
                 {t("lobsterPage.deleteModal.title")}
               </h2>
-              <ModalCloseButton onClick={() => setDeleteTargetId(null)} />
+              <ModalCloseButton
+                onClick={() => {
+                  if (deleteBusy) return;
+                  setDeleteTargetId(null);
+                  setDeleteError(null);
+                }}
+              />
             </div>
             <p className="px-5 py-4 text-[0.8125rem] leading-relaxed text-[var(--os-text-muted)]">
               {t("lobsterPage.deleteModal.body", {
                 name: deleteTarget.name?.trim() || t("agents.defaultName"),
               })}
             </p>
+            {deleteError ? (
+              <p className="px-5 pb-3 text-[0.78rem] text-[var(--os-danger,#e34d59)]">{deleteError}</p>
+            ) : null}
             <div className="flex justify-end gap-2 border-t border-[color-mix(in_srgb,var(--os-border)_50%,transparent)] px-5 py-3">
-              <Button type="button" variant="text" onClick={() => setDeleteTargetId(null)}>
+              <Button
+                type="button"
+                variant="text"
+                disabled={deleteBusy}
+                onClick={() => {
+                  setDeleteTargetId(null);
+                  setDeleteError(null);
+                }}
+              >
                 {t("skillsPage.cancel")}
               </Button>
               <Button
                 type="button"
                 theme="danger"
+                disabled={deleteBusy}
                 onClick={() => {
-                  removeAgent(deleteTarget.id);
-                  setDeleteTargetId(null);
-                  if (detailAgentId === deleteTarget.id) closeDetail();
+                  const targetId = deleteTarget.id;
+                  setDeleteBusy(true);
+                  setDeleteError(null);
+                  void removeAgent(targetId).then((result) => {
+                    setDeleteBusy(false);
+                    if (!result?.ok) {
+                      const msg = t("lobsterPage.deleteModal.failed");
+                      setDeleteError(msg);
+                      MessagePlugin.error({ content: msg, duration: 4000 });
+                      return;
+                    }
+                    setDeleteTargetId(null);
+                    if (detailAgentId === targetId) closeDetail();
+                  });
                 }}
               >
-                {t("lobsterPage.deleteModal.confirm")}
+                {deleteBusy ? t("lobsterPage.deleteModal.busy") : t("lobsterPage.deleteModal.confirm")}
               </Button>
             </div>
           </div>

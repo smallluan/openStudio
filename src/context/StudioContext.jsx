@@ -42,7 +42,7 @@ import { AgentMode } from "../studio/modes.js";
  *     avatar?: string;
  *     skillIds?: string[];
  *   }) => Promise<{ ok: boolean; id?: string; reason?: string }>;
- *   removeAgent: (agentId: string) => void;
+ *   removeAgent: (agentId: string) => Promise<{ ok: boolean; reason?: string }>;
  *   patchAgentMeta: (agentId: string, patch: {
  *     name?: string;
  *     description?: string;
@@ -175,7 +175,28 @@ export function StudioProvider({ children }) {
   useEffect(() => {
     if (mainBootstrappedRef.current) return;
     mainBootstrappedRef.current = true;
-    for (const agent of loadAgents()) scheduleProvision(agent);
+    const loaded = loadAgents();
+    const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+    const boot = async () => {
+      // Drop gateway registry leftovers that Studio no longer lists, before re-provision.
+      if (bridge?.pruneOrphanGatewayAgents) {
+        try {
+          const keepGatewayAgentIds = loaded
+            .map((a) => a.gatewayAgentId)
+            .filter((id) => typeof id === "string" && id.trim());
+          const pruned = await bridge.pruneOrphanGatewayAgents({ keepGatewayAgentIds });
+          if (pruned?.ok && pruned.pruned > 0) {
+            console.info("[studio] pruned orphan gateway agents", pruned.removed);
+          } else if (pruned && !pruned.ok) {
+            console.warn("[studio] orphan gateway prune failed", pruned.reason);
+          }
+        } catch (err) {
+          console.warn("[studio] orphan gateway prune error", err);
+        }
+      }
+      for (const agent of loaded) scheduleProvision(agent);
+    };
+    void boot();
   }, [scheduleProvision]);
 
   const setAgentMode = useCallback((agentId, mode) => {
@@ -256,17 +277,36 @@ export function StudioProvider({ children }) {
     return { ok: true, id: agent.id };
   }, []);
 
-  const removeAgent = useCallback((agentId) => {
-    setAgents((prev) => {
-      const target = prev.find((a) => a.id === agentId);
-      if (!target || target.isMain) return prev;
-      const bridge = window.studioBridge;
-      if (bridge?.deleteGatewayAgent) {
-        void bridge.deleteGatewayAgent({ gatewayAgentId: target.gatewayAgentId });
+  const removeAgent = useCallback(async (agentId) => {
+    const target = agents.find((a) => a.id === agentId);
+    if (!target) return { ok: false, reason: "not_found" };
+    if (target.isMain) return { ok: false, reason: "cannot_remove_main_agent" };
+
+    const prevTimer = provisionTimersRef.current.get(agentId);
+    if (prevTimer) {
+      window.clearTimeout(prevTimer);
+      provisionTimersRef.current.delete(agentId);
+    }
+
+    const bridge = typeof window !== "undefined" ? window.studioBridge : undefined;
+    if (!bridge?.deleteGatewayAgent) {
+      setAgents((prev) => prev.filter((a) => a.id !== agentId));
+      return { ok: true, reason: "local_only" };
+    }
+
+    try {
+      const result = await bridge.deleteGatewayAgent({ gatewayAgentId: target.gatewayAgentId });
+      if (!result?.ok) {
+        console.warn("[studio] delete gateway agent failed", target.gatewayAgentId, result?.reason);
+        return { ok: false, reason: result?.reason ?? "delete_failed" };
       }
-      return prev.filter((a) => a.id !== agentId);
-    });
-  }, []);
+      setAgents((prev) => prev.filter((a) => a.id !== agentId));
+      return { ok: true, reason: result.alreadyGone ? "already_gone" : undefined };
+    } catch (err) {
+      console.warn("[studio] delete gateway agent error", target.gatewayAgentId, err);
+      return { ok: false, reason: String(/** @type {any} */ (err)?.message ?? err) };
+    }
+  }, [agents]);
 
   const patchAgentMeta = useCallback((agentId, patch) => {
     setAgents((prev) => {
