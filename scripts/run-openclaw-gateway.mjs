@@ -4,6 +4,7 @@
 
 import { spawn } from "child_process";
 import { createRequire } from "module";
+import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -12,6 +13,7 @@ const require = createRequire(import.meta.url);
 const { resolveOpenClawSpawnOptions } = require("../lib/openclaw-bundle-paths.cjs");
 const { ensureDevGatewayAuthToken } = require("../lib/sync-openclaw-agent-from-studio.cjs");
 const { ensureOpenClawWeixinPlugin } = require("../lib/ensure-openclaw-weixin-plugin.cjs");
+const { enableBundledPythonRuntime } = require("../lib/bundled-python-runtime.cjs");
 
 const tokenPrep = ensureDevGatewayAuthToken();
 if (tokenPrep.ok && tokenPrep.created) {
@@ -27,6 +29,18 @@ const forwardArgs = process.argv.slice(2);
 if (forwardArgs.length === 0) {
   // Dev gateway uses port 19002 to avoid conflict with packaged exe's gateway on 19001.
   forwardArgs.push("--dev", "gateway", "run", "--bind", "loopback", "--port", "19002", "--force");
+}
+
+// The dev gateway starts before Electron, so it cannot inherit the renderer's
+// later PATH changes. Configure the bundled Python directly in this launcher.
+const devPythonUserData =
+  String(process.env.OPEN_STUDIO_USER_DATA || "").trim() || path.join(os.homedir(), ".openstudio-dev");
+const pythonRuntime = enableBundledPythonRuntime({
+  userDataDir: devPythonUserData,
+  log: console,
+});
+if (!pythonRuntime.ok) {
+  console.warn("[run-openclaw-gateway] bundled Python init failed:", pythonRuntime);
 }
 
 const target = resolveOpenClawSpawnOptions();
