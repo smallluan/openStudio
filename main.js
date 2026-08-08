@@ -33,6 +33,8 @@ const {
   sendWechatTyping,
 } = require("./lib/openclaw-gateway-wechat.cjs");
 const { resolveGateway } = require("./lib/openclaw-gateway-ws.cjs");
+const { ensureOpenClawWeixinPlugin } = require("./lib/ensure-openclaw-weixin-plugin.cjs");
+const { resolveOpenClawStateDir } = require("./lib/sync-openclaw-agent-from-studio.cjs");
 const { generateConversationTitle } = require("./lib/llm-chat-title.cjs");
 const { createTokenUsageStore } = require("./lib/token-usage-store.cjs");
 const { createChatSessionsStore } = require("./lib/chat-sessions-store.cjs");
@@ -1886,6 +1888,14 @@ app.whenReady().then(async () => {
     try {
       runOpenClawAgentSyncFromStudio("wechat");
       const cfg = userConfigStore.readRaw();
+      const gateway = resolveGateway(cfg);
+      const weixinPrep = ensureOpenClawWeixinPlugin({
+        stateDir: resolveOpenClawStateDir(gateway.baseUrl),
+        quiet: true,
+      });
+      if (!weixinPrep.ok) {
+        return { ok: false, message: String(weixinPrep.message ?? "weixin_plugin_setup_failed") };
+      }
       const ac = new AbortController();
       const tid = setTimeout(() => ac.abort(), 20_000);
       try {

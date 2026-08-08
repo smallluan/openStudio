@@ -23,6 +23,7 @@
     "start": "cross-env NODE_ENV=production electron .",
     "preview": "vite preview",
     "test:chat-sessions": "node --test lib/chat-sessions-store.test.cjs",
+    "test:weixin-plugin": "node --test lib/ensure-openclaw-weixin-plugin.test.cjs",
     "test:preview-guest-capture": "node --test lib/preview-guest-capture.test.cjs",
     "test:preview-guest-debugger": "node --test lib/preview-guest-debugger.test.cjs",
     "storybook:udesign": "pnpm --filter @open-studio/udesign storybook",
