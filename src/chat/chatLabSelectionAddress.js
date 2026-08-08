@@ -16,7 +16,22 @@ export function trimSelectionAddress(text) {
 
 /** @param {string} path */
 export function trimPathTrailingPunctuation(path) {
-  return String(path ?? "").replace(/[.,;:!?)」』"'`]+$/u, "");
+  return String(path ?? "").replace(/[.,;:!?)」』"'`\uFF09\uFF3D\u3011]+$/u, "");
+}
+
+/**
+ * Slash-led strings need at least one path-like ASCII segment or a file extension.
+ * Models often write Chinese "or" lists (`点击/输入/滚动`) that are not file paths.
+ * @param {string} raw
+ */
+function looksLikeUnixLocalPath(raw) {
+  const segments = String(raw ?? "")
+    .split("/")
+    .filter(Boolean);
+  if (!segments.length) return false;
+  if (/\.[a-zA-Z0-9]{1,8}$/.test(raw)) return true;
+  if (segments.length < 2) return false;
+  return segments.some((seg) => /[a-zA-Z0-9._-]/.test(seg));
 }
 
 /**
@@ -51,12 +66,8 @@ export function classifySelectionAddress(text) {
     return { kind: "local", path: raw };
   }
 
-  if (raw.startsWith("/") && !raw.startsWith("//")) {
-    const segments = raw.split("/").filter(Boolean);
-    const hasExt = /\.[a-zA-Z0-9]{1,8}$/.test(raw);
-    if (hasExt || segments.length >= 2) {
-      return { kind: "local", path: raw };
-    }
+  if (raw.startsWith("/") && !raw.startsWith("//") && looksLikeUnixLocalPath(raw)) {
+    return { kind: "local", path: raw };
   }
 
   if (raw === "~" || raw.startsWith("~/") || raw.startsWith("~\\")) {
@@ -81,11 +92,12 @@ export function findLocalPathSpansInText(text) {
   /** @type {{ start: number; end: number; path: string }[]} */
   const raw = [];
 
+  const pathChars = String.raw`[^\s<>"'|*?，。；：！？、（）]+`;
   const patterns = [
     /file:\/\/[^\s<>"'|*?，。；：！？、]+/gi,
     /(?:[a-zA-Z]:[\\/]|\\\\)[^\s<>"'|*?，。；：！？、]+/g,
     /~(?:[\\/][^\s<>"'|*?，。；：！？、]+)?/g,
-    /\/(?:[^\s<>"'|*?，。；：！？、]+\/)*[^\s<>"'|*?，。；：！？、]+/g,
+    new RegExp(String.raw`\/(?:${pathChars}\/)*${pathChars}`, "g"),
     /(?:[\w.\-]+[\\/])+[\w.\-]+\.(?:html|htm|pdf|svg|csv|xlsx|xls|pptx|ppt)\b/gi,
   ];
 
