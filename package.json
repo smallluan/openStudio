@@ -31,7 +31,7 @@
     "typecheck:udesign": "pnpm --filter @open-studio/udesign typecheck",
     "openclaw": "openclaw",
     "windows:defender-exclude-openclaw-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/windows-defender-exclude-openclaw-dev.ps1",
-    "postinstall": "node scripts/apply-openclaw-memo.mjs && node scripts/patch-openclaw-compact-tool-descriptions.mjs && node scripts/patch-openclaw-tool-search-aliases.mjs && node scripts/patch-openclaw-browser-observation-prune.mjs && node scripts/generate-openclaw-bundled-skills.mjs && node scripts/ensure-openclaw-weixin-plugin.mjs"
+    "postinstall": "node scripts/apply-openclaw-memo.mjs && node scripts/patch-openclaw-session-manager-sqlite.mjs && node scripts/patch-openclaw-compact-tool-descriptions.mjs && node scripts/patch-openclaw-tool-search-aliases.mjs && node scripts/patch-openclaw-browser-observation-prune.mjs && node scripts/generate-openclaw-bundled-skills.mjs && node scripts/ensure-openclaw-weixin-plugin.mjs"
   },
   "engines": {
     "node": ">=22.14.0"
@@ -146,7 +146,7 @@
     "concurrently": "^9.0.0",
     "cross-env": "^7.0.3",
     "echarts": "^6.1.0",
-    "electron": "^42.3.3",
+    "electron": "42.3.3",
     "electron-builder": "^26.7.1",
     "katex": "^0.16.45",
     "kysely": "^0.29.2",
