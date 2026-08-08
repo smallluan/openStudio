@@ -91,6 +91,7 @@ const {
   readAgentBootstrapForChat,
   defaultGatewayAgentIdFromConfig,
 } = require("./lib/openclaw-agent-crud.cjs");
+const { purgeStudioChatSessionFromDisk } = require("./lib/openclaw-disk-cleanup.cjs");
 const {
   isWechatNewChatCommand,
   toWechatConversationId,
@@ -2495,19 +2496,48 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle("studio:chatSessionsDelete", (_event, id) => {
+  ipcMain.handle("studio:chatSessionsDelete", async (_event, id) => {
     if (!chatSessionsStore) return { ok: false, error: "store_unavailable" };
     try {
-      return chatSessionsStore.deleteOne(typeof id === "string" ? id : "");
+      const sid = typeof id === "string" ? id.trim() : "";
+      const meta = sid
+        ? chatSessionsStore.loadAll().find((row) => String(row?.id ?? "") === sid)
+        : null;
+      if (meta) {
+        try {
+          await purgeStudioChatSessionFromDisk(userConfigStore.readRaw(), meta);
+        } catch (purgeErr) {
+          getStudioLog().warn(
+            "[chatSessionsDelete] openclaw purge failed:",
+            String(purgeErr?.message ?? purgeErr),
+          );
+        }
+      }
+      return chatSessionsStore.deleteOne(sid);
     } catch (e) {
       return { ok: false, error: String(e?.message ?? e) };
     }
   });
 
-  ipcMain.handle("studio:chatSessionsDeleteMany", (_event, ids) => {
+  ipcMain.handle("studio:chatSessionsDeleteMany", async (_event, ids) => {
     if (!chatSessionsStore) return { ok: false, error: "store_unavailable" };
     try {
       const list = Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : [];
+      const drop = new Set(list.map((id) => id.trim()).filter(Boolean));
+      if (drop.size > 0) {
+        const cfg = userConfigStore.readRaw();
+        for (const row of chatSessionsStore.loadAll()) {
+          if (!drop.has(String(row?.id ?? ""))) continue;
+          try {
+            await purgeStudioChatSessionFromDisk(cfg, row);
+          } catch (purgeErr) {
+            getStudioLog().warn(
+              "[chatSessionsDeleteMany] openclaw purge failed:",
+              String(purgeErr?.message ?? purgeErr),
+            );
+          }
+        }
+      }
       return chatSessionsStore.deleteMany(list);
     } catch (e) {
       return { ok: false, error: String(e?.message ?? e) };
