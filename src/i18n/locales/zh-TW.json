@@ -41,6 +41,8 @@
     "chatHistoryGroupExpandList": "展開會話列表",
     "chatHistoryGroupCollapseList": "摺疊會話列表",
     "chatHistoryGroupDeleteSelectAria": "選擇要刪除的會話",
+    "chatHistorySelectAll": "全選",
+    "chatHistoryDeselectAll": "取消全選",
     "chatHistoryDeleteSelected": "刪除 ({{n}})",
     "chatHistoryDeleteSelectedConfirm": "確定刪除選中的 {{n}} 則會話嗎？此操作無法復原。",
     "chatHistoryShowMore": "顯示更多 ({{n}})",

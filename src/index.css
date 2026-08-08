@@ -3433,6 +3433,10 @@ code {
   gap: 0.5rem;
 }
 
+.chat-history-group__head--delete-mode .chat-history-group__head-inner {
+  opacity: 0;
+}
+
 .chat-history-group__logo {
   width: 20px;
   height: 20px;
@@ -3555,6 +3559,11 @@ code {
     opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
     transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
+}
+
+.chat-history-group__head--delete-mode .chat-history-group__actions {
+  right: auto;
+  left: 0.15rem;
 }
 
 .chat-history-group__head:hover .chat-history-group__actions,

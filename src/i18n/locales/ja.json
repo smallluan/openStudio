@@ -41,6 +41,8 @@
     "chatHistoryGroupExpandList": "会話リストを展開",
     "chatHistoryGroupCollapseList": "会話リストを折りたたむ",
     "chatHistoryGroupDeleteSelectAria": "削除する会話を選択",
+    "chatHistorySelectAll": "すべて選択",
+    "chatHistoryDeselectAll": "すべて選択解除",
     "chatHistoryDeleteSelected": "削除 ({{n}})",
     "chatHistoryDeleteSelectedConfirm": "選択した {{n}} 件の会話を削除しますか？この操作は取り消せません。",
     "chatHistoryShowMore": "さらに表示 ({{n}})",

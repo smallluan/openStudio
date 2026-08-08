@@ -41,6 +41,8 @@
     "chatHistoryGroupExpandList": "Expand conversation list",
     "chatHistoryGroupCollapseList": "Collapse conversation list",
     "chatHistoryGroupDeleteSelectAria": "Select conversations to delete",
+    "chatHistorySelectAll": "Select all",
+    "chatHistoryDeselectAll": "Deselect all",
     "chatHistoryDeleteSelected": "Delete ({{n}})",
     "chatHistoryDeleteSelectedConfirm": "Delete {{n}} selected conversation(s)? This cannot be undone.",
     "chatHistoryShowMore": "Show more ({{n}})",

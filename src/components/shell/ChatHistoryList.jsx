@@ -121,10 +121,13 @@ function TrashIcon({ className }) {
  *   focused: boolean;
  *   deleteMode: boolean;
  *   selectedCount: number;
+ *   selectableCount: number;
+ *   allSelected: boolean;
  *   onToggleCollapsed: () => void;
  *   onToggleFocus: () => void;
  *   onEnterDeleteMode: () => void;
  *   onCancelDeleteMode: () => void;
+ *   onToggleSelectAll: () => void;
  *   onConfirmDelete: () => void;
  * }} props
  */
@@ -135,10 +138,13 @@ function ChatHistoryGroupHead({
   focused,
   deleteMode,
   selectedCount,
+  selectableCount,
+  allSelected,
   onToggleCollapsed,
   onToggleFocus,
   onEnterDeleteMode,
   onCancelDeleteMode,
+  onToggleSelectAll,
   onConfirmDelete,
 }) {
   const { t } = useI18n();
@@ -149,6 +155,7 @@ function ChatHistoryGroupHead({
     <div
       className={cn(
         "chat-history-group__head group",
+        deleteMode && "chat-history-group__head--delete-mode",
         (deleteMode || focused) && "chat-history-group__head--actions-visible",
       )}
     >
@@ -189,6 +196,19 @@ function ChatHistoryGroupHead({
               onClick={onCancelDeleteMode}
             >
               {t("dialog.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="text"
+              size="small"
+              className={cn(
+                "chat-history-group__action-btn chat-history-group__action-btn--text",
+                selectableCount < 1 && "chat-history-group__action-btn--disabled",
+              )}
+              disabled={selectableCount < 1}
+              onClick={onToggleSelectAll}
+            >
+              {allSelected ? t("nav.chatHistoryDeselectAll") : t("nav.chatHistorySelectAll")}
             </Button>
             <Button
               type="button"
@@ -716,6 +736,18 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
     });
   }, []);
 
+  const handleToggleSelectAll = useCallback((sessionIds) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = sessionIds.length > 0 && sessionIds.every((id) => next.has(id));
+      for (const id of sessionIds) {
+        if (allSelected) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
   const handleToggleFocus = useCallback((channel) => {
     handleCancelDeleteMode();
     setFocusedChannel((prev) => {
@@ -852,6 +884,15 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
                       !streamingSessionIds.has(row.id) &&
                       row.id !== wechatReplyingSessionId,
                   ).length;
+                  const selectableIds = groupRows
+                    .filter(
+                      (row) =>
+                        !streamingSessionIds.has(row.id) &&
+                        row.id !== wechatReplyingSessionId,
+                    )
+                    .map((row) => row.id);
+                  const allChannelSelected =
+                    selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
                   const headerMotion = headerMotionByChannel.get(group.channel);
                   const showDivider =
                     !focusedChannel && group.channel === CHAT_SESSION_CHANNEL_WECHAT;
@@ -872,10 +913,13 @@ export default function ChatHistoryList({ narrow = false, filterQuery = "" }) {
                           focused={focusedChannel === group.channel}
                           deleteMode={deleteModeChannel === group.channel}
                           selectedCount={channelSelectedCount}
+                          selectableCount={selectableIds.length}
+                          allSelected={allChannelSelected}
                           onToggleCollapsed={() => toggleGroupCollapsed(group.channel)}
                           onToggleFocus={() => handleToggleFocus(group.channel)}
                           onEnterDeleteMode={() => handleEnterDeleteMode(group.channel)}
                           onCancelDeleteMode={handleCancelDeleteMode}
+                          onToggleSelectAll={() => handleToggleSelectAll(selectableIds)}
                           onConfirmDelete={() => {
                             if (selectedDeleteIds.length < 1) return;
                             setDeleteConfirmOpen(true);
