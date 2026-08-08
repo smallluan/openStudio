@@ -1,4 +1,4 @@
-﻿{
+{
   "app": {
     "documentTitle": "Open Studio"
   },
@@ -639,6 +639,9 @@
     "filterAll": "すべて",
     "filterLocal": "ローカル",
     "filterBuiltin": "同梱",
+    "filterAppBuiltin": "アプリ内蔵",
+    "filterLocalUpload": "ローカルアップロード",
+    "filterOpenclawBuiltin": "openclaw 内蔵",
     "filterTabsAria": "カテゴリでスキルを絞り込み",
     "actions": {
       "upload": "ローカル登録",
@@ -654,6 +657,7 @@
     "cancel": "キャンセル",
     "close": "完了",
     "noDescription": "説明なし",
+    "emptyAppBuiltin": "アプリ内蔵スキルはまだありません。",
     "emptyBuiltin": "該当する同梱スキルがありません。",
     "emptyUser": "ローカルスキルはまだありません。上のボタンから追加してください。",
     "openFolder": "フォルダを開く",

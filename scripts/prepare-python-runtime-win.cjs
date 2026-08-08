@@ -56,6 +56,13 @@ function validateSourceRuntime(sourceDir) {
         "Set OPEN_STUDIO_PYTHON_RUNTIME_DIR to a valid embeddable Python runtime directory.",
     );
   }
+  const pip = path.join(sourceDir, "Lib", "site-packages", "pip", "__init__.py");
+  if (!existsFile(pip)) {
+    throw new Error(
+      `[prepare-python-runtime-win] pip is missing in "${sourceDir}". ` +
+        "The bundled runtime must include Lib/site-packages/pip.",
+    );
+  }
 }
 
 function main() {

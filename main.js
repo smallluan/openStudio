@@ -1110,16 +1110,16 @@ app.whenReady().then(async () => {
       getStudioLog().warn("[startup] openclaw sync threw", String(e?.message ?? e));
     }
   }, 0);
-  setTimeout(() => {
-    try {
-      const py = enableBundledPythonRuntime({ app, log: getStudioLog() });
-      if (!py.ok) {
-        getStudioLog().warn("[startup] bundled python init failed", py);
-      }
-    } catch (e) {
-      getStudioLog().warn("[startup] bundled python init threw", String(e?.message ?? e));
+  // Initialize before spawning the gateway so its shell tools inherit the
+  // bundled Python, pip shims, and writable package target.
+  try {
+    const py = enableBundledPythonRuntime({ app, log: getStudioLog() });
+    if (!py.ok) {
+      getStudioLog().warn("[startup] bundled python init failed", py);
     }
-  }, 0);
+  } catch (e) {
+    getStudioLog().warn("[startup] bundled python init threw", String(e?.message ?? e));
+  }
 
   getSkillEnvironmentCached().catch((e) => {
     getStudioLog().warn("[skills] env probe failed:", /** @type {any} */ (e)?.message ?? e);

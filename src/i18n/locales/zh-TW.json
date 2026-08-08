@@ -1,4 +1,4 @@
-﻿{
+{
   "app": {
     "documentTitle": "Open Studio"
   },
@@ -639,6 +639,9 @@
     "filterAll": "全部",
     "filterLocal": "本機",
     "filterBuiltin": "內建",
+    "filterAppBuiltin": "應用內建",
+    "filterLocalUpload": "本機上傳",
+    "filterOpenclawBuiltin": "openclaw 內建",
     "filterTabsAria": "依分類篩選技能",
     "actions": {
       "upload": "上傳技能",
@@ -654,6 +657,7 @@
     "cancel": "取消",
     "close": "完成",
     "noDescription": "暫無描述",
+    "emptyAppBuiltin": "暫無應用內建技能。",
     "emptyBuiltin": "沒有符合的內建技能。",
     "emptyUser": "尚無本機技能，請點上方按鈕新增。",
     "openFolder": "開啟資料夾",

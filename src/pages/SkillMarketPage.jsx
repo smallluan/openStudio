@@ -18,7 +18,8 @@ import FluidConfirmDialog from "../ui/FluidConfirmDialog.jsx";
 import TextField from "../ui/TextField.jsx";
 import { cn } from "../ui/cn.js";
 
-const BUILTIN_FILTER = "__builtin__";
+const APP_BUILTIN_FILTER = "__app_builtin__";
+const OPENCLAW_BUILTIN_FILTER = "__openclaw_builtin__";
 const OTHER_FILTER = "__other__";
 
 /** Bundled card body: prefer `skillsPage.openclawDesc.<skillId>` when present. */
@@ -51,7 +52,7 @@ export default function SkillMarketPage() {
   const canOpenFolder = Boolean(typeof window !== "undefined" && window.studioBridge?.openSkillDirectory);
   const addCategoryTitleId = useId();
 
-  const [filterId, setFilterId] = useState(OTHER_FILTER);
+  const [filterId, setFilterId] = useState(APP_BUILTIN_FILTER);
   const [query, setQuery] = useState("");
 
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
@@ -95,8 +96,9 @@ export default function SkillMarketPage() {
 
   const categoryTabs = useMemo(() => {
     return [
-      { id: OTHER_FILTER, label: t("skillsPage.filterLocal"), icon: <FolderIcon /> },
-      { id: BUILTIN_FILTER, label: t("skillsPage.filterBuiltin"), icon: <AppIcon /> },
+      { id: APP_BUILTIN_FILTER, label: t("skillsPage.filterAppBuiltin"), icon: <AppIcon /> },
+      { id: OTHER_FILTER, label: t("skillsPage.filterLocalUpload"), icon: <FolderIcon /> },
+      { id: OPENCLAW_BUILTIN_FILTER, label: t("skillsPage.filterOpenclawBuiltin"), icon: <AppIcon /> },
       ...lib.userCategories.map((c) => ({ id: c.id, label: c.label })),
     ];
   }, [lib.userCategories, t]);
@@ -115,7 +117,7 @@ export default function SkillMarketPage() {
 
   const filteredBuiltin = useMemo(() => {
     return usableBuiltinDefs.filter((def) => {
-      if (filterId !== BUILTIN_FILTER) return false;
+      if (filterId !== OPENCLAW_BUILTIN_FILTER) return false;
       const meta = openclawSkillById.get(def.id);
       const title = meta ? formatSkillTitle(meta.name) : def.id;
       const manifestDesc = meta?.description ?? "";
@@ -127,14 +129,14 @@ export default function SkillMarketPage() {
   const filteredUser = useMemo(() => {
     return lib.userSkills.filter((s) => {
       const categoryId = customCategoryMap.has(s.categoryId) ? s.categoryId : OTHER_FILTER;
-      if (filterId === BUILTIN_FILTER) return false;
+      if (filterId === APP_BUILTIN_FILTER || filterId === OPENCLAW_BUILTIN_FILTER) return false;
       if (filterId !== categoryId) return false;
       const title = userSkillDisplayTitle(s);
       return matchesQuery(title, s.description);
     });
   }, [customCategoryMap, filterId, lib.userSkills, matchesQuery]);
 
-  const shouldShowBuiltinLoading = skillEnv.loading && filterId === BUILTIN_FILTER;
+  const shouldShowBuiltinLoading = skillEnv.loading && filterId === OPENCLAW_BUILTIN_FILTER;
   const visibleCount = filteredBuiltin.length + filteredUser.length;
   const shouldShowEmpty = !shouldShowBuiltinLoading && visibleCount === 0;
 
@@ -206,7 +208,17 @@ export default function SkillMarketPage() {
   const onConfirmAddCategory = useCallback(() => {
     const label = newCategoryLabel.trim();
     if (!label) return;
-    if (["全部", "内置", "其他"].includes(label)) {
+    if (
+      [
+        t("skillsPage.filterAll"),
+        t("skillsPage.filterAppBuiltin"),
+        t("skillsPage.filterLocalUpload"),
+        t("skillsPage.filterOpenclawBuiltin"),
+        "全部",
+        "内置",
+        "其他",
+      ].includes(label)
+    ) {
       window.alert("该分类名已被占用");
       return;
     }
@@ -221,7 +233,7 @@ export default function SkillMarketPage() {
       setAddCategoryOpen(false);
       setNewCategoryLabel("");
     }
-  }, [addUserCategory, lib.userCategories, newCategoryLabel]);
+  }, [addUserCategory, lib.userCategories, newCategoryLabel, t]);
 
   return (
     <div className="route-page route-page--plain flex min-h-0 flex-1 flex-col bg-[color-mix(in_srgb,var(--os-bg-base)_96%,var(--os-bg-panel))]">
@@ -284,7 +296,15 @@ export default function SkillMarketPage() {
         {shouldShowBuiltinLoading ? (
           <OsEmpty description="正在加载技能..." />
         ) : shouldShowEmpty ? (
-          <OsEmpty description={filterId === BUILTIN_FILTER ? t("skillsPage.emptyBuiltin") : t("skillsPage.emptyUser")} />
+          <OsEmpty
+            description={
+              filterId === APP_BUILTIN_FILTER
+                ? t("skillsPage.emptyAppBuiltin")
+                : filterId === OPENCLAW_BUILTIN_FILTER
+                  ? t("skillsPage.emptyBuiltin")
+                  : t("skillsPage.emptyUser")
+            }
+          />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filteredBuiltin.map((def) => {

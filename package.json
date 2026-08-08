@@ -19,7 +19,7 @@
     "prebuild": "node scripts/generate-openclaw-bundled-skills.mjs && node scripts/sync-app-icon.mjs",
     "build": "vite build",
     "dist:win": "node scripts/generate-openclaw-bundled-skills.mjs && node scripts/sync-app-icon.mjs && vite build && node scripts/run-dist-win-electron-builder.cjs",
-    "verify:python-runtime:win": "node -e \"const fs=require('fs');const p='vendor/python-runtime-win/python.exe';if(!fs.existsSync(p)){console.error('[verify:python-runtime:win] missing '+p);process.exit(1)}console.log('[verify:python-runtime:win] ok:',p)\"",
+    "verify:python-runtime:win": "node -e \"const fs=require('fs');const p='vendor/python-runtime-win/python.exe';const pip='vendor/python-runtime-win/Lib/site-packages/pip/__init__.py';if(!fs.existsSync(p)){console.error('[verify:python-runtime:win] missing '+p);process.exit(1)}if(!fs.existsSync(pip)){console.error('[verify:python-runtime:win] missing '+pip);process.exit(1)}console.log('[verify:python-runtime:win] ok:',p,'pip:',pip)\"",
     "start": "cross-env NODE_ENV=production electron .",
     "preview": "vite preview",
     "test:chat-sessions": "node --test lib/chat-sessions-store.test.cjs",

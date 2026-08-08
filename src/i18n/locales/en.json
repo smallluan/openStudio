@@ -1,4 +1,4 @@
-﻿{
+{
   "app": {
     "documentTitle": "Open Studio"
   },
@@ -653,6 +653,9 @@
     "filterAll": "All",
     "filterLocal": "Local",
     "filterBuiltin": "Built-in",
+    "filterAppBuiltin": "App built-in",
+    "filterLocalUpload": "Local upload",
+    "filterOpenclawBuiltin": "openclaw built-in",
     "filterTabsAria": "Filter skills by category",
     "actions": {
       "upload": "Register local skill",
@@ -668,6 +671,7 @@
     "cancel": "Cancel",
     "close": "Done",
     "noDescription": "No description",
+    "emptyAppBuiltin": "No app-built-in skills yet.",
     "emptyBuiltin": "No built-in skills match your filter.",
     "emptyUser": "No local skills yet — use the buttons above to add one.",
     "openFolder": "Open folder",

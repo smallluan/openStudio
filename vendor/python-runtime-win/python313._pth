@@ -1,5 +1,6 @@
 python313.zip
 .
+Lib\site-packages
 
-# Uncomment to run site.main() automatically
-#import site
+# Enable site-packages so the bundled pip module is available.
+import site
