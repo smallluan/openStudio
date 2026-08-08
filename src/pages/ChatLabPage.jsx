@@ -5752,12 +5752,43 @@ function ChatStreamPauseIcon() {
 function formatActivityHeadline(row) {
   const stream = truncateOneLine(String(row.stream ?? "").trim(), 64);
   const titleRaw = String(row.title ?? "").trim();
-  const phase = String(row.phase ?? "").trim();
-  const headline =
-    stream.toLowerCase() === "lifecycle" && phase
-      ? `${titleRaw || stream} · ${phase}`
-      : titleRaw || stream || "";
+  // Prefer the activity title; never put stream/phase (`item` / `end`) into the headline.
+  const headline = titleRaw || (stream && !/^(item|tool)$/i.test(stream) ? stream : "");
   return truncateOneLine(headline, 104);
+}
+
+/**
+ * Phase-only gateway activity (`item` + `end` / `start`) with no useful payload.
+ * These used to render as a step whose only detail was "阶段：end" — drop the whole row.
+ * @param {import("../chat/toolTraceMerge.js").ActivityRow | undefined} row
+ */
+function isPhaseOnlyActivityRow(row) {
+  if (!row || typeof row !== "object") return true;
+  const stream = String(row.stream ?? "").trim().toLowerCase();
+  const phase = String(row.phase ?? "").trim().toLowerCase();
+  const title = String(row.title ?? "").trim();
+  const text = typeof row.text === "string" ? row.text.trim() : "";
+  const hasNested =
+    (Array.isArray(row.toolTrace) && row.toolTrace.length > 0) ||
+    (Array.isArray(row.nestedActivity) && row.nestedActivity.length > 0) ||
+    (Array.isArray(row.assistantTimeline) && row.assistantTimeline.length > 0);
+  if (hasNested) return false;
+  // Keep steps that carry real content (URL, path, message, …).
+  if (text && text.length > 2 && !looksLikeDevTraceLabel(text)) return false;
+  if (title && (/\s/.test(title) || /https?:\/\//i.test(title) || /[\\/]/.test(title))) return false;
+  if (stream === "item" || stream === "tool") {
+    if (!phase || /^(start|end|result|ok|success|complete|completed|running)$/i.test(phase)) {
+      return true;
+    }
+  }
+  if (
+    stream === "lifecycle" &&
+    /^(start|end|result|ok|success|complete|completed)$/i.test(phase) &&
+    !text
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** @param {import("../chat/toolTraceMerge.js").ToolTraceRow | undefined} row */
@@ -6125,7 +6156,7 @@ function GapToolActivityPanel({
         const row = activityMap.get(s.refId);
         const stream = String(row?.stream ?? "").toLowerCase();
         if (stream === "subagent") return false;
-        if (!row) return false;
+        if (!row || isPhaseOnlyActivityRow(row)) return false;
       }
       seen.add(ref);
       return true;
@@ -6581,51 +6612,29 @@ function getToolTracePresentation(row, t) {
   /** @type {Record<string, unknown> | undefined} */
   const args = row.args && typeof row.args === "object" ? /** @type {Record<string, unknown>} */ (row.args) : undefined;
 
-  if (sum && sum.toLowerCase() !== nameLower && sum.length > 2) {
-    const line = truncateOneLine(sum, 96);
-    return { kind: "generic", brief: line, aria: line };
-  }
-
-  if (lab && lab.toLowerCase() !== nameLower && lab.length > 2 && !/^phase\s*[:\uff1a]/i.test(lab)) {
-    const line = truncateOneLine(lab, 96);
-    return { kind: "generic", brief: line, aria: line };
-  }
-
-  // Native `browser_action` rows often have no friendly summary — avoid showing the raw tool id.
-  if (isBrowserAutomationToolRow(row)) {
-    const running = isRunningToolRow(row);
-    const line = running
-      ? t("chatLab.sidebarAutomationRunning")
-      : t("chatLab.sidebarAutomationToolLabel");
-    return { kind: "generic", brief: line, aria: line };
-  }
-
+  // Tool Search meta-call: keep `tool_call · <id>`, omit JSON args from the title.
   if (
+    nameLower === "tool_call" ||
+    nameLower.endsWith(".tool_call") ||
+    nameLower.endsWith("/tool_call")
+  ) {
+    const callId = pickArgString(args, ["id", "toolId", "tool_id", "name"]);
+    const line = truncateOneLine(callId ? `${tool} · ${callId}` : tool, 120);
+    return { kind: "generic", brief: line, aria: line };
+  }
+
+  // Timeline tool titles stay English tool ids (no locale-friendly Chinese labels).
+  if (
+    isBrowserAutomationToolRow(row) ||
     nameLower === "browser_open" ||
     nameLower.endsWith(".browser_open") ||
-    nameLower.endsWith("/browser_open")
-  ) {
-    const running = isRunningToolRow(row);
-    const line = running ? t("chatLab.browserOpenRunning") : t("chatLab.browserOpenToolLabel");
-    return { kind: "generic", brief: line, aria: line };
-  }
-
-  if (
+    nameLower.endsWith("/browser_open") ||
     nameLower === "browser_debug" ||
     nameLower === "sidebar_debug" ||
     nameLower.endsWith(".browser_debug") ||
     nameLower.endsWith("/browser_debug") ||
     nameLower.endsWith(".sidebar_debug") ||
-    nameLower.endsWith("/sidebar_debug")
-  ) {
-    const running = isRunningToolRow(row);
-    const line = running
-      ? t("chatLab.sidebarDebugRunning")
-      : t("chatLab.sidebarDebugToolLabel");
-    return { kind: "generic", brief: line, aria: line };
-  }
-
-  if (
+    nameLower.endsWith("/sidebar_debug") ||
     nameLower === "browser_screenshot" ||
     nameLower === "sidebar_screenshot" ||
     nameLower.endsWith(".browser_screenshot") ||
@@ -6633,10 +6642,28 @@ function getToolTracePresentation(row, t) {
     nameLower.endsWith(".sidebar_screenshot") ||
     nameLower.endsWith("/sidebar_screenshot")
   ) {
-    const running = isRunningToolRow(row);
-    const line = running
-      ? t("chatLab.sidebarScreenshotRunning")
-      : t("chatLab.sidebarScreenshotToolLabel");
+    const url = pickArgString(args, ["url", "href", "uri", "link", "address"]);
+    const line = truncateOneLine(url ? `${tool} ${url}` : tool, 120);
+    return { kind: "generic", brief: line, aria: line };
+  }
+
+  if (sum && sum.toLowerCase() !== nameLower && sum.length > 2 && !looksLikeDevTraceLabel(sum)) {
+    // Skip locale-looking summaries so Chinese i18n leftovers never replace the English tool id.
+    if (!/[\u4e00-\u9fff]/.test(sum)) {
+      const line = truncateOneLine(sum, 96);
+      return { kind: "generic", brief: line, aria: line };
+    }
+  }
+
+  if (
+    lab &&
+    lab.toLowerCase() !== nameLower &&
+    lab.length > 2 &&
+    !/^phase\s*[:\uff1a]/i.test(lab) &&
+    !looksLikeDevTraceLabel(lab) &&
+    !/[\u4e00-\u9fff]/.test(lab)
+  ) {
+    const line = truncateOneLine(lab, 96);
     return { kind: "generic", brief: line, aria: line };
   }
 
@@ -6799,22 +6826,17 @@ function useTraceRowEnterOnMount(rowId, enterRegistryRef, enterAnimDisabled = fa
  */
 function ToolRow({ row, t, enterRegistryRef, disableEnterAnim = false }) {
   const showEnterAnim = useTraceRowEnterOnMount(row.id, enterRegistryRef, disableEnterAnim);
-  const name = row.toolName || row.label || "(tool)";
   const pres = getToolTracePresentation(row, t);
   const done = Boolean(row.done) || /^(end|complete|completed|ok)$/i.test(String(row.phase ?? "").trim());
   const failed = Boolean(row.error && String(row.error).trim());
   const glyphState = /** @type {"ok"|"run"|"fail"} */ (failed ? "fail" : done ? "ok" : "run");
-  const showPhaseChip =
-    Boolean(row.phase) &&
-    !(done && /^result$/i.test(String(row.phase).trim())) &&
-    String(row.phase).toLowerCase() !== "end";
+  // Do not surface gateway phase chips (`end` / `result`) or raw tool-name meta in the UI.
   const hasDetail = Boolean(
-    showPhaseChip ||
-      (row.args && Object.keys(row.args).length > 0) ||
+    (row.args && Object.keys(row.args).length > 0) ||
       (row.result && row.result.trim()) ||
       (row.partialResult && row.partialResult.trim()) ||
       (row.error && row.error.trim()) ||
-      (row.status && row.status.trim()) ||
+      (row.status && row.status.trim() && !looksLikeDevTraceLabel(row.status)) ||
       (row.summary && row.summary.trim() && truncateOneLine(row.summary.trim(), 96) !== pres.brief),
   );
   return (
@@ -6847,13 +6869,7 @@ function ToolRow({ row, t, enterRegistryRef, disableEnterAnim = false }) {
     >
       {hasDetail ? (
         <div className="chat-lab__tool-nested-body">
-          <div className="chat-lab__tool-nested-meta">
-            <span className="muted">{truncateOneLine(name, 56)}</span>
-            {showPhaseChip ? (
-              <span className="muted"> · {t("chatLab.toolPhase", { phase: row.phase })}</span>
-            ) : null}
-          </div>
-          {row.status ? <div>{row.status}</div> : null}
+          {row.status && !looksLikeDevTraceLabel(row.status) ? <div>{row.status}</div> : null}
           {row.args && Object.keys(row.args).length > 0 ? (
             <div>
               <strong>{t("chatLab.toolArgs")}</strong>
@@ -6950,8 +6966,6 @@ function ActivityRow({
   disableEnterAnim = false,
 }) {
   const showEnterAnim = useTraceRowEnterOnMount(row.id, enterRegistryRef, disableEnterAnim);
-  const stream = truncateOneLine(String(row.stream ?? "").trim(), 64);
-  const phase = String(row.phase ?? "").trim();
   const titleRaw = String(row.title ?? "").trim();
   const title = formatActivityHeadline(row) || "—";
   const textRaw = typeof row.text === "string" ? row.text.trim() : "";
@@ -6964,18 +6978,16 @@ function ActivityRow({
   const rowDone = isCompletedActivityPhase(rowPhase);
   const rowActive = !rowDone && (workerStreaming || rowPhase === "running");
   const titleOnly = stepTitleOnly;
+  // Never treat gateway `item` / `阶段：end` as expandable detail — only real content.
   const hasDetail = titleOnly
     ? false
     : Boolean(
-        phase ||
-          truncatedText.length > 0 ||
-          stream ||
+        truncatedText.length > 0 ||
           nestedToolRows.length > 0 ||
           nestedActivityRows.length > 0 ||
           workerTimeline.length > 0,
       );
-  const ariaPieces = [stream, titleRaw || undefined, phase || undefined].filter(Boolean);
-  const aria = ariaPieces.length ? ariaPieces.join(" · ") : title;
+  const aria = titleRaw && !looksLikeDevTraceLabel(titleRaw) ? titleRaw : title;
   const gState = rowDone
     ? "ok"
     : activityGlyphState(row, Boolean(streaming || workerStreaming), Boolean(isTail || workerStreaming));
@@ -7063,17 +7075,7 @@ function ActivityRow({
           pinActive={false}
           contentDigest={nestedScrollDigest}
         >
-          {stream ? (
-            <div className="chat-lab__tool-nested-meta">
-              <span className="muted">{stream}</span>
-            </div>
-          ) : null}
-          {phase ? <div className="muted">{t("chatLab.toolPhase", { phase })}</div> : null}
-          {truncatedText ? (
-            <div className="chat-lab__activity-text">{truncatedText}</div>
-          ) : !phase && stream ? (
-            <div className="muted">{t("chatLab.activityEmptyDetail")}</div>
-          ) : null}
+          {truncatedText ? <div className="chat-lab__activity-text">{truncatedText}</div> : null}
         </TraceNestedScrollBody>
       ) : null}
     </TraceDisclosure>
@@ -7865,7 +7867,7 @@ const MessageBubble = memo(function MessageBubble({
       streaming: Boolean(message.streaming),
     });
   }, [activityRows, toolRows, message.streaming]);
-  // Lifecycle-only timelines (e.g. "工具 0 · 步骤 1") must not force interleaved
+  // Lifecycle-only timelines (e.g. "工具 0 · 活动 1") must not force interleaved
   // rendering — that path shows segment bodies and can freeze on a mid-sentence cut
   // even when `message.content` already has the full reply.
   const interleavedAssistant = useMemo(() => {
@@ -7909,7 +7911,9 @@ const MessageBubble = memo(function MessageBubble({
     () =>
       activityRows.filter((r) => {
         const stream = String(r.stream ?? "").toLowerCase();
-        return stream !== "subagent";
+        if (stream === "subagent") return false;
+        if (isPhaseOnlyActivityRow(r)) return false;
+        return true;
       }),
     [activityRows],
   );
