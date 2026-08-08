@@ -8882,7 +8882,12 @@ function ChatLabPlainMessageList({
     >
       {renderItems.map((item) => {
         const renderMessageBubble = (message, { messageIndex, hideAgentHead = false, embedded = false }) => {
-          const agent = message.agentId ? agentById.get(String(message.agentId)) : null;
+          const agent =
+            message.agentId
+              ? agentById.get(String(message.agentId))
+              : message.role === "assistant"
+                ? mainAgent
+                : null;
           return (
             <MessageBubble
               key={String(message.id ?? messageIndex)}
@@ -9433,7 +9438,12 @@ function ChatLabVirtualMessageList({
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
             const item = renderItems[virtualRow.index];
             const renderMessageBubble = (message, { messageIndex, hideAgentHead = false, embedded = false }) => {
-              const agent = message.agentId ? agentById.get(String(message.agentId)) : null;
+              const agent =
+                message.agentId
+                  ? agentById.get(String(message.agentId))
+                  : message.role === "assistant"
+                    ? mainAgent
+                    : null;
               return (
                 <MessageBubble
                   key={String(message.id ?? messageIndex)}
