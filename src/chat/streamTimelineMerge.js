@@ -147,6 +147,26 @@ function priorTextBeforeIndex(list, textIdx) {
 }
 
 /**
+ * Map compact (whitespace-stripped) prefix length back onto raw canonical suffix.
+ * Used when timeline segments were joined without spaces but `content_sync` has spaces.
+ * @param {string} canonical
+ * @param {string} joinedRaw concatenation of prior timeline text segments
+ */
+function canonicalSuffixAfterCompactJoin(canonical, joinedRaw) {
+  const c = typeof canonical === "string" ? canonical : "";
+  const normJoined = normalizeCompactText(joinedRaw);
+  const normC = normalizeCompactText(c);
+  if (!normJoined || !normC.startsWith(normJoined) || normC.length <= normJoined.length) return "";
+  let compactSeen = 0;
+  let i = 0;
+  while (i < c.length && compactSeen < normJoined.length) {
+    if (!/\s/.test(c[i])) compactSeen += 1;
+    i += 1;
+  }
+  return c.slice(i);
+}
+
+/**
  * When a post-tool text delta is a cumulative snapshot, keep only the new tail.
  * @param {string} prior accumulated prose from earlier timeline text segments
  * @param {string} chunk incoming delta or segment body
@@ -159,6 +179,13 @@ function incrementalTextAfterPrior(prior, chunk) {
 
   if (b.startsWith(p)) return b.slice(p.length).trimStart();
   if (p.startsWith(b) || b === p) return "";
+
+  const normCompactP = normalizeCompactText(p);
+  const normCompactB = normalizeCompactText(b);
+  if (normCompactP && normCompactB === normCompactP) return "";
+  if (normCompactP && normCompactB.startsWith(normCompactP)) {
+    return canonicalSuffixAfterCompactJoin(b, p);
+  }
 
   const normP = normalizeCompareText(p);
   const normB = normalizeCompareText(b);
@@ -439,6 +466,14 @@ export function ensureTimelineCoversCanonicalText(list, canonical) {
   if (!joined.trim()) {
     return trimTimeline([{ kind: "text", body: c }, ...tl]);
   }
+
+  const normJoined = normalizeCompactText(joined);
+  const normC = normalizeCompactText(c);
+  // Segments already cover canonical (only whitespace/newline drift) — do not rewrite the last slot.
+  if (normJoined === normC) {
+    return trimTimeline(tl);
+  }
+
   if (preferLongerAssistantText(joined, c) !== c || c.length <= joined.length) {
     return trimTimeline(tl);
   }
@@ -452,36 +487,23 @@ export function ensureTimelineCoversCanonicalText(list, canonical) {
     return trimTimeline(tl);
   }
 
-  // Whitespace drift between timeline segments and content_sync.
-  const normJoined = normalizeCompactText(joined);
-  const normC = normalizeCompactText(c);
+  // Whitespace drift between timeline segments and content_sync — append only the missing suffix.
   if (normC.startsWith(normJoined) && normC.length > normJoined.length && textIdxs.length) {
-    const last = textIdxs[textIdxs.length - 1];
-    const pin = joined.slice(-Math.min(48, joined.length));
-    const idx = pin ? c.lastIndexOf(pin) : -1;
-    if (idx >= 0) {
-      const tail = c.slice(idx + pin.length);
-      if (tail) {
-        tl[last] = { kind: "text", body: String(tl[last].body ?? "") + tail };
-        return trimTimeline(tl);
-      }
+    const suffix = canonicalSuffixAfterCompactJoin(c, joined);
+    if (suffix) {
+      const last = textIdxs[textIdxs.length - 1];
+      tl[last] = { kind: "text", body: String(tl[last].body ?? "") + suffix };
     }
+    return trimTimeline(tl);
   }
 
   if (textIdxs.length) {
     const last = textIdxs[textIdxs.length - 1];
-    const prior = priorTextBeforeIndex(tl, last);
     const tail = canonicalTailForLastTextSegment(tl, last, c);
     if (typeof tail === "string" && tail.trim()) {
       tl[last] = {
         kind: "text",
         body: preferLongerAssistantText(String(tl[last].body ?? ""), tail),
-      };
-    } else {
-      const sliced = incrementalTextAfterPrior(prior, c);
-      tl[last] = {
-        kind: "text",
-        body: preferLongerAssistantText(String(tl[last].body ?? ""), sliced || c),
       };
     }
   }
@@ -544,10 +566,16 @@ export function mergeTimelineTextDelta(prev, delta) {
     if (!body.trim()) {
       // Never drop a true growth of the segment body (content can still accumulate).
       if (combined.length > String(prevAtInsert.body ?? "").length) {
-        body =
-          priorBefore && combined.startsWith(priorBefore)
-            ? combined.slice(priorBefore.length).trimStart() || combined
-            : combined;
+        if (priorBefore && combined.startsWith(priorBefore)) {
+          body = combined.slice(priorBefore.length).trimStart() || combined;
+        } else if (priorBefore.trim()) {
+          const compactTail = canonicalSuffixAfterCompactJoin(combined, priorBefore);
+          body = compactTail
+            ? preferLongerAssistantText(String(prevAtInsert.body ?? ""), compactTail)
+            : String(prevAtInsert.body ?? "");
+        } else {
+          body = combined;
+        }
       } else {
         const fromDelta = incrementalTextAfterPrior(priorBefore, delta);
         if (!fromDelta.trim()) return trimTimeline(list);
