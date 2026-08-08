@@ -174,20 +174,25 @@ export function scrollThreadToTop(scrollContainer, scrollApi) {
  * @param {HTMLElement | null} scrollContainer
  * @param {ChatLabThreadScrollApi | null | undefined} scrollApi
  * @param {import("react").MutableRefObject<boolean> | undefined} autoScrollRef
+ * @param {{ animated?: boolean }} [opts]
  */
-export function scrollThreadToBottom(scrollContainer, scrollApi, autoScrollRef) {
+export function scrollThreadToBottom(scrollContainer, scrollApi, autoScrollRef, opts = {}) {
+  const animated = opts.animated !== false;
   if (autoScrollRef) autoScrollRef.current = true;
   if (scrollApi?.scrollToBottom) {
-    scrollApi.scrollToBottom({ animated: true });
+    scrollApi.scrollToBottom({ animated });
     return;
   }
   if (scrollApi?.scrollToIndex && scrollApi.messageCount > 0) {
     scrollApi.scrollToIndex(scrollApi.messageCount - 1, {
       align: "end",
-      behavior: "smooth",
+      behavior: animated ? "smooth" : "instant",
     });
     return;
   }
   if (!scrollContainer) return;
-  scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: "smooth" });
+  scrollContainer.scrollTo({
+    top: scrollContainer.scrollHeight,
+    behavior: animated ? "smooth" : "auto",
+  });
 }

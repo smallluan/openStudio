@@ -194,6 +194,7 @@ import {
   findActiveUserMessageIdVirtual,
   animateScrollTop,
   scrollThreadToMessage,
+  scrollThreadToBottom,
 } from "../chat/chatLabThreadScroll.js";
 import {
   buildChatMessageRenderItems,
@@ -1824,6 +1825,15 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     userScrollPausedRef.current = false;
     autoScrollRef.current = true;
   }, []);
+  const prepareChatThreadForSend = useCallback(() => {
+    userScrollPausedRef.current = false;
+    scrollThreadToBottom(
+      messagesScrollRef.current,
+      threadScrollApiRef.current,
+      autoScrollRef,
+      { animated: false },
+    );
+  }, []);
 
   const { beginGatewayStream, resetGatewayStream } = useChatLabStreaming();
   const gatewaySlicesForConv = useGatewayStreamSlices(conversationId);
@@ -3386,6 +3396,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       onCommitted,
       foldIntoAssistantId,
     }) => {
+      prepareChatThreadForSend();
       if (!paramC && !ephemeralSession) {
         setSearchParams({ c: conversationId }, { replace: true });
       }
@@ -3780,6 +3791,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       paramC,
       mentionEveryoneLabel,
       continuousMentionTargetId,
+      prepareChatThreadForSend,
       participantIds,
       resetGatewayStream,
       resolveAgentContextBlocks,
@@ -4429,6 +4441,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     // 流式进行中：加入排队（最多 3 条）
     if (gatewayStreaming && queuedMessages.length < 3) {
       if (!hasPayload) return;
+      prepareChatThreadForSend();
 
       const { mentionIds } = parseAgentMentions(trimmed, agents, {
         mainFallback: mainAgentLabel,
@@ -4494,6 +4507,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
       if (idx === -1) {
         setPendingEditMessageId(null);
       } else {
+        prepareChatThreadForSend();
         setPendingEditMessageId(null);
         await commitUserMessageEdit(editId, trimmed);
         return;
@@ -4543,6 +4557,7 @@ export function ChatLabPageMain({ conversationId, onWorkspaceEmptySessionChange,
     mentionEveryoneLabel,
     continuousMentionTargetId,
     paramC,
+    prepareChatThreadForSend,
     participantIds,
     setSearchParams,
     submitNewUserTurn,
@@ -5752,14 +5767,19 @@ function ChatStreamPauseIcon() {
 function formatActivityHeadline(row) {
   const stream = truncateOneLine(String(row.stream ?? "").trim(), 64);
   const titleRaw = String(row.title ?? "").trim();
-  // Prefer the activity title; never put stream/phase (`item` / `end`) into the headline.
+  const phase = String(row.phase ?? "").trim();
+  // Keep run boundaries visible as `lifecycle.start` / `lifecycle.end`.
+  if (stream.toLowerCase() === "lifecycle" && phase) {
+    return truncateOneLine(`lifecycle.${phase}`, 104);
+  }
+  // Prefer the activity title; never put item/tool stream names into the headline.
   const headline = titleRaw || (stream && !/^(item|tool)$/i.test(stream) ? stream : "");
   return truncateOneLine(headline, 104);
 }
 
 /**
- * Phase-only gateway activity (`item` + `end` / `start`) with no useful payload.
- * These used to render as a step whose only detail was "阶段：end" — drop the whole row.
+ * Phase-only gateway activity (`item`/`tool` + start/end) with no useful payload.
+ * Drop those rows entirely — but keep `lifecycle.start` / `lifecycle.end`.
  * @param {import("../chat/toolTraceMerge.js").ActivityRow | undefined} row
  */
 function isPhaseOnlyActivityRow(row) {
@@ -5768,25 +5788,20 @@ function isPhaseOnlyActivityRow(row) {
   const phase = String(row.phase ?? "").trim().toLowerCase();
   const title = String(row.title ?? "").trim();
   const text = typeof row.text === "string" ? row.text.trim() : "";
+  // Always keep run lifecycle markers in the activity list.
+  if (stream === "lifecycle") return false;
   const hasNested =
     (Array.isArray(row.toolTrace) && row.toolTrace.length > 0) ||
     (Array.isArray(row.nestedActivity) && row.nestedActivity.length > 0) ||
     (Array.isArray(row.assistantTimeline) && row.assistantTimeline.length > 0);
   if (hasNested) return false;
-  // Keep steps that carry real content (URL, path, message, …).
+  // Keep activities that carry real content (URL, path, message, …).
   if (text && text.length > 2 && !looksLikeDevTraceLabel(text)) return false;
   if (title && (/\s/.test(title) || /https?:\/\//i.test(title) || /[\\/]/.test(title))) return false;
   if (stream === "item" || stream === "tool") {
     if (!phase || /^(start|end|result|ok|success|complete|completed|running)$/i.test(phase)) {
       return true;
     }
-  }
-  if (
-    stream === "lifecycle" &&
-    /^(start|end|result|ok|success|complete|completed)$/i.test(phase) &&
-    !text
-  ) {
-    return true;
   }
   return false;
 }
