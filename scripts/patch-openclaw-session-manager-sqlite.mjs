@@ -5,6 +5,9 @@
  * builds). The base SQLite store still lives in patches/openclaw@2026.6.1.patch;
  * this script completes the agent hot-path migration that patch alone missed.
  *
+ * Also patches session-utils.fs readRecentSessionMessagesAsync so chat.history /
+ * sessions_spawn await can read child replies after legacy .jsonl files are deleted.
+ *
  * Idempotent — safe to re-run. Override target with:
  *   OPENCLAW_PATCH_ROOT=.../openclaw node scripts/patch-openclaw-session-manager-sqlite.mjs
  *
@@ -1699,6 +1702,259 @@ import { c as ensureSessionTranscriptHeaderSqlite, e as sessionTranscriptExists,
 	writeIfChanged(filePath, src);
 }
 
+/**
+ * chat.history / sessions_spawn await read child replies via
+ * readRecentSessionMessagesAsync, which previously fs.stat()'d the legacy
+ * .jsonl path. After SQLite migration the jsonl is deleted, so recent reads
+ * returned [] and Studio coerced that to result:"".
+ */
+function patchSessionUtilsFs() {
+	const filePath = findDist("session-utils.fs-", {
+		contentIncludes: "async function readRecentSessionMessagesAsync",
+	});
+	let src = mustRead(filePath);
+	const marker = `${MARKER}_SESSION_UTILS_FS`;
+	if (src.includes(marker)) {
+		console.log(`[patch-openclaw-session-manager-sqlite] skip — session-utils.fs already patched`);
+		return;
+	}
+
+	src = replaceOnce(
+		src,
+		`async function readRecentSessionMessagesAsync(sessionId, storePath, sessionFile, opts) {
+	const normalized = normalizeRecentSessionReadOptions(opts);
+	const { maxMessages } = normalized;
+	if (maxMessages === 0) return [];
+	const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile);
+	if (!filePath) return [];
+	let stat;
+	try {
+		stat = await fs.promises.stat(filePath);
+	} catch {
+		return [];
+	}
+	if (stat.size === 0) return [];
+	return parseRecentTranscriptTailMessages(await readRecentTranscriptTailLinesAsync(filePath, stat, { ...normalized }), maxMessages);
+}`,
+		`async function readRecentSessionMessagesAsync(sessionId, storePath, sessionFile, opts) {
+	/* ${marker} */
+	const normalized = normalizeRecentSessionReadOptions(opts);
+	const { maxMessages } = normalized;
+	if (maxMessages === 0) return [];
+	const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile);
+	if (!filePath) return [];
+	// SQLite-backed transcripts delete the legacy .jsonl; never fs.stat the path.
+	if (transcriptPathUsesSqlite(filePath)) {
+		const index = await readSessionTranscriptIndex(filePath);
+		if (!index?.entries?.length) return [];
+		return index.entries.flatMap((entry) => indexedTranscriptEntryToMessages(entry)).slice(-maxMessages);
+	}
+	let stat;
+	try {
+		stat = await fs.promises.stat(filePath);
+	} catch {
+		return [];
+	}
+	if (stat.size === 0) return [];
+	return parseRecentTranscriptTailMessages(await readRecentTranscriptTailLinesAsync(filePath, stat, { ...normalized }), maxMessages);
+}`,
+		"readRecentSessionMessagesAsync sqlite",
+	);
+
+	src = replaceOnce(
+		src,
+		`function visitTranscriptLines(filePath, visit) {
+	const fd = fs.openSync(filePath, "r");
+	try {
+		const decoder = new StringDecoder("utf8");
+		const buffer = Buffer.allocUnsafe(64 * 1024);
+		let carry = "";
+		while (true) {
+			const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null);
+			if (bytesRead <= 0) break;
+			const lines = (carry + decoder.write(buffer.subarray(0, bytesRead))).split(/\\r?\\n/);
+			carry = lines.pop() ?? "";
+			for (const line of lines) visit(line);
+		}
+		const tail = carry + decoder.end();
+		if (tail) visit(tail);
+	} finally {
+		fs.closeSync(fd);
+	}
+}`,
+		`function visitTranscriptLines(filePath, visit) {
+	if (transcriptPathUsesSqlite(filePath)) {
+		visitSessionTranscriptLinesSqlite({
+			transcriptPath: filePath,
+			visit: (line) => visit(line)
+		});
+		return;
+	}
+	const fd = fs.openSync(filePath, "r");
+	try {
+		const decoder = new StringDecoder("utf8");
+		const buffer = Buffer.allocUnsafe(64 * 1024);
+		let carry = "";
+		while (true) {
+			const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null);
+			if (bytesRead <= 0) break;
+			const lines = (carry + decoder.write(buffer.subarray(0, bytesRead))).split(/\\r?\\n/);
+			carry = lines.pop() ?? "";
+			for (const line of lines) visit(line);
+		}
+		const tail = carry + decoder.end();
+		if (tail) visit(tail);
+	} finally {
+		fs.closeSync(fd);
+	}
+}`,
+		"visitTranscriptLines sqlite",
+	);
+
+	src = replaceOnce(
+		src,
+		`async function readSessionMessageCountAsync(sessionId, storePath, sessionFile) {
+	const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile);
+	if (!filePath) return 0;
+	let stat = null;
+	try {
+		stat = await fs.promises.stat(filePath);
+		const cached = getCachedTranscriptMessageCount(filePath, stat);
+		if (typeof cached === "number") return cached;
+	} catch {}
+	const count = (await readSessionTranscriptIndex(filePath))?.entries.length ?? 0;
+	if (stat) setCachedTranscriptMessageCount(filePath, stat, count);
+	return count;
+}`,
+		`async function readSessionMessageCountAsync(sessionId, storePath, sessionFile) {
+	const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile);
+	if (!filePath) return 0;
+	let stat = null;
+	if (transcriptPathUsesSqlite(filePath)) {
+		stat = resolveSessionTranscriptStat(filePath, storePath);
+		if (stat) {
+			const cached = getCachedTranscriptMessageCount(filePath, stat);
+			if (typeof cached === "number") return cached;
+		}
+	} else try {
+		stat = await fs.promises.stat(filePath);
+		const cached = getCachedTranscriptMessageCount(filePath, stat);
+		if (typeof cached === "number") return cached;
+	} catch {}
+	const count = (await readSessionTranscriptIndex(filePath))?.entries.length ?? 0;
+	if (stat) setCachedTranscriptMessageCount(filePath, stat, count);
+	return count;
+}`,
+		"readSessionMessageCountAsync sqlite",
+	);
+
+	src = replaceOnce(
+		src,
+		`async function readLatestRecentSessionUsageFromTranscriptAsync(sessionId, storePath, sessionFile, agentId, maxBytes) {
+	const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile, agentId);
+	if (!filePath) return null;
+	try {
+		const stat = await fs.promises.stat(filePath);
+		if (stat.size === 0) return null;
+		return extractLatestUsageFromTranscriptLines(await readRecentTranscriptTailLinesAsync(filePath, stat, {
+			maxMessages: 1,
+			maxLines: 1e3,
+			maxBytes
+		}));
+	} catch {
+		return null;
+	}
+}`,
+		`async function readLatestRecentSessionUsageFromTranscriptAsync(sessionId, storePath, sessionFile, agentId, maxBytes) {
+	const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile, agentId);
+	if (!filePath) return null;
+	try {
+		if (transcriptPathUsesSqlite(filePath)) {
+			const lines = [];
+			await visitTranscriptJsonLines(filePath, (line) => {
+				if (!line.trim()) return;
+				lines.push(line);
+				if (lines.length > 1e3) lines.shift();
+			});
+			return extractLatestUsageFromTranscriptLines(lines);
+		}
+		const stat = await fs.promises.stat(filePath);
+		if (stat.size === 0) return null;
+		return extractLatestUsageFromTranscriptLines(await readRecentTranscriptTailLinesAsync(filePath, stat, {
+			maxMessages: 1,
+			maxLines: 1e3,
+			maxBytes
+		}));
+	} catch {
+		return null;
+	}
+}`,
+		"readLatestRecentSessionUsageFromTranscriptAsync sqlite",
+	);
+
+	writeIfChanged(filePath, src);
+}
+
+/**
+ * Do not ship empty-result hardening via patches/openclaw@*.patch (hunk counts
+ * break easily). Apply it here after patchedDependencies so clean installs stay green.
+ */
+function patchOpenStudioWaitEmptyResult() {
+	const filePath = findDist("openclaw-tools-", {
+		contentIncludes: "async function openStudioWaitOneSpawn",
+	});
+	let src = mustRead(filePath);
+	const marker = `${MARKER}_WAIT_EMPTY_RESULT`;
+	if (src.includes(marker) || src.includes("no assistant reply text was readable")) {
+		console.log(`[patch-openclaw-session-manager-sqlite] skip — openStudioWaitOneSpawn empty-result already patched`);
+		return;
+	}
+	const oldBlock = `	if (wait.status === "error" || wait.status === "pending") return {
+		...spawnResult,
+		status: wait.status === "pending" ? "timeout" : "error",
+		error: wait.error || (wait.status === "pending" ? "subagent still pending" : "subagent wait failed"),
+		runId,
+		childSessionKey
+	};
+	return {
+		...spawnResult,
+		status: "completed",
+		runId,
+		childSessionKey,
+		result: typeof wait.replyText === "string" ? wait.replyText : ""
+	};
+}
+async function openStudioAwaitSpawnResult(spawnResult, params, opts) {`;
+	const newBlock = `	if (wait.status === "error" || wait.status === "pending") return {
+		...spawnResult,
+		status: wait.status === "pending" ? "timeout" : "error",
+		error: wait.error || (wait.status === "pending" ? "subagent still pending" : "subagent wait failed"),
+		runId,
+		childSessionKey
+	};
+	/* ${marker} */
+	const replyText = typeof wait.replyText === "string" ? wait.replyText.trim() : "";
+	if (!replyText) return {
+		...spawnResult,
+		status: "error",
+		error: "subagent finished but no assistant reply text was readable (check chat.history / sqlite transcript)",
+		runId,
+		childSessionKey,
+		result: ""
+	};
+	return {
+		...spawnResult,
+		status: "completed",
+		runId,
+		childSessionKey,
+		result: replyText
+	};
+}
+async function openStudioAwaitSpawnResult(spawnResult, params, opts) {`;
+	src = replaceOnce(src, oldBlock, newBlock, "openStudioWaitOneSpawn empty-result");
+	writeIfChanged(filePath, src);
+}
+
 function main() {
 	if (!fs.existsSync(distDir)) throw new Error(`openclaw dist missing: ${distDir}`);
 	patchSqliteStore();
@@ -1710,6 +1966,8 @@ function main() {
 	patchRunSessionState();
 	patchSessions7();
 	patchSessionsCVs();
+	patchSessionUtilsFs();
+	patchOpenStudioWaitEmptyResult();
 	console.log(`[patch-openclaw-session-manager-sqlite] done — ${openclawRoot}`);
 }
 

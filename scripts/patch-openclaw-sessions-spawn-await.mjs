@@ -120,12 +120,21 @@ async function openStudioWaitOneSpawn(spawnResult, params) {
 		runId,
 		childSessionKey
 	};
+	const replyText = typeof wait.replyText === "string" ? wait.replyText.trim() : "";
+	if (!replyText) return {
+		...spawnResult,
+		status: "error",
+		error: "subagent finished but no assistant reply text was readable (check chat.history / sqlite transcript)",
+		runId,
+		childSessionKey,
+		result: ""
+	};
 	return {
 		...spawnResult,
 		status: "completed",
 		runId,
 		childSessionKey,
-		result: typeof wait.replyText === "string" ? wait.replyText : ""
+		result: replyText
 	};
 }
 async function openStudioAwaitSpawnResult(spawnResult, params, opts) {
